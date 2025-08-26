@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNS DevTools Panel Demo</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+        .demo-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .demo-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .demo-header h1 {
+            color: #7fffd4;
+            margin-bottom: 10px;
+        }
+        .demo-header p {
+            color: #cccccc;
+            font-size: 18px;
+        }
+        .controls {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .controls h3 {
+            margin-top: 0;
+            color: #7fffd4;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #cccccc;
+        }
+        .control-group input, .control-group button {
+            padding: 8px 12px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            background: #2a2a2a;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        .control-group button {
+            background: #7fffd4;
+            color: #1a1a1a;
+            border: none;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .control-group button:hover {
+            background: #6bffd4;
+        }
+        .visualization {
+            border: 2px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+        .info h3 {
+            color: #7fffd4;
+            margin-top: 0;
+        }
+        .info ul {
+            color: #cccccc;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <div class="demo-header">
+            <h1>🧠 CNS DevTools Panel</h1>
+            <p>Real-time visualization of neural network activity</p>
+        </div>
+
+        <div class="controls">
+            <h3>🎮 Controls</h3>
+            <div class="control-group">
+                <label>Channel Name:</label>
+                <input type="text" id="channelName" value="cns-devtools" placeholder="Enter channel name">
+            </div>
+            <div class="control-group">
+                <label>Panel Size:</label>
+                <input type="number" id="width" value="1200" min="400" max="2000" step="100"> × 
+                <input type="number" id="height" value="800" min="300" max="1200" step="100">
+            </div>
+            <div class="control-group">
+                <button onclick="createPanel()">🚀 Create Panel</button>
+                <button onclick="destroyPanel()">🗑️ Destroy Panel</button>
+                <button onclick="simulateEvents()">⚡ Simulate Events</button>
+            </div>
+        </div>
+
+        <div class="visualization" id="visualization">
+            <div style="padding: 100px; text-align: center; color: #666;">
+                Click "Create Panel" to start visualization
+            </div>
+        </div>
+
+        <div class="info">
+            <h3>📖 How to Use</h3>
+            <ul>
+                <li><strong>Create Panel:</strong> Initializes the PixiJS visualization</li>
+                <li><strong>Simulate Events:</strong> Sends test events to see animations</li>
+                <li><strong>Mouse Controls:</strong> Zoom with wheel, drag to pan, click nodes</li>
+                <li><strong>Real Integration:</strong> Use with @cnstra/core and @cnstra/glia</li>
+            </ul>
+            
+            <h3>🔧 Integration Example</h3>
+            <pre style="background: #2a2a2a; padding: 15px; border-radius: 5px; overflow-x: auto;">
+import { CNS } from '@cnstra/core';
+import { MicrogliaTrace } from '@cnstra/glia';
+import { CNSDevToolsPanel } from '@cnstra/devtools-panel';
+
+const cns = new CNS(afferentAxon, neurons)
+  .use(MicrogliaTrace('cns-devtools'));
+
+const panel = new CNSDevToolsPanel({
+  channelName: 'cns-devtools'
+});
+
+// Watch signals flow in real-time!
+cns.stimulate('input', { data: 42 });</pre>
+        </div>
+    </div>
+
+    <script type="module">
+        let panel = null;
+        let eventChannel = null;
+
+        window.createPanel = async () => {
+            try {
+                const channelName = document.getElementById('channelName').value;
+                const width = parseInt(document.getElementById('width').value);
+                const height = parseInt(document.getElementById('height').value);
+
+                // Create BroadcastChannel for testing
+                eventChannel = new BroadcastChannel(channelName);
+
+                // Import and create panel
+                const { CNSDevToolsPanel } = await import('./dist/index.js');
+                
+                const visualizationDiv = document.getElementById('visualization');
+                visualizationDiv.innerHTML = '';
+
+                panel = new CNSDevToolsPanel({
+                    channelName,
+                    width,
+                    height
+                });
+
+                // Mount the panel
+                const panelElement = panel.render();
+                visualizationDiv.appendChild(panelElement);
+
+                console.log('Panel created successfully!');
+            } catch (error) {
+                console.error('Failed to create panel:', error);
+                alert('Failed to create panel. Check console for details.');
+            }
+        };
+
+        window.destroyPanel = () => {
+            if (panel) {
+                panel.destroy();
+                panel = null;
+            }
+            if (eventChannel) {
+                eventChannel.close();
+                eventChannel = null;
+            }
+            document.getElementById('visualization').innerHTML = 
+                '<div style="padding: 100px; text-align: center; color: #666;">Click "Create Panel" to start visualization</div>';
+        };
+
+        window.simulateEvents = () => {
+            if (!eventChannel) {
+                alert('Please create a panel first!');
+                return;
+            }
+
+            // Simulate some neural network events
+            const events = [
+                { kind: 'stage', stage: 'preDendrite', spikeId: 'spike-1', type: 'input', hops: 0, t: Date.now() },
+                { kind: 'stage', stage: 'postDendrite', spikeId: 'spike-1', type: 'input', hops: 0, t: Date.now() },
+                { kind: 'enqueue', spikeId: 'spike-1', toType: 'output', hops: 1, t: Date.now() },
+                { kind: 'stage', stage: 'preDendrite', spikeId: 'spike-2', type: 'compute', hops: 1, t: Date.now() },
+                { kind: 'enqueue', spikeId: 'spike-2', toType: 'result', hops: 2, t: Date.now() }
+            ];
+
+            events.forEach((event, index) => {
+                setTimeout(() => {
+                    eventChannel.postMessage(event);
+                    console.log('Sent event:', event);
+                }, index * 500);
+            });
+
+            console.log('Simulated events sent!');
+        };
+    </script>
+</body>
+</html>

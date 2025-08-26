@@ -1,0 +1,32 @@
+{
+  "name": "@cnstra/devtools-panel",
+  "version": "0.1.0",
+  "description": "PixiJS-based visualization panel for CNS neural networks",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@cnstra/core": "*",
+    "pixi.js": "^8.0.0",
+    "elkjs": "^0.9.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@cnstra/core": "*"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "cnstra",
+  "version": "1.0.0",
+  "description": "Monorepo for CNStra packages",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "dev": "npm run dev --workspaces",
+    "test": "npm run test --workspaces",
+    "test:types": "npm run test:types --workspaces",
+    "clean": "npm run clean --workspaces && rm -rf node_modules",
+    "publish:packages": "npm run build && npm publish --workspaces --access public",
+    "publish:core": "npm run build --workspace=@cnstra/core && npm publish --workspace=@cnstra/core --access public",
+    "version:packages": "npm version patch --workspaces"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abaikov/cnstra/issues"
+  },
+  "homepage": "https://github.com/abaikov/cnstra#readme",
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "tsd": "^0.33.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  }
+}

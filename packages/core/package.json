@@ -1,0 +1,58 @@
+{
+  "name": "@cnstra/core",
+  "version": "1.0.0",
+  "description": "Neural network-inspired event flow system for building reactive applications with dependency-injected neurons and synapses",
+  "keywords": [
+    "neural-network",
+    "event-flow",
+    "reactive",
+    "dependency-injection",
+    "neuron",
+    "synapse",
+    "axon",
+    "dendrite",
+    "typescript",
+    "node",
+    "browser"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abaikov/cnstra/issues"
+  },
+  "homepage": "https://github.com/abaikov/cnstra#readme",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm,cjs",
+    "prepublishOnly": "npm run build",
+    "test": "jest",
+    "test:types": "tsd",
+    "examples": "tsx examples/run-examples.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,1 +1,3 @@
-# cnstra
+# CNStra
+
+Main repo, under construction
