@@ -72,8 +72,15 @@ export class CNS<
         TSubscriber<TNeuron, TDendrite>[]
     >();
 
+    /**
+     * Cached hashes for stable IDs to optimize dedup key generation.
+     */
+    private neuronHashes = new Map<string, number>();
+    private collateralHashes = new Map<string, number>();
+
     constructor(protected readonly neurons: TNeuron[]) {
         this.buildIndex();
+        this.precomputeHashes();
     }
 
     private buildIndex() {
@@ -89,6 +96,77 @@ export class CNS<
                 );
             }
         }
+    }
+
+    /**
+     * Precompute hashes for stable neuron and collateral IDs to optimize
+     * dedup key generation during stimulation.
+     */
+    private precomputeHashes() {
+        for (const neuron of this.neurons) {
+            this.getHash(neuron.id, this.neuronHashes);
+            for (const dendrite of neuron.dendrites) {
+                this.getHash(dendrite.collateral.id, this.collateralHashes);
+            }
+        }
+    }
+
+    /**
+     * Simple but effective hash function for string keys.
+     */
+    private simpleHash(str: string): number {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = (hash << 5) - hash + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return hash;
+    }
+
+    /**
+     * Get or compute hash for a string, using cache for stable IDs.
+     */
+    private getHash(str: string, cache: Map<string, number>): number {
+        let hash = cache.get(str);
+        if (hash === undefined) {
+            hash = this.simpleHash(str);
+
+            // Simple cache management - remove oldest entry if cache gets too large
+            if (cache.size > 1000) {
+                // Remove oldest entry (first key in Map maintains insertion order)
+                const oldestKey = cache.keys().next().value;
+                if (oldestKey !== undefined) {
+                    cache.delete(oldestKey);
+                }
+            }
+
+            cache.set(str, hash);
+        } else {
+            // Move to end for LRU (delete + re-add updates position)
+            cache.delete(str);
+            cache.set(str, hash);
+        }
+        return hash;
+    }
+
+    /**
+     * Create optimized dedup key using composite numeric hash.
+     * This replaces string concatenation with faster numeric operations.
+     * Includes hops to allow signals to pass through the same neuron at different levels.
+     */
+    private createDedupKey(
+        neuronId: string,
+        collateralId: string,
+        spikeId: string,
+        hops: number
+    ): string {
+        const nHash = this.getHash(neuronId, this.neuronHashes);
+        const cHash = this.getHash(collateralId, this.collateralHashes);
+        const sHash = this.simpleHash(spikeId); // Don't cache spike IDs (too many unique values)
+        const hHash = this.simpleHash(hops.toString()); // Hash the hops level
+
+        return `${nHash}:${cHash}:${sHash}:${hHash}`;
     }
 
     /**
@@ -112,10 +190,18 @@ export class CNS<
         seen: Set<string>,
         queue: Deque<TQueueItem<TCollateralId>>,
         ctx: ICNSStimulationContextStore,
+        enableDedup: boolean, // New parameter
         onItemFirstAsyncStart: () => void, // called exactly once per item (on first async)
         onItemAllAsyncSettled: () => void, // called when this item's last async settles
         onAnyAsyncSettled: () => void, // called after every async settles (to pump again)
-        wireRejectionToRun: (p: Promise<any>) => void // lets the run-level promise reject on first error
+        onTrace?: (trace: {
+            collateralId: TCollateralId;
+            hops: number;
+            payload: unknown;
+            queueLength: number;
+            error?: Error;
+            context: ICNSStimulationContextStore; // Pass the actual context store interface
+        }) => void
     ): boolean {
         const subscribers = this.subIndex.get(incoming.collateralId);
         if (!subscribers || subscribers.length === 0) return false;
@@ -144,9 +230,17 @@ export class CNS<
 
         for (const { neuron, dendrite } of subscribers) {
             // Dedup to prevent double-processing within this spike cascade
-            const dedupKey = `${neuron.id}::${incoming.collateralId}::${incoming.spikeId}`;
-            if (seen.has(dedupKey)) continue;
-            seen.add(dedupKey);
+            const dedupKey = enableDedup
+                ? this.createDedupKey(
+                      neuron.id,
+                      incoming.collateralId,
+                      incoming.spikeId,
+                      incoming.hops
+                  )
+                : undefined; // Only dedup if enabled
+
+            if (dedupKey && seen.has(dedupKey)) continue;
+            if (dedupKey) seen.add(dedupKey);
 
             const res = dendrite.response(incoming.payload, neuron.axon, {
                 get: () => ctx.get(neuron.id),
@@ -161,21 +255,38 @@ export class CNS<
                 openAsync++;
 
                 // We do NOT catch here; rejections are wired to the run-level promise.
-                const p = (res as Promise<any>)
-                    .then(out => {
+                (res as Promise<any>).then(
+                    out => {
                         enqueueOut(out);
-                    })
-                    .finally(() => {
-                        // After any async settles:
+                        // After successful async settles:
                         openAsync--;
                         onAnyAsyncSettled();
                         if (openAsync === 0) {
                             onItemAllAsyncSettled();
                         }
-                    });
+                    },
+                    err => {
+                        // Trace the error
+                        onTrace?.({
+                            collateralId: incoming.collateralId,
+                            hops: incoming.hops,
+                            payload: incoming.payload,
+                            queueLength: queue.length,
+                            error: err,
+                            context: ctx, // Pass the context store interface
+                        });
 
-                // Let the outer run observe (and reject on) this promise.
-                wireRejectionToRun(p);
+                        // After failed async settles:
+                        openAsync--;
+                        onAnyAsyncSettled();
+                        if (openAsync === 0) {
+                            onItemAllAsyncSettled();
+                        }
+                        // Error is already traced, just continue
+                    }
+                );
+
+                // Fire-and-forget: no need to wire rejections
             } else {
                 // Synchronous branch: enqueue immediately.
                 enqueueOut(res);
@@ -201,21 +312,32 @@ export class CNS<
                 collateralId: TCollateralId;
                 hops: number;
                 payload: unknown;
+                queueLength: number;
+                error?: Error;
+                context: ICNSStimulationContextStore; // Pass the actual context store interface
             }) => void;
             abortSignal?: AbortSignal;
             spikeId?: string;
             ctx?: ICNSStimulationContextStore;
             /**
-             * Max number of queue items processed "actively" at the same time.
-             * - undefined / <= 0 => Infinity (fully parallel "fire-and-forget")
-             * Concurrency counts ITEMS (not individual async subscribers).
-             * An item is considered "active" if it launched at least one async subscriber
-             * that hasn't settled yet. Items with only sync work complete immediately.
+             * Factory method to create a new context store.
+             * Useful for recovery scenarios where you want to restore state.
+             */
+            createContext?: () => ICNSStimulationContextStore;
+            /**
+             * Maximum number of signal processing operations active at once.
+             * - Sync operations count for their brief execution time
+             * - Async operations count until completion
+             * - undefined / <= 0 => Infinity (no limit)
+             * Maintains streaming flow - no artificial barriers or level synchronization.
              */
             concurrency?: number;
         }
-    ): Promise<void> | void {
-        const ctx = opts?.ctx ?? new CNSStimulationContextStore();
+    ): void {
+        const ctx =
+            opts?.ctx ??
+            opts?.createContext?.() ??
+            new CNSStimulationContextStore();
         const spikeId = opts?.spikeId || Math.random().toString(36).slice(2);
         const maxHops = opts?.maxHops;
         const limit =
@@ -234,152 +356,98 @@ export class CNS<
         const seen = new Set<string>();
 
         /**
-         * Number of "active" items currently in-flight.
-         * - Increment when we start an item.
-         * - If item had NO async, decrement immediately after fanOut.
-         * - If item HAD async, decrement when its last async settles.
+         * Number of operations currently being processed.
+         * Both sync and async operations count toward this limit.
+         * Streaming concurrency: no artificial barriers, just resource limiting.
          */
-        let activeItems = 0;
+        let activeOperations = 0;
 
         /**
-         * We return `void` if everything completed synchronously.
-         * Otherwise we create a promise and:
-         *  - resolve when queue is empty AND activeItems == 0
-         *  - reject on the first async rejection
+         * Fire-and-forget: we don't return promises, just trace errors.
          */
-        let doneResolve: (() => void) | null = null;
-        let doneReject: ((err: any) => void) | null = null;
-        let done: Promise<void> | null = null;
-
-        const ensureDonePromise = () => {
-            if (!done) {
-                done = new Promise<void>((resolve, reject) => {
-                    doneResolve = resolve;
-                    doneReject = reject;
-                });
-            }
-        };
 
         /**
-         * Wire a subscriber promise to the run-level promise.
-         * - If it rejects, we reject the whole run (first error wins).
-         * - We do NOT catch-and-swallow; the original rejection still propagates.
-         */
-        const wireRejectionToRun = (p: Promise<any>) => {
-            ensureDonePromise();
-            p.then(
-                () => {},
-                err => {
-                    if (doneReject) {
-                        const rej = doneReject;
-                        doneReject = null; // ensure first error wins
-                        rej(err);
-                    }
-                    // Re-throw so this promise isn't considered "handled" internally.
-                    throw err;
-                }
-            );
-        };
-
-        /**
-         * Pump:
-         * - Pulls items from the deque up to the concurrency limit.
-         * - For each item:
-         *   • emits onTrace
-         *   • runs fire-and-forget fanOut
-         *   • if NO async launched -> item completes immediately
-         *   • if async launched -> item remains "active" until all its async settle
-         * - After any async settles, we call pump() again (nudged by fanOut).
+         * Streaming processor:
+         * - Processes items from queue up to concurrency limit
+         * - Each operation (sync/async) counts as one slot while active
+         * - No level barriers - operations start as soon as slots are available
+         * - Maintains fire-and-forget flow with proper backpressure
          *
          * Abort:
-         * - If AbortSignal is aborted, we stop pulling more work.
-         *   Already-launched async may still enqueue more items;
-         *   caller controls cleanup/lifetime externally.
+         * - If AbortSignal is aborted, stops pulling new work
+         * - Already-launched operations continue to completion
          */
-        const pump = () => {
-            while (queue.length && activeItems < limit) {
-                if (opts?.abortSignal?.aborted) break;
+        const startOperation = () => {
+            activeOperations++;
+        };
 
-                const item = queue.shift()!;
-                // Trace BEFORE fanOut to reflect actual order
-                opts?.onTrace?.({
-                    collateralId: item.collateralId,
-                    hops: item.hops,
-                    payload: item.payload,
-                });
+        const finishOperation = () => {
+            activeOperations--;
+            // Stream processing: immediately try to start more work
+            tryProcessMore();
+        };
 
-                if (maxHops && item.hops >= maxHops) {
-                    // Skip due to hop guard; try next.
-                    continue;
-                }
+        const canStartOperation = (): boolean => {
+            return activeOperations < limit && !opts?.abortSignal?.aborted;
+        };
 
-                // This item becomes "active" now (will be decremented immediately if it has no async)
-                activeItems++;
+        const processItem = (item: TQueueItem<TCollateralId>) => {
+            // Trace BEFORE processing to reflect actual order
+            opts?.onTrace?.({
+                collateralId: item.collateralId,
+                hops: item.hops,
+                payload: item.payload,
+                queueLength: queue.length,
+                context: ctx, // Pass the context store
+            });
 
-                // Per-item async markers
-                let itemMarkedAsync = false;
+            if (maxHops && item.hops >= maxHops) {
+                // Skip due to hop guard, but still finish the operation
+                finishOperation();
+                return;
+            }
 
-                const onItemFirstAsyncStart = () => {
-                    if (!itemMarkedAsync) {
-                        itemMarkedAsync = true;
-                        ensureDonePromise();
-                    }
-                };
+            // Simplified callbacks for streaming concurrency
+            const onOperationComplete = () => {
+                finishOperation();
+            };
 
-                const onItemAllAsyncSettled = () => {
-                    activeItems--;
-                    if (
-                        activeItems === 0 &&
-                        queue.length === 0 &&
-                        doneResolve
-                    ) {
-                        const r = doneResolve;
-                        doneResolve = null;
-                        r();
-                    }
-                };
+            const onAsyncStart = () => {
+                // Already counted in startOperation(), nothing extra needed
+            };
 
-                const onAnyAsyncSettled = () => {
-                    // After any async settles, try to pick more items (if under concurrency limit)
-                    pump();
-                };
+            // Fan out (fire-and-forget)
+            const launchedAsync = this.fanOutFireAndForget(
+                item,
+                opts?.allowType,
+                seen,
+                queue,
+                ctx,
+                maxHops !== undefined, // Enable dedup only if maxHops is set
+                onAsyncStart,
+                onOperationComplete,
+                tryProcessMore, // Continue streaming on any completion
+                opts?.onTrace
+            );
 
-                // Fan out (fire-and-forget)
-                const launchedAsync = this.fanOutFireAndForget(
-                    item as TQueueItem<TCollateralId>,
-                    opts?.allowType,
-                    seen,
-                    queue,
-                    ctx,
-                    onItemFirstAsyncStart,
-                    onItemAllAsyncSettled,
-                    onAnyAsyncSettled,
-                    wireRejectionToRun
-                );
-
-                // If the item had NO async, it completes immediately here.
-                if (!launchedAsync) {
-                    activeItems--;
-                    // If fully drained and we had created a run-promise (unlikely here), resolve it.
-                    if (
-                        activeItems === 0 &&
-                        queue.length === 0 &&
-                        doneResolve
-                    ) {
-                        const r = doneResolve;
-                        doneResolve = null;
-                        r();
-                    }
-                    // Loop continues to pick more items in this same pump call.
-                }
+            // If sync operation, complete immediately
+            if (!launchedAsync) {
+                finishOperation();
             }
         };
 
-        // Initial kick
-        pump();
+        const tryProcessMore = () => {
+            // Stream processing: start as many operations as concurrency allows
+            while (queue.length && canStartOperation()) {
+                const item = queue.shift()!;
+                startOperation();
+                processItem(item);
+            }
+        };
 
-        // If we never launched async and queue drained during the initial pump,
-        // return void (purely synchronous run). Otherwise return the run-level promise.
-        return done ?? undefined;
+        // Start streaming processing
+        tryProcessMore();
+
+        // Fire-and-forget: always return void
     }
 }

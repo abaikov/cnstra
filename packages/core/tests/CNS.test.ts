@@ -1,4 +1,4 @@
-import { CNS, collateral, neuron } from '../src/index';
+import { CNS, collateral, neuron, withCtx } from '../src/index';
 
 describe('CNS', () => {
     describe('Basic Functionality', () => {
@@ -170,7 +170,7 @@ describe('CNS', () => {
     });
 
     describe('Async Operations', () => {
-        it('should handle async reactions', async () => {
+        it('should handle async reactions', done => {
             const input = collateral<{ delay: number }>('input');
             const output = collateral<{ result: string }>('output');
 
@@ -194,27 +194,34 @@ describe('CNS', () => {
                 payload: unknown;
             }> = [];
 
-            await cns.stimulate(
+            // Fire-and-forget with completion detection via trace
+            cns.stimulate(
                 input,
+                { delay: 50 },
                 {
-                    delay: 50,
-                },
-                {
-                    onTrace: trace => traces.push(trace),
+                    onTrace: trace => {
+                        traces.push(trace);
+
+                        // When we see the output, we know processing is done
+                        if (trace.collateralId === 'output') {
+                            const endTime = Date.now();
+                            const duration = endTime - startTime;
+
+                            expect(duration).toBeGreaterThanOrEqual(50);
+                            expect(traces).toHaveLength(2);
+                            expect(traces[1].payload).toEqual({
+                                result: 'Delayed by 50ms',
+                            });
+                            done();
+                        }
+                    },
                 }
             );
-
-            const endTime = Date.now();
-            const duration = endTime - startTime;
-
-            expect(duration).toBeGreaterThanOrEqual(50);
-            expect(traces).toHaveLength(2);
-            expect(traces[1].payload).toEqual({ result: 'Delayed by 50ms' });
         });
     });
 
     describe('Edge Cases', () => {
-        it('should handle neurons with no dendrites', async () => {
+        it('should handle neurons with no dendrites', done => {
             const input = collateral<{ data: string }>('input');
             const output = collateral<{ result: string }>('output');
 
@@ -227,21 +234,26 @@ describe('CNS', () => {
                 payload: unknown;
             }> = [];
 
-            await cns.stimulate(
+            // Fire-and-forget
+            cns.stimulate(
                 input,
+                { data: 'test' },
                 {
-                    data: 'test',
-                },
-                {
-                    onTrace: trace => traces.push(trace),
+                    onTrace: trace => {
+                        traces.push(trace);
+
+                        // Check queue length to detect completion
+                        if (trace.queueLength === 0) {
+                            expect(traces).toHaveLength(1); // Only input, no reactions
+                            expect(traces[0].collateralId).toBe('input');
+                            done();
+                        }
+                    },
                 }
             );
-
-            expect(traces).toHaveLength(1); // Only input, no reactions
-            expect(traces[0].collateralId).toBe('input');
         });
 
-        it('should handle undefined payloads', async () => {
+        it('should handle undefined payloads', done => {
             const input = collateral('input'); // No payload type
             const output = collateral<{ result: string }>('output');
 
@@ -262,20 +274,193 @@ describe('CNS', () => {
                 payload: unknown;
             }> = [];
 
-            await cns.stimulate(
+            // Fire-and-forget
+            cns.stimulate(
                 input,
+                {}, // No payload
                 {
-                    // No payload
-                },
-                {
-                    onTrace: trace => traces.push(trace),
+                    onTrace: trace => {
+                        traces.push(trace);
+
+                        // When we see the output, processing is complete
+                        if (trace.collateralId === 'output') {
+                            expect(traces).toHaveLength(2);
+                            expect(traces[1].payload).toEqual({
+                                result: 'Processed undefined payload',
+                            });
+                            done();
+                        }
+                    },
                 }
             );
+        });
+    });
 
-            expect(traces).toHaveLength(2);
-            expect(traces[1].payload).toEqual({
-                result: 'Processed undefined payload',
-            });
+    describe('Self-Recursion', () => {
+        it('should allow neuron to process its own output signal', done => {
+            const input = collateral<{ message: string }>('input');
+            const output = collateral<{ result: string; iteration: number }>(
+                'output'
+            );
+
+            const recursiveNeuron = neuron('recursive', { output })
+                .dendrite({
+                    collateral: input,
+                    response: async (payload, axon) => {
+                        const message = (payload as { message: string })
+                            .message;
+                        return axon.output.createSignal({
+                            result: `Processed: ${message}`,
+                            iteration: 1,
+                        });
+                    },
+                })
+                .dendrite({
+                    collateral: output as any, // Use any to bypass type checking for self-listening
+                    response: async (payload, axon) => {
+                        const data = payload as {
+                            result: string;
+                            iteration: number;
+                        };
+                        if (data.iteration < 3) {
+                            // Recursively process own output signal
+                            return (axon as any).output.createSignal({
+                                result: `${data.result} (iteration ${
+                                    data.iteration + 1
+                                })`,
+                                iteration: data.iteration + 1,
+                            });
+                        }
+                        // Stop recursion after 3 iterations
+                        return undefined;
+                    },
+                });
+
+            const cns = new CNS([recursiveNeuron]);
+
+            const traces: Array<{
+                collateralId: string;
+                hops: number;
+                payload: unknown;
+            }> = [];
+
+            cns.stimulate(
+                input,
+                { message: 'Hello' },
+                {
+                    onTrace: trace => {
+                        traces.push(trace);
+
+                        // Check if we have all expected traces
+                        if (traces.length >= 4) {
+                            expect(traces).toHaveLength(4); // input + 3 output iterations
+                            expect(traces[0].collateralId).toBe('input');
+                            expect(traces[0].hops).toBe(0);
+
+                            // First output (hops: 1)
+                            expect(traces[1].collateralId).toBe('output');
+                            expect(traces[1].hops).toBe(1);
+                            expect(traces[1].payload).toEqual({
+                                result: 'Processed: Hello',
+                                iteration: 1,
+                            });
+
+                            // Second output (hops: 2)
+                            expect(traces[2].collateralId).toBe('output');
+                            expect(traces[2].hops).toBe(2);
+                            expect(traces[2].payload).toEqual({
+                                result: 'Processed: Hello (iteration 2)',
+                                iteration: 2,
+                            });
+
+                            // Third output (hops: 3)
+                            expect(traces[3].collateralId).toBe('output');
+                            expect(traces[3].hops).toBe(3);
+                            expect(traces[3].payload).toEqual({
+                                result: 'Processed: Hello (iteration 2) (iteration 3)',
+                                iteration: 3,
+                            });
+
+                            done();
+                        }
+                    },
+                }
+            );
+        });
+
+        it('should respect maxHops when neuron processes itself recursively', done => {
+            const input = collateral<{ data: string }>('input');
+            const output = collateral<{ value: string; count: number }>(
+                'output'
+            );
+
+            const infiniteRecursiveNeuron = neuron('infinite', { output })
+                .dendrite({
+                    collateral: input,
+                    response: async (payload, axon) => {
+                        const data = (payload as { data: string }).data;
+                        return axon.output.createSignal({
+                            value: data,
+                            count: 1,
+                        });
+                    },
+                })
+                .dendrite({
+                    collateral: output as any, // Use any to bypass type checking for self-listening
+                    response: async (payload, axon) => {
+                        const data = payload as {
+                            value: string;
+                            count: number;
+                        };
+                        // Always continue recursion
+                        return (axon as any).output.createSignal({
+                            value: `${data.value}-${data.count}`,
+                            count: data.count + 1,
+                        });
+                    },
+                });
+
+            const cns = new CNS([infiniteRecursiveNeuron]);
+
+            const traces: Array<{
+                collateralId: string;
+                hops: number;
+                payload: unknown;
+            }> = [];
+
+            cns.stimulate(
+                input,
+                { data: 'test' },
+                {
+                    maxHops: 5, // Limit to 5 hops
+                    onTrace: trace => {
+                        traces.push(trace);
+
+                        // Check if we've reached maxHops
+                        if (trace.hops >= 5) {
+                            // Should have exactly 6 traces: input (hops: 0) + 5 outputs (hops: 1-5)
+                            expect(traces).toHaveLength(6);
+                            expect(traces[0].collateralId).toBe('input');
+                            expect(traces[0].hops).toBe(0);
+
+                            // Verify hops progression
+                            for (let i = 1; i <= 5; i++) {
+                                expect(traces[i].collateralId).toBe('output');
+                                expect(traces[i].hops).toBe(i);
+                                expect(traces[i].payload).toHaveProperty(
+                                    'count',
+                                    i
+                                );
+                            }
+
+                            // Last trace should be at maxHops
+                            expect(traces[5].hops).toBe(5);
+
+                            done();
+                        }
+                    },
+                }
+            );
         });
     });
 });

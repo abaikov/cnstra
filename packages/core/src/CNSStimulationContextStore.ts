@@ -10,4 +10,8 @@ export class CNSStimulationContextStore implements ICNSStimulationContextStore {
     set(key: string, value: unknown): void {
         this.ctx.set(key, value);
     }
+
+    getAll(): Record<string, unknown> {
+        return Object.fromEntries(this.ctx);
+    }
 }

@@ -129,8 +129,11 @@ await cns.stimulate(collateral, payload, options?)
 
 **Options:**
 - `maxHops`: Maximum number of signal hops (default: 1000)
-- `onTrace`: Callback for tracing signal flow
+- `onTrace`: Callback for tracing signal flow with context for recovery
 - `abortSignal`: AbortController signal for cancellation
+- `ctx`: Pre-existing context store to restore state
+- `createContext`: Factory method to create custom context stores
+- `concurrency`: Maximum concurrent operations (default: unlimited)
 
 ## 🔄 Key Behavior
 
@@ -214,6 +217,56 @@ const statefulNeuron = withCtx().neuron('stateful', { output: outputCollateral }
       return axon.output.createSignal({ count: ctx.get()?.count });
     }
   });
+```
+
+### State Recovery and Restart
+
+CNS provides built-in support for recovering from failures and restarting operations. The `onTrace` callback includes the current context state, allowing you to:
+
+1. **Capture context on failure**: When an error occurs, the last trace contains the complete context state
+2. **Restart with saved context**: Use the saved context to restore the system state
+3. **Resume from failure point**: Continue processing from where it left off
+
+```typescript
+// Example: Recovery after failure
+let lastContext: ICNSStimulationContextStore | undefined;
+
+const cns = new CNS([myNeuron]);
+
+cns.stimulate(input, payload, {
+  onTrace: (trace) => {
+    // Always capture the latest context
+    lastContext = trace.context;
+    
+    if (trace.error) {
+      console.log('Error occurred, context saved for recovery');
+      // Save context to persistent storage
+      saveContextToStorage(trace.context);
+    }
+  }
+});
+
+// Later: Restart with saved context
+const savedContext = loadContextFromStorage();
+if (savedContext) {
+  cns.stimulate(failedCollateral, payload, {
+    ctx: savedContext, // Restore previous state
+    onTrace: (trace) => {
+      // Continue monitoring
+    }
+  });
+}
+```
+
+**Context Store Factory**: You can also provide a custom context factory:
+
+```typescript
+cns.stimulate(input, payload, {
+  createContext: () => new CustomContextStore(),
+  onTrace: (trace) => {
+    // trace.context is your custom context store
+  }
+});
 ```
 
 ## 🧪 Testing
