@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/core",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Neural network-inspired event flow system for building reactive applications with dependency-injected neurons and synapses",
   "keywords": [
     "neural-network",
@@ -48,6 +48,9 @@
   ],
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.12",
     "jest": "^29.7.0",

@@ -12,8 +12,6 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "baseUrl": "./src",
-    "composite": true,
     "resolveJsonModule": true
   },
   "include": [
