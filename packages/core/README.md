@@ -44,8 +44,8 @@ const userService = neuron('user-service', {
 })
 .dendrite({
   collateral: userCreated,
-  response: async (payload, axon) => {
-    const userData = payload as { id: string; name: string };
+  response: (payload, axon) => {
+    const userData = payload;
     
     // Process the user creation
     console.log(`Processing user: ${userData.name}`);
@@ -160,7 +160,7 @@ Multiple neurons can listen to the same collateral:
 const emailService = neuron('email-service', { emailSent })
   .dendrite({
     collateral: userCreated,
-    response: async (payload, axon) => {
+    response: (payload, axon) => {
       return axon.emailSent.createSignal({ to: 'user@example.com' });
     }
   });
@@ -168,7 +168,7 @@ const emailService = neuron('email-service', { emailSent })
 const notificationService = neuron('notification-service', { notificationSent })
   .dendrite({
     collateral: userCreated,
-    response: async (payload, axon) => {
+    response: (payload, axon) => {
       return axon.notificationSent.createSignal({ message: 'User created' });
     }
   });
@@ -201,10 +201,10 @@ const router = neuron('router', {
 Neurons can maintain local state using the context parameter:
 
 ```typescript
-const statefulNeuron = neuron('stateful', { output: outputCollateral })
+const statefulNeuron = withCtx().neuron('stateful', { output: outputCollateral })
   .dendrite({
     collateral: inputCollateral,
-    response: async (payload, axon, ctx) => {
+    response: (payload, axon, ctx) => {
       // Get current state
       const currentState = ctx.get();
       
