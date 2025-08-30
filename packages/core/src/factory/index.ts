@@ -1,7 +1,7 @@
 import { CNS } from '../CNS';
 import { CNSCollateral } from '../CNSCollateral';
 import { TCNSAxon } from '../types/TCNSAxon';
-import { TCNDendrite } from '../types/TCNDendrite';
+import { TCNSDendrite } from '../types/TCNSDendrite';
 
 export const collateral = <TPayload = undefined, TId extends string = string>(
     id: TId
@@ -20,7 +20,7 @@ type InterNeuronAPI<
 > = {
     id: TIdType;
     axon: TReceiverAxon;
-    dendrites: TCNDendrite<
+    dendrites: TCNSDendrite<
         string,
         unknown,
         TReceiverCollateralIdType,
@@ -31,7 +31,7 @@ type InterNeuronAPI<
         TSenderExactCollateralIdType extends string,
         TSenderExactAxonCollateralPayload
     >(
-        s: TCNDendrite<
+        s: TCNSDendrite<
             TSenderExactCollateralIdType,
             TSenderExactAxonCollateralPayload,
             TReceiverCollateralIdType,
@@ -70,7 +70,7 @@ export const neuron = <
     TReceiverAxonCollateralPayload,
     TReceiverAxon
 > => {
-    const dendrites: TCNDendrite<
+    const dendrites: TCNSDendrite<
         string,
         unknown,
         TReceiverCollateralIdType,
@@ -93,7 +93,7 @@ export const neuron = <
             TSenderExactCollateralIdType extends string,
             TSenderExactAxonCollateralPayload
         >(
-            s: TCNDendrite<
+            s: TCNSDendrite<
                 TSenderExactCollateralIdType,
                 TSenderExactAxonCollateralPayload,
                 TReceiverCollateralIdType,
@@ -102,7 +102,7 @@ export const neuron = <
             >
         ) {
             dendrites.push(
-                s as TCNDendrite<
+                s as TCNSDendrite<
                     string,
                     unknown,
                     TReceiverCollateralIdType,

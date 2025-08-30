@@ -1,5 +1,5 @@
 import { TCNSAxon } from './TCNSAxon';
-import { TCNDendrite } from './TCNDendrite';
+import { TCNSDendrite } from './TCNSDendrite';
 
 export type TCNSNeuron<
     TId extends string,
@@ -7,7 +7,7 @@ export type TCNSNeuron<
     TCollateralPayload,
     TSenderCollateralId extends string,
     TSenderCollateralPayload,
-    TDendrites extends TCNDendrite<
+    TDendrites extends TCNSDendrite<
         TSenderCollateralId,
         TSenderCollateralPayload,
         TCollateralId,

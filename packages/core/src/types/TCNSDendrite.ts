@@ -1,7 +1,7 @@
 import { CNSCollateral } from '../CNSCollateral';
 import { TCNSAxon } from './TCNSAxon';
 
-export type TCNDendrite<
+export type TCNSDendrite<
     TSenderCollateralIdType extends string,
     TSenderAxonCollateralPayload,
     TReceiverCollateralIdType extends string,

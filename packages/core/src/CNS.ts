@@ -1,12 +1,12 @@
 import { TCNSNeuron } from './types/TCNSNeuron';
-import { TCNDendrite } from './types/TCNDendrite';
+import { TCNSDendrite } from './types/TCNSDendrite';
 import { CNSCollateral } from './CNSCollateral';
 
 const asArray = <T>(x: T | T[]) => (Array.isArray(x) ? x : [x]);
 
 type TSubscriber<
     TNeuron extends TCNSNeuron<any, any, any, any, any, any>,
-    TDendrite extends TCNDendrite<any, any, any, any, any>
+    TDendrite extends TCNSDendrite<any, any, any, any, any>
 > = {
     neuron: TNeuron;
     dendrite: TDendrite;
@@ -22,7 +22,7 @@ type TQueueItem<TCollateralId extends string> = {
 export class CNS<
     TCollateralId extends string,
     TNeuron extends TCNSNeuron<any, any, any, any, any, any>,
-    TDendrite extends TCNDendrite<any, any, any, any, any>
+    TDendrite extends TCNSDendrite<any, any, any, any, any>
 > {
     // index by collateral *type* => list of subscribers
     private subIndex = new Map<
