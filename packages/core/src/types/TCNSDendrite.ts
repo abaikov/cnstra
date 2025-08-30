@@ -1,12 +1,15 @@
 import { CNSCollateral } from '../CNSCollateral';
 import { TCNSAxon } from './TCNSAxon';
+import { TCNSLocalContextValueStore } from './TCNSLocalContextValueStore';
 
 export type TCNSDendrite<
+    TContextValue,
     TSenderCollateralIdType extends string,
     TSenderAxonCollateralPayload,
     TReceiverCollateralIdType extends string,
     TReceiverAxonCollateralPayload,
-    TReceiverAxon extends TCNSAxon<
+    // We need axon type to be able to redirect to different collaterals
+    TAxonType extends TCNSAxon<
         TReceiverCollateralIdType,
         TReceiverAxonCollateralPayload
     >
@@ -15,9 +18,10 @@ export type TCNSDendrite<
         TSenderCollateralIdType,
         TSenderAxonCollateralPayload
     >;
-    reaction: (
+    response: (
         payload: TSenderAxonCollateralPayload,
-        axon: TReceiverAxon
+        axon: TAxonType,
+        ctx: TCNSLocalContextValueStore<TContextValue>
     ) =>
         | Promise<
               ReturnType<

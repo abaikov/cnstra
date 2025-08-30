@@ -1,12 +1,14 @@
 import { TCNSNeuron } from './types/TCNSNeuron';
 import { TCNSDendrite } from './types/TCNSDendrite';
 import { CNSCollateral } from './CNSCollateral';
+import { ICNSStimulationContextStore } from './interfaces/ICNSStimulationContextStore';
+import { CNSStimulationContextStore } from './CNSStimulationContextStore';
 
 const asArray = <T>(x: T | T[]) => (Array.isArray(x) ? x : [x]);
 
 type TSubscriber<
-    TNeuron extends TCNSNeuron<any, any, any, any, any, any>,
-    TDendrite extends TCNSDendrite<any, any, any, any, any>
+    TNeuron extends TCNSNeuron<any, any, any, any, any, any, any>,
+    TDendrite extends TCNSDendrite<any, any, any, any, any, any>
 > = {
     neuron: TNeuron;
     dendrite: TDendrite;
@@ -21,8 +23,8 @@ type TQueueItem<TCollateralId extends string> = {
 
 export class CNS<
     TCollateralId extends string,
-    TNeuron extends TCNSNeuron<any, any, any, any, any, any>,
-    TDendrite extends TCNSDendrite<any, any, any, any, any>
+    TNeuron extends TCNSNeuron<any, any, any, any, any, any, any>,
+    TDendrite extends TCNSDendrite<any, any, any, any, any, any>
 > {
     // index by collateral *type* => list of subscribers
     private subIndex = new Map<
@@ -40,7 +42,7 @@ export class CNS<
             for (const dendrite of neuron.dendrites) {
                 const key = dendrite.collateral.id;
                 const arr = this.subIndex.get(key) ?? [];
-                arr.push({ neuron, dendrite });
+                arr.push({ neuron, dendrite: dendrite as TDendrite });
                 this.subIndex.set(
                     key,
                     arr as TSubscriber<TNeuron, TDendrite>[]
@@ -53,7 +55,8 @@ export class CNS<
         incoming: TQueueItem<TCollateralId>,
         allowType: ((t: TCollateralId) => boolean) | undefined,
         seen: Set<string>,
-        queue: TQueueItem<TCollateralId>[]
+        queue: TQueueItem<TCollateralId>[],
+        ctx: ICNSStimulationContextStore
     ) {
         const subscribers = this.subIndex.get(incoming.collateralId);
         if (!subscribers || subscribers.length === 0) return;
@@ -63,7 +66,10 @@ export class CNS<
             if (seen.has(k)) continue;
             seen.add(k);
 
-            const out = await dendrite.reaction(incoming.payload, neuron.axon);
+            const out = await dendrite.response(incoming.payload, neuron.axon, {
+                get: () => ctx.get(neuron.id),
+                set: value => ctx.set(neuron.id, value),
+            });
             if (out === undefined) continue;
 
             for (const spike of asArray(out)) {
@@ -99,8 +105,10 @@ export class CNS<
             }) => void;
             abortSignal?: AbortSignal;
             spikeId?: string;
+            ctx?: ICNSStimulationContextStore;
         }
     ): Promise<void> {
+        const ctx = opts?.ctx ?? new CNSStimulationContextStore();
         const spikeId = opts?.spikeId || Math.random().toString(36).slice(2);
         const maxHops = opts?.maxHops ?? 1000;
 
@@ -129,7 +137,8 @@ export class CNS<
                 item as TQueueItem<TCollateralId>,
                 opts?.allowType,
                 seen,
-                queue as TQueueItem<TCollateralId>[]
+                queue as TQueueItem<TCollateralId>[],
+                ctx
             );
         }
     }

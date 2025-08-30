@@ -23,7 +23,7 @@ describe('CNS', () => {
             // Create neuron
             const processor = neuron('processor', { output }).dendrite({
                 collateral: input,
-                reaction: async (payload, axon) => {
+                response: async (payload, axon) => {
                     const message = (payload as { message: string }).message;
                     return axon.output.createSignal({
                         processed: `Processed: ${message}`,
@@ -73,7 +73,7 @@ describe('CNS', () => {
                 output2,
             }).dendrite({
                 collateral: input,
-                reaction: async (payload, axon) => {
+                response: async (payload, axon) => {
                     const data = (payload as { data: string }).data;
                     axon.output1.createSignal({ result: `First: ${data}` });
                     return axon.output2.createSignal({
@@ -115,7 +115,7 @@ describe('CNS', () => {
 
             const router = neuron('router', { success, error }).dendrite({
                 collateral: request,
-                reaction: async (payload, axon) => {
+                response: async (payload, axon) => {
                     const value = (payload as { value: number }).value;
                     if (value > 0) {
                         return axon.success.createSignal({
@@ -183,7 +183,7 @@ describe('CNS', () => {
 
             const asyncNeuron = neuron('async', { output }).dendrite({
                 collateral: input,
-                reaction: async (payload, axon) => {
+                response: async (payload, axon) => {
                     const delay = (payload as { delay: number }).delay;
                     await new Promise(resolve => setTimeout(resolve, delay));
                     return axon.output.createSignal({
@@ -258,7 +258,7 @@ describe('CNS', () => {
 
             const testNeuron = neuron('test', { output }).dendrite({
                 collateral: input,
-                reaction: async (payload, axon) => {
+                response: async (payload, axon) => {
                     return axon.output.createSignal({
                         result: 'Processed undefined payload',
                     });
