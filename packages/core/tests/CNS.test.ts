@@ -296,6 +296,129 @@ describe('CNS', () => {
         });
     });
 
+    describe('Retry Mechanism with Context', () => {
+        type MyCtxType = {
+            tryNumber: number;
+        };
+
+        it('should retry stimulation from failed collateral with context store', done => {
+            // Define collaterals
+            const input = collateral<{ data: string }>('input');
+            const intermediate = collateral<{ processed: string }>('intermediate');
+            const output = collateral<{ result: string }>('output');
+
+            // First neuron: processes input and passes to intermediate
+            const firstNeuron = withCtx<MyCtxType>().neuron('first', { intermediate }).dendrite({
+                collateral: input,
+                response: async (payload, axon) => {
+                    const data = (payload as { data: string }).data;
+                    return axon.intermediate.createSignal({
+                        processed: `First: ${data}`,
+                    });
+                },
+            });
+
+            // Second neuron: increments try counter and conditionally throws error
+            const secondNeuron = withCtx<MyCtxType>().neuron('second', { output }).dendrite({
+                collateral: intermediate,
+                response: async (payload, axon, ctx) => {
+                    const current = ctx.get() || { tryNumber: 0 };
+                    const newTryNumber = current.tryNumber + 1;
+                    
+                    // Update context with incremented try number
+                    ctx.set({ tryNumber: newTryNumber });
+
+                    if (newTryNumber === 1) {
+                        // First try: throw an error
+                        throw new Error('Simulated failure on first try');
+                    } else {
+                        // Second try: pass signal to next neuron
+                        const processedData = (payload as { processed: string }).processed;
+                        return axon.output.createSignal({
+                            result: `Second (try ${newTryNumber}): ${processedData}`,
+                        });
+                    }
+                },
+            });
+
+            // Third neuron: final processing (outputs to a different collateral)
+            const finalOutput = collateral<{ finalResult: string }>('finalOutput');
+            const thirdNeuron = withCtx<MyCtxType>().neuron('third', { finalOutput }).dendrite({
+                collateral: output,
+                response: async (payload, axon) => {
+                    const result = (payload as { result: string }).result;
+                    return axon.finalOutput.createSignal({
+                        finalResult: `Third: ${result}`,
+                    });
+                },
+            });
+
+            const cns = new CNS([firstNeuron, secondNeuron, thirdNeuron]);
+
+            let traces: Array<{
+                collateralId: string;
+                hops: number;
+                payload: unknown;
+                queueLength?: number;
+                error?: Error;
+            }> = [];
+
+            let hasRetriedAfterError = false;
+            let contextStore: any = undefined;
+            let testCompleted = false;
+
+            cns.stimulate(
+                input,
+                { data: 'test' },
+                {
+                    ctx: contextStore,
+                    onTrace: trace => {
+                        traces.push(trace);
+
+                        // Check if stimulation is finished (queue is empty)
+                        if (trace.queueLength === 0) {
+                            const errorTraces = traces.filter(t => t.error);
+                            const outputTraces = traces.filter(t => t.collateralId === 'output' && !t.error);
+
+                            if (errorTraces.length > 0 && !hasRetriedAfterError) {
+                                // First stimulation failed, retry with preserved context
+                                hasRetriedAfterError = true;
+                                contextStore = trace.contextStore;
+                                traces = []; // Reset traces for retry attempt
+                                
+                                setTimeout(() => {
+                                    cns.stimulate(
+                                        input,
+                                        { data: 'test' },
+                                        {
+                                            ctx: contextStore,
+                                            onTrace: retryTrace => {
+                                                traces.push(retryTrace);
+                                                
+                                                if (retryTrace.queueLength === 0) {
+                                                    const retryOutputTraces = traces.filter(t => t.collateralId === 'output' && !t.error);
+                                                    
+                                                    if (retryOutputTraces.length > 0 && !testCompleted) {
+                                                        testCompleted = true;
+                                                        // Verify final successful output contains 'try 2'
+                                                        expect(retryOutputTraces[0].payload).toEqual({
+                                                            result: expect.stringContaining('try 2'),
+                                                        });
+                                                        done();
+                                                    }
+                                                }
+                                            },
+                                        }
+                                    );
+                                }, 10);
+                            }
+                        }
+                    },
+                }
+            );
+        });
+    });
+
     describe('Self-Recursion', () => {
         it('should allow neuron to process its own output signal', done => {
             const input = collateral<{ message: string }>('input');

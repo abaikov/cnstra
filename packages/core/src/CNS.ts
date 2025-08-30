@@ -200,7 +200,7 @@ export class CNS<
             payload: unknown;
             queueLength: number;
             error?: Error;
-            context: ICNSStimulationContextStore; // Pass the actual context store interface
+            contextStore: ICNSStimulationContextStore; // Pass the actual context store interface
         }) => void
     ): boolean {
         const subscribers = this.subIndex.get(incoming.collateralId);
@@ -273,7 +273,7 @@ export class CNS<
                             payload: incoming.payload,
                             queueLength: queue.length,
                             error: err,
-                            context: ctx, // Pass the context store interface
+                            contextStore: ctx, // Pass the context store interface
                         });
 
                         // After failed async settles:
@@ -314,7 +314,7 @@ export class CNS<
                 payload: unknown;
                 queueLength: number;
                 error?: Error;
-                context: ICNSStimulationContextStore; // Pass the actual context store interface
+                contextStore: ICNSStimulationContextStore; // Pass the actual context store interface
             }) => void;
             abortSignal?: AbortSignal;
             spikeId?: string;
@@ -323,7 +323,7 @@ export class CNS<
              * Factory method to create a new context store.
              * Useful for recovery scenarios where you want to restore state.
              */
-            createContext?: () => ICNSStimulationContextStore;
+            createContextStore?: () => ICNSStimulationContextStore;
             /**
              * Maximum number of signal processing operations active at once.
              * - Sync operations count for their brief execution time
@@ -336,7 +336,7 @@ export class CNS<
     ): void {
         const ctx =
             opts?.ctx ??
-            opts?.createContext?.() ??
+            opts?.createContextStore?.() ??
             new CNSStimulationContextStore();
         const spikeId = opts?.spikeId || Math.random().toString(36).slice(2);
         const maxHops = opts?.maxHops;
@@ -398,7 +398,7 @@ export class CNS<
                 hops: item.hops,
                 payload: item.payload,
                 queueLength: queue.length,
-                context: ctx, // Pass the context store
+                contextStore: ctx, // Pass the context store
             });
 
             if (maxHops && item.hops >= maxHops) {
