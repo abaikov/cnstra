@@ -6,4 +6,4 @@ export type { TCNSDendrite } from './types/TCNSDendrite';
 export type { TCNSSignal } from './types/TCNSSignal';
 
 // Factory
-export { collateral, neuron } from './factory/index';
+export { collateral, neuron, withCtx } from './factory/index';

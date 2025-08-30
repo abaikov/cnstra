@@ -17,6 +17,9 @@
       "@cnstra/*": ["packages/*/src"]
     }
   },
+  "include": [
+    "packages/*/src/**/*"
+  ],
   "references": [
     { "path": "./packages/core/tsconfig.json" },
     { "path": "./packages/devtools-panel/tsconfig.json" }
