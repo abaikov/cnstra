@@ -44,7 +44,7 @@ const userService = neuron('user-service', {
 })
 .dendrite({
   collateral: userCreated,
-  reaction: async (payload, axon) => {
+  response: async (payload, axon) => {
     const userData = payload as { id: string; name: string };
     
     // Process the user creation
@@ -59,10 +59,10 @@ const userService = neuron('user-service', {
 });
 
 // Create the CNS system
-const cns = new CNS({ userCreated }, [userService]);
+const cns = new CNS([userService]);
 
 // Stimulate the system
-await cns.stimulate('userCreated', {
+await cns.stimulate(userCreated, {
   id: '123',
   name: 'John Doe'
 });
@@ -97,8 +97,9 @@ Adds a dendrite (input receptor) to a neuron. Returns the neuron for chaining.
 myNeuron
   .dendrite({
     collateral: inputCollateral,
-    reaction: async (payload, axon) => {
+    response: async (payload, axon, ctx) => {
       // Process input and return output signal
+      // ctx parameter provides local context storage for this neuron
       return axon.output.createSignal(result);
     }
   });
@@ -110,21 +111,20 @@ The main orchestrator that manages signal flow between neurons.
 
 #### Constructor
 ```typescript
-new CNS(afferentAxon, neurons)
+new CNS(neurons)
 ```
 
 **Parameters:**
-- `afferentAxon`: Object containing collaterals that can be used as input triggers
 - `neurons`: Array of neurons that process signals
 
 #### `stimulate()` Method
 ```typescript
-await cns.stimulate(axonKey, payload, options?)
+await cns.stimulate(collateral, payload, options?)
 ```
 
 **Parameters:**
-- `axonKey`: Key from the afferent axon to trigger
-- `payload`: Signal payload with type and data
+- `collateral`: The collateral instance to trigger
+- `payload`: Signal payload data
 - `options`: Optional configuration object
 
 **Options:**
@@ -143,7 +143,7 @@ const processor = neuron('processor', {
 })
 .dendrite({
   collateral: inputCollateral,
-  reaction: async (payload, axon) => {
+  response: async (payload, axon) => {
     // This signal is created but NOT processed
     axon.output.createSignal({ message: 'Hello' });
     
@@ -160,7 +160,7 @@ Multiple neurons can listen to the same collateral:
 const emailService = neuron('email-service', { emailSent })
   .dendrite({
     collateral: userCreated,
-    reaction: async (payload, axon) => {
+    response: async (payload, axon) => {
       return axon.emailSent.createSignal({ to: 'user@example.com' });
     }
   });
@@ -168,13 +168,13 @@ const emailService = neuron('email-service', { emailSent })
 const notificationService = neuron('notification-service', { notificationSent })
   .dendrite({
     collateral: userCreated,
-    reaction: async (payload, axon) => {
+    response: async (payload, axon) => {
       return axon.notificationSent.createSignal({ message: 'User created' });
     }
   });
 
 // Both neurons will process the userCreated signal
-const cns = new CNS({ userCreated }, [emailService, notificationService]);
+const cns = new CNS([emailService, notificationService]);
 ```
 
 ### Conditional Logic
@@ -185,7 +185,7 @@ const router = neuron('router', {
 })
 .dendrite({
   collateral: requestCollateral,
-  reaction: async (payload, axon) => {
+  response: async (payload, axon) => {
     try {
       const result = await processRequest(payload);
       return axon.success.createSignal(result);
@@ -194,6 +194,26 @@ const router = neuron('router', {
     }
   }
 });
+```
+
+### Context Management
+
+Neurons can maintain local state using the context parameter:
+
+```typescript
+const statefulNeuron = neuron('stateful', { output: outputCollateral })
+  .dendrite({
+    collateral: inputCollateral,
+    response: async (payload, axon, ctx) => {
+      // Get current state
+      const currentState = ctx.get();
+      
+      // Update state
+      ctx.set({ count: (currentState?.count || 0) + 1 });
+      
+      return axon.output.createSignal({ count: ctx.get()?.count });
+    }
+  });
 ```
 
 ## 🧪 Testing

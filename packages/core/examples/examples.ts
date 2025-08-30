@@ -21,7 +21,7 @@ export async function userRegistrationExample() {
         userRegistered,
     }).dendrite({
         collateral: userCreated,
-        reaction: async (payload, axon) => {
+        response: async (payload, axon) => {
             const userData = payload as {
                 id: string;
                 email: string;
@@ -49,11 +49,10 @@ export async function userRegistrationExample() {
     await cns.stimulate(
         userCreated,
         {
-            type: 'userCreated',
             id: '123',
             email: 'john@example.com',
             name: 'John Doe',
-        } as any,
+        },
         {
             onTrace: trace => {
                 traces.push(trace);
@@ -92,7 +91,7 @@ export async function dataProcessingExample() {
     // Create processing neuron
     const processor = neuron('processor', { processed, error }).dendrite({
         collateral: rawData,
-        reaction: async (payload, axon) => {
+        response: async (payload, axon) => {
             const data = payload as { value: number; timestamp: number };
             console.log(`Processing data: ${data.value}`);
 
@@ -167,7 +166,7 @@ export async function conditionalRoutingExample() {
     // Create router neuron
     const apiRouter = neuron('api-router', { success, error }).dendrite({
         collateral: request,
-        reaction: async (payload, axon) => {
+        response: async (payload, axon) => {
             const req = payload as {
                 type: 'read' | 'write' | 'delete';
                 data: any;
@@ -264,7 +263,7 @@ export async function fanOutExample() {
         metrics,
     }).dendrite({
         collateral: broadcast,
-        reaction: async (payload, axon) => {
+        response: async (payload, axon) => {
             const msg = payload as {
                 message: string;
                 priority: 'low' | 'medium' | 'high';
@@ -343,7 +342,7 @@ export async function asyncOperationsExample() {
         timeout,
     }).dendrite({
         collateral: start,
-        reaction: async (payload, axon) => {
+        response: async (payload, axon) => {
             const task = payload as { taskId: string; delay: number };
             console.log(`Starting task: ${task.taskId}`);
 
@@ -436,7 +435,7 @@ export async function multipleOutputsExample() {
         emailSent,
     }).dendrite({
         collateral: userCreated,
-        reaction: async (payload, axon) => {
+        response: async (payload, axon) => {
             const userData = payload as {
                 id: string;
                 email: string;
@@ -456,7 +455,7 @@ export async function multipleOutputsExample() {
         notificationSent,
     }).dendrite({
         collateral: userCreated,
-        reaction: async (payload, axon) => {
+        response: async (payload, axon) => {
             const userData = payload as {
                 id: string;
                 email: string;
@@ -475,7 +474,7 @@ export async function multipleOutputsExample() {
         userRegistered,
     }).dendrite({
         collateral: userCreated,
-        reaction: async (payload, axon) => {
+        response: async (payload, axon) => {
             const userData = payload as {
                 id: string;
                 email: string;
@@ -559,11 +558,10 @@ export async function multipleOutputsExample() {
     await registrationCNS.stimulate(
         userCreated,
         {
-            type: 'userCreated',
             id: '123',
             email: 'john@example.com',
             name: 'John Doe',
-        } as any,
+        },
         {
             onTrace: trace => {
                 registrationTraces.push(trace as any);

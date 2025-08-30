@@ -32,7 +32,6 @@ describe('CNS', () => {
             });
 
             // Create afferent axon that matches the input collateral
-            const afferentAxon = { input };
             const cns = new CNS([processor]);
 
             // Track signals
@@ -45,9 +44,8 @@ describe('CNS', () => {
             await cns.stimulate(
                 input,
                 {
-                    type: 'input',
                     message: 'Hello World',
-                } as any,
+                },
                 {
                     onTrace: trace => traces.push(trace),
                 }
@@ -82,7 +80,6 @@ describe('CNS', () => {
                 },
             });
 
-            const afferentAxon = { input };
             const cns = new CNS([multiOutputNeuron]);
 
             const traces: Array<{
@@ -94,9 +91,8 @@ describe('CNS', () => {
             await cns.stimulate(
                 input,
                 {
-                    type: 'input',
                     data: 'test',
-                } as any,
+                },
                 {
                     onTrace: trace => traces.push(trace),
                 }
@@ -129,7 +125,6 @@ describe('CNS', () => {
                 },
             });
 
-            const afferentAxon = { request };
             const cns = new CNS([router]);
 
             // Test success case
@@ -141,9 +136,8 @@ describe('CNS', () => {
             await cns.stimulate(
                 request,
                 {
-                    type: 'request',
                     value: 42,
-                } as any,
+                },
                 {
                     onTrace: trace => successTraces.push(trace),
                 }
@@ -161,9 +155,8 @@ describe('CNS', () => {
             await cns.stimulate(
                 request,
                 {
-                    type: 'request',
                     value: -5,
-                } as any,
+                },
                 {
                     onTrace: trace => errorTraces.push(trace),
                 }
@@ -192,7 +185,6 @@ describe('CNS', () => {
                 },
             });
 
-            const afferentAxon = { input };
             const cns = new CNS([asyncNeuron]);
 
             const startTime = Date.now();
@@ -205,9 +197,8 @@ describe('CNS', () => {
             await cns.stimulate(
                 input,
                 {
-                    type: 'input',
                     delay: 50,
-                } as any,
+                },
                 {
                     onTrace: trace => traces.push(trace),
                 }
@@ -228,7 +219,6 @@ describe('CNS', () => {
             const output = collateral<{ result: string }>('output');
 
             const neuronWithNoDendrites = neuron('empty', { output });
-            const afferentAxon = { input };
             const cns = new CNS([neuronWithNoDendrites]);
 
             const traces: Array<{
@@ -240,9 +230,8 @@ describe('CNS', () => {
             await cns.stimulate(
                 input,
                 {
-                    type: 'input',
                     data: 'test',
-                } as any,
+                },
                 {
                     onTrace: trace => traces.push(trace),
                 }
@@ -265,7 +254,6 @@ describe('CNS', () => {
                 },
             });
 
-            const afferentAxon = { input };
             const cns = new CNS([testNeuron]);
 
             const traces: Array<{
@@ -277,9 +265,8 @@ describe('CNS', () => {
             await cns.stimulate(
                 input,
                 {
-                    type: 'input',
                     // No payload
-                } as any,
+                },
                 {
                     onTrace: trace => traces.push(trace),
                 }

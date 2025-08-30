@@ -87,7 +87,7 @@ export class CNS<
     }
 
     async stimulate<
-        TAfferentCollateralId extends string,
+        TAfferentCollateralId extends TCollateralId,
         TAfferentCollateralPayload
     >(
         collateral: CNSCollateral<
@@ -99,7 +99,7 @@ export class CNS<
             maxHops?: number;
             allowType?: (t: TCollateralId) => boolean;
             onTrace?: (e: {
-                collateralId: TCollateralId | TAfferentCollateralId;
+                collateralId: TCollateralId;
                 hops: number;
                 payload: unknown;
             }) => void;
@@ -112,7 +112,7 @@ export class CNS<
         const spikeId = opts?.spikeId || Math.random().toString(36).slice(2);
         const maxHops = opts?.maxHops ?? 1000;
 
-        const queue: TQueueItem<TCollateralId | TAfferentCollateralId>[] = [
+        const queue: TQueueItem<TCollateralId>[] = [
             {
                 collateralId: collateral.id,
                 payload,
