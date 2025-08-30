@@ -10,8 +10,9 @@ export const collateral = <TPayload = undefined, TId extends string = string>(
 type InterNeuronAPI<
     TIdType extends string,
     TSenderCollateralIdType extends string,
-    TReceiverAxonCollateralPayload,
+    TSenderAxonCollateralPayload,
     TReceiverCollateralIdType extends string,
+    TReceiverAxonCollateralPayload,
     TReceiverAxon extends TCNSAxon<
         TReceiverCollateralIdType,
         TReceiverAxonCollateralPayload
@@ -20,23 +21,29 @@ type InterNeuronAPI<
     id: TIdType;
     axon: TReceiverAxon;
     dendrites: TCNDendrite<
-        TSenderCollateralIdType,
-        TReceiverAxonCollateralPayload,
+        string,
+        unknown,
         TReceiverCollateralIdType,
+        TReceiverAxonCollateralPayload,
         TReceiverAxon
     >[];
-    dendrite: (
+    dendrite: <
+        TSenderExactCollateralIdType extends string,
+        TSenderExactAxonCollateralPayload
+    >(
         s: TCNDendrite<
-            TSenderCollateralIdType,
-            TReceiverAxonCollateralPayload,
+            TSenderExactCollateralIdType,
+            TSenderExactAxonCollateralPayload,
             TReceiverCollateralIdType,
+            TReceiverAxonCollateralPayload,
             TReceiverAxon
         >
     ) => InterNeuronAPI<
         TIdType,
-        TSenderCollateralIdType,
-        TReceiverAxonCollateralPayload,
+        TSenderExactCollateralIdType,
+        TSenderExactAxonCollateralPayload,
         TReceiverCollateralIdType,
+        TReceiverAxonCollateralPayload,
         TReceiverAxon
     >;
 };
@@ -45,8 +52,9 @@ type InterNeuronAPI<
 export const neuron = <
     TIdType extends string,
     TSenderCollateralIdType extends string,
-    TReceiverAxonCollateralPayload,
+    TSenderAxonCollateralPayload,
     TReceiverCollateralIdType extends string,
+    TReceiverAxonCollateralPayload,
     TReceiverAxon extends TCNSAxon<
         TReceiverCollateralIdType,
         TReceiverAxonCollateralPayload
@@ -57,39 +65,86 @@ export const neuron = <
 ): InterNeuronAPI<
     TIdType,
     TSenderCollateralIdType,
-    TReceiverAxonCollateralPayload,
+    TSenderAxonCollateralPayload,
     TReceiverCollateralIdType,
+    TReceiverAxonCollateralPayload,
     TReceiverAxon
 > => {
     const dendrites: TCNDendrite<
-        TSenderCollateralIdType,
-        TReceiverAxonCollateralPayload,
+        string,
+        unknown,
         TReceiverCollateralIdType,
+        TReceiverAxonCollateralPayload,
         TReceiverAxon
     >[] = [];
 
     const api: InterNeuronAPI<
         TIdType,
         TSenderCollateralIdType,
-        TReceiverAxonCollateralPayload,
+        TSenderAxonCollateralPayload,
         TReceiverCollateralIdType,
+        TReceiverAxonCollateralPayload,
         TReceiverAxon
     > = {
         axon,
         id,
         dendrites,
-        dendrite(
+        dendrite<
+            TSenderExactCollateralIdType extends string,
+            TSenderExactAxonCollateralPayload
+        >(
             s: TCNDendrite<
-                TSenderCollateralIdType,
-                TReceiverAxonCollateralPayload,
+                TSenderExactCollateralIdType,
+                TSenderExactAxonCollateralPayload,
                 TReceiverCollateralIdType,
+                TReceiverAxonCollateralPayload,
                 TReceiverAxon
             >
         ) {
-            dendrites.push(s);
+            dendrites.push(
+                s as TCNDendrite<
+                    string,
+                    unknown,
+                    TReceiverCollateralIdType,
+                    TReceiverAxonCollateralPayload,
+                    TReceiverAxon
+                >
+            );
             return api; // keep full API for chaining
         },
     };
 
     return api;
 };
+
+const a1 = {
+    test: collateral<{ test: string }>('test'),
+};
+
+const a2 = {
+    test2: collateral<{ test2: string }>('test2'),
+};
+
+const a3 = {
+    test3: collateral<{ test3: string }>('test3'),
+};
+
+const n1 = neuron('n1', a1).dendrite({
+    collateral: a2.test2,
+    reaction: async (payload: { test2: string }, axon) => {
+        return axon.test.createSignal({
+            test: payload.test2,
+        });
+    },
+});
+
+const n2 = neuron('n2', a2).dendrite({
+    collateral: a3.test3,
+    reaction: async (payload, axon) => {
+        return axon.test2.createSignal({
+            test2: payload.test3,
+        });
+    },
+});
+
+const cns = new CNS([n1, n2]);

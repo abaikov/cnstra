@@ -4,16 +4,18 @@ import { TCNDendrite } from './TCNDendrite';
 export type TCNSNeuron<
     TId extends string,
     TCollateralId extends string,
-    TAxon extends TCNSAxon<TCollateralId, unknown>,
+    TCollateralPayload,
     TSenderCollateralId extends string,
+    TSenderCollateralPayload,
     TDendrites extends TCNDendrite<
         TSenderCollateralId,
-        unknown,
+        TSenderCollateralPayload,
         TCollateralId,
-        TAxon
+        TCollateralPayload,
+        TCNSAxon<TCollateralId, TCollateralPayload>
     >[]
 > = {
     id: TId;
-    axon: TAxon;
+    axon: TCNSAxon<TCollateralId, TCollateralPayload>;
     dendrites: TDendrites;
 };

@@ -46,7 +46,7 @@ describe('Factory Functions', () => {
             const testNeuron = neuron('test-neuron', { output }).dendrite({
                 collateral: input,
                 reaction: async (payload, axon) => {
-                    const data = (payload as { data: string }).data;
+                    const data = payload.data;
                     return axon.output.createSignal({
                         result: `Processed: ${data}`,
                     });
@@ -66,7 +66,7 @@ describe('Factory Functions', () => {
                 .dendrite({
                     collateral: input1,
                     reaction: async (payload, axon) => {
-                        const data = (payload as { data1: string }).data1;
+                        const data = payload.data1;
                         return axon.output.createSignal({
                             result: `From input1: ${data}`,
                         });
@@ -75,7 +75,7 @@ describe('Factory Functions', () => {
                 .dendrite({
                     collateral: input2,
                     reaction: async (payload, axon) => {
-                        const data = (payload as { data2: string }).data2;
+                        const data = payload.data2;
                         return axon.output.createSignal({
                             result: `From input2: ${data}`,
                         });
@@ -106,7 +106,7 @@ describe('Factory Functions', () => {
             const input = collateral<{ data: string }>('input');
             testNeuron.dendrite({
                 collateral: input,
-                reaction: async (payload, axon) => {
+                reaction: async (_, axon) => {
                     return axon.output.createSignal({ result: 'test' });
                 },
             });
@@ -125,7 +125,7 @@ describe('Factory Functions', () => {
             const processor = neuron('processor', { output }).dendrite({
                 collateral: input,
                 reaction: async (payload, axon) => {
-                    const message = (payload as { message: string }).message;
+                    const message = payload.message;
                     return axon.output.createSignal({
                         processed: `Processed: ${message}`,
                     });

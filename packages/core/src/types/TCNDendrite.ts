@@ -3,8 +3,9 @@ import { TCNSAxon } from './TCNSAxon';
 
 export type TCNDendrite<
     TSenderCollateralIdType extends string,
-    TReceiverAxonCollateralPayload,
+    TSenderAxonCollateralPayload,
     TReceiverCollateralIdType extends string,
+    TReceiverAxonCollateralPayload,
     TReceiverAxon extends TCNSAxon<
         TReceiverCollateralIdType,
         TReceiverAxonCollateralPayload
@@ -12,10 +13,10 @@ export type TCNDendrite<
 > = {
     collateral: CNSCollateral<
         TSenderCollateralIdType,
-        TReceiverAxonCollateralPayload
+        TSenderAxonCollateralPayload
     >;
     reaction: (
-        payload: TReceiverAxonCollateralPayload,
+        payload: TSenderAxonCollateralPayload,
         axon: TReceiverAxon
     ) =>
         | Promise<

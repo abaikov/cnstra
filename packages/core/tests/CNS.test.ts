@@ -3,12 +3,12 @@ import { CNS, collateral, neuron } from '../src/index';
 describe('CNS', () => {
     describe('Basic Functionality', () => {
         it('should create CNS instance', () => {
-            const cns = new CNS({}, []);
+            const cns = new CNS([]);
             expect(cns).toBeInstanceOf(CNS);
         });
 
         it('should handle empty neuron array', async () => {
-            const cns = new CNS({}, []);
+            const cns = new CNS([]);
             // This should not throw even with empty neurons
             expect(cns).toBeDefined();
         });
@@ -33,17 +33,17 @@ describe('CNS', () => {
 
             // Create afferent axon that matches the input collateral
             const afferentAxon = { input };
-            const cns = new CNS(afferentAxon, [processor]);
+            const cns = new CNS([processor]);
 
             // Track signals
             const traces: Array<{
-                edgeId: string;
+                collateralId: string;
                 hops: number;
                 payload: unknown;
             }> = [];
 
             await cns.stimulate(
-                'input',
+                input,
                 {
                     type: 'input',
                     message: 'Hello World',
@@ -54,8 +54,8 @@ describe('CNS', () => {
             );
 
             expect(traces).toHaveLength(2); // input + output
-            expect(traces[0].edgeId).toBe('input');
-            expect(traces[1].edgeId).toBe('output');
+            expect(traces[0].collateralId).toBe('input');
+            expect(traces[1].collateralId).toBe('output');
             expect(traces[1].payload).toEqual({
                 processed: 'Processed: Hello World',
             });
@@ -83,16 +83,16 @@ describe('CNS', () => {
             });
 
             const afferentAxon = { input };
-            const cns = new CNS(afferentAxon, [multiOutputNeuron]);
+            const cns = new CNS([multiOutputNeuron]);
 
             const traces: Array<{
-                edgeId: string;
+                collateralId: string;
                 hops: number;
                 payload: unknown;
             }> = [];
 
             await cns.stimulate(
-                'input',
+                input,
                 {
                     type: 'input',
                     data: 'test',
@@ -130,16 +130,16 @@ describe('CNS', () => {
             });
 
             const afferentAxon = { request };
-            const cns = new CNS(afferentAxon, [router]);
+            const cns = new CNS([router]);
 
             // Test success case
             const successTraces: Array<{
-                edgeId: string;
+                collateralId: string;
                 hops: number;
                 payload: unknown;
             }> = [];
             await cns.stimulate(
-                'request',
+                request,
                 {
                     type: 'request',
                     value: 42,
@@ -154,12 +154,12 @@ describe('CNS', () => {
 
             // Test error case
             const errorTraces: Array<{
-                edgeId: string;
+                collateralId: string;
                 hops: number;
                 payload: unknown;
             }> = [];
             await cns.stimulate(
-                'request',
+                request,
                 {
                     type: 'request',
                     value: -5,
@@ -193,17 +193,17 @@ describe('CNS', () => {
             });
 
             const afferentAxon = { input };
-            const cns = new CNS(afferentAxon, [asyncNeuron]);
+            const cns = new CNS([asyncNeuron]);
 
             const startTime = Date.now();
             const traces: Array<{
-                edgeId: string;
+                collateralId: string;
                 hops: number;
                 payload: unknown;
             }> = [];
 
             await cns.stimulate(
-                'input',
+                input,
                 {
                     type: 'input',
                     delay: 50,
@@ -229,16 +229,16 @@ describe('CNS', () => {
 
             const neuronWithNoDendrites = neuron('empty', { output });
             const afferentAxon = { input };
-            const cns = new CNS(afferentAxon, [neuronWithNoDendrites]);
+            const cns = new CNS([neuronWithNoDendrites]);
 
             const traces: Array<{
-                edgeId: string;
+                collateralId: string;
                 hops: number;
                 payload: unknown;
             }> = [];
 
             await cns.stimulate(
-                'input',
+                input,
                 {
                     type: 'input',
                     data: 'test',
@@ -249,7 +249,7 @@ describe('CNS', () => {
             );
 
             expect(traces).toHaveLength(1); // Only input, no reactions
-            expect(traces[0].edgeId).toBe('input');
+            expect(traces[0].collateralId).toBe('input');
         });
 
         it('should handle undefined payloads', async () => {
@@ -266,16 +266,16 @@ describe('CNS', () => {
             });
 
             const afferentAxon = { input };
-            const cns = new CNS(afferentAxon, [testNeuron]);
+            const cns = new CNS([testNeuron]);
 
             const traces: Array<{
-                edgeId: string;
+                collateralId: string;
                 hops: number;
                 payload: unknown;
             }> = [];
 
             await cns.stimulate(
-                'input',
+                input,
                 {
                     type: 'input',
                     // No payload

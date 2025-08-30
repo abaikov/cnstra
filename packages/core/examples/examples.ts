@@ -37,14 +37,17 @@ export async function userRegistrationExample() {
         },
     });
 
-    const cns = new CNS({ userCreated }, [userService]);
+    const cns = new CNS([userService]);
 
     // Stimulate the system
-    const traces: Array<{ edgeId: string; hops: number; payload: unknown }> =
-        [];
+    const traces: Array<{
+        collateralId: string;
+        hops: number;
+        payload: unknown;
+    }> = [];
 
     await cns.stimulate(
-        'userCreated',
+        userCreated,
         {
             type: 'userCreated',
             id: '123',
@@ -54,7 +57,9 @@ export async function userRegistrationExample() {
         {
             onTrace: trace => {
                 traces.push(trace);
-                console.log(`Signal: ${trace.edgeId} at hop ${trace.hops}`);
+                console.log(
+                    `Signal: ${trace.collateralId} at hop ${trace.hops}`
+                );
             },
         }
     );
@@ -111,7 +116,7 @@ export async function dataProcessingExample() {
         },
     });
 
-    const cns = new CNS({ rawData }, [processor]);
+    const cns = new CNS([processor]);
 
     // Process multiple data points
     const testValues = [5, 100, -5, 1500, 42];
@@ -119,18 +124,17 @@ export async function dataProcessingExample() {
 
     for (const value of testValues) {
         const traces: Array<{
-            edgeId: string;
+            collateralId: string;
             hops: number;
             payload: unknown;
         }> = [];
 
         await cns.stimulate(
-            'rawData',
+            rawData,
             {
-                type: 'rawData',
                 value,
                 timestamp: Date.now(),
-            } as any,
+            },
             {
                 onTrace: trace => traces.push(trace),
             }
@@ -209,7 +213,7 @@ export async function conditionalRoutingExample() {
         },
     });
 
-    const cns = new CNS({ request }, [apiRouter]);
+    const cns = new CNS([apiRouter]);
 
     // Test different scenarios
     const scenarios = [
@@ -222,20 +226,14 @@ export async function conditionalRoutingExample() {
     const results = [];
     for (const scenario of scenarios) {
         const traces: Array<{
-            edgeId: string;
+            collateralId: string;
             hops: number;
             payload: unknown;
         }> = [];
 
-        await cns.stimulate(
-            'request',
-            {
-                ...scenario,
-            } as any,
-            {
-                onTrace: trace => traces.push(trace),
-            }
-        );
+        await cns.stimulate(request, scenario, {
+            onTrace: trace => traces.push(trace),
+        });
 
         results.push({ scenario, traces });
     }
@@ -287,7 +285,7 @@ export async function fanOutExample() {
         },
     });
 
-    const cns = new CNS({ broadcast }, [broadcastService]);
+    const cns = new CNS([broadcastService]);
 
     // Send broadcast messages
     const messages = [
@@ -302,21 +300,14 @@ export async function fanOutExample() {
     const results = [];
     for (const message of messages) {
         const traces: Array<{
-            edgeId: string;
+            collateralId: string;
             hops: number;
             payload: unknown;
         }> = [];
 
-        await cns.stimulate(
-            'broadcast',
-            {
-                type: 'broadcast',
-                ...message,
-            } as any,
-            {
-                onTrace: trace => traces.push(trace),
-            }
-        );
+        await cns.stimulate(broadcast, message, {
+            onTrace: trace => traces.push(trace),
+        });
 
         results.push({ message, traces });
     }
@@ -388,7 +379,7 @@ export async function asyncOperationsExample() {
         },
     });
 
-    const cns = new CNS({ start }, [taskProcessor]);
+    const cns = new CNS([taskProcessor]);
 
     // Test with different delays
     const tasks = [
@@ -400,21 +391,14 @@ export async function asyncOperationsExample() {
     const results = [];
     for (const task of tasks) {
         const traces: Array<{
-            edgeId: string;
+            collateralId: string;
             hops: number;
             payload: unknown;
         }> = [];
 
-        await cns.stimulate(
-            'start',
-            {
-                type: 'start',
-                ...task,
-            } as any,
-            {
-                onTrace: trace => traces.push(trace),
-            }
-        );
+        await cns.stimulate(start, task, {
+            onTrace: trace => traces.push(trace),
+        });
 
         results.push({ task, traces });
     }
@@ -507,34 +491,36 @@ export async function multipleOutputsExample() {
     });
 
     // Create separate CNS instances for each neuron to avoid type conflicts
-    const emailCNS = new CNS({ userCreated }, [emailService]);
-    const notificationCNS = new CNS({ userCreated }, [notificationService]);
-    const registrationCNS = new CNS({ userCreated }, [registrationService]);
+    const emailCNS = new CNS([emailService]);
+    const notificationCNS = new CNS([notificationService]);
+    const registrationCNS = new CNS([registrationService]);
 
     // Stimulate each system separately
-    const allTraces: Array<{ edgeId: string; hops: number; payload: unknown }> =
-        [];
+    const allTraces: Array<{
+        collateralId: string;
+        hops: number;
+        payload: unknown;
+    }> = [];
 
     // Process email
     const emailTraces: Array<{
-        edgeId: string;
+        collateralId: string;
         hops: number;
         payload: unknown;
     }> = [];
     await emailCNS.stimulate(
-        'userCreated',
+        userCreated,
         {
-            type: 'userCreated',
             id: '123',
             email: 'john@example.com',
             name: 'John Doe',
-        } as any,
+        },
         {
             onTrace: trace => {
                 emailTraces.push(trace);
                 allTraces.push(trace);
                 console.log(
-                    `Email Signal: ${trace.edgeId} at hop ${trace.hops}`
+                    `Email Signal: ${trace.collateralId} at hop ${trace.hops}`
                 );
             },
         }
@@ -542,24 +528,23 @@ export async function multipleOutputsExample() {
 
     // Process notification
     const notificationTraces: Array<{
-        edgeId: string;
+        collateralId: string;
         hops: number;
         payload: unknown;
     }> = [];
     await notificationCNS.stimulate(
-        'userCreated',
+        userCreated,
         {
-            type: 'userCreated',
             id: '123',
             email: 'john@example.com',
             name: 'John Doe',
-        } as any,
+        },
         {
             onTrace: trace => {
                 notificationTraces.push(trace);
                 allTraces.push(trace);
                 console.log(
-                    `Notification Signal: ${trace.edgeId} at hop ${trace.hops}`
+                    `Notification Signal: ${trace.collateralId} at hop ${trace.hops}`
                 );
             },
         }
@@ -567,12 +552,12 @@ export async function multipleOutputsExample() {
 
     // Process registration
     const registrationTraces: Array<{
-        edgeId: string;
+        collateralId: string;
         hops: number;
         payload: unknown;
     }> = [];
     await registrationCNS.stimulate(
-        'userCreated',
+        userCreated,
         {
             type: 'userCreated',
             id: '123',
@@ -581,10 +566,10 @@ export async function multipleOutputsExample() {
         } as any,
         {
             onTrace: trace => {
-                registrationTraces.push(trace);
+                registrationTraces.push(trace as any);
                 allTraces.push(trace);
                 console.log(
-                    `Registration Signal: ${trace.edgeId} at hop ${trace.hops}`
+                    `Registration Signal: ${trace.collateralId} at hop ${trace.hops}`
                 );
             },
         }

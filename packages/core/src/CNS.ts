@@ -1,53 +1,36 @@
 import { TCNSNeuron } from './types/TCNSNeuron';
-import { TCNSAxon } from './types/TCNSAxon';
 import { TCNDendrite } from './types/TCNDendrite';
+import { CNSCollateral } from './CNSCollateral';
 
 const asArray = <T>(x: T | T[]) => (Array.isArray(x) ? x : [x]);
 
-type Subscriber<
-    TCollateralId extends string,
-    TAxon extends TCNSAxon<TCollateralId, any>
+type TSubscriber<
+    TNeuron extends TCNSNeuron<any, any, any, any, any, any>,
+    TDendrite extends TCNDendrite<any, any, any, any, any>
 > = {
-    neuron: TCNSNeuron<
-        string,
-        TCollateralId,
-        TAxon,
-        TCollateralId,
-        TCNDendrite<TCollateralId, any, TCollateralId, TAxon>[]
-    >;
-    dendrite: TCNDendrite<TCollateralId, any, TCollateralId, TAxon>;
+    neuron: TNeuron;
+    dendrite: TDendrite;
 };
 
-type QueueItem<TEdgeId extends string> = {
-    edgeId: TEdgeId;
+type TQueueItem<TCollateralId extends string> = {
+    collateralId: TCollateralId;
     payload: unknown;
     hops: number;
     spikeId: string;
 };
 
 export class CNS<
-    TAfferentCollateralId extends string,
-    TAfferentAxon extends TCNSAxon<TAfferentCollateralId, unknown>,
-    TNeuronId extends string,
     TCollateralId extends string,
-    TAxon extends TCNSAxon<TCollateralId, any>
+    TNeuron extends TCNSNeuron<any, any, any, any, any, any>,
+    TDendrite extends TCNDendrite<any, any, any, any, any>
 > {
     // index by collateral *type* => list of subscribers
     private subIndex = new Map<
         TCollateralId,
-        Subscriber<TCollateralId, TAxon>[]
+        TSubscriber<TNeuron, TDendrite>[]
     >();
 
-    constructor(
-        protected readonly afferentLayerAsAxon: TAfferentAxon,
-        protected readonly neurons: TCNSNeuron<
-            TNeuronId,
-            TCollateralId,
-            TAxon,
-            TCollateralId,
-            TCNDendrite<TCollateralId, any, TCollateralId, TAxon>[]
-        >[]
-    ) {
+    constructor(protected readonly neurons: TNeuron[]) {
         this.buildIndex();
     }
 
@@ -60,23 +43,23 @@ export class CNS<
                 arr.push({ neuron, dendrite });
                 this.subIndex.set(
                     key,
-                    arr as Subscriber<TCollateralId, TAxon>[]
+                    arr as TSubscriber<TNeuron, TDendrite>[]
                 );
             }
         }
     }
 
     private async fanOut(
-        incoming: QueueItem<TCollateralId>,
+        incoming: TQueueItem<TCollateralId>,
         allowType: ((t: TCollateralId) => boolean) | undefined,
         seen: Set<string>,
-        queue: QueueItem<TCollateralId>[]
+        queue: TQueueItem<TCollateralId>[]
     ) {
-        const subscribers = this.subIndex.get(incoming.edgeId);
+        const subscribers = this.subIndex.get(incoming.collateralId);
         if (!subscribers || subscribers.length === 0) return;
 
         for (const { neuron, dendrite } of subscribers) {
-            const k = `${neuron.id}::${incoming.edgeId}::${incoming.spikeId}`;
+            const k = `${neuron.id}::${incoming.collateralId}::${incoming.spikeId}`;
             if (seen.has(k)) continue;
             seen.add(k);
 
@@ -88,7 +71,7 @@ export class CNS<
                     continue; // TODO: add allowType
 
                 queue.push({
-                    edgeId: spike.type as TCollateralId,
+                    collateralId: spike.type as TCollateralId,
                     payload: spike.payload,
                     hops: incoming.hops + 1,
                     spikeId: incoming.spikeId, // keep the same spike id across the cascade
@@ -98,18 +81,19 @@ export class CNS<
     }
 
     async stimulate<
-        K extends keyof TAfferentAxon,
-        TACollateralId extends string
+        TAfferentCollateralId extends string,
+        TAfferentCollateralPayload
     >(
-        axonKey: K,
-        payload: ReturnType<TAfferentAxon[K]['createSignal']> & {
-            type: TACollateralId;
-        },
+        collateral: CNSCollateral<
+            TAfferentCollateralId,
+            TAfferentCollateralPayload
+        >,
+        payload: TAfferentCollateralPayload,
         opts?: {
             maxHops?: number;
-            allowType?: (t: TCollateralId | TAfferentCollateralId) => boolean;
+            allowType?: (t: TCollateralId) => boolean;
             onTrace?: (e: {
-                edgeId: TCollateralId | TAfferentCollateralId;
+                collateralId: TCollateralId | TAfferentCollateralId;
                 hops: number;
                 payload: unknown;
             }) => void;
@@ -117,13 +101,12 @@ export class CNS<
             spikeId?: string;
         }
     ): Promise<void> {
-        const afferent = this.afferentLayerAsAxon[axonKey];
         const spikeId = opts?.spikeId || Math.random().toString(36).slice(2);
         const maxHops = opts?.maxHops ?? 1000;
 
-        const queue: QueueItem<TCollateralId | TAfferentCollateralId>[] = [
+        const queue: TQueueItem<TCollateralId | TAfferentCollateralId>[] = [
             {
-                edgeId: afferent.id,
+                collateralId: collateral.id,
                 payload,
                 hops: 0,
                 spikeId,
@@ -136,17 +119,17 @@ export class CNS<
 
             const item = queue.shift()!;
             opts?.onTrace?.({
-                edgeId: item.edgeId,
+                collateralId: item.collateralId,
                 hops: item.hops,
                 payload: item.payload,
             });
             if (item.hops >= maxHops) continue;
 
             await this.fanOut(
-                item as QueueItem<TCollateralId>,
+                item as TQueueItem<TCollateralId>,
                 opts?.allowType,
                 seen,
-                queue as QueueItem<TCollateralId>[]
+                queue as TQueueItem<TCollateralId>[]
             );
         }
     }
