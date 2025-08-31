@@ -1,4 +1,3 @@
-import { CNS } from '../CNS';
 import { CNSCollateral } from '../CNSCollateral';
 import { TCNSAxon } from '../types/TCNSAxon';
 import { TCNSDendrite } from '../types/TCNSDendrite';
