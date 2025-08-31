@@ -14,6 +14,7 @@
     "clean": "npm run clean --workspaces && rm -rf node_modules",
     "publish:packages": "npm run build && npm publish --workspaces --access public",
     "publish:core": "npm run build --workspace=@cnstra/core && npm publish --workspace=@cnstra/core --access public",
+    "publish:react": "npm run build --workspace=@cnstra/react && npm publish --workspace=@cnstra/react --access public",
     "version:packages": "npm version patch --workspaces"
   },
   "repository": {

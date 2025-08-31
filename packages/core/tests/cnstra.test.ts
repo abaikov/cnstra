@@ -21,10 +21,14 @@ describe('CNStra Core Tests', () => {
     describe('Factory Functions', () => {
         describe('collateral', () => {
             it('should create collateral with typed payload', () => {
-                const typedCollateral = collateral<{ message: string }>('typed');
+                const typedCollateral = collateral<{ message: string }>(
+                    'typed'
+                );
                 expect(typedCollateral.id).toBe('typed');
 
-                const signal = typedCollateral.createSignal({ message: 'Hello' });
+                const signal = typedCollateral.createSignal({
+                    message: 'Hello',
+                });
                 expect(signal.collateral.id).toBe('typed');
                 expect(signal.payload).toEqual({ message: 'Hello' });
             });
@@ -106,7 +110,10 @@ describe('CNStra Core Tests', () => {
 
         describe('withCtx', () => {
             it('should create a context-aware neuron builder', () => {
-                const ctxBuilder = withCtx<{ userId: string; sessionId: string }>();
+                const ctxBuilder = withCtx<{
+                    userId: string;
+                    sessionId: string;
+                }>();
                 expect(typeof ctxBuilder.neuron).toBe('function');
             });
 
@@ -133,7 +140,9 @@ describe('CNStra Core Tests', () => {
                             const current = ctx.get()?.counter || 0;
                             const newValue = current + payload.increment;
                             ctx.set({ counter: newValue });
-                            return axon.output.createSignal({ result: newValue });
+                            return axon.output.createSignal({
+                                result: newValue,
+                            });
                         },
                     });
 
@@ -180,7 +189,7 @@ describe('CNStra Core Tests', () => {
 
     describe('CNS Signal Flow', () => {
         describe('Basic Signal Processing', () => {
-            it('should process basic signal flow', async () => {
+            it('should process basic signal flow', () => {
                 const input = collateral<{ message: string }>('input');
                 const output = collateral<{ processed: string }>('output');
 
@@ -194,12 +203,17 @@ describe('CNStra Core Tests', () => {
                 });
 
                 const cns = new CNS([processor]);
-                const responses: Array<{ collateralId: string; payload: unknown }> = [];
+                const responses: Array<{
+                    collateralId: string;
+                    payload: unknown;
+                }> = [];
 
-                await cns.stimulate(input.createSignal({ message: 'Hello World' }), {
+                cns.stimulate(input.createSignal({ message: 'Hello World' }), {
                     onResponse: response => {
                         responses.push({
-                            collateralId: response.outputSignal?.collateral.id || 'unknown',
+                            collateralId:
+                                response.outputSignal?.collateral.id ||
+                                'unknown',
                             payload: response.outputSignal?.payload,
                         });
                     },
@@ -207,14 +221,16 @@ describe('CNStra Core Tests', () => {
 
                 expect(responses).toHaveLength(2);
                 expect(responses[0].collateralId).toBe('input');
-                expect(responses[0].payload).toEqual({ message: 'Hello World' });
+                expect(responses[0].payload).toEqual({
+                    message: 'Hello World',
+                });
                 expect(responses[1].collateralId).toBe('output');
                 expect(responses[1].payload).toEqual({
                     processed: 'Processed: Hello World',
                 });
             });
 
-            it('should handle chain processing', async () => {
+            it('should handle chain processing', () => {
                 const input = collateral<{ value: number }>('input');
                 const middle = collateral<{ value: number }>('middle');
                 const output = collateral<{ result: number }>('output');
@@ -222,24 +238,33 @@ describe('CNStra Core Tests', () => {
                 const step1 = neuron('step1', { middle }).dendrite({
                     collateral: input,
                     response: (payload, axon) => {
-                        return axon.middle.createSignal({ value: payload.value + 5 });
+                        return axon.middle.createSignal({
+                            value: payload.value + 5,
+                        });
                     },
                 });
 
                 const step2 = neuron('step2', { output }).dendrite({
                     collateral: middle,
                     response: (payload, axon) => {
-                        return axon.output.createSignal({ result: payload.value * 3 });
+                        return axon.output.createSignal({
+                            result: payload.value * 3,
+                        });
                     },
                 });
 
                 const cns = new CNS([step1, step2]);
-                const responses: Array<{ collateralId: string; payload: unknown }> = [];
+                const responses: Array<{
+                    collateralId: string;
+                    payload: unknown;
+                }> = [];
 
-                await cns.stimulate(input.createSignal({ value: 7 }), {
+                cns.stimulate(input.createSignal({ value: 7 }), {
                     onResponse: response => {
                         responses.push({
-                            collateralId: response.outputSignal?.collateral.id || 'unknown',
+                            collateralId:
+                                response.outputSignal?.collateral.id ||
+                                'unknown',
                             payload: response.outputSignal?.payload,
                         });
                     },
@@ -259,24 +284,33 @@ describe('CNStra Core Tests', () => {
                 const processor1 = neuron('proc1', { branch1 }).dendrite({
                     collateral: input,
                     response: (payload, axon) => {
-                        return axon.branch1.createSignal({ result: `A-${payload.data}` });
+                        return axon.branch1.createSignal({
+                            result: `A-${payload.data}`,
+                        });
                     },
                 });
 
                 const processor2 = neuron('proc2', { branch2 }).dendrite({
                     collateral: input,
                     response: (payload, axon) => {
-                        return axon.branch2.createSignal({ result: `B-${payload.data}` });
+                        return axon.branch2.createSignal({
+                            result: `B-${payload.data}`,
+                        });
                     },
                 });
 
                 const cns = new CNS([processor1, processor2]);
-                const responses: Array<{ collateralId: string; payload: unknown }> = [];
+                const responses: Array<{
+                    collateralId: string;
+                    payload: unknown;
+                }> = [];
 
                 await cns.stimulate(input.createSignal({ data: 'test' }), {
                     onResponse: response => {
                         responses.push({
-                            collateralId: response.outputSignal?.collateral.id || 'unknown',
+                            collateralId:
+                                response.outputSignal?.collateral.id ||
+                                'unknown',
                             payload: response.outputSignal?.payload,
                         });
                     },
@@ -302,7 +336,9 @@ describe('CNStra Core Tests', () => {
                     collateral(`mid_${i}`)
                 );
 
-                const startNeuron = neuron('start', { mid_0: mids[0] }).dendrite({
+                const startNeuron = neuron('start', {
+                    mid_0: mids[0],
+                }).dendrite({
                     collateral: input,
                     response: (_payload, axon) => axon.mid_0.createSignal(),
                 });
@@ -320,12 +356,17 @@ describe('CNStra Core Tests', () => {
                 });
 
                 const cns = new CNS([startNeuron, ...midNeurons, tailNeuron]);
-                const responses: Array<{ collateralId: string; queueLength: number }> = [];
+                const responses: Array<{
+                    collateralId: string;
+                    queueLength: number;
+                }> = [];
 
                 await cns.stimulate(input.createSignal(), {
                     onResponse: response => {
                         responses.push({
-                            collateralId: response.outputSignal?.collateral.id || 'unknown',
+                            collateralId:
+                                response.outputSignal?.collateral.id ||
+                                'unknown',
                             queueLength: response.queueLength,
                         });
                     },
@@ -333,7 +374,7 @@ describe('CNStra Core Tests', () => {
 
                 expect(responses.length).toBe(K + 2);
                 expect(responses[0].queueLength).toBeGreaterThan(0);
-                
+
                 const last = responses[responses.length - 1];
                 expect(last.collateralId).toBe('output');
                 expect(last.queueLength).toBe(0);
@@ -389,12 +430,17 @@ describe('CNStra Core Tests', () => {
                     outputNeuron,
                 ]);
 
-                const responses: Array<{ collateralId: string; queueLength: number }> = [];
+                const responses: Array<{
+                    collateralId: string;
+                    queueLength: number;
+                }> = [];
 
                 await cns.stimulate(input.createSignal(), {
                     onResponse: response => {
                         responses.push({
-                            collateralId: response.outputSignal?.collateral.id || 'unknown',
+                            collateralId:
+                                response.outputSignal?.collateral.id ||
+                                'unknown',
                             queueLength: response.queueLength,
                         });
                     },
@@ -411,13 +457,17 @@ describe('CNStra Core Tests', () => {
     describe('Async Processing', () => {
         describe('Basic Async Operations', () => {
             it('should handle single async response', async () => {
-                const input = collateral<{ delay: number; message: string }>('input');
+                const input = collateral<{ delay: number; message: string }>(
+                    'input'
+                );
                 const output = collateral<{ result: string }>('output');
 
                 const asyncNeuron = neuron('async', { output }).dendrite({
                     collateral: input,
                     response: async (payload, axon) => {
-                        await new Promise(resolve => setTimeout(resolve, payload.delay));
+                        await new Promise(resolve =>
+                            setTimeout(resolve, payload.delay)
+                        );
                         return axon.output.createSignal({
                             result: `async-${payload.message}`,
                         });
@@ -425,27 +475,38 @@ describe('CNStra Core Tests', () => {
                 });
 
                 const cns = new CNS([asyncNeuron]);
-                const responses: Array<{ collateralId: string; payload: unknown }> = [];
+                const responses: Array<{
+                    collateralId: string;
+                    payload: unknown;
+                }> = [];
                 const startTime = Date.now();
 
-                await cns.stimulate(input.createSignal({ delay: 30, message: 'test' }), {
-                    onResponse: response => {
-                        responses.push({
-                            collateralId: response.outputSignal?.collateral.id || 'unknown',
-                            payload: response.outputSignal?.payload,
-                        });
-
-                        if (response.outputSignal?.collateral.id === 'output') {
-                            const elapsed = Date.now() - startTime;
-                            expect(elapsed).toBeGreaterThanOrEqual(25);
-                            expect(responses).toHaveLength(2);
-                            expect(responses[1]).toMatchObject({
-                                collateralId: 'output',
-                                payload: { result: 'async-test' },
+                await cns.stimulate(
+                    input.createSignal({ delay: 30, message: 'test' }),
+                    {
+                        onResponse: response => {
+                            responses.push({
+                                collateralId:
+                                    response.outputSignal?.collateral.id ||
+                                    'unknown',
+                                payload: response.outputSignal?.payload,
                             });
-                        }
-                    },
-                });
+
+                            if (
+                                response.outputSignal?.collateral.id ===
+                                'output'
+                            ) {
+                                const elapsed = Date.now() - startTime;
+                                expect(elapsed).toBeGreaterThanOrEqual(25);
+                                expect(responses).toHaveLength(2);
+                                expect(responses[1]).toMatchObject({
+                                    collateralId: 'output',
+                                    payload: { result: 'async-test' },
+                                });
+                            }
+                        },
+                    }
+                );
             });
 
             it('should handle async chain processing', async () => {
@@ -457,7 +518,9 @@ describe('CNStra Core Tests', () => {
                     collateral: input,
                     response: async (payload, axon) => {
                         await new Promise(resolve => setTimeout(resolve, 20));
-                        return axon.step1.createSignal({ value: payload.value * 2 });
+                        return axon.step1.createSignal({
+                            value: payload.value * 2,
+                        });
                     },
                 });
 
@@ -465,18 +528,25 @@ describe('CNStra Core Tests', () => {
                     collateral: step1,
                     response: async (payload, axon) => {
                         await new Promise(resolve => setTimeout(resolve, 15));
-                        return axon.output.createSignal({ result: payload.value + 10 });
+                        return axon.output.createSignal({
+                            result: payload.value + 10,
+                        });
                     },
                 });
 
                 const cns = new CNS([asyncStep1, asyncStep2]);
-                const responses: Array<{ collateralId: string; payload: unknown }> = [];
+                const responses: Array<{
+                    collateralId: string;
+                    payload: unknown;
+                }> = [];
                 const startTime = Date.now();
 
                 await cns.stimulate(input.createSignal({ value: 5 }), {
                     onResponse: response => {
                         responses.push({
-                            collateralId: response.outputSignal?.collateral.id || 'unknown',
+                            collateralId:
+                                response.outputSignal?.collateral.id ||
+                                'unknown',
                             payload: response.outputSignal?.payload,
                         });
 
@@ -493,13 +563,15 @@ describe('CNStra Core Tests', () => {
                 });
             });
         });
-
     });
 
     describe('Context Integration', () => {
         describe('Context Operations', () => {
             it('should set and get context values', async () => {
-                const ctxBuilder = withCtx<{ message: string; count: number }>();
+                const ctxBuilder = withCtx<{
+                    message: string;
+                    count: number;
+                }>();
                 const input = collateral<{ text: string }>('input');
                 const output = collateral<{ result: string }>('output');
 
@@ -521,7 +593,9 @@ describe('CNStra Core Tests', () => {
                     });
 
                 const dendrite = testNeuron.dendrites[0];
-                let contextValue: { message: string; count: number } | undefined;
+                let contextValue:
+                    | { message: string; count: number }
+                    | undefined;
                 const mockCtx = {
                     get: () => contextValue,
                     set: (value: { message: string; count: number }) => {
@@ -546,14 +620,18 @@ describe('CNStra Core Tests', () => {
                 const input = collateral<{ value: string }>('input');
                 const output = collateral<{ result: string }>('output');
 
-                const testNeuron = ctxBuilder.neuron('safe', { output }).dendrite({
-                    collateral: input,
-                    response: async (payload, axon, ctx) => {
-                        const context = ctx.get();
-                        const safeData = context?.data || 'default';
-                        return axon.output.createSignal({ result: safeData });
-                    },
-                });
+                const testNeuron = ctxBuilder
+                    .neuron('safe', { output })
+                    .dendrite({
+                        collateral: input,
+                        response: async (payload, axon, ctx) => {
+                            const context = ctx.get();
+                            const safeData = context?.data || 'default';
+                            return axon.output.createSignal({
+                                result: safeData,
+                            });
+                        },
+                    });
 
                 const dendrite = testNeuron.dendrites[0];
                 let contextValue: { data: string } | undefined;
@@ -586,12 +664,16 @@ describe('CNStra Core Tests', () => {
             const neuronWithNoDendrites = neuron('empty', { output });
             const cns = new CNS([neuronWithNoDendrites]);
 
-            const responses: Array<{ collateralId: string; queueLength: number }> = [];
+            const responses: Array<{
+                collateralId: string;
+                queueLength: number;
+            }> = [];
 
             await cns.stimulate(input.createSignal({ data: 'test' }), {
                 onResponse: response => {
                     responses.push({
-                        collateralId: response.outputSignal?.collateral.id || 'unknown',
+                        collateralId:
+                            response.outputSignal?.collateral.id || 'unknown',
                         queueLength: response.queueLength,
                     });
                 },
@@ -615,12 +697,14 @@ describe('CNStra Core Tests', () => {
             });
 
             const cns = new CNS([testNeuron]);
-            const responses: Array<{ collateralId: string; payload: unknown }> = [];
+            const responses: Array<{ collateralId: string; payload: unknown }> =
+                [];
 
             await cns.stimulate(input.createSignal(), {
                 onResponse: response => {
                     responses.push({
-                        collateralId: response.outputSignal?.collateral.id || 'unknown',
+                        collateralId:
+                            response.outputSignal?.collateral.id || 'unknown',
                         payload: response.outputSignal?.payload,
                     });
                 },
@@ -650,7 +734,9 @@ describe('CNStra Core Tests', () => {
 
             const cns = new CNS([processor]);
 
-            const result = await cns.stimulate(input.createSignal({ data: 'test' }));
+            const result = await cns.stimulate(
+                input.createSignal({ data: 'test' })
+            );
             expect(result).toBeUndefined();
         });
     });
@@ -693,9 +779,15 @@ describe('CNStra Core Tests', () => {
 
             const emptyActiveCounts = new Map<number, number>();
 
-            expect(cns.canNeuronBeGuaranteedDone('A', emptyActiveCounts)).toBe(true);
-            expect(cns.canNeuronBeGuaranteedDone('B', emptyActiveCounts)).toBe(true);
-            expect(cns.canNeuronBeGuaranteedDone('C', emptyActiveCounts)).toBe(true);
+            expect(cns.canNeuronBeGuaranteedDone('A', emptyActiveCounts)).toBe(
+                true
+            );
+            expect(cns.canNeuronBeGuaranteedDone('B', emptyActiveCounts)).toBe(
+                true
+            );
+            expect(cns.canNeuronBeGuaranteedDone('C', emptyActiveCounts)).toBe(
+                true
+            );
         });
     });
 });

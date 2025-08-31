@@ -1,21 +1,77 @@
 import { TCNSStimulationQueueItem } from './types/TCNSStimulationQueueItem';
+import { TCNSNeuron } from './types/TCNSNeuron';
+import { TCNSDendrite } from './types/TCNSDendrite';
 
-export class CNSFunctionalQueue<TCollateralId extends string> {
-    public readonly items: TCNSStimulationQueueItem<TCollateralId>[] = [];
+export class CNSFunctionalQueue<
+    TCollateralId extends string,
+    TNeuronId extends string,
+    TNeuron extends TCNSNeuron<any, TNeuronId, TCollateralId, any, any, any, any>,
+    TDendrite extends TCNSDendrite<any, any, any, any, any, any>
+> {
+    private items: TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite>[] = [];
+    private head = 0;
+    private tail = 0;
+    private size = 0;
+    private capacity = 16;
     protected activeOperations = 0;
+    
 
     // NEW: prevent re-entrant pump; defer extra runs
     private pumping = false;
     private needsPump = false;
 
     constructor(
+        private readonly processor: (item: TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite>) => (() => void) | Promise<() => void>,
         protected readonly concurrency?: number,
-        protected readonly abortSignal?: AbortSignal
-    ) {}
+        protected readonly abortSignal?: AbortSignal,
+        initialCapacity?: number
+    ) {
+        if (initialCapacity && initialCapacity > 0) {
+            this.capacity = initialCapacity;
+        }
+        this.items = new Array(this.capacity);
+    }
 
     protected get canStartOperation(): boolean {
         const limit = this.concurrency ?? Infinity;
         return this.activeOperations < limit && !this.abortSignal?.aborted;
+    }
+
+    private resize(): void {
+        const oldCapacity = this.capacity;
+        this.capacity = oldCapacity * 2;
+        const newItems = new Array(this.capacity);
+        
+        let oldIndex = this.head;
+        for (let i = 0; i < this.size; i++) {
+            newItems[i] = this.items[oldIndex];
+            oldIndex = (oldIndex + 1) % oldCapacity;
+        }
+        
+        this.items = newItems;
+        this.head = 0;
+        this.tail = this.size;
+    }
+
+    private dequeue(): TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite> | undefined {
+        if (this.size === 0) return undefined;
+        
+        const item = this.items[this.head];
+        this.items[this.head] = undefined as any; // Clear reference
+        this.head = (this.head + 1) % this.capacity;
+        this.size--;
+        
+        return item;
+    }
+
+    private enqueueItem(item: TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite>): void {
+        if (this.size === this.capacity) {
+            this.resize();
+        }
+        
+        this.items[this.tail] = item;
+        this.tail = (this.tail + 1) % this.capacity;
+        this.size++;
     }
 
     protected pump() {
@@ -25,11 +81,11 @@ export class CNSFunctionalQueue<TCollateralId extends string> {
         }
         this.pumping = true;
 
-        while (this.canStartOperation && this.items.length > 0) {
-            const item = this.items.shift()!;
+        while (this.canStartOperation && this.size > 0) {
+            const item = this.dequeue()!;
             this.activeOperations++;
 
-            const ret = item.callback();
+            const ret = this.processor(item);
 
             // Async branch
             if (ret && typeof (ret as any).then === 'function') {
@@ -40,15 +96,15 @@ export class CNSFunctionalQueue<TCollateralId extends string> {
                         if (typeof cb === 'function') cb();
 
                         // schedule another pass (but don't re-enter if already pumping)
-                        if (this.items.length > 0 && this.canStartOperation) {
+                        if (this.size > 0 && this.canStartOperation) {
                             if (this.pumping) this.needsPump = true;
                             else this.pump();
                         }
                     },
                     err => {
                         this.activeOperations--;
-                        // resume if there’s more work
-                        if (this.items.length > 0 && this.canStartOperation) {
+                        // resume if there's more work
+                        if (this.size > 0 && this.canStartOperation) {
                             if (this.pumping) this.needsPump = true;
                             else this.pump();
                         }
@@ -74,18 +130,20 @@ export class CNSFunctionalQueue<TCollateralId extends string> {
         }
     }
 
-    enqueue(x: TCNSStimulationQueueItem<TCollateralId>) {
-        this.items.push(x);
+
+    enqueue(x: TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite>) {
+        this.enqueueItem(x);
         // Start pumping only if not already pumping; avoid re-entrant pump
         if (!this.pumping) this.pump();
         else this.needsPump = true;
     }
 
     get length() {
-        return this.items.length;
+        return this.size;
     }
 
     getActiveOperationsCount() {
         return this.activeOperations;
     }
+
 }
