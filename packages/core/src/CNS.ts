@@ -30,12 +30,22 @@ export class CNS<
      * Strongly Connected Components of the neuron graph.
      * Each component is a set of neuron IDs that can reach each other.
      */
-    private stronglyConnectedComponents: Set<string>[] = [];
+    public stronglyConnectedComponents: Set<string>[] = [];
 
     /**
      * Quick lookup: neuron ID -> SCC index for fast reachability checks.
      */
     private neuronToSCC = new Map<string, number>();
+
+    /**
+     * DAG of SCCs: SCC index -> set of SCC indices that can reach this SCC
+     */
+    private sccDag: Map<number, Set<number>> = new Map();
+
+    /**
+     * Precomputed ancestor sets for each SCC for fast reachability checks
+     */
+    private sccAncestors: Map<number, Set<number>> = new Map();
 
     constructor(
         protected readonly neurons: TNeuron[],
@@ -170,6 +180,113 @@ export class CNS<
                 this.neuronToSCC.set(neuronId, i);
             }
         }
+
+        // Build DAG between SCCs
+        this.buildSCCDAG(graph);
+
+        // Precompute ancestor sets for fast reachability checks
+        this.buildSCCAncestors();
+    }
+
+    /**
+     * Build DAG between SCCs based on the original neuron graph
+     */
+    private buildSCCDAG(neuronGraph: Map<string, Set<string>>): void {
+        this.sccDag.clear();
+
+        // Initialize DAG
+        for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
+            this.sccDag.set(i, new Set());
+        }
+
+        // Build edges between SCCs
+        for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
+            const scc = this.stronglyConnectedComponents[i];
+
+            for (const neuronId of scc) {
+                const neighbors = neuronGraph.get(neuronId) || new Set();
+
+                for (const neighborId of neighbors) {
+                    const neighborSccIndex = this.neuronToSCC.get(neighborId);
+                    if (
+                        neighborSccIndex !== undefined &&
+                        neighborSccIndex !== i
+                    ) {
+                        // Add edge: neighborSccIndex -> i (neighbor can reach this SCC)
+                        this.sccDag.get(neighborSccIndex)!.add(i);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Precompute ancestor sets for each SCC for fast reachability checks
+     * Uses topological sort for efficient computation
+     */
+    private buildSCCAncestors(): void {
+        this.sccAncestors.clear();
+
+        // Initialize ancestor sets
+        for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
+            this.sccAncestors.set(i, new Set());
+        }
+
+        // Topological sort to compute ancestors efficiently
+        const inDegree = new Map<number, number>();
+        const queue: number[] = [];
+
+        // Calculate in-degrees
+        for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
+            const incomingEdges = this.sccDag.get(i) || new Set();
+            inDegree.set(i, incomingEdges.size);
+
+            if (incomingEdges.size === 0) {
+                queue.push(i);
+            }
+        }
+
+        // Process nodes in topological order
+        while (queue.length > 0) {
+            const current = queue.shift()!;
+            const outgoingEdges = this.getOutgoingEdges(current);
+
+            for (const neighbor of outgoingEdges) {
+                // Add current as ancestor of neighbor
+                const neighborAncestors = this.sccAncestors.get(neighbor)!;
+                neighborAncestors.add(current);
+
+                // Add all ancestors of current to neighbor
+                const currentAncestors = this.sccAncestors.get(current)!;
+                for (const ancestor of currentAncestors) {
+                    neighborAncestors.add(ancestor);
+                }
+
+                // Decrease in-degree
+                const newInDegree = (inDegree.get(neighbor) || 0) - 1;
+                inDegree.set(neighbor, newInDegree);
+
+                if (newInDegree === 0) {
+                    queue.push(neighbor);
+                }
+            }
+        }
+    }
+
+    /**
+     * Get outgoing edges for a given SCC index
+     */
+    private getOutgoingEdges(sccIndex: number): Set<number> {
+        const outgoing = new Set<number>();
+
+        // Find all SCCs that have this SCC as an incoming edge
+        for (const [targetScc, incomingEdges] of this.sccDag) {
+            if (incomingEdges.has(sccIndex)) {
+                outgoing.add(targetScc);
+            }
+        }
+
+        return outgoing;
     }
 
     /**
@@ -183,6 +300,48 @@ export class CNS<
         if (sccIndex === undefined) return;
 
         return this.stronglyConnectedComponents[sccIndex];
+    }
+
+    /**
+     * Get the SCC index for a given neuron ID
+     */
+    public getSccIndexByNeuronId(neuronId: string): number | undefined {
+        return this.neuronToSCC.get(neuronId);
+    }
+
+    /**
+     * Check if a neuron can be guaranteed not to be visited again during the current propagation.
+     * This is the core logic for safe context cleanup.
+     */
+    public canNeuronBeGuaranteedDone(
+        neuronId: string,
+        activeSccCounts: Map<number, number>
+    ): boolean {
+        const sccIndex = this.neuronToSCC.get(neuronId);
+        if (sccIndex === undefined) return true; // Neuron not in graph
+
+        // Check if this SCC is still active
+        if (
+            activeSccCounts.get(sccIndex) &&
+            activeSccCounts.get(sccIndex)! > 0
+        ) {
+            return false; // SCC is still active
+        }
+
+        // Check if any active SCC can reach this SCC
+        const ancestors = this.sccAncestors.get(sccIndex);
+        if (!ancestors) return true;
+
+        for (const ancestorSccIndex of ancestors) {
+            if (
+                activeSccCounts.get(ancestorSccIndex) &&
+                activeSccCounts.get(ancestorSccIndex)! > 0
+            ) {
+                return false; // An active ancestor can still reach this SCC
+            }
+        }
+
+        return true; // Neuron is guaranteed to be done
     }
 
     public getParentNeuronByCollateralId(collateralId: TCollateralId) {

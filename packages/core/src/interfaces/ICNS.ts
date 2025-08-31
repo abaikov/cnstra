@@ -10,5 +10,11 @@ export interface ICNS<
     options?: TCNSOptions;
     getParentNeuronByCollateralId(collateralId: string): TNeuron | undefined;
     getSCCSetByNeuronId(neuronId: string): Set<string> | undefined;
+    getSccIndexByNeuronId(neuronId: string): number | undefined;
     getSubscribers(collateralId: string): TCNSSubscriber<TNeuron, TDendrite>[];
+    canNeuronBeGuaranteedDone(
+        neuronId: string,
+        activeSccCounts: Map<number, number>
+    ): boolean;
+    readonly stronglyConnectedComponents: Set<string>[];
 }

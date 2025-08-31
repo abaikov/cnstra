@@ -798,4 +798,210 @@ describe('CNS', () => {
     //         );
     //     });
     // });
+
+    describe('Context Cleanup with SCC Tracking', () => {
+        it('should correctly identify when neurons can be safely cleaned up', () => {
+            // Create a simple chain: A -> B -> C
+            const start = collateral<{ message: string }>('start');
+            const middle = collateral<{ from: string }>('middle');
+            const end = collateral<{ from: string }>('end');
+
+            const neuronA = neuron('A', { middle }).dendrite({
+                collateral: start,
+                response: (payload, axon) => {
+                    return axon.middle.createSignal({ from: 'A' });
+                },
+            });
+
+            const neuronB = neuron('B', { end }).dendrite({
+                collateral: middle,
+                response: (payload, axon) => {
+                    return axon.end.createSignal({ from: 'B' });
+                },
+            });
+
+            const neuronC = neuron('C', {}).dendrite({
+                collateral: end,
+                response: (payload, axon) => {
+                    // Terminal neuron - no output
+                },
+            });
+
+            const cns = new CNS([neuronA, neuronB, neuronC], {
+                autoCleanupContexts: true,
+            });
+
+            // Verify SCC structure
+            expect(cns.stronglyConnectedComponents).toHaveLength(3); // 3 separate SCCs
+            expect(cns.getSCCSetByNeuronId('A')?.size).toBe(1);
+            expect(cns.getSCCSetByNeuronId('B')?.size).toBe(1);
+            expect(cns.getSCCSetByNeuronId('C')?.size).toBe(1);
+
+            // Test reachability logic
+            const emptyActiveCounts = new Map<number, number>();
+
+            // All neurons should be considered "done" when nothing is active
+            expect(cns.canNeuronBeGuaranteedDone('A', emptyActiveCounts)).toBe(
+                true
+            );
+            expect(cns.canNeuronBeGuaranteedDone('B', emptyActiveCounts)).toBe(
+                true
+            );
+            expect(cns.canNeuronBeGuaranteedDone('C', emptyActiveCounts)).toBe(
+                true
+            );
+        });
+
+        it('should handle cyclic dependencies correctly', () => {
+            // Create a cycle: A <-> B
+            const signalA = collateral<{ from: string }>('signalA');
+            const signalB = collateral<{ from: string }>('signalB');
+
+            const neuronA = neuron('A', { signalA }).dendrite({
+                collateral: signalB,
+                response: (payload, axon) => {
+                    return axon.signalA.createSignal({ from: 'A' });
+                },
+            });
+
+            const neuronB = neuron('B', { signalB }).dendrite({
+                collateral: signalA,
+                response: (payload, axon) => {
+                    return axon.signalB.createSignal({ from: 'B' });
+                },
+            });
+
+            const cns = new CNS([neuronA, neuronB], {
+                autoCleanupContexts: true,
+            });
+
+            // Verify SCC structure - should have one SCC with both neurons
+            expect(cns.stronglyConnectedComponents).toHaveLength(1);
+            const scc = cns.getSCCSetByNeuronId('A');
+            expect(scc).toBeDefined();
+            expect(scc?.size).toBe(2);
+            expect(scc?.has('A')).toBe(true);
+            expect(scc?.has('B')).toBe(true);
+
+            // Test reachability logic
+            const emptyActiveCounts = new Map<number, number>();
+            const activeCounts = new Map<number, number>();
+            activeCounts.set(0, 1); // SCC 0 has 1 active neuron
+
+            // When nothing is active, both neurons can be considered done
+            expect(cns.canNeuronBeGuaranteedDone('A', emptyActiveCounts)).toBe(
+                true
+            );
+            expect(cns.canNeuronBeGuaranteedDone('B', emptyActiveCounts)).toBe(
+                true
+            );
+
+            // When SCC is active, neither neuron can be considered done
+            expect(cns.canNeuronBeGuaranteedDone('A', activeCounts)).toBe(
+                false
+            );
+            expect(cns.canNeuronBeGuaranteedDone('B', activeCounts)).toBe(
+                false
+            );
+        });
+
+        it('should build correct SCC DAG', () => {
+            // Create a more complex structure: A -> B -> C, where B and C form a cycle
+            const start = collateral<{ message: string }>('start');
+            const middle = collateral<{ from: string }>('middle');
+            const cycle1 = collateral<{ from: string }>('cycle1');
+            const cycle2 = collateral<{ from: string }>('cycle2');
+
+            const neuronA = neuron('A', { middle }).dendrite({
+                collateral: start,
+                response: (payload, axon) => {
+                    return axon.middle.createSignal({ from: 'A' });
+                },
+            });
+
+            const neuronB = neuron('B', { cycle1 }).dendrite({
+                collateral: middle,
+                response: (payload, axon) => {
+                    return axon.cycle1.createSignal({ from: 'B' });
+                },
+            });
+
+            const neuronC = neuron('C', { cycle2 }).dendrite({
+                collateral: cycle1,
+                response: (payload, axon) => {
+                    return axon.cycle2.createSignal({ from: 'C' });
+                },
+            });
+
+            const neuronD = neuron('D', {}).dendrite({
+                collateral: cycle2,
+                response: (payload, axon) => {
+                    // Terminal neuron
+                },
+            });
+
+            const cns = new CNS([neuronA, neuronB, neuronC, neuronD], {
+                autoCleanupContexts: true,
+            });
+
+            // Should have 4 SCCs: [D], [C], [B], [A] (in reverse topological order)
+            expect(cns.stronglyConnectedComponents).toHaveLength(4);
+
+            // Each neuron should be in its own SCC since there are no cycles
+            const sccA = cns.getSCCSetByNeuronId('A');
+            expect(sccA?.size).toBe(1);
+            expect(sccA?.has('A')).toBe(true);
+
+            const sccB = cns.getSCCSetByNeuronId('B');
+            expect(sccB?.size).toBe(1);
+            expect(sccB?.has('B')).toBe(true);
+
+            const sccC = cns.getSCCSetByNeuronId('C');
+            expect(sccC?.size).toBe(1);
+            expect(sccC?.has('C')).toBe(true);
+
+            const sccD = cns.getSCCSetByNeuronId('D');
+            expect(sccD?.size).toBe(1);
+            expect(sccD?.has('D')).toBe(true);
+        });
+
+        it('should handle SCC index lookup correctly', () => {
+            // Create a simple chain: A -> B
+            const start = collateral<{ message: string }>('start');
+            const end = collateral<{ from: string }>('end');
+
+            const neuronA = neuron('A', { end }).dendrite({
+                collateral: start,
+                response: (payload, axon) => {
+                    return axon.end.createSignal({ from: 'A' });
+                },
+            });
+
+            const neuronB = neuron('B', {}).dendrite({
+                collateral: end,
+                response: (payload, axon) => {
+                    // Terminal neuron
+                },
+            });
+
+            const cns = new CNS([neuronA, neuronB], {
+                autoCleanupContexts: true,
+            });
+
+            // Test SCC index lookup
+            const sccIndexA = cns.getSccIndexByNeuronId('A');
+            const sccIndexB = cns.getSccIndexByNeuronId('B');
+
+            expect(sccIndexA).toBeDefined();
+            expect(sccIndexB).toBeDefined();
+            expect(sccIndexA).not.toBe(sccIndexB);
+
+            // Test that we can get the same SCC set using the index
+            const sccSetA = cns.getSCCSetByNeuronId('A');
+            const sccSetB = cns.getSCCSetByNeuronId('B');
+
+            expect(sccSetA).toBe(cns.stronglyConnectedComponents[sccIndexA!]);
+            expect(sccSetB).toBe(cns.stronglyConnectedComponents[sccIndexB!]);
+        });
+    });
 });
