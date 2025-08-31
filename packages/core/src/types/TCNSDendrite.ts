@@ -1,6 +1,7 @@
 import { CNSCollateral } from '../CNSCollateral';
 import { TCNSAxon } from './TCNSAxon';
 import { TCNSLocalContextValueStore } from './TCNSLocalContextValueStore';
+import { TNCNeuronResponseReturn } from './TCNSNeuronResponseReturn';
 
 export type TCNSDendrite<
     TContextValue,
@@ -21,22 +22,10 @@ export type TCNSDendrite<
     response: (
         payload: TSenderAxonCollateralPayload,
         axon: TAxonType,
-        ctx: TCNSLocalContextValueStore<TContextValue>
-    ) =>
-        | Promise<
-              ReturnType<
-                  CNSCollateral<
-                      TReceiverCollateralIdType,
-                      TReceiverAxonCollateralPayload
-                  >['createSignal']
-              >
-          >
-        | ReturnType<
-              CNSCollateral<
-                  TReceiverCollateralIdType,
-                  TReceiverAxonCollateralPayload
-              >['createSignal']
-          >
-        | Promise<void>
-        | void;
+        ctx: TCNSLocalContextValueStore<TContextValue>,
+        abortSignal?: AbortSignal
+    ) => TNCNeuronResponseReturn<
+        TReceiverCollateralIdType,
+        TReceiverAxonCollateralPayload
+    >;
 };

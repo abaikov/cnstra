@@ -20,4 +20,8 @@ export class CNSStimulationContextStore implements ICNSStimulationContextStore {
             this.ctx.set(key, value);
         }
     }
+
+    delete(key: string): void {
+        this.ctx.delete(key);
+    }
 }

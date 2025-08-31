@@ -1,4 +1,6 @@
-export type TCNSSignal<TType extends string, TPayload> = {
-    type: TType;
+import { ICNSCollateral } from '../interfaces/ICNSCollateral';
+
+export type TCNSSignal<TCollateralId extends string, TPayload> = {
+    collateral: ICNSCollateral<TCollateralId, TPayload>;
     payload?: TPayload;
 };

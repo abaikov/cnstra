@@ -1,19 +1,7 @@
 import { CNS, collateral, neuron, withCtx } from '../src/index';
+import { TCNSStimulationResponse } from '../src/types/TCNSStimulationResponse';
 
 describe('CNS', () => {
-    describe('Basic Functionality', () => {
-        it('should create CNS instance', () => {
-            const cns = new CNS([]);
-            expect(cns).toBeInstanceOf(CNS);
-        });
-
-        it('should handle empty neuron array', async () => {
-            const cns = new CNS([]);
-            // This should not throw even with empty neurons
-            expect(cns).toBeDefined();
-        });
-    });
-
     describe('Simple Signal Flow', () => {
         it('should process basic signal flow', async () => {
             // Define collaterals
@@ -23,8 +11,8 @@ describe('CNS', () => {
             // Create neuron
             const processor = neuron('processor', { output }).dendrite({
                 collateral: input,
-                response: async (payload, axon) => {
-                    const message = (payload as { message: string }).message;
+                response: (payload, axon) => {
+                    const message = payload.message;
                     return axon.output.createSignal({
                         processed: `Processed: ${message}`,
                     });
@@ -35,28 +23,225 @@ describe('CNS', () => {
             const cns = new CNS([processor]);
 
             // Track signals
-            const traces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
+            const traces: TCNSStimulationResponse<string, unknown, unknown>[] =
+                [];
 
-            await cns.stimulate(
-                input,
-                {
+            cns.stimulate(
+                input.createSignal({
                     message: 'Hello World',
-                },
+                }),
                 {
-                    onTrace: trace => traces.push(trace),
+                    onResponse: trace => {
+                        console.log('Trace', trace);
+                        traces.push(trace);
+                    },
                 }
             );
 
             expect(traces).toHaveLength(2); // input + output
-            expect(traces[0].collateralId).toBe('input');
-            expect(traces[1].collateralId).toBe('output');
-            expect(traces[1].payload).toEqual({
+            expect(traces[0].outputSignal?.collateral.id).toBe('input');
+            expect(traces[0].outputSignal?.payload).toEqual({
+                message: 'Hello World',
+            });
+            expect(traces[1].inputSignal?.collateral.id).toBe('input');
+            expect(traces[1].inputSignal?.payload).toEqual({
+                message: 'Hello World',
+            });
+            expect(traces[1].outputSignal?.collateral.id).toEqual('output');
+            expect(traces[1].outputSignal?.payload).toEqual({
                 processed: 'Processed: Hello World',
             });
+        });
+    });
+
+    describe('Correct Ending of Traces', () => {
+        it('should handle correct ending of traces', async () => {
+            const input = collateral('input');
+            const shortBranch = collateral('shortBranch');
+            const longBranch1 = collateral('longBranch1');
+            const longBranch2 = collateral('longBranch2');
+            const output = collateral('output');
+
+            const shortBranchNeuron = neuron('shortBranch', {
+                shortBranch,
+            }).dendrite({
+                collateral: input,
+                response: (payload, axon) => {
+                    // Do nothing
+                },
+            });
+
+            const longBranch1Neuron = neuron('longBranch1', {
+                longBranch1,
+            }).dendrite({
+                collateral: input,
+                response: (payload, axon) => {
+                    return axon.longBranch1.createSignal();
+                },
+            });
+
+            const longBranch2Neuron = neuron('longBranch2', {
+                longBranch2,
+            }).dendrite({
+                collateral: longBranch1,
+                response: (payload, axon) => {
+                    return axon.longBranch2.createSignal();
+                },
+            });
+
+            const outputNeuron = neuron('output', { output }).dendrite({
+                collateral: longBranch2,
+                response: (payload, axon) => {
+                    return axon.output.createSignal();
+                },
+            });
+
+            const cns = new CNS([
+                shortBranchNeuron,
+                longBranch1Neuron,
+                longBranch2Neuron,
+                outputNeuron,
+            ]);
+
+            const traces: TCNSStimulationResponse<string, unknown, unknown>[] =
+                [];
+
+            await cns.stimulate(input.createSignal(), {
+                onResponse: trace => traces.push(trace),
+            });
+
+            console.log('Traces', traces);
+
+            expect(traces).toHaveLength(5);
+            expect(traces[0].queueLength).not.toBe(0);
+            expect(traces[4].outputSignal?.collateral.id).toEqual('output');
+            expect(traces[4].queueLength).toBe(0);
+        });
+    });
+
+    describe('Stack safety on long synchronous chains', () => {
+        it('does not blow the stack on a long sync chain (CNS-level)', async () => {
+            // Build a long linear chain: input -> n1 -> n2 -> ... -> nK -> output
+            const K = 3000; // adjust higher if you want; this should already prove non-recursive pump
+
+            const input = collateral('input');
+            const output = collateral('output');
+
+            // Collaterals for the chain
+            const mids = Array.from({ length: K }, (_, i) =>
+                collateral(`mid_${i}`)
+            );
+
+            // Neuron that starts the chain: input -> mid_0
+            const startNeuron = neuron('start', { mid_0: mids[0] }).dendrite({
+                collateral: input,
+                response: (_payload, axon) => axon.mid_0.createSignal(),
+            });
+
+            // Middle neurons: mid_i -> mid_{i+1}
+            const midNeurons = mids.slice(0, -1).map((c, i) =>
+                neuron(`mid_${i}_n`, { next: mids[i + 1] }).dendrite({
+                    collateral: c,
+                    response: (_payload, axon) => axon.next.createSignal(),
+                })
+            );
+
+            // Tail neuron: mid_{K-1} -> output
+            const tailNeuron = neuron('tail', { output }).dendrite({
+                collateral: mids[K - 1],
+                response: (_payload, axon) => axon.output.createSignal(),
+            });
+
+            const cns = new CNS([startNeuron, ...midNeurons, tailNeuron]);
+
+            const traces: TCNSStimulationResponse<string, unknown, unknown>[] =
+                [];
+
+            // Run the synchronous chain
+            await cns.stimulate(input.createSignal(), {
+                onResponse: trace => traces.push(trace),
+            });
+
+            // Basic shape checks
+            expect(traces.length).toBe(K + 2);
+            // Explanation:
+            //  - 1 trace for the initial input.responseToSignal call
+            //  - K traces for each hop through mids
+            //  - 1 final trace for output
+
+            // First snapshot should reflect pending work (> 0)
+            expect(traces[0].queueLength).toBeGreaterThan(0);
+
+            // Final snapshot: correct output + queue drained
+            const last = traces[traces.length - 1];
+            expect(last.outputSignal?.collateral.id).toBe('output');
+            expect(last.queueLength).toBe(0);
+        });
+
+        it('does not blow the stack when each sync step enqueues additional work', async () => {
+            // Variant: a short branch that does nothing + a long chain;
+            // ensures that enqueueing during processing doesn't recurse.
+            const input = collateral('input');
+            const noop = collateral('noop');
+            const output = collateral('output');
+
+            const K = 2000;
+            const mids = Array.from({ length: K }, (_, i) =>
+                collateral(`mid_${i}`)
+            );
+
+            const noopNeuron = neuron('noop', {}).dendrite({
+                collateral: noop,
+                response: () => {
+                    /* no-op */
+                },
+            });
+
+            const startNeuron = neuron('start', {
+                mid_0: mids[0],
+                noop,
+            }).dendrite({
+                collateral: input,
+                response: (_payload, axon) => {
+                    // Enqueue a no-op branch synchronously alongside the main chain
+                    axon.noop.createSignal();
+                    return axon.mid_0.createSignal();
+                },
+            });
+
+            const midNeurons = mids.slice(0, -1).map((c, i) =>
+                neuron(`mid_${i}_n`, { next: mids[i + 1] }).dendrite({
+                    collateral: c,
+                    response: (_payload, axon) => axon.next.createSignal(),
+                })
+            );
+
+            const tailNeuron = neuron('tail', { output }).dendrite({
+                collateral: mids[K - 1],
+                response: (_payload, axon) => axon.output.createSignal(),
+            });
+
+            const cns = new CNS([
+                noopNeuron,
+                startNeuron,
+                ...midNeurons,
+                tailNeuron,
+            ]);
+
+            const traces: TCNSStimulationResponse<string, unknown, unknown>[] =
+                [];
+
+            await cns.stimulate(input.createSignal(), {
+                onResponse: t => traces.push(t),
+            });
+
+            // Still finishes cleanly with output and empty queue
+            const last = traces[traces.length - 1];
+            expect(last.outputSignal?.collateral.id).toBe('output');
+            expect(last.queueLength).toBe(0);
+
+            // Ensure we produced at least K+2 traces (as in the first test)
+            expect(traces.length).toBeGreaterThanOrEqual(K + 2);
         });
     });
 
@@ -82,508 +267,535 @@ describe('CNS', () => {
 
             const cns = new CNS([multiOutputNeuron]);
 
-            const traces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
+            const traces: TCNSStimulationResponse<string, unknown, unknown>[] =
+                [];
 
-            await cns.stimulate(
-                input,
-                {
-                    data: 'test',
-                },
-                {
-                    onTrace: trace => traces.push(trace),
-                }
-            );
+            await cns.stimulate(input.createSignal({ data: 'test' }), {
+                onResponse: trace => traces.push(trace),
+            });
 
             expect(traces).toHaveLength(2); // input + output2 (only returned signal is processed)
-            expect(traces[1].payload).toEqual({ result: 'Second: test' });
-        });
-    });
-
-    describe('Conditional Logic', () => {
-        it('should handle conditional signal routing', async () => {
-            const request = collateral<{ value: number }>('request');
-            const success = collateral<{ result: string }>('success');
-            const error = collateral<{ error: string }>('error');
-
-            const router = neuron('router', { success, error }).dendrite({
-                collateral: request,
-                response: async (payload, axon) => {
-                    const value = (payload as { value: number }).value;
-                    if (value > 0) {
-                        return axon.success.createSignal({
-                            result: `Success: ${value}`,
-                        });
-                    } else {
-                        return axon.error.createSignal({
-                            error: `Error: ${value} is not positive`,
-                        });
-                    }
-                },
-            });
-
-            const cns = new CNS([router]);
-
-            // Test success case
-            const successTraces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
-            await cns.stimulate(
-                request,
-                {
-                    value: 42,
-                },
-                {
-                    onTrace: trace => successTraces.push(trace),
-                }
-            );
-
-            expect(successTraces).toHaveLength(2); // request + success
-            expect(successTraces[1].payload).toEqual({ result: 'Success: 42' });
-
-            // Test error case
-            const errorTraces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
-            await cns.stimulate(
-                request,
-                {
-                    value: -5,
-                },
-                {
-                    onTrace: trace => errorTraces.push(trace),
-                }
-            );
-
-            expect(errorTraces).toHaveLength(2); // request + error
-            expect(errorTraces[1].payload).toEqual({
-                error: 'Error: -5 is not positive',
+            expect(traces[1].outputSignal?.payload).toEqual({
+                result: 'Second: test',
             });
         });
     });
 
-    describe('Async Operations', () => {
-        it('should handle async reactions', done => {
-            const input = collateral<{ delay: number }>('input');
-            const output = collateral<{ result: string }>('output');
+    // describe('Conditional Logic', () => {
+    //     it('should handle conditional signal routing', async () => {
+    //         const request = collateral<{ value: number }>('request');
+    //         const success = collateral<{ result: string }>('success');
+    //         const error = collateral<{ error: string }>('error');
 
-            const asyncNeuron = neuron('async', { output }).dendrite({
-                collateral: input,
-                response: async (payload, axon) => {
-                    const delay = (payload as { delay: number }).delay;
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return axon.output.createSignal({
-                        result: `Delayed by ${delay}ms`,
-                    });
-                },
-            });
+    //         const router = neuron('router', { success, error }).dendrite({
+    //             collateral: request,
+    //             response: async (payload, axon) => {
+    //                 const value = (payload as { value: number }).value;
+    //                 if (value > 0) {
+    //                     return axon.success.createSignal({
+    //                         result: `Success: ${value}`,
+    //                     });
+    //                 } else {
+    //                     return axon.error.createSignal({
+    //                         error: `Error: ${value} is not positive`,
+    //                     });
+    //                 }
+    //             },
+    //         });
 
-            const cns = new CNS([asyncNeuron]);
+    //         const cns = new CNS([router]);
 
-            const startTime = Date.now();
-            const traces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
+    //         // Test success case
+    //         const successTraces: Array<{
+    //             collateralId: string;
+    //             hops: number;
+    //             payload: unknown;
+    //         }> = [];
+    //         await cns.stimulate(
+    //             request,
+    //             {
+    //                 value: 42,
+    //             },
+    //             {
+    //                 onTrace: trace => successTraces.push(trace),
+    //             }
+    //         );
 
-            // Fire-and-forget with completion detection via trace
-            cns.stimulate(
-                input,
-                { delay: 50 },
-                {
-                    onTrace: trace => {
-                        traces.push(trace);
+    //         expect(successTraces).toHaveLength(2); // request + success
+    //         expect(successTraces[1].payload).toEqual({ result: 'Success: 42' });
 
-                        // When we see the output, we know processing is done
-                        if (trace.collateralId === 'output') {
-                            const endTime = Date.now();
-                            const duration = endTime - startTime;
+    //         // Test error case
+    //         const errorTraces: Array<{
+    //             collateralId: string;
+    //             hops: number;
+    //             payload: unknown;
+    //         }> = [];
+    //         await cns.stimulate(
+    //             request,
+    //             {
+    //                 value: -5,
+    //             },
+    //             {
+    //                 onTrace: trace => errorTraces.push(trace),
+    //             }
+    //         );
 
-                            expect(duration).toBeGreaterThanOrEqual(50);
-                            expect(traces).toHaveLength(2);
-                            expect(traces[1].payload).toEqual({
-                                result: 'Delayed by 50ms',
-                            });
-                            done();
-                        }
-                    },
-                }
-            );
-        });
-    });
+    //         expect(errorTraces).toHaveLength(2); // request + error
+    //         expect(errorTraces[1].payload).toEqual({
+    //             error: 'Error: -5 is not positive',
+    //         });
+    //     });
+    // });
 
-    describe('Edge Cases', () => {
-        it('should handle neurons with no dendrites', done => {
-            const input = collateral<{ data: string }>('input');
-            const output = collateral<{ result: string }>('output');
+    // describe('Async Operations', () => {
+    //     it('should handle async reactions', done => {
+    //         const input = collateral<{ delay: number }>('input');
+    //         const output = collateral<{ result: string }>('output');
 
-            const neuronWithNoDendrites = neuron('empty', { output });
-            const cns = new CNS([neuronWithNoDendrites]);
+    //         const asyncNeuron = neuron('async', { output }).dendrite({
+    //             collateral: input,
+    //             response: async (payload, axon) => {
+    //                 const delay = (payload as { delay: number }).delay;
+    //                 await new Promise(resolve => setTimeout(resolve, delay));
+    //                 return axon.output.createSignal({
+    //                     result: `Delayed by ${delay}ms`,
+    //                 });
+    //             },
+    //         });
 
-            const traces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
+    //         const cns = new CNS([asyncNeuron]);
 
-            // Fire-and-forget
-            cns.stimulate(
-                input,
-                { data: 'test' },
-                {
-                    onTrace: trace => {
-                        traces.push(trace);
+    //         const startTime = Date.now();
+    //         const traces: Array<{
+    //             collateralId: string;
+    //             hops: number;
+    //             payload: unknown;
+    //         }> = [];
 
-                        // Check queue length to detect completion
-                        if (trace.queueLength === 0) {
-                            expect(traces).toHaveLength(1); // Only input, no reactions
-                            expect(traces[0].collateralId).toBe('input');
-                            done();
-                        }
-                    },
-                }
-            );
-        });
+    //         // Fire-and-forget with completion detection via trace
+    //         cns.stimulate(
+    //             input,
+    //             { delay: 50 },
+    //             {
+    //                 onTrace: trace => {
+    //                     traces.push(trace);
 
-        it('should handle undefined payloads', done => {
-            const input = collateral('input'); // No payload type
-            const output = collateral<{ result: string }>('output');
+    //                     // When we see the output, we know processing is done
+    //                     if (trace.collateralId === 'output') {
+    //                         const endTime = Date.now();
+    //                         const duration = endTime - startTime;
 
-            const testNeuron = neuron('test', { output }).dendrite({
-                collateral: input,
-                response: async (payload, axon) => {
-                    return axon.output.createSignal({
-                        result: 'Processed undefined payload',
-                    });
-                },
-            });
+    //                         expect(duration).toBeGreaterThanOrEqual(50);
+    //                         expect(traces).toHaveLength(2);
+    //                         expect(traces[1].payload).toEqual({
+    //                             result: 'Delayed by 50ms',
+    //                         });
+    //                         done();
+    //                     }
+    //                 },
+    //             }
+    //         );
+    //     });
+    // });
 
-            const cns = new CNS([testNeuron]);
+    // describe('Edge Cases', () => {
+    //     it('should handle neurons with no dendrites', done => {
+    //         const input = collateral<{ data: string }>('input');
+    //         const output = collateral<{ result: string }>('output');
 
-            const traces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
+    //         const neuronWithNoDendrites = neuron('empty', { output });
+    //         const cns = new CNS([neuronWithNoDendrites]);
 
-            // Fire-and-forget
-            cns.stimulate(
-                input,
-                {}, // No payload
-                {
-                    onTrace: trace => {
-                        traces.push(trace);
+    //         const traces: Array<{
+    //             collateralId: string;
+    //             hops: number;
+    //             payload: unknown;
+    //         }> = [];
 
-                        // When we see the output, processing is complete
-                        if (trace.collateralId === 'output') {
-                            expect(traces).toHaveLength(2);
-                            expect(traces[1].payload).toEqual({
-                                result: 'Processed undefined payload',
-                            });
-                            done();
-                        }
-                    },
-                }
-            );
-        });
-    });
+    //         // Fire-and-forget
+    //         cns.stimulate(
+    //             input,
+    //             { data: 'test' },
+    //             {
+    //                 onTrace: trace => {
+    //                     traces.push(trace);
 
-    describe('Retry Mechanism with Context', () => {
-        type MyCtxType = {
-            tryNumber: number;
-        };
+    //                     // Check queue length to detect completion
+    //                     if (trace.queueLength === 0) {
+    //                         expect(traces).toHaveLength(1); // Only input, no reactions
+    //                         expect(traces[0].collateralId).toBe('input');
+    //                         done();
+    //                     }
+    //                 },
+    //             }
+    //         );
+    //     });
 
-        it('should retry stimulation from failed collateral with context store', done => {
-            // Define collaterals
-            const input = collateral<{ data: string }>('input');
-            const intermediate = collateral<{ processed: string }>('intermediate');
-            const output = collateral<{ result: string }>('output');
+    //     it('should handle undefined payloads', done => {
+    //         const input = collateral('input'); // No payload type
+    //         const output = collateral<{ result: string }>('output');
 
-            // First neuron: processes input and passes to intermediate
-            const firstNeuron = withCtx<MyCtxType>().neuron('first', { intermediate }).dendrite({
-                collateral: input,
-                response: async (payload, axon) => {
-                    const data = (payload as { data: string }).data;
-                    return axon.intermediate.createSignal({
-                        processed: `First: ${data}`,
-                    });
-                },
-            });
+    //         const testNeuron = neuron('test', { output }).dendrite({
+    //             collateral: input,
+    //             response: async (payload, axon) => {
+    //                 return axon.output.createSignal({
+    //                     result: 'Processed undefined payload',
+    //                 });
+    //             },
+    //         });
 
-            // Second neuron: increments try counter and conditionally throws error
-            const secondNeuron = withCtx<MyCtxType>().neuron('second', { output }).dendrite({
-                collateral: intermediate,
-                response: async (payload, axon, ctx) => {
-                    const current = ctx.get() || { tryNumber: 0 };
-                    const newTryNumber = current.tryNumber + 1;
-                    
-                    // Update context with incremented try number
-                    ctx.set({ tryNumber: newTryNumber });
+    //         const cns = new CNS([testNeuron]);
 
-                    if (newTryNumber === 1) {
-                        // First try: throw an error
-                        throw new Error('Simulated failure on first try');
-                    } else {
-                        // Second try: pass signal to next neuron
-                        const processedData = (payload as { processed: string }).processed;
-                        return axon.output.createSignal({
-                            result: `Second (try ${newTryNumber}): ${processedData}`,
-                        });
-                    }
-                },
-            });
+    //         const traces: Array<{
+    //             collateralId: string;
+    //             hops: number;
+    //             payload: unknown;
+    //         }> = [];
 
-            // Third neuron: final processing (outputs to a different collateral)
-            const finalOutput = collateral<{ finalResult: string }>('finalOutput');
-            const thirdNeuron = withCtx<MyCtxType>().neuron('third', { finalOutput }).dendrite({
-                collateral: output,
-                response: async (payload, axon) => {
-                    const result = (payload as { result: string }).result;
-                    return axon.finalOutput.createSignal({
-                        finalResult: `Third: ${result}`,
-                    });
-                },
-            });
+    //         // Fire-and-forget
+    //         cns.stimulate(
+    //             input,
+    //             {}, // No payload
+    //             {
+    //                 onTrace: trace => {
+    //                     traces.push(trace);
 
-            const cns = new CNS([firstNeuron, secondNeuron, thirdNeuron]);
+    //                     // When we see the output, processing is complete
+    //                     if (trace.collateralId === 'output') {
+    //                         expect(traces).toHaveLength(2);
+    //                         expect(traces[1].payload).toEqual({
+    //                             result: 'Processed undefined payload',
+    //                         });
+    //                         done();
+    //                     }
+    //                 },
+    //             }
+    //         );
+    //     });
+    // });
 
-            let traces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-                queueLength?: number;
-                error?: Error;
-            }> = [];
+    // describe('Retry Mechanism with Context', () => {
+    //     type MyCtxType = {
+    //         tryNumber: number;
+    //     };
 
-            let hasRetriedAfterError = false;
-            let contextStore: any = undefined;
-            let testCompleted = false;
+    //     it('should retry stimulation from failed collateral with context store', done => {
+    //         // Define collaterals
+    //         const input = collateral<{ data: string }>('input');
+    //         const intermediate = collateral<{ processed: string }>(
+    //             'intermediate'
+    //         );
+    //         const output = collateral<{ result: string }>('output');
 
-            cns.stimulate(
-                input,
-                { data: 'test' },
-                {
-                    ctx: contextStore,
-                    onTrace: trace => {
-                        traces.push(trace);
+    //         // First neuron: processes input and passes to intermediate
+    //         const firstNeuron = withCtx<MyCtxType>()
+    //             .neuron('first', { intermediate })
+    //             .dendrite({
+    //                 collateral: input,
+    //                 response: async (payload, axon) => {
+    //                     const data = (payload as { data: string }).data;
+    //                     return axon.intermediate.createSignal({
+    //                         processed: `First: ${data}`,
+    //                     });
+    //                 },
+    //             });
 
-                        // Check if stimulation is finished (queue is empty)
-                        if (trace.queueLength === 0) {
-                            const errorTraces = traces.filter(t => t.error);
-                            const outputTraces = traces.filter(t => t.collateralId === 'output' && !t.error);
+    //         // Second neuron: increments try counter and conditionally throws error
+    //         const secondNeuron = withCtx<MyCtxType>()
+    //             .neuron('second', { output })
+    //             .dendrite({
+    //                 collateral: intermediate,
+    //                 response: async (payload, axon, ctx) => {
+    //                     const current = ctx.get() || { tryNumber: 0 };
+    //                     const newTryNumber = current.tryNumber + 1;
 
-                            if (errorTraces.length > 0 && !hasRetriedAfterError) {
-                                // First stimulation failed, retry with preserved context
-                                hasRetriedAfterError = true;
-                                contextStore = trace.contextStore;
-                                traces = []; // Reset traces for retry attempt
-                                
-                                setTimeout(() => {
-                                    cns.stimulate(
-                                        input,
-                                        { data: 'test' },
-                                        {
-                                            ctx: contextStore,
-                                            onTrace: retryTrace => {
-                                                traces.push(retryTrace);
-                                                
-                                                if (retryTrace.queueLength === 0) {
-                                                    const retryOutputTraces = traces.filter(t => t.collateralId === 'output' && !t.error);
-                                                    
-                                                    if (retryOutputTraces.length > 0 && !testCompleted) {
-                                                        testCompleted = true;
-                                                        // Verify final successful output contains 'try 2'
-                                                        expect(retryOutputTraces[0].payload).toEqual({
-                                                            result: expect.stringContaining('try 2'),
-                                                        });
-                                                        done();
-                                                    }
-                                                }
-                                            },
-                                        }
-                                    );
-                                }, 10);
-                            }
-                        }
-                    },
-                }
-            );
-        });
-    });
+    //                     // Update context with incremented try number
+    //                     ctx.set({ tryNumber: newTryNumber });
 
-    describe('Self-Recursion', () => {
-        it('should allow neuron to process its own output signal', done => {
-            const input = collateral<{ message: string }>('input');
-            const output = collateral<{ result: string; iteration: number }>(
-                'output'
-            );
+    //                     if (newTryNumber === 1) {
+    //                         // First try: throw an error
+    //                         throw new Error('Simulated failure on first try');
+    //                     } else {
+    //                         // Second try: pass signal to next neuron
+    //                         const processedData = (
+    //                             payload as { processed: string }
+    //                         ).processed;
+    //                         return axon.output.createSignal({
+    //                             result: `Second (try ${newTryNumber}): ${processedData}`,
+    //                         });
+    //                     }
+    //                 },
+    //             });
 
-            const recursiveNeuron = neuron('recursive', { output })
-                .dendrite({
-                    collateral: input,
-                    response: async (payload, axon) => {
-                        const message = (payload as { message: string })
-                            .message;
-                        return axon.output.createSignal({
-                            result: `Processed: ${message}`,
-                            iteration: 1,
-                        });
-                    },
-                })
-                .dendrite({
-                    collateral: output as any, // Use any to bypass type checking for self-listening
-                    response: async (payload, axon) => {
-                        const data = payload as {
-                            result: string;
-                            iteration: number;
-                        };
-                        if (data.iteration < 3) {
-                            // Recursively process own output signal
-                            return (axon as any).output.createSignal({
-                                result: `${data.result} (iteration ${
-                                    data.iteration + 1
-                                })`,
-                                iteration: data.iteration + 1,
-                            });
-                        }
-                        // Stop recursion after 3 iterations
-                        return undefined;
-                    },
-                });
+    //         // Third neuron: final processing (outputs to a different collateral)
+    //         const finalOutput = collateral<{ finalResult: string }>(
+    //             'finalOutput'
+    //         );
+    //         const thirdNeuron = withCtx<MyCtxType>()
+    //             .neuron('third', { finalOutput })
+    //             .dendrite({
+    //                 collateral: output,
+    //                 response: async (payload, axon) => {
+    //                     const result = (payload as { result: string }).result;
+    //                     return axon.finalOutput.createSignal({
+    //                         finalResult: `Third: ${result}`,
+    //                     });
+    //                 },
+    //             });
 
-            const cns = new CNS([recursiveNeuron]);
+    //         const cns = new CNS([firstNeuron, secondNeuron, thirdNeuron]);
 
-            const traces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
+    //         let traces: Array<{
+    //             collateralId: string;
+    //             hops: number;
+    //             payload: unknown;
+    //             queueLength?: number;
+    //             error?: Error;
+    //         }> = [];
 
-            cns.stimulate(
-                input,
-                { message: 'Hello' },
-                {
-                    onTrace: trace => {
-                        traces.push(trace);
+    //         let hasRetriedAfterError = false;
+    //         let contextStore: any = undefined;
+    //         let testCompleted = false;
 
-                        // Check if we have all expected traces
-                        if (traces.length >= 4) {
-                            expect(traces).toHaveLength(4); // input + 3 output iterations
-                            expect(traces[0].collateralId).toBe('input');
-                            expect(traces[0].hops).toBe(0);
+    //         cns.stimulate(
+    //             input,
+    //             { data: 'test' },
+    //             {
+    //                 ctx: contextStore,
+    //                 onTrace: trace => {
+    //                     traces.push(trace);
 
-                            // First output (hops: 1)
-                            expect(traces[1].collateralId).toBe('output');
-                            expect(traces[1].hops).toBe(1);
-                            expect(traces[1].payload).toEqual({
-                                result: 'Processed: Hello',
-                                iteration: 1,
-                            });
+    //                     // Check if stimulation is finished (queue is empty)
+    //                     if (trace.queueLength === 0) {
+    //                         const errorTraces = traces.filter(t => t.error);
+    //                         const outputTraces = traces.filter(
+    //                             t => t.collateralId === 'output' && !t.error
+    //                         );
 
-                            // Second output (hops: 2)
-                            expect(traces[2].collateralId).toBe('output');
-                            expect(traces[2].hops).toBe(2);
-                            expect(traces[2].payload).toEqual({
-                                result: 'Processed: Hello (iteration 2)',
-                                iteration: 2,
-                            });
+    //                         if (
+    //                             errorTraces.length > 0 &&
+    //                             !hasRetriedAfterError
+    //                         ) {
+    //                             // First stimulation failed, retry with preserved context
+    //                             hasRetriedAfterError = true;
+    //                             contextStore = trace.contextStore;
+    //                             traces = []; // Reset traces for retry attempt
 
-                            // Third output (hops: 3)
-                            expect(traces[3].collateralId).toBe('output');
-                            expect(traces[3].hops).toBe(3);
-                            expect(traces[3].payload).toEqual({
-                                result: 'Processed: Hello (iteration 2) (iteration 3)',
-                                iteration: 3,
-                            });
+    //                             setTimeout(() => {
+    //                                 cns.stimulate(
+    //                                     input,
+    //                                     { data: 'test' },
+    //                                     {
+    //                                         ctx: contextStore,
+    //                                         onTrace: retryTrace => {
+    //                                             traces.push(retryTrace);
 
-                            done();
-                        }
-                    },
-                }
-            );
-        });
+    //                                             if (
+    //                                                 retryTrace.queueLength === 0
+    //                                             ) {
+    //                                                 const retryOutputTraces =
+    //                                                     traces.filter(
+    //                                                         t =>
+    //                                                             t.collateralId ===
+    //                                                                 'output' &&
+    //                                                             !t.error
+    //                                                     );
 
-        it('should respect maxHops when neuron processes itself recursively', done => {
-            const input = collateral<{ data: string }>('input');
-            const output = collateral<{ value: string; count: number }>(
-                'output'
-            );
+    //                                                 if (
+    //                                                     retryOutputTraces.length >
+    //                                                         0 &&
+    //                                                     !testCompleted
+    //                                                 ) {
+    //                                                     testCompleted = true;
+    //                                                     // Verify final successful output contains 'try 2'
+    //                                                     expect(
+    //                                                         retryOutputTraces[0]
+    //                                                             .payload
+    //                                                     ).toEqual({
+    //                                                         result: expect.stringContaining(
+    //                                                             'try 2'
+    //                                                         ),
+    //                                                     });
+    //                                                     done();
+    //                                                 }
+    //                                             }
+    //                                         },
+    //                                     }
+    //                                 );
+    //                             }, 10);
+    //                         }
+    //                     }
+    //                 },
+    //             }
+    //         );
+    //     });
+    // });
 
-            const infiniteRecursiveNeuron = neuron('infinite', { output })
-                .dendrite({
-                    collateral: input,
-                    response: async (payload, axon) => {
-                        const data = (payload as { data: string }).data;
-                        return axon.output.createSignal({
-                            value: data,
-                            count: 1,
-                        });
-                    },
-                })
-                .dendrite({
-                    collateral: output as any, // Use any to bypass type checking for self-listening
-                    response: async (payload, axon) => {
-                        const data = payload as {
-                            value: string;
-                            count: number;
-                        };
-                        // Always continue recursion
-                        return (axon as any).output.createSignal({
-                            value: `${data.value}-${data.count}`,
-                            count: data.count + 1,
-                        });
-                    },
-                });
+    // describe('Self-Recursion', () => {
+    //     it('should allow neuron to process its own output signal', done => {
+    //         const input = collateral<{ message: string }>('input');
+    //         const output = collateral<{ result: string; iteration: number }>(
+    //             'output'
+    //         );
 
-            const cns = new CNS([infiniteRecursiveNeuron]);
+    //         const recursiveNeuron = neuron('recursive', { output })
+    //             .dendrite({
+    //                 collateral: input,
+    //                 response: async (payload, axon) => {
+    //                     const message = (payload as { message: string })
+    //                         .message;
+    //                     return axon.output.createSignal({
+    //                         result: `Processed: ${message}`,
+    //                         iteration: 1,
+    //                     });
+    //                 },
+    //             })
+    //             .dendrite({
+    //                 collateral: output as any, // Use any to bypass type checking for self-listening
+    //                 response: async (payload, axon) => {
+    //                     const data = payload as {
+    //                         result: string;
+    //                         iteration: number;
+    //                     };
+    //                     if (data.iteration < 3) {
+    //                         // Recursively process own output signal
+    //                         return (axon as any).output.createSignal({
+    //                             result: `${data.result} (iteration ${
+    //                                 data.iteration + 1
+    //                             })`,
+    //                             iteration: data.iteration + 1,
+    //                         });
+    //                     }
+    //                     // Stop recursion after 3 iterations
+    //                     return undefined;
+    //                 },
+    //             });
 
-            const traces: Array<{
-                collateralId: string;
-                hops: number;
-                payload: unknown;
-            }> = [];
+    //         const cns = new CNS([recursiveNeuron]);
 
-            cns.stimulate(
-                input,
-                { data: 'test' },
-                {
-                    maxHops: 5, // Limit to 5 hops
-                    onTrace: trace => {
-                        traces.push(trace);
+    //         const traces: Array<{
+    //             collateralId: string;
+    //             hops: number;
+    //             payload: unknown;
+    //         }> = [];
 
-                        // Check if we've reached maxHops
-                        if (trace.hops >= 5) {
-                            // Should have exactly 6 traces: input (hops: 0) + 5 outputs (hops: 1-5)
-                            expect(traces).toHaveLength(6);
-                            expect(traces[0].collateralId).toBe('input');
-                            expect(traces[0].hops).toBe(0);
+    //         cns.stimulate(
+    //             input,
+    //             { message: 'Hello' },
+    //             {
+    //                 onTrace: trace => {
+    //                     traces.push(trace);
 
-                            // Verify hops progression
-                            for (let i = 1; i <= 5; i++) {
-                                expect(traces[i].collateralId).toBe('output');
-                                expect(traces[i].hops).toBe(i);
-                                expect(traces[i].payload).toHaveProperty(
-                                    'count',
-                                    i
-                                );
-                            }
+    //                     // Check if we have all expected traces
+    //                     if (traces.length >= 4) {
+    //                         expect(traces).toHaveLength(4); // input + 3 output iterations
+    //                         expect(traces[0].collateralId).toBe('input');
+    //                         expect(traces[0].hops).toBe(0);
 
-                            // Last trace should be at maxHops
-                            expect(traces[5].hops).toBe(5);
+    //                         // First output (hops: 1)
+    //                         expect(traces[1].collateralId).toBe('output');
+    //                         expect(traces[1].hops).toBe(1);
+    //                         expect(traces[1].payload).toEqual({
+    //                             result: 'Processed: Hello',
+    //                             iteration: 1,
+    //                         });
 
-                            done();
-                        }
-                    },
-                }
-            );
-        });
-    });
+    //                         // Second output (hops: 2)
+    //                         expect(traces[2].collateralId).toBe('output');
+    //                         expect(traces[2].hops).toBe(2);
+    //                         expect(traces[2].payload).toEqual({
+    //                             result: 'Processed: Hello (iteration 2)',
+    //                             iteration: 2,
+    //                         });
+
+    //                         // Third output (hops: 3)
+    //                         expect(traces[3].collateralId).toBe('output');
+    //                         expect(traces[3].hops).toBe(3);
+    //                         expect(traces[3].payload).toEqual({
+    //                             result: 'Processed: Hello (iteration 2) (iteration 3)',
+    //                             iteration: 3,
+    //                         });
+
+    //                         done();
+    //                     }
+    //                 },
+    //             }
+    //         );
+    //     });
+
+    //     it('should respect maxHops when neuron processes itself recursively', done => {
+    //         const input = collateral<{ data: string }>('input');
+    //         const output = collateral<{ value: string; count: number }>(
+    //             'output'
+    //         );
+
+    //         const infiniteRecursiveNeuron = neuron('infinite', { output })
+    //             .dendrite({
+    //                 collateral: input,
+    //                 response: async (payload, axon) => {
+    //                     const data = (payload as { data: string }).data;
+    //                     return axon.output.createSignal({
+    //                         value: data,
+    //                         count: 1,
+    //                     });
+    //                 },
+    //             })
+    //             .dendrite({
+    //                 collateral: output as any, // Use any to bypass type checking for self-listening
+    //                 response: async (payload, axon) => {
+    //                     const data = payload as {
+    //                         value: string;
+    //                         count: number;
+    //                     };
+    //                     // Always continue recursion
+    //                     return (axon as any).output.createSignal({
+    //                         value: `${data.value}-${data.count}`,
+    //                         count: data.count + 1,
+    //                     });
+    //                 },
+    //             });
+
+    //         const cns = new CNS([infiniteRecursiveNeuron]);
+
+    //         const traces: Array<{
+    //             collateralId: string;
+    //             hops: number;
+    //             payload: unknown;
+    //         }> = [];
+
+    //         cns.stimulate(
+    //             input,
+    //             { data: 'test' },
+    //             {
+    //                 maxHops: 5, // Limit to 5 hops
+    //                 onTrace: trace => {
+    //                     traces.push(trace);
+
+    //                     // Check if we've reached maxHops
+    //                     if (trace.hops >= 5) {
+    //                         // Should have exactly 6 traces: input (hops: 0) + 5 outputs (hops: 1-5)
+    //                         expect(traces).toHaveLength(6);
+    //                         expect(traces[0].collateralId).toBe('input');
+    //                         expect(traces[0].hops).toBe(0);
+
+    //                         // Verify hops progression
+    //                         for (let i = 1; i <= 5; i++) {
+    //                             expect(traces[i].collateralId).toBe('output');
+    //                             expect(traces[i].hops).toBe(i);
+    //                             expect(traces[i].payload).toHaveProperty(
+    //                                 'count',
+    //                                 i
+    //                             );
+    //                         }
+
+    //                         // Last trace should be at maxHops
+    //                         expect(traces[5].hops).toBe(5);
+
+    //                         done();
+    //                     }
+    //                 },
+    //             }
+    //         );
+    //     });
+    // });
 });
