@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/core",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Neural network-inspired event flow system for building reactive applications with dependency-injected neurons and synapses",
   "keywords": [
     "neural-network",
