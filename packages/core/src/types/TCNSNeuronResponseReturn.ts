@@ -1,9 +1,9 @@
 import { CNSCollateral } from '../CNSCollateral';
 
-export type TNCNeuronResponseReturn<TCollateralId extends string, TPayload> =
+export type TNCNeuronResponseReturn<TCollateralType extends string, TPayload> =
     | Promise<
-          ReturnType<CNSCollateral<TCollateralId, TPayload>['createSignal']>
+          ReturnType<CNSCollateral<TCollateralType, TPayload>['createSignal']>
       >
-    | ReturnType<CNSCollateral<TCollateralId, TPayload>['createSignal']>
+    | ReturnType<CNSCollateral<TCollateralType, TPayload>['createSignal']>
     | Promise<void>
     | void;

@@ -3,25 +3,44 @@ import { TCNSNeuron } from './types/TCNSNeuron';
 import { TCNSDendrite } from './types/TCNSDendrite';
 
 export class CNSFunctionalQueue<
-    TCollateralId extends string,
-    TNeuronId extends string,
-    TNeuron extends TCNSNeuron<any, TNeuronId, TCollateralId, any, any, any, any>,
+    TCollateralType extends string,
+    TNeuronName extends string,
+    TNeuron extends TCNSNeuron<
+        any,
+        TNeuronName,
+        TCollateralType,
+        any,
+        any,
+        any,
+        any
+    >,
     TDendrite extends TCNSDendrite<any, any, any, any, any, any>
 > {
-    private items: TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite>[] = [];
+    private items: TCNSStimulationQueueItem<
+        TCollateralType,
+        TNeuronName,
+        TNeuron,
+        TDendrite
+    >[] = [];
     private head = 0;
     private tail = 0;
     private size = 0;
     private capacity = 16;
     protected activeOperations = 0;
-    
 
     // NEW: prevent re-entrant pump; defer extra runs
     private pumping = false;
     private needsPump = false;
 
     constructor(
-        private readonly processor: (item: TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite>) => (() => void) | Promise<() => void>,
+        private readonly processor: (
+            item: TCNSStimulationQueueItem<
+                TCollateralType,
+                TNeuronName,
+                TNeuron,
+                TDendrite
+            >
+        ) => (() => void) | Promise<() => void>,
         protected readonly concurrency?: number,
         protected readonly abortSignal?: AbortSignal,
         initialCapacity?: number
@@ -41,34 +60,48 @@ export class CNSFunctionalQueue<
         const oldCapacity = this.capacity;
         this.capacity = oldCapacity * 2;
         const newItems = new Array(this.capacity);
-        
+
         let oldIndex = this.head;
         for (let i = 0; i < this.size; i++) {
             newItems[i] = this.items[oldIndex];
             oldIndex = (oldIndex + 1) % oldCapacity;
         }
-        
+
         this.items = newItems;
         this.head = 0;
         this.tail = this.size;
     }
 
-    private dequeue(): TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite> | undefined {
+    private dequeue():
+        | TCNSStimulationQueueItem<
+              TCollateralType,
+              TNeuronName,
+              TNeuron,
+              TDendrite
+          >
+        | undefined {
         if (this.size === 0) return undefined;
-        
+
         const item = this.items[this.head];
         this.items[this.head] = undefined as any; // Clear reference
         this.head = (this.head + 1) % this.capacity;
         this.size--;
-        
+
         return item;
     }
 
-    private enqueueItem(item: TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite>): void {
+    private enqueueItem(
+        item: TCNSStimulationQueueItem<
+            TCollateralType,
+            TNeuronName,
+            TNeuron,
+            TDendrite
+        >
+    ): void {
         if (this.size === this.capacity) {
             this.resize();
         }
-        
+
         this.items[this.tail] = item;
         this.tail = (this.tail + 1) % this.capacity;
         this.size++;
@@ -130,8 +163,14 @@ export class CNSFunctionalQueue<
         }
     }
 
-
-    enqueue(x: TCNSStimulationQueueItem<TCollateralId, TNeuronId, TNeuron, TDendrite>) {
+    enqueue(
+        x: TCNSStimulationQueueItem<
+            TCollateralType,
+            TNeuronName,
+            TNeuron,
+            TDendrite
+        >
+    ) {
         this.enqueueItem(x);
         // Start pumping only if not already pumping; avoid re-entrant pump
         if (!this.pumping) this.pump();
@@ -145,5 +184,4 @@ export class CNSFunctionalQueue<
     getActiveOperationsCount() {
         return this.activeOperations;
     }
-
 }

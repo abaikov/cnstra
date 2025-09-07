@@ -11,6 +11,16 @@ You explicitly start a run with `cns.stimulate(...)`; CNStra then performs a **d
 
 > **Not pub/sub:** there are no ambient listeners or global `emit`. Only the **signal you return** from a dendrite continues the traversal; returning `null`/`undefined` ends that branch. Hop limits guard against cycles.
 
+## 💡 Why CNStra
+
+We follow the ERG approach (Event → Reaction → Graph), not a raw Flux/event-bus.
+
+- **Deterministic routing**: signals are delivered along an explicit neuron graph, not broadcast to whoever “happens to listen”.
+- **Readable, reliable flows**: each step is local and typed; branches are explicit, so debugging feels like reading a storyboard, not a log stream.
+- **Backpressure & concurrency**: built‑in per‑stimulation and per‑neuron concurrency limits keep workloads controlled without custom plumbing.
+- **Saga‑grade orchestration**: ERG already models long‑running, multi‑step reactions with retries/cancellation hooks (abort), so you rarely need to hand‑roll “sagas”.
+- **Safer than ad‑hoc events**: no hidden global listeners, no accidental fan‑out; every continuation must be returned explicitly.
+
 ## 🏗️ Core Model
 
 ### Neurons
@@ -103,11 +113,55 @@ myNeuron
   .dendrite({
     collateral: inputCollateral,
     response: async (payload, axon, ctx) => {
-      // Process input and return output signal
-      // ctx parameter provides local context storage for this neuron
+      // ctx: { get, set, abortSignal?, cns? }
+      if (ctx.abortSignal?.aborted) return; // graceful cancel
+      const prev = ctx.get();
+      ctx.set({ ...prev, handled: true });
       return axon.output.createSignal(result);
     }
   });
+```
+
+### `neuron.bind(axon, map)` — exhaustive subscriptions (with shorthand)
+
+Bind this neuron to every collateral of another neuron's axon in one place. The `map` must be exhaustive: you must provide a handler for each collateral key of `axon`. This gives you compile-time safety: if someone adds a new collateral later, TypeScript will immediately flag missing handlers.
+
+- You can pass either a full dendrite object per key or just a response function shorthand.
+- Payload types are inferred from the followed axon.
+
+This pattern is especially useful for domain-oriented neurons that must react to every way a record can be created/changed. For example, an email-notifier neuron can safely ensure emails are sent for every creation path; if a new creation collateral is introduced, the build will fail until the notifier adds a corresponding handler.
+
+```typescript
+import { withCtx, collateral } from '@cnstra/core';
+
+// Order domain model (axon)
+const order = {
+  created: collateral<{ id: string; amount: number }>('order:created'),
+  updated: collateral<{ id: string; changes: Record<string, unknown> }>('order:updated'),
+  cancelled: collateral<{ id: string; reason?: string }>('order:cancelled'),
+};
+
+// Mailer neuron must react to ALL order events
+withCtx()
+  .neuron('order-mailer', { /* your axon if you emit follow-up signals */ })
+  .bind(order, {
+    created: (payload) => {
+      sendEmail(`Order created #${payload.id} for $${payload.amount}`);
+      return undefined;
+    },
+    updated: (payload) => {
+      sendEmail(`Order updated #${payload.id} (changes: ${Object.keys(payload.changes).join(', ')})`);
+      return undefined;
+    },
+    cancelled: (payload) => {
+      sendEmail(`Order cancelled #${payload.id}${payload.reason ? `: ${payload.reason}` : ''}`);
+      return undefined;
+    },
+  });
+
+// If later someone adds a new event variant, e.g. refunds:
+// const order = { ...order, refunded: collateral<{ id: string; amount: number }>('order:refunded') };
+// TypeScript will now error until you also add a `refunded` handler in the .bind(...) map.
 ```
 
 ### `CNS` Class
@@ -122,6 +176,14 @@ new CNS(neurons, options?)
 **Parameters:**
 - `neurons`: Array of neurons that process signals
 - `options`: Optional CNS configuration
+
+#### Global listeners
+```typescript
+const unsubscribe = cns.addResponseListener(r => {
+  // fires for every stimulation (input + outputs)
+});
+// unsubscribe();
+```
 
 #### `stimulate()` Method
 ```typescript
@@ -192,6 +254,7 @@ cns.stimulate(signal, {
 // Cancel after 5 seconds
 setTimeout(() => controller.abort(), 5000);
 ```
+Inside dendrites, read it via `ctx.abortSignal`.
 
 ### `stimulationId?: string`
 Custom identifier for this stimulation cascade. Auto-generated if not provided.
@@ -218,6 +281,14 @@ Limit concurrent operations to prevent resource exhaustion.
 await cns.stimulate(signal, {
   concurrency: 10 // Max 10 operations at once
 });
+```
+
+#### Per‑neuron global concurrency
+Set a limit per neuron; parallel stimulations share the same gate.
+```typescript
+const worker = neuron('worker', { out })
+  .setConcurrency(2)
+  .dendrite({ /* ... */ });
 ```
 
 ### `ctx?: ICNSStimulationContextStore`

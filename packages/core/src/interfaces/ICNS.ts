@@ -8,13 +8,26 @@ export interface ICNS<
     TDendrite extends TCNSDendrite<any, any, any, any, any, any>
 > {
     options?: TCNSOptions;
-    getParentNeuronByCollateralId(collateralId: string): TNeuron | undefined;
-    getSCCSetByNeuronId(neuronId: string): Set<string> | undefined;
-    getSccIndexByNeuronId(neuronId: string): number | undefined;
-    getSubscribers(collateralId: string): TCNSSubscriber<TNeuron, TDendrite>[];
+    getParentNeuronByCollateralId(collateralType: string): TNeuron | undefined;
+    getSCCSetByNeuronName(neuronName: string): Set<string> | undefined;
+    getSccIndexByNeuronName(neuronName: string): number | undefined;
+    getSubscribers(
+        collateralType: string
+    ): TCNSSubscriber<TNeuron, TDendrite>[];
     canNeuronBeGuaranteedDone(
-        neuronId: string,
+        neuronName: string,
         activeSccCounts: Map<number, number>
     ): boolean;
     readonly stronglyConnectedComponents: Set<string>[];
+
+    /**
+     * Add a global response listener applied to all stimulations.
+     * Returns an unsubscribe function.
+     */
+    addResponseListener(listener: (response: any) => void): () => void;
+
+    /**
+     * Wrap a local onResponse with all global listeners.
+     */
+    wrapOnResponse<T>(local?: (response: T) => void): (response: T) => void;
 }

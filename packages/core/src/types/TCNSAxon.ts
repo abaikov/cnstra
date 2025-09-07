@@ -1,6 +1,8 @@
 import { CNSCollateral } from '../CNSCollateral';
 
-export type TCNSAxon<TCId extends string, TInputPayload = unknown> = Record<
-    TCId,
-    CNSCollateral<TCId, TInputPayload>
->;
+export type TCNSAxon<
+    TCollateralType extends string,
+    TInputPayload = unknown
+> = {
+    [K in TCollateralType]: CNSCollateral<K, TInputPayload>;
+};

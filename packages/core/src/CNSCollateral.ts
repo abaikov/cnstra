@@ -1,14 +1,14 @@
 import { TCNSSignal } from './types/TCNSSignal';
 import { ICNSCollateral } from './interfaces/ICNSCollateral';
 
-export class CNSCollateral<TId extends string, TPayload>
-    implements ICNSCollateral<TId, TPayload>
+export class CNSCollateral<TType extends string, TPayload>
+    implements ICNSCollateral<TType, TPayload>
 {
-    constructor(public readonly id: TId) {}
+    constructor(public readonly type: TType) {}
 
-    createSignal(): TCNSSignal<TId, TPayload>;
-    createSignal(payload: TPayload): TCNSSignal<TId, TPayload>;
-    createSignal(payload?: TPayload): TCNSSignal<TId, TPayload> {
+    createSignal(): TCNSSignal<TType, TPayload>;
+    createSignal(payload: TPayload): TCNSSignal<TType, TPayload>;
+    createSignal(payload?: TPayload): TCNSSignal<TType, TPayload> {
         return { collateral: this, payload };
     }
 }

@@ -4,17 +4,17 @@ describe('CNStra Core Tests', () => {
     describe('Type Safety', () => {
         it('should enforce correct types for collateral factory', () => {
             const testCollateral = collateral('test');
-            expect(testCollateral.id).toBe('test');
+            expect(testCollateral.type).toBe('test');
 
             const typedCollateral = collateral<{ message: string }>('test');
             const signal = typedCollateral.createSignal({ message: 'Hello' });
-            expect(signal.collateral.id).toBe('test');
+            expect(signal.collateral.type).toBe('test');
             expect(signal.payload).toEqual({ message: 'Hello' });
         });
 
         it('should handle special characters in collateral id', () => {
             const specialCollateral = collateral('test:collateral:123');
-            expect(specialCollateral.id).toBe('test:collateral:123');
+            expect(specialCollateral.type).toBe('test:collateral:123');
         });
     });
 
@@ -24,29 +24,29 @@ describe('CNStra Core Tests', () => {
                 const typedCollateral = collateral<{ message: string }>(
                     'typed'
                 );
-                expect(typedCollateral.id).toBe('typed');
+                expect(typedCollateral.type).toBe('typed');
 
                 const signal = typedCollateral.createSignal({
                     message: 'Hello',
                 });
-                expect(signal.collateral.id).toBe('typed');
+                expect(signal.collateral.type).toBe('typed');
                 expect(signal.payload).toEqual({ message: 'Hello' });
             });
 
             it('should create collateral with undefined payload by default', () => {
                 const defaultCollateral = collateral('default');
                 const signal = defaultCollateral.createSignal();
-                expect(signal.collateral.id).toBe('default');
+                expect(signal.collateral.type).toBe('default');
                 expect(signal.payload).toBeUndefined();
             });
         });
 
         describe('neuron', () => {
-            it('should create neuron with id and axon', () => {
+            it('should create neuron with name and axon', () => {
                 const output = collateral<{ result: string }>('output');
                 const testNeuron = neuron('test-neuron', { output });
 
-                expect(testNeuron.id).toBe('test-neuron');
+                expect(testNeuron.name).toBe('test-neuron');
                 expect(testNeuron.axon).toEqual({ output });
                 expect(testNeuron.dendrites).toEqual([]);
             });
@@ -66,7 +66,7 @@ describe('CNStra Core Tests', () => {
                 });
 
                 expect(testNeuron.dendrites).toHaveLength(1);
-                expect(testNeuron.dendrites[0].collateral.id).toBe('input');
+                expect(testNeuron.dendrites[0].collateral.type).toBe('input');
             });
 
             it('should support chaining dendrites', () => {
@@ -93,8 +93,8 @@ describe('CNStra Core Tests', () => {
                     });
 
                 expect(testNeuron.dendrites).toHaveLength(2);
-                expect(testNeuron.dendrites[0].collateral.id).toBe('input1');
-                expect(testNeuron.dendrites[1].collateral.id).toBe('input2');
+                expect(testNeuron.dendrites[0].collateral.type).toBe('input1');
+                expect(testNeuron.dendrites[1].collateral.type).toBe('input2');
             });
 
             it('should handle multiple axon outputs', () => {
@@ -122,7 +122,7 @@ describe('CNStra Core Tests', () => {
                 const output = collateral<{ result: string }>('output');
                 const testNeuron = ctxBuilder.neuron('test', { output });
 
-                expect(testNeuron.id).toBe('test');
+                expect(testNeuron.name).toBe('test');
                 expect(testNeuron.axon).toEqual({ output });
                 expect(testNeuron.dendrites).toEqual([]);
             });
@@ -147,7 +147,7 @@ describe('CNStra Core Tests', () => {
                     });
 
                 expect(testNeuron.dendrites).toHaveLength(1);
-                expect(testNeuron.dendrites[0].collateral.id).toBe('input');
+                expect(testNeuron.dendrites[0].collateral.type).toBe('input');
             });
         });
 
@@ -165,7 +165,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-                expect(processor.id).toBe('processor');
+                expect(processor.name).toBe('processor');
                 expect(processor.dendrites).toHaveLength(1);
                 expect(processor.axon.output).toBeDefined();
 
@@ -180,7 +180,7 @@ describe('CNStra Core Tests', () => {
                 );
 
                 expect(result).toEqual({
-                    collateral: expect.objectContaining({ id: 'output' }),
+                    collateral: expect.objectContaining({ type: 'output' }),
                     payload: { processed: 'Processed: Hello' },
                 });
             });
@@ -212,7 +212,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralId:
-                                response.outputSignal?.collateral.id ||
+                                response.outputSignal?.collateral.type ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
                         });
@@ -263,7 +263,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralId:
-                                response.outputSignal?.collateral.id ||
+                                response.outputSignal?.collateral.type ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
                         });
@@ -309,7 +309,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralId:
-                                response.outputSignal?.collateral.id ||
+                                response.outputSignal?.collateral.type ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
                         });
@@ -324,6 +324,41 @@ describe('CNStra Core Tests', () => {
                     responses.find(t => t.collateralId === 'branch2')?.payload
                 ).toEqual({ result: 'B-test' });
             });
+        });
+
+        it('should call global and local onResponse listeners', async () => {
+            const input = collateral('input');
+            const output = collateral('output');
+
+            const n = neuron('n', { output }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const cns = new CNS([n]);
+
+            const global: string[] = [];
+            const local: string[] = [];
+            cns.addResponseListener(r => {
+                global.push(
+                    r.outputSignal?.collateral.type ||
+                        r.inputSignal?.collateral.type ||
+                        'unknown'
+                );
+            });
+
+            await cns.stimulate(input.createSignal(), {
+                onResponse: r => {
+                    local.push(
+                        r.outputSignal?.collateral.type ||
+                            r.inputSignal?.collateral.type ||
+                            'unknown'
+                    );
+                },
+            });
+
+            // Expect both to have seen both input and output
+            expect(local).toEqual(['input', 'output']);
+            expect(global).toEqual(['input', 'output']);
         });
 
         describe('Stack Safety', () => {
@@ -365,7 +400,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralId:
-                                response.outputSignal?.collateral.id ||
+                                response.outputSignal?.collateral.type ||
                                 'unknown',
                             queueLength: response.queueLength,
                         });
@@ -439,7 +474,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralId:
-                                response.outputSignal?.collateral.id ||
+                                response.outputSignal?.collateral.type ||
                                 'unknown',
                             queueLength: response.queueLength,
                         });
@@ -487,13 +522,13 @@ describe('CNStra Core Tests', () => {
                         onResponse: response => {
                             responses.push({
                                 collateralId:
-                                    response.outputSignal?.collateral.id ||
+                                    response.outputSignal?.collateral.type ||
                                     'unknown',
                                 payload: response.outputSignal?.payload,
                             });
 
                             if (
-                                response.outputSignal?.collateral.id ===
+                                response.outputSignal?.collateral.type ===
                                 'output'
                             ) {
                                 const elapsed = Date.now() - startTime;
@@ -545,12 +580,14 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralId:
-                                response.outputSignal?.collateral.id ||
+                                response.outputSignal?.collateral.type ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
                         });
 
-                        if (response.outputSignal?.collateral.id === 'output') {
+                        if (
+                            response.outputSignal?.collateral.type === 'output'
+                        ) {
                             const elapsed = Date.now() - startTime;
                             expect(elapsed).toBeGreaterThanOrEqual(35);
                             expect(responses).toHaveLength(3);
@@ -610,7 +647,7 @@ describe('CNStra Core Tests', () => {
                 );
 
                 expect(result).toEqual({
-                    collateral: expect.objectContaining({ id: 'output' }),
+                    collateral: expect.objectContaining({ type: 'output' }),
                     payload: { result: 'Hello Context' },
                 });
             });
@@ -649,7 +686,7 @@ describe('CNStra Core Tests', () => {
                 );
 
                 expect(result).toEqual({
-                    collateral: expect.objectContaining({ id: 'output' }),
+                    collateral: expect.objectContaining({ type: 'output' }),
                     payload: { result: 'default' },
                 });
             });
@@ -673,7 +710,7 @@ describe('CNStra Core Tests', () => {
                 onResponse: response => {
                     responses.push({
                         collateralId:
-                            response.outputSignal?.collateral.id || 'unknown',
+                            response.outputSignal?.collateral.type || 'unknown',
                         queueLength: response.queueLength,
                     });
                 },
@@ -704,7 +741,7 @@ describe('CNStra Core Tests', () => {
                 onResponse: response => {
                     responses.push({
                         collateralId:
-                            response.outputSignal?.collateral.id || 'unknown',
+                            response.outputSignal?.collateral.type || 'unknown',
                         payload: response.outputSignal?.payload,
                     });
                 },
@@ -741,6 +778,185 @@ describe('CNStra Core Tests', () => {
         });
     });
 
+    describe('Per-Neuron Concurrency', () => {
+        it('should enforce concurrency=1 for a single neuron (sequential processing)', async () => {
+            const start = collateral('start');
+            const inC = collateral('in');
+            const out = collateral('out');
+
+            const u1 = neuron('u1', { in: inC }).dendrite({
+                collateral: start,
+                response: (_p, axon) => axon.in.createSignal(),
+            });
+
+            const u2 = neuron('u2', { in: inC }).dendrite({
+                collateral: start,
+                response: (_p, axon) => axon.in.createSignal(),
+            });
+
+            const DELAY = 30;
+            const worker = neuron('worker', { out })
+                .setConcurrency(1)
+                .dendrite({
+                    collateral: inC,
+                    response: async (_payload, axon) => {
+                        await new Promise(r => setTimeout(r, DELAY));
+                        return axon.out.createSignal();
+                    },
+                });
+
+            const cns = new CNS([u1, u2, worker]);
+
+            let outCount = 0;
+            const startTime = Date.now();
+            await new Promise<void>(resolve => {
+                cns.stimulate(start.createSignal(), {
+                    onResponse: r => {
+                        if (r.outputSignal?.collateral.type === 'out') {
+                            outCount++;
+                            if (outCount === 2) {
+                                const elapsed = Date.now() - startTime;
+                                expect(elapsed).toBeGreaterThanOrEqual(
+                                    DELAY * 2 - 5
+                                );
+                                resolve();
+                            }
+                        }
+                    },
+                });
+            });
+        });
+
+        it('should allow up to N concurrent tasks per neuron (concurrency=2)', async () => {
+            const start = collateral('start');
+            const inC = collateral('in');
+            const out = collateral('out');
+
+            const u1 = neuron('u1', { in: inC }).dendrite({
+                collateral: start,
+                response: (_p, axon) => axon.in.createSignal(),
+            });
+            const u2 = neuron('u2', { in: inC }).dendrite({
+                collateral: start,
+                response: (_p, axon) => axon.in.createSignal(),
+            });
+            const u3 = neuron('u3', { in: inC }).dendrite({
+                collateral: start,
+                response: (_p, axon) => axon.in.createSignal(),
+            });
+
+            const DELAY = 30;
+            const worker = neuron('worker', { out })
+                .setConcurrency(2)
+                .dendrite({
+                    collateral: inC,
+                    response: async (_payload, axon) => {
+                        await new Promise(r => setTimeout(r, DELAY));
+                        return axon.out.createSignal();
+                    },
+                });
+
+            const cns = new CNS([u1, u2, u3, worker]);
+
+            let outCount = 0;
+            const startTime = Date.now();
+            await new Promise<void>(resolve => {
+                cns.stimulate(start.createSignal(), {
+                    onResponse: r => {
+                        if (r.outputSignal?.collateral.type === 'out') {
+                            outCount++;
+                            if (outCount === 3) {
+                                const elapsed = Date.now() - startTime;
+                                expect(elapsed).toBeGreaterThanOrEqual(
+                                    DELAY * 2 - 5
+                                );
+                                resolve();
+                            }
+                        }
+                    },
+                });
+            });
+        });
+
+        it('should not limit when concurrency is not set', async () => {
+            const start = collateral('start');
+            const inC = collateral('in');
+            const out = collateral('out');
+
+            const u1 = neuron('u1', { in: inC }).dendrite({
+                collateral: start,
+                response: (_p, axon) => axon.in.createSignal(),
+            });
+            const u2 = neuron('u2', { in: inC }).dendrite({
+                collateral: start,
+                response: (_p, axon) => axon.in.createSignal(),
+            });
+
+            const DELAY = 30;
+            const worker = neuron('worker', { out }).dendrite({
+                collateral: inC,
+                response: async (_payload, axon) => {
+                    await new Promise(r => setTimeout(r, DELAY));
+                    return axon.out.createSignal();
+                },
+            });
+
+            const cns = new CNS([u1, u2, worker]);
+
+            let outCount = 0;
+            const startTime = Date.now();
+            await new Promise<void>(resolve => {
+                cns.stimulate(start.createSignal(), {
+                    onResponse: r => {
+                        if (r.outputSignal?.collateral.type === 'out') {
+                            outCount++;
+                            if (outCount === 2) {
+                                const elapsed = Date.now() - startTime;
+                                // Should complete close to single delay since both can run together
+                                expect(elapsed).toBeLessThan(DELAY * 2);
+                                resolve();
+                            }
+                        }
+                    },
+                });
+            });
+        });
+
+        it('should enforce limit across separate stimulations (global gate)', async () => {
+            const input = collateral('input');
+            const workerOut = collateral('out');
+
+            const worker = neuron('worker', { out: workerOut })
+                .setConcurrency(1)
+                .dendrite({
+                    collateral: input,
+                    response: async (_p, axon) => {
+                        await new Promise(r => setTimeout(r, 40));
+                        return axon.out.createSignal();
+                    },
+                });
+
+            const cns = new CNS([worker]);
+
+            const start = Date.now();
+            let done = 0;
+            await new Promise<void>(resolve => {
+                const handler = (r: any) => {
+                    if (r.outputSignal?.collateral.type === 'out') {
+                        done++;
+                        if (done === 2) {
+                            const elapsed = Date.now() - start;
+                            expect(elapsed).toBeGreaterThanOrEqual(75);
+                            resolve();
+                        }
+                    }
+                };
+                cns.stimulate(input.createSignal(), { onResponse: handler });
+                cns.stimulate(input.createSignal(), { onResponse: handler });
+            });
+        });
+    });
+
     describe('SCC Tracking', () => {
         it('should correctly identify when neurons can be safely cleaned up', () => {
             const start = collateral<{ message: string }>('start');
@@ -773,9 +989,9 @@ describe('CNStra Core Tests', () => {
             });
 
             expect(cns.stronglyConnectedComponents).toHaveLength(3);
-            expect(cns.getSCCSetByNeuronId('A')?.size).toBe(1);
-            expect(cns.getSCCSetByNeuronId('B')?.size).toBe(1);
-            expect(cns.getSCCSetByNeuronId('C')?.size).toBe(1);
+            expect(cns.getSCCSetByNeuronName('A')?.size).toBe(1);
+            expect(cns.getSCCSetByNeuronName('B')?.size).toBe(1);
+            expect(cns.getSCCSetByNeuronName('C')?.size).toBe(1);
 
             const emptyActiveCounts = new Map<number, number>();
 

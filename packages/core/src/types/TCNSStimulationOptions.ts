@@ -2,7 +2,7 @@ import { ICNSStimulationContextStore } from '../interfaces/ICNSStimulationContex
 import { TCNSStimulationResponse } from './TCNSStimulationResponse';
 
 export type TCNSStimulationOptions<
-    TCollateralId extends string,
+    TCollateralType extends string,
     TInputPayload,
     TOutputPayload
 > = {
@@ -10,7 +10,7 @@ export type TCNSStimulationOptions<
     allowType?: (t: string) => boolean;
     onResponse?: (
         response: TCNSStimulationResponse<
-            TCollateralId,
+            TCollateralType,
             TInputPayload,
             TOutputPayload
         >

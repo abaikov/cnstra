@@ -7,11 +7,13 @@ import { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
 import { CNSStimulation } from './CNSStimulation';
 import { CNSCollateral } from './CNSCollateral';
 import { TCNSSignal } from './types/TCNSSignal';
+import { CNSTaskQueue } from './CNSTaskQueue';
+import { CNSInstanceNeuronQueue } from './CNSInstanceNeuronQueue';
 
 export class CNS<
-    TCollateralId extends string,
-    TNeuronId extends string,
-    TNeuron extends TCNSNeuron<any, TNeuronId, any, any, any, any, any>,
+    TCollateralType extends string,
+    TNeuronName extends string,
+    TNeuron extends TCNSNeuron<any, TNeuronName, any, any, any, any, any>,
     TDendrite extends TCNSDendrite<any, any, any, any, any, any>
 > implements ICNS<TNeuron, TDendrite>
 {
@@ -20,11 +22,11 @@ export class CNS<
      * Built once at construction time.
      */
     private subIndex = new Map<
-        TCollateralId,
+        TCollateralType,
         TCNSSubscriber<TNeuron, TDendrite>[]
     >();
 
-    private parentNeuronByCollateralId = new Map<TCollateralId, TNeuron>();
+    private parentNeuronByCollateralId = new Map<TCollateralType, TNeuron>();
 
     /**
      * Strongly Connected Components of the neuron graph.
@@ -47,14 +49,161 @@ export class CNS<
      */
     private sccAncestors: Map<number, Set<number>> = new Map();
 
+    /**
+     * Global per-neuron concurrency gates shared across all stimulations.
+     */
+    private readonly neuronGates = new Map<
+        TNeuronName,
+        { limit: number; active: number; waiters: (() => void)[] }
+    >();
+
+    /**
+     * Global task queue used by stimulation to schedule per-neuron gated work.
+     * Does not replace per-stimulation concurrency; only coordinates global per-neuron limits.
+     */
+    private readonly globalTaskQueue = new CNSTaskQueue();
+    protected readonly instanceNeuronQueue =
+        new CNSInstanceNeuronQueue<TNeuron>();
+
+    /**
+     * Global response listeners applied to every stimulation.
+     */
+    private readonly globalResponseListeners: Array<(r: any) => void> = [];
+
     constructor(
         protected readonly neurons: TNeuron[],
         public readonly options?: TCNSOptions
     ) {
+        this.validateUniqueIdentifiers();
         this.buildIndexes();
         if (this.options?.autoCleanupContexts) {
             this.buildSCC();
         }
+    }
+
+    /**
+     * Validate uniqueness constraints:
+     * - neuron names are unique and non-empty
+     * - axon collateral types are globally unique (single owner)
+     * - the same collateral instance cannot be owned by multiple neurons
+     * Throws aggregated error if violations are found.
+     */
+    private validateUniqueIdentifiers(): void {
+        const errors: string[] = [];
+        const seenNeuronNames = new Set<string>();
+
+        for (const neuron of this.neurons) {
+            const name = (neuron?.name as unknown as string) ?? '';
+            if (!name || typeof name !== 'string' || name.trim().length === 0) {
+                errors.push(`Neuron has empty or invalid name: "${name}"`);
+            } else if (seenNeuronNames.has(name)) {
+                errors.push(`Duplicate neuron name: "${name}"`);
+            } else {
+                seenNeuronNames.add(name);
+            }
+        }
+
+        if (errors.length > 0) {
+            throw new Error(
+                `[CNS] Topology uniqueness validation failed:\n - ` +
+                    errors.join(`\n - `)
+            );
+        }
+    }
+
+    public addResponseListener(listener: (response: any) => void): () => void {
+        this.globalResponseListeners.push(listener);
+        let active = true;
+        return () => {
+            if (!active) return;
+            active = false;
+            const idx = this.globalResponseListeners.indexOf(listener);
+            if (idx >= 0) this.globalResponseListeners.splice(idx, 1);
+        };
+    }
+
+    public wrapOnResponse<T>(
+        local?: (response: T) => void
+    ): (response: T) => void {
+        if (this.globalResponseListeners.length === 0 && !local) {
+            // No-op fast path
+            return () => {};
+        }
+        return (r: T) => {
+            try {
+                if (local) local(r);
+            } finally {
+                // Global listeners should always see the event even if local throws
+                for (let i = 0; i < this.globalResponseListeners.length; i++) {
+                    try {
+                        this.globalResponseListeners[i](r);
+                    } catch (e) {
+                        // Swallow to prevent breaking propagation chain
+                    }
+                }
+            }
+        };
+    }
+
+    protected runWithNeuronConcurrency(
+        neuron: TNeuron,
+        fn: () => (() => void) | Promise<() => void>
+    ): Promise<void> {
+        const limit = (neuron as any).concurrency as number | undefined;
+        if (limit === undefined || limit <= 0) {
+            return this.globalTaskQueue.enqueue(fn);
+        }
+
+        let gate = this.neuronGates.get(neuron.name as TNeuronName);
+        if (!gate) {
+            gate = { limit, active: 0, waiters: [] };
+            this.neuronGates.set(neuron.name as TNeuronName, gate);
+        } else {
+            gate.limit = limit;
+        }
+
+        const wrap = (cb: () => void) => {
+            return () => {
+                try {
+                    cb();
+                } finally {
+                    gate!.active = Math.max(0, gate!.active - 1);
+                    if (gate!.waiters.length > 0) {
+                        const next = gate!.waiters.shift()!;
+                        next();
+                    }
+                }
+            };
+        };
+
+        if (gate.active < gate.limit) {
+            gate.active++;
+            return this.globalTaskQueue.enqueue(() => {
+                const ret = fn();
+                if (ret && typeof (ret as any).then === 'function') {
+                    return (ret as Promise<() => void>).then(cb => wrap(cb));
+                }
+                return wrap(ret as () => void);
+            });
+        }
+
+        return new Promise<void>(resolve => {
+            const starter = () => {
+                gate!.active++;
+                this.globalTaskQueue
+                    .enqueue(() => {
+                        const ret = fn();
+                        if (ret && typeof (ret as any).then === 'function') {
+                            return (ret as Promise<() => void>).then(cb =>
+                                wrap(cb)
+                            );
+                        }
+                        return wrap(ret as () => void);
+                    })
+                    .then(resolve);
+            };
+            gate!.waiters.push(starter);
+        });
     }
 
     private buildIndexes() {
@@ -62,7 +211,7 @@ export class CNS<
         this.parentNeuronByCollateralId.clear();
         for (const neuron of this.neurons) {
             for (const dendrite of neuron.dendrites) {
-                const key = dendrite.collateral.id as TCollateralId;
+                const key = dendrite.collateral.type as TCollateralType;
                 const arr = this.subIndex.get(key) ?? [];
                 arr.push({ neuron, dendrite: dendrite as TDendrite });
                 this.subIndex.set(
@@ -72,7 +221,8 @@ export class CNS<
             }
             Object.values(neuron.axon).forEach(collateral => {
                 this.parentNeuronByCollateralId.set(
-                    (collateral as CNSCollateral<TCollateralId, unknown>).id,
+                    (collateral as CNSCollateral<TCollateralType, unknown>)
+                        .type,
                     neuron
                 );
             });
@@ -84,7 +234,7 @@ export class CNS<
      */
     private buildNeuronGraph(): Map<string, Set<string>> {
         const graph = new Map<string, Set<string>>();
-        const neuronIds = this.neurons.map(n => n.id);
+        const neuronIds = this.neurons.map(n => n.name);
 
         // Initialize graph
         for (const neuronId of neuronIds) {
@@ -98,18 +248,18 @@ export class CNS<
             // Check what collaterals this neuron can emit
             for (const axonKey in neuron.axon) {
                 const collateral = neuron.axon[axonKey];
-                const collateralId = collateral.id as TCollateralId;
+                const collateralType = collateral.type as TCollateralType;
 
                 // Find which neurons listen to this collateral
-                const subscribers = this.subIndex.get(collateralId);
+                const subscribers = this.subIndex.get(collateralType);
                 if (subscribers) {
                     for (const { neuron: targetNeuron } of subscribers) {
-                        reachableNeurons.add(targetNeuron.id);
+                        reachableNeurons.add(targetNeuron.name);
                     }
                 }
             }
 
-            graph.set(neuron.id, reachableNeurons);
+            graph.set(neuron.name, reachableNeurons);
         }
 
         return graph;
@@ -120,7 +270,7 @@ export class CNS<
      */
     private buildSCC(): void {
         const graph = this.buildNeuronGraph();
-        const neuronIds = this.neurons.map(n => n.id);
+        const neuronIds = this.neurons.map(n => n.name);
 
         // Tarjan's algorithm for SCC
         const index = new Map<string, number>();
@@ -294,8 +444,8 @@ export class CNS<
      * Returns true if the neuron is in a strongly connected component with more than one member,
      * or if it's in a single-member SCC that can reach itself.
      */
-    public getSCCSetByNeuronId(neuronId: string) {
-        const sccIndex = this.neuronToSCC.get(neuronId);
+    public getSCCSetByNeuronName(neuronName: string) {
+        const sccIndex = this.neuronToSCC.get(neuronName);
 
         if (sccIndex === undefined) return;
 
@@ -305,8 +455,8 @@ export class CNS<
     /**
      * Get the SCC index for a given neuron ID
      */
-    public getSccIndexByNeuronId(neuronId: string): number | undefined {
-        return this.neuronToSCC.get(neuronId);
+    public getSccIndexByNeuronName(neuronName: string): number | undefined {
+        return this.neuronToSCC.get(neuronName);
     }
 
     /**
@@ -314,10 +464,10 @@ export class CNS<
      * This is the core logic for safe context cleanup.
      */
     public canNeuronBeGuaranteedDone(
-        neuronId: string,
+        neuronName: string,
         activeSccCounts: Map<number, number>
     ): boolean {
-        const sccIndex = this.neuronToSCC.get(neuronId);
+        const sccIndex = this.neuronToSCC.get(neuronName);
         if (sccIndex === undefined) return true; // Neuron not in graph
 
         // Check if this SCC is still active
@@ -344,32 +494,36 @@ export class CNS<
         return true; // Neuron is guaranteed to be done
     }
 
-    public getParentNeuronByCollateralId(collateralId: TCollateralId) {
-        return this.parentNeuronByCollateralId.get(collateralId);
+    public getParentNeuronByCollateralId(collateralType: TCollateralType) {
+        return this.parentNeuronByCollateralId.get(collateralType);
     }
 
     public getSubscribers(
-        collateralId: TCollateralId
+        collateralType: TCollateralType
     ): TCNSSubscriber<TNeuron, TDendrite>[] {
-        return this.subIndex.get(collateralId) ?? [];
+        return this.subIndex.get(collateralType) ?? [];
     }
 
     public stimulate<TInputPayload extends TOutputPayload, TOutputPayload>(
-        signal: TCNSSignal<TCollateralId, TInputPayload>,
+        signal: TCNSSignal<TCollateralType, TInputPayload>,
         options?: TCNSStimulationOptions<
-            TCollateralId,
+            TCollateralType,
             TInputPayload,
             TOutputPayload
         >
     ) {
+        const wrapped = this.wrapOnResponse(options?.onResponse);
         const stimulation = new CNSStimulation<
-            TCollateralId,
-            TNeuronId,
+            TCollateralType,
+            TNeuronName,
             TNeuron,
             TDendrite,
             TInputPayload,
             TOutputPayload
-        >(this, options);
+        >(this, this.instanceNeuronQueue, {
+            ...options,
+            onResponse: wrapped,
+        });
         stimulation.responseToSignal(signal);
     }
 }
