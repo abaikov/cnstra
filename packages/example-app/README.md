@@ -6,6 +6,8 @@
 - ✅ **Example CNS App** with DevTools integration
 - ✅ **Real-time monitoring** of CNS signals and topology
 
+📚 **[Full Documentation](https://cnstra.org/)** | [DevTools Guide](https://cnstra.org/docs/examples/devtools) | [Backend Examples](https://cnstra.org/docs/examples/backend-queues)
+
 ## What This Demonstrates
 
 ### **🎯 CNS Application**
