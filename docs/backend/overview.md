@@ -17,4 +17,4 @@ Why CNStra on the backend:
 - Backpressure via queue concurrency and per-neuron gates
 - Type-safe boundaries and testable units
 
-Pair CNStra with a message queue (BullMQ, RabbitMQ, SQS) to trigger runs and fan-out work. See [Integrations](/integrations/bullmq).
+Pair CNStra with a message queue (BullMQ, RabbitMQ, SQS) to trigger runs and fan-out work. See [Integrations](/docs/integrations/bullmq).

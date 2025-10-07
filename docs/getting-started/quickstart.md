@@ -24,7 +24,7 @@ console.log(result); // => "CNS: hello"
 ```
 
 Next:
-- Understand the architecture: [Concepts → Architecture](/concepts/architecture)
-- Explore core primitives: [Concepts → Core Primitives](/concepts/core-primitives)
-- Use in React: [Guides → React](/guides/react)
-- Devtools: [Guides → Devtools](/guides/devtools)
+- Understand the architecture: [Concepts → Architecture](/docs/concepts/architecture)
+- Explore core primitives: [Concepts → Core Primitives](/docs/concepts/core-primitives)
+- Use in React: [Guides → React](/docs/guides/react)
+- Devtools: [Guides → Devtools](/docs/guides/devtools)

@@ -2,7 +2,6 @@
 id: intro
 title: Introduction
 sidebar_label: Introduction
-slug: /
 ---
 
 Central Nervous System (CNS) for apps.

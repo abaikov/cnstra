@@ -14,4 +14,4 @@ CNStra models your app as a typed neuron graph. You explicitly start a run with 
 - Backpressure & concurrency gates
 - Saga-like orchestration via explicit branches and abort
 
-See also: [Quick Start](/core/quick-start), [API](/core/api), [Stimulation Options](/core/stimulation-options).
+See also: [Quick Start](/docs/core/quick-start), [API](/docs/core/api), [Stimulation Options](/docs/core/stimulation-options).
