@@ -21,7 +21,7 @@ export default function Home(): JSX.Element {
                     <div>
                         <Link
                             className="button button--secondary button--lg"
-                            to="/docs/getting-started/quickstart"
+                            to="/docs/core/quick-start"
                         >
                             Get Started
                         </Link>

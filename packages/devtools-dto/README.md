@@ -2,6 +2,8 @@
 
 Data Transfer Objects (DTOs) for the CNStra DevTools protocol.
 
+📚 **[Full Documentation](https://cnstra.org/)** | [DevTools Guide](https://cnstra.org/docs/examples/devtools)
+
 ## Data Model Overview
 
 The CNStra DevTools uses a normalized data model where neural network relationships are represented through separate entities rather than embedded relationships.

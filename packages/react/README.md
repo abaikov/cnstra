@@ -2,6 +2,8 @@
 
 React bindings for CNS neural network-inspired event flow system.
 
+📚 **[Full Documentation](https://cnstra.org/)** | [React Integration Guide](https://cnstra.org/docs/examples/react) | [Frontend with OIMDB](https://cnstra.org/docs/frontend/oimdb)
+
 ## Installation
 
 ```bash

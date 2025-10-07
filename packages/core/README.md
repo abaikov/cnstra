@@ -2,6 +2,8 @@
 
 **Graph-routed, type-safe orchestration for reactive apps — no global event bus.**
 
+📚 **[Full Documentation](https://cnstra.org/)** | [Quick Start](https://cnstra.org/docs/core/quick-start) | [API Reference](https://cnstra.org/docs/core/api) | [Recipes](https://cnstra.org/docs/recipes/cancel)
+
 ## 🧠 What is CNStra?
 
 **CNStra (Central Nervous System Orchestrator)** models your app as a **typed neuron graph**.  
@@ -338,33 +340,6 @@ const cns = new CNS([step1, step2]);
 
 await cns.stimulate(input.createSignal({ value: 5 }));
 // Flows: input(5) → middle(10) → output("Final: 10")
-```
-
-### Fan-out Processing
-
-```typescript
-const trigger = collateral<{ data: string }>('trigger');
-const branch1 = collateral<{ result: string }>('branch1');
-const branch2 = collateral<{ result: string }>('branch2');
-
-const processor1 = neuron('proc1', { branch1 }).dendrite({
-  collateral: trigger,
-  response: (payload, axon) => {
-    return axon.branch1.createSignal({ result: `A-${payload.data}` });
-  }
-});
-
-const processor2 = neuron('proc2', { branch2 }).dendrite({
-  collateral: trigger,
-  response: (payload, axon) => {
-    return axon.branch2.createSignal({ result: `B-${payload.data}` });
-  }
-});
-
-const cns = new CNS([processor1, processor2]);
-
-await cns.stimulate(trigger.createSignal({ data: 'test' }));
-// Flows: trigger("test") → [branch1("A-test"), branch2("B-test")]
 ```
 
 ### Context-Aware Processing

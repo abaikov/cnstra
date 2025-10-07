@@ -1,8 +1,10 @@
 ---
 id: ierg
-title: IERG (Inverted Explicit Reactive Graph)
+title: IERG - Inverted Explicit Reactive Graph Architecture
 sidebar_label: IERG
 slug: /concepts/ierg
+description: Learn about IERG (Inverted Explicit Reactive Graph), CNStra's architectural approach. Understand deterministic state machines, explicit flow control, SOLID/SRP principles, and how IERG differs from Flux, Redux, and event-driven architectures.
+keywords: [IERG, inverted explicit reactive graph, architecture, design pattern, state machine architecture, explicit flow control, deterministic orchestration, SOLID principles, SRP, single responsibility, Redux comparison, Flux comparison, event-driven vs explicit, saga pattern, state machine pattern, graph-based architecture]
 ---
 
 IERG stands for Inverted Explicit Reactive Graph. It’s the core execution model of CNStra.

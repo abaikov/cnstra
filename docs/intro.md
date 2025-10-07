@@ -1,7 +1,9 @@
 ---
 id: intro
-title: Introduction
+title: Introduction to CNStra - Type-Safe Orchestration Library
 sidebar_label: Introduction
+description: CNStra is a zero-dependency state machine and orchestration library for JavaScript/TypeScript. Learn about IERG (Inverted Explicit Reactive Graph), deterministic workflows, and SOLID/SRP principles for React and backend applications.
+keywords: [introduction, getting started, state machine basics, orchestration tutorial, IERG, reactive graph, deterministic state machine, neuron model, signal flow, type-safe orchestration, JavaScript state management, TypeScript orchestration]
 ---
 
 Central Nervous System (CNS) for apps.

@@ -1,8 +1,10 @@
 ---
 id: saga
-title: Saga-like Orchestration
+title: Saga Pattern Implementation with CNStra - Long-Running Workflows
 sidebar_label: Saga
 slug: /recipes/saga
+description: Implement saga pattern with CNStra for long-running, distributed workflows. Learn short-lived vs long-lived sagas, compensation logic, error handling, and external event triggers for Node.js backends and microservices.
+keywords: [saga pattern, saga orchestration, distributed saga, compensation logic, long-running workflows, distributed transactions, microservices saga, event-driven saga, workflow coordination, process manager, choreography vs orchestration, eventual consistency, rollback logic, error recovery, event sourcing saga]
 ---
 
 Model long-running, multi-step reactions with explicit branches and cancel hooks.

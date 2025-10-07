@@ -55,10 +55,14 @@ html[data-theme='dark'] {
 }
 
 body {
+  font-family: var(--ifm-font-family-base);
   font-smooth: never;
-
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.markdown, .navbar, .footer, .menu, .pagination, .tabs, .table, .tabs__item, .navbar__title, .menu__link {
+  font-family: var(--ifm-font-family-base);
 }
 
 .navbar {

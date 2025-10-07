@@ -1,8 +1,10 @@
 ---
 id: api
-title: API
+title: CNStra API Reference - Neurons, Signals, Collaterals, Context
 sidebar_label: API
 slug: /core/api
+description: Complete CNStra API reference. Learn neuron, collateral, signal, dendrite, axon, context, stimulation APIs. Type-safe orchestration primitives for JavaScript/TypeScript state machines.
+keywords: [API reference, API documentation, neuron API, signal API, collateral API, dendrite API, axon API, context API, stimulation API, TypeScript API, type-safe API, function reference, method reference, interface reference]
 ---
 
 ### `collateral<T>(id: string)`
@@ -66,6 +68,17 @@ withCtx().neuron('order-mailer', {})
     cancelled: (payload) => { /* ... */ },
   });
 ```
+
+### `neuron.setConcurrency(n: number | undefined)`
+Set per-neuron global concurrency limit (shared across all parallel stimulations).
+
+```ts
+const worker = neuron('worker', { out })
+  .setConcurrency(2) // max 2 parallel executions across all runs
+  .dendrite({ collateral: task, response: async (p, axon) => { /* ... */ } });
+```
+
+This limits how many concurrent executions of this neuron's dendrites can run at the same time, even across different `stimulate()` calls. Useful for rate-limiting external APIs or heavy I/O operations.
 
 ### `CNS`
 Main orchestrator. `new CNS(neurons, options?)`

@@ -1,8 +1,10 @@
 ---
 id: oimdb
-title: CNStra & OIMDB
+title: React State Management with CNStra & OIMDB - Redux Alternative
 sidebar_label: CNStra & OIMDB
 slug: /frontend/oimdb
+description: Learn how CNStra + OIMDB provides deterministic React state management. A performant alternative to Redux, MobX, Zustand. Type-safe, derived state, reactive updates, SOLID/SRP by design. Perfect for complex React applications.
+keywords: [React state management, Redux alternative, MobX alternative, Zustand alternative, Recoil alternative, Jotai alternative, React hooks, derived state, reactive state, OIMDB, in-memory database, frontend orchestration, React best practices, type-safe React state, deterministic React, performance optimization, state synchronization, React state machine]
 ---
 
 CNStra is an orchestration layer for state, replacing reducers, slices, thunks, and sagas with a typed neuron graph. OIMDB is a reactive in‑memory DB with indexed queries that is orders of magnitude faster than copying whole state trees on each change — but it requires a proper orchestrator. CNStra provides that orchestration.
