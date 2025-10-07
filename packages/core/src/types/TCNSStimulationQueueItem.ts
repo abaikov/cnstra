@@ -4,12 +4,12 @@ import { TCNSNeuron } from './TCNSNeuron';
 import { TCNSDendrite } from './TCNSDendrite';
 
 export type TCNSStimulationQueueItem<
-    TCollateralType extends string,
+    TCollateralName extends string,
     TNeuronName extends string,
     TNeuron extends TCNSNeuron<
         any,
         TNeuronName,
-        TCollateralType,
+        TCollateralName,
         any,
         any,
         any,
@@ -19,5 +19,5 @@ export type TCNSStimulationQueueItem<
 > = {
     neuronId: TNeuronName;
     subscriber: TCNSSubscriber<TNeuron, TDendrite>;
-    inputSignal?: TCNSSignal<TCollateralType, any>;
+    inputSignal?: TCNSSignal<TCollateralName, any>;
 };

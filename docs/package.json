@@ -1,0 +1,27 @@
+{
+  "name": "cnstra-docs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "docusaurus": "docusaurus",
+    "start": "docusaurus start",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "format": "prettier --write \"**/*.{md,mdx,ts,tsx,css,json}\""
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.5.2",
+    "@docusaurus/preset-classic": "^3.5.2",
+    "clsx": "^2.1.1",
+    "prism-react-renderer": "^2.3.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "docusaurus-plugin-remote-content": "^4.0.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.6.3"
+  }
+}

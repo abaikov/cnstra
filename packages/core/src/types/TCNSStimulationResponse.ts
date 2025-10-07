@@ -2,12 +2,12 @@ import { ICNSStimulationContextStore } from '../interfaces/ICNSStimulationContex
 import { TCNSSignal } from './TCNSSignal';
 
 export type TCNSStimulationResponse<
-    TCollateralType extends string,
+    TCollateralName extends string,
     TInputPayload,
     TOutputPayload
 > = {
-    inputSignal?: TCNSSignal<TCollateralType, TInputPayload>;
-    outputSignal?: TCNSSignal<TCollateralType, TOutputPayload>;
+    inputSignal?: TCNSSignal<TCollateralName, TInputPayload>;
+    outputSignal?: TCNSSignal<TCollateralName, TOutputPayload>;
     ctx: ICNSStimulationContextStore;
     // Current queue length
     queueLength: number;

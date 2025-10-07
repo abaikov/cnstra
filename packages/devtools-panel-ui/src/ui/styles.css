@@ -1,0 +1,18 @@
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+
+  color: var(--text-primary);
+  background: var(--bg-primary);
+
+  font-family: var(--font-primary);
+  font-smooth: never;
+  /* Pixel rendering */
+
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  image-rendering: pixelated;
+}
+
+

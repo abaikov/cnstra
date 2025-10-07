@@ -1,0 +1,279 @@
+/* CNS Graph specific styles */
+.cns-graph {
+  position: relative;
+
+  overflow: hidden;
+
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+}
+
+.cns-graph canvas {
+  display: block;
+
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* Neuron Details Panel specific styles */
+.neuron-details-panel {
+  font-family: var(--font-primary);
+}
+
+.neuron-details-panel h2 {
+  animation: decay-glow 3s infinite;
+}
+
+.neuron-details-panel code {
+  padding: 2px 4px;
+
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-xs);
+}
+
+.neuron-details-panel strong {
+  color: var(--text-accent);
+  text-shadow: 0 0 2px var(--infection-red);
+}
+
+/* Scrollbar for neuron details panel */
+.neuron-details-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.neuron-details-panel::-webkit-scrollbar-track {
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+}
+
+.neuron-details-panel::-webkit-scrollbar-thumb {
+  border: 1px solid var(--border-accent);
+  background: var(--flesh-medium);
+}
+
+.neuron-details-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--flesh-infected);
+}
+
+/* Animation for panel slide-in */
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+
+    opacity: 1;
+  }
+}
+
+.neuron-details-panel {
+  animation: slideInFromRight 0.3s ease-out;
+}
+
+/* Graph legend styles */
+.cns-graph-legend {
+  position: absolute;
+  z-index: 100;
+  top: var(--spacing-md);
+  left: var(--spacing-md);
+
+  padding: var(--spacing-md);
+
+  border: 1px solid var(--border-infected);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  box-shadow: 0 0 10px var(--shadow-infection);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-xs);
+}
+
+.cns-graph-legend h3 {
+  margin: 0 0 var(--spacing-sm) 0;
+
+  color: var(--infection-red);
+  text-shadow: 0 0 3px var(--infection-red);
+
+  font-size: var(--font-size-sm);
+}
+
+.cns-graph-legend-item {
+  display: flex;
+  align-items: center;
+
+  margin-bottom: var(--spacing-xs);
+
+  color: var(--text-secondary);
+
+  gap: var(--spacing-sm);
+}
+
+.cns-graph-legend-color {
+  width: 12px;
+  height: 12px;
+
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+}
+
+/* Graph controls */
+.cns-graph-controls {
+  position: absolute;
+  z-index: 100;
+  bottom: var(--spacing-md);
+  left: var(--spacing-md);
+
+  display: flex;
+
+  gap: var(--spacing-sm);
+}
+
+.cns-graph-control-btn {
+  padding: var(--spacing-xs);
+
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  color: var(--text-primary);
+  border: 2px solid var(--border-infected);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-xs);
+}
+
+.cns-graph-control-btn:hover {
+  background: var(--flesh-medium);
+  box-shadow: 0 0 5px var(--shadow-infection);
+}
+
+.cns-graph-control-btn:active {
+  transform: translateY(1px);
+}
+
+/* Neuron type indicators */
+.neuron-type-input {
+  border: 2px solid var(--infection-green) !important;
+}
+
+.neuron-type-output {
+  border: 2px solid var(--infection-red) !important;
+}
+
+.neuron-type-processing {
+  border: 1px solid var(--border-accent) !important;
+}
+
+/* Activity level indicators */
+.activity-inactive { color: var(--bone-dark); }
+.activity-low { color: var(--flesh-medium); }
+.activity-medium { color: var(--flesh-light); }
+.activity-high { color: var(--pus-yellow); }
+.activity-very-high { color: var(--pus-green); }
+.activity-critical {
+  animation: flicker 1s infinite;
+
+  color: var(--infection-green);
+  text-shadow: 0 0 5px var(--infection-green);
+}
+
+/* Scroll indicators */
+.scroll-indicator {
+    cursor: default;
+    user-select: none;
+    animation: scrollPulse 2s ease-in-out infinite;
+
+    font-family: 'Px437_IBM_Conv', monospace;
+    font-weight: bold;
+
+    filter: drop-shadow(0 0 2px var(--color-decay-dark));
+}
+
+@keyframes scrollPulse {
+    0%, 100% {transform: scale(1);  opacity: 0.6; }
+    50% {transform: scale(1.1);  opacity: 1; }
+}
+
+.scroll-indicator.scroll-up,
+.scroll-indicator.scroll-down {
+    left: 50% !important;
+
+    transform: translateX(-50%) !important;
+}
+
+.scroll-indicator.scroll-left,
+.scroll-indicator.scroll-right {
+    top: 50% !important;
+
+    transform: translateY(-50%) !important;
+}
+
+/* Graph overlay improvements */
+.cns-topology-overlay {
+  padding: var(--spacing-md);
+
+  border: 1px solid var(--border-infected);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  box-shadow: 0 0 10px var(--shadow-infection);
+
+  backdrop-filter: blur(2px);
+}
+
+/* Clear selection button */
+.clear-selection-btn {
+  position: absolute;
+  z-index: 999;
+  top: var(--spacing-xl);
+  right: var(--spacing-xl);
+
+  padding: var(--spacing-sm);
+
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  color: var(--text-primary);
+  border: 2px solid var(--border-infected);
+  border-radius: var(--radius-sm);
+  background: var(--flesh-medium);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-xs);
+}
+
+.clear-selection-btn:hover {
+  transform: translateY(-1px);
+
+  background: var(--flesh-infected);
+  box-shadow: 0 0 8px var(--shadow-infection);
+}
+
+.clear-selection-btn:active {
+  transform: translateY(0);
+}
+
+/* Empty graph placeholder */
+.empty-graph-placeholder {
+  font-family: var(--font-primary);
+}
+
+.empty-graph-placeholder h2 {
+  animation: decay-glow 3s infinite;
+}
+
+.empty-graph-placeholder .pulse-infection {
+  animation: pulse-infection 2s infinite;
+}
+
+.empty-graph-placeholder .flicker {
+  animation: flicker 3s infinite;
+}

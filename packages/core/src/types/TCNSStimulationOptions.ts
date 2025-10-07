@@ -2,15 +2,15 @@ import { ICNSStimulationContextStore } from '../interfaces/ICNSStimulationContex
 import { TCNSStimulationResponse } from './TCNSStimulationResponse';
 
 export type TCNSStimulationOptions<
-    TCollateralType extends string,
+    TCollateralName extends string,
     TInputPayload,
     TOutputPayload
 > = {
     maxNeuronHops?: number;
-    allowType?: (t: string) => boolean;
+    allowName?: (t: string) => boolean;
     onResponse?: (
         response: TCNSStimulationResponse<
-            TCollateralType,
+            TCollateralName,
             TInputPayload,
             TOutputPayload
         >

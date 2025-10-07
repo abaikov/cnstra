@@ -135,10 +135,10 @@ The package is fully typed and supports generic types for your CNS instances:
 import { CNSProvider, useCNS } from '@cnstra/react';
 
 // With custom types
-const cns = new CNS<MyCollateralId, MyNeuronId, MyNeuron, MyDendrite>([/* neurons */]);
+const cns = new CNS<MyCollateralName, MyNeuronId, MyNeuron, MyDendrite>([/* neurons */]);
 
 function MyComponent() {
-  const cns = useCNS<MyCollateralId, MyNeuronId, MyNeuron, MyDendrite>();
+  const cns = useCNS<MyCollateralName, MyNeuronId, MyNeuron, MyDendrite>();
   // cns is fully typed
 }
 ```

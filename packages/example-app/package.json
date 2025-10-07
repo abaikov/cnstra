@@ -1,0 +1,39 @@
+{
+  "name": "@cnstra/example-app",
+  "version": "1.0.0",
+  "description": "Example application demonstrating CNStra DevTools integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:ui": "npm run build --prefix ../devtools-panel-ui",
+    "watch:ui": "npm run watch --prefix ../devtools-panel-ui",
+    "ensure:ui": "sh -c '[ -d ../devtools-panel-ui/dist ] || npm run build --prefix ../devtools-panel-ui'",
+    "predev": "npm run ensure:ui && tsc",
+    "dev": "concurrently \"PORT=${PORT:-8080} node dist/index.js\" \"npm run watch:ui\"",
+    "prestart": "npm run ensure:ui && tsc",
+    "start": "PORT=${PORT:-8080} node dist/index.js",
+    "start:server": "node dist/server.js",
+    "start:standalone": "node dist/standalone-demo.js",
+    "start:all": "concurrently \"npm run start:server\" \"npm run start\"",
+    "demo:standalone": "concurrently \"npm run start:standalone\" \"npm run start\"",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@cnstra/core": "file:../core",
+    "@cnstra/devtools": "file:../devtools",
+    "@cnstra/devtools-transport-ws": "file:../devtools-transport-ws",
+    "@cnstra/devtools-server": "file:../devtools-server",
+    "@cnstra/devtools-server-repository-in-memory": "file:../devtools-server-repository-in-memory",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.10",
+    "concurrently": "^8.2.2"
+  }
+}

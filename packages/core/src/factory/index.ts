@@ -2,17 +2,31 @@ import { CNSCollateral } from '../CNSCollateral';
 import { TCNSAxon } from '../types/TCNSAxon';
 import { TCNSDendrite } from '../types/TCNSDendrite';
 
-export const collateral = <TPayload = undefined, TType extends string = string>(
-    type: TType
-) => new CNSCollateral<TType, TPayload>(type);
+export const collateral = <TPayload = undefined, TName extends string = string>(
+    name: TName
+) => new CNSCollateral<TName, TPayload>(name);
+
+// Helper types to extract collateral Name/Payload for a given key from a heterogenous axon-like object
+type PayloadOf<TAxon, K extends keyof TAxon> = TAxon[K] extends CNSCollateral<
+    any,
+    infer P
+>
+    ? P
+    : never;
+type NameOf<TAxon, K extends keyof TAxon> = TAxon[K] extends CNSCollateral<
+    infer N,
+    any
+>
+    ? N
+    : never;
 
 type InterNeuronAPI<
     TContextValue,
     TNameType extends string,
-    TReceiverCollateralType extends string,
+    TReceiverCollateralName extends string,
     TReceiverAxonCollateralPayload,
     TAxonType extends TCNSAxon<
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload
     >
 > = {
@@ -23,7 +37,7 @@ type InterNeuronAPI<
         TContextValue,
         string,
         unknown,
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload,
         TAxonType
     >[];
@@ -32,27 +46,27 @@ type InterNeuronAPI<
     ) => InterNeuronAPI<
         TContextValue,
         TNameType,
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload,
         TAxonType
     >;
-    bind: <TFollowAxon extends TCNSAxon<string, any>>(
+    bind: <TFollowAxon extends Record<string, CNSCollateral<any, any>>>(
         axon: TFollowAxon,
         dendrites: {
             [K in keyof TFollowAxon]:
                 | TCNSDendrite<
                       TContextValue,
-                      K & string,
-                      TFollowAxon extends TCNSAxon<any, infer P> ? P : never,
-                      TReceiverCollateralType,
+                      NameOf<TFollowAxon, K> & string,
+                      PayloadOf<TFollowAxon, K>,
+                      TReceiverCollateralName,
                       TReceiverAxonCollateralPayload,
                       TAxonType
                   >
                 | TCNSDendrite<
                       TContextValue,
-                      K & string,
-                      TFollowAxon extends TCNSAxon<any, infer P> ? P : never,
-                      TReceiverCollateralType,
+                      NameOf<TFollowAxon, K> & string,
+                      PayloadOf<TFollowAxon, K>,
+                      TReceiverCollateralName,
                       TReceiverAxonCollateralPayload,
                       TAxonType
                   >['response'];
@@ -60,26 +74,26 @@ type InterNeuronAPI<
     ) => InterNeuronAPI<
         TContextValue,
         TNameType,
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload,
         TAxonType
     >;
     dendrite: <
-        TSenderExactCollateralType extends string,
+        TSenderExactCollateralName extends string,
         TSenderExactAxonCollateralPayload
     >(
         s: TCNSDendrite<
             TContextValue,
-            TSenderExactCollateralType,
+            TSenderExactCollateralName,
             TSenderExactAxonCollateralPayload,
-            TReceiverCollateralType,
+            TReceiverCollateralName,
             TReceiverAxonCollateralPayload,
             TAxonType
         >
     ) => InterNeuronAPI<
         TContextValue,
         TNameType,
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload,
         TAxonType
     >;
@@ -89,37 +103,40 @@ type InterNeuronAPI<
 export const neuron = <
     TContextValue,
     TNameType extends string,
-    TReceiverCollateralType extends string,
-    TReceiverAxonCollateralPayload,
-    TAxonType extends TCNSAxon<
-        TReceiverCollateralType,
-        TReceiverAxonCollateralPayload
+    TProvidedAxon extends Record<string, CNSCollateral<any, any>>,
+    TReceiverCollateralName extends keyof TProvidedAxon &
+        string = keyof TProvidedAxon & string,
+    TReceiverAxonCollateralPayload = TProvidedAxon[keyof TProvidedAxon] extends CNSCollateral<
+        any,
+        infer P
     >
+        ? P
+        : never
 >(
     name: TNameType,
-    axon: TAxonType
+    axon: TProvidedAxon
 ): InterNeuronAPI<
     TContextValue,
     TNameType,
-    TReceiverCollateralType,
+    TReceiverCollateralName,
     TReceiverAxonCollateralPayload,
-    TAxonType
+    TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload>
 > => {
     const dendrites: TCNSDendrite<
         TContextValue,
         string,
         unknown,
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload,
-        TAxonType
+        TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload>
     >[] = [];
 
     const api: InterNeuronAPI<
         TContextValue,
         TNameType,
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload,
-        TAxonType
+        TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload>
     > = {
         setConcurrency: (n: number | undefined) => {
             api.concurrency = n;
@@ -150,25 +167,31 @@ export const neuron = <
         }) as InterNeuronAPI<
             TContextValue,
             TNameType,
-            TReceiverCollateralType,
+            TReceiverCollateralName,
             TReceiverAxonCollateralPayload,
-            TAxonType
+            TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload>
         >['bind'],
-        axon,
+        axon: axon as unknown as TCNSAxon<
+            TReceiverCollateralName,
+            TReceiverAxonCollateralPayload
+        >,
         name,
         concurrency: undefined,
         dendrites,
         dendrite<
-            TSenderExactCollateralType extends string,
+            TSenderExactCollateralName extends string,
             TSenderExactAxonCollateralPayload
         >(
             s: TCNSDendrite<
                 TContextValue,
-                TSenderExactCollateralType,
+                TSenderExactCollateralName,
                 TSenderExactAxonCollateralPayload,
-                TReceiverCollateralType,
+                TReceiverCollateralName,
                 TReceiverAxonCollateralPayload,
-                TAxonType
+                TCNSAxon<
+                    TReceiverCollateralName,
+                    TReceiverAxonCollateralPayload
+                >
             >
         ) {
             dendrites.push(
@@ -176,9 +199,12 @@ export const neuron = <
                     TContextValue,
                     string,
                     unknown,
-                    TReceiverCollateralType,
+                    TReceiverCollateralName,
                     TReceiverAxonCollateralPayload,
-                    TAxonType
+                    TCNSAxon<
+                        TReceiverCollateralName,
+                        TReceiverAxonCollateralPayload
+                    >
                 >
             );
             return api; // keep full API for chaining
@@ -191,49 +217,11 @@ export const neuron = <
 export const withCtx = <TContextValue>() => ({
     neuron: <
         TNameType extends string,
-        TReceiverCollateralType extends string,
-        TReceiverAxonCollateralPayload,
-        TAxonType extends TCNSAxon<
-            TReceiverCollateralType,
-            TReceiverAxonCollateralPayload
-        >
+        TProvidedAxon extends Record<string, CNSCollateral<any, any>>
     >(
         name: TNameType,
-        axon: TAxonType
+        axon: TProvidedAxon
     ) => {
-        return neuron<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralType,
-            TReceiverAxonCollateralPayload,
-            TAxonType
-        >(name, axon);
+        return neuron<TContextValue, TNameType, TProvidedAxon>(name, axon);
     },
 });
-
-// Example usage to verify type inference
-const fa = {
-    test1: new CNSCollateral('test1'),
-    test2: new CNSCollateral('test2'),
-};
-
-const fb = {
-    test4: collateral<{ test44: string }, 'test4'>('test4'),
-    test5: collateral<{ test44: string }, 'test5'>('test5'),
-};
-
-withCtx()
-    .neuron('test', {
-        test1: fa.test1,
-        test2: fa.test2,
-    })
-    .bind(fb, {
-        test4: (payload, axon) => {
-            const ok: string = payload.test44;
-            return axon.test1.createSignal(ok);
-        },
-        test5: (payload, axon) => {
-            const ok2: string = payload.test44;
-            return axon.test2.createSignal(ok2);
-        },
-    });

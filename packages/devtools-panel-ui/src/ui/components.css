@@ -1,0 +1,404 @@
+/* === ROTTING FLESH STYLE COMPONENTS === */
+
+/* Infection buttons */
+.btn-infected {
+  padding: var(--spacing-sm) var(--spacing-md);
+
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+
+  color: var(--text-primary);
+  border: 2px solid var(--border-infected);
+  background: var(--flesh-medium);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-sm);
+}
+
+.btn-infected:hover {
+  transform: translateY(-1px);
+
+  background: var(--flesh-infected);
+  box-shadow: 0 0 10px var(--shadow-infection);
+}
+
+.btn-infected:active {
+  transform: translateY(0);
+
+  box-shadow: 0 0 5px var(--shadow-infection);
+}
+
+/* Decay cards */
+.card-decay {
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-md);
+
+  transition: all var(--transition-medium);
+
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  box-shadow: 
+    0 2px 4px var(--shadow-dark),
+    inset 0 1px 0 rgba(163, 157, 150, 0.1);
+}
+
+.card-decay:hover {
+  transform: translateY(-2px);
+
+  border-color: var(--border-infected);
+  box-shadow: 
+    0 4px 8px var(--shadow-dark),
+    0 0 10px var(--shadow-infection);
+}
+
+/* Infection panels */
+.panel-infection {
+  padding: var(--spacing-lg);
+
+  border: 2px solid var(--border-infected);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  box-shadow: 
+    inset 0 0 10px var(--shadow-blood),
+    0 0 20px var(--shadow-dark);
+}
+
+/* Decay headings */
+.heading-decay {
+  margin-bottom: var(--spacing-md);
+
+  letter-spacing: 2px;
+  text-transform: uppercase;
+
+  color: var(--infection-red);
+  text-shadow: 0 0 5px var(--infection-red);
+
+  font-family: var(--font-primary);
+}
+
+.heading-decay.lg {
+  font-size: var(--font-size-2xl);
+}
+
+.heading-decay.md {
+  font-size: var(--font-size-lg);
+}
+
+.heading-decay.sm {
+  font-size: var(--font-size-base);
+}
+
+/* Infection text */
+.text-infected {
+  color: var(--text-accent);
+  text-shadow: 0 0 3px var(--infection-red);
+}
+
+.text-pus-green {
+  color: var(--text-success);
+  text-shadow: 0 0 3px var(--infection-green);
+}
+
+.text-pus-yellow {
+  color: var(--text-warning);
+  text-shadow: 0 0 3px var(--infection-yellow);
+}
+
+/* Status indicators */
+.status-healthy {
+  color: var(--bone-light);
+  text-shadow: 0 0 3px var(--bone-light);
+}
+
+.status-infected {
+  animation: pulse-infection var(--pulse-duration) infinite;
+
+  color: var(--infection-red);
+  text-shadow: 0 0 5px var(--infection-red);
+}
+
+.status-critical {
+  animation: decay-glow 2s infinite;
+
+  color: var(--infection-red);
+  text-shadow: 0 0 8px var(--infection-red);
+}
+
+/* Decay dividers */
+.divider-decay {
+  height: 2px;
+  margin: var(--spacing-lg) 0;
+
+  border: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-infected) 20%,
+    var(--flesh-infected) 50%,
+    var(--border-infected) 80%,
+    transparent
+  );
+}
+
+/* Infection input fields */
+.input-infected {
+  padding: var(--spacing-sm);
+
+  transition: all var(--transition-fast);
+
+  color: var(--text-primary);
+  border: 2px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-sm);
+}
+
+.input-infected:focus {
+  border-color: var(--border-infected);
+  outline: none;
+  background: var(--bg-card);
+  box-shadow: 0 0 10px var(--shadow-infection);
+}
+
+.input-infected::placeholder {
+  opacity: 0.7;
+  color: var(--text-muted);
+}
+
+/* Decay lists */
+.list-decay {
+  margin: 0;
+  padding: 0;
+
+  list-style: none;
+}
+
+.list-decay li {
+  padding: var(--spacing-sm);
+
+  transition: all var(--transition-fast);
+
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.list-decay li:hover {
+  border-bottom-color: var(--border-infected);
+  background: var(--bg-card);
+}
+
+.list-decay li:before {
+  margin-right: var(--spacing-sm);
+
+  content: "💀 ";
+
+  color: var(--infection-red);
+}
+
+/* Infection progress bars */
+.progress-infection {
+  position: relative;
+
+  overflow: hidden;
+
+  width: 100%;
+  height: 8px;
+
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.progress-infection-fill {
+  height: 100%;
+
+  transition: width var(--transition-medium);
+
+  background: linear-gradient(
+    90deg,
+    var(--infection-green),
+    var(--infection-yellow),
+    var(--infection-red)
+  );
+  box-shadow: 0 0 5px var(--shadow-infection);
+}
+
+/* Decay tables */
+.table-decay {
+  overflow: hidden;
+
+  width: 100%;
+
+  border: 1px solid var(--border-primary);
+  border-collapse: collapse;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.table-decay th {
+  padding: var(--spacing-md);
+
+  text-align: left;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-infected);
+  background: var(--bg-panel);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-sm);
+}
+
+.table-decay td {
+  padding: var(--spacing-sm) var(--spacing-md);
+
+  border-bottom: 1px solid var(--border-primary);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-sm);
+}
+
+.table-decay tr:hover {
+  background: var(--bg-secondary);
+}
+
+/* Infection modal windows */
+.modal-infection {
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  left: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 100vw;
+  height: 100vh;
+
+  background: rgba(10, 9, 8, 0.9);
+}
+
+.modal-infection-content {
+  width: 90%;
+  max-width: 500px;
+  padding: var(--spacing-xl);
+
+  border: 3px solid var(--border-infected);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  box-shadow: 
+    0 0 30px var(--shadow-infection),
+    inset 0 0 20px var(--shadow-blood);
+}
+
+/* Decay notifications */
+.notification-decay {
+  position: fixed;
+  z-index: 999;
+  top: var(--spacing-xl);
+  right: var(--spacing-xl);
+
+  min-width: 250px;
+  padding: var(--spacing-md);
+
+  animation: flicker var(--flicker-duration) infinite;
+
+  border: 2px solid var(--border-infected);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  box-shadow: 
+    0 4px 12px var(--shadow-dark),
+    0 0 15px var(--shadow-infection);
+}
+
+.notification-decay.error {
+  border-color: var(--infection-red);
+  box-shadow: 
+    0 4px 12px var(--shadow-dark),
+    0 0 20px rgba(168, 60, 60, 0.6);
+}
+
+.notification-decay.warning {
+  border-color: var(--infection-yellow);
+  box-shadow: 
+    0 4px 12px var(--shadow-dark),
+    0 0 20px rgba(139, 115, 85, 0.6);
+}
+
+.notification-decay.success {
+  border-color: var(--infection-green);
+  box-shadow: 
+    0 4px 12px var(--shadow-dark),
+    0 0 20px rgba(92, 107, 71, 0.6);
+}
+
+/* Loading indicators */
+.loader-decay {
+  display: inline-block;
+
+  width: 20px;
+  height: 20px;
+
+  animation: spin 1s linear infinite;
+
+  border: 2px solid var(--border-primary);
+  border-top: 2px solid var(--infection-red);
+  border-radius: 50%;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Special effects */
+.glitch-text {
+  position: relative;
+
+  animation: glitch 2s infinite;
+}
+
+@keyframes glitch {
+  0%, 100% { 
+    transform: translate(0);
+
+    filter: hue-rotate(0deg);
+  }
+  20% { 
+    transform: translate(-1px, 1px);
+
+    filter: hue-rotate(90deg);
+  }
+  40% { 
+    transform: translate(-1px, -1px);
+
+    filter: hue-rotate(180deg);
+  }
+  60% { 
+    transform: translate(1px, 1px);
+
+    filter: hue-rotate(270deg);
+  }
+  80% { 
+    transform: translate(1px, -1px);
+
+    filter: hue-rotate(360deg);
+  }
+}
+
+/* Pixel icons */
+.icon-decay {
+  display: inline-block;
+
+  font-style: normal;
+
+  text-rendering: optimizeLegibility;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 3px var(--shadow-infection));
+}

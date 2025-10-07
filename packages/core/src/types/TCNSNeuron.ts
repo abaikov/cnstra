@@ -4,11 +4,11 @@ import { TCNSDendrite } from './TCNSDendrite';
 export type TCNSNeuron<
     TContextValue,
     TName extends string,
-    TCollateralType extends string,
+    TCollateralName extends string,
     TCollateralPayload,
-    TSenderCollateralType extends string,
+    TSenderCollateralName extends string,
     TSenderCollateralPayload,
-    TAxonType extends TCNSAxon<TCollateralType, TCollateralPayload>
+    TAxonType extends TCNSAxon<TCollateralName, TCollateralPayload>
 > = {
     name: TName;
     axon: TAxonType;
@@ -16,9 +16,9 @@ export type TCNSNeuron<
     concurrency?: number;
     dendrites: TCNSDendrite<
         TContextValue,
-        TSenderCollateralType,
+        TSenderCollateralName,
         TSenderCollateralPayload,
-        TCollateralType,
+        TCollateralName,
         TCollateralPayload,
         TAxonType
     >[];

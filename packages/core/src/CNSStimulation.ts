@@ -11,12 +11,12 @@ import { TCNSSignal } from './types/TCNSSignal';
 import { TCNSStimulationQueueItem } from './types/TCNSStimulationQueueItem';
 
 export class CNSStimulation<
-    TCollateralType extends string,
+    TCollateralName extends string,
     TNeuronName extends string,
     TNeuron extends TCNSNeuron<
         any,
         TNeuronName,
-        TCollateralType,
+        TCollateralName,
         any,
         any,
         any,
@@ -28,7 +28,7 @@ export class CNSStimulation<
 > {
     private readonly ctx: ICNSStimulationContextStore;
     private readonly queue: CNSFunctionalQueue<
-        TCollateralType,
+        TCollateralName,
         TNeuronName,
         TNeuron,
         TDendrite
@@ -48,7 +48,7 @@ export class CNSStimulation<
         private readonly cns: ICNS<TNeuron, TDendrite>,
         instanceNeuronQueue: CNSInstanceNeuronQueue<TNeuron>,
         public readonly options?: TCNSStimulationOptions<
-            TCollateralType,
+            TCollateralName,
             TInputPayload,
             TOutputPayload
         >
@@ -152,7 +152,7 @@ export class CNSStimulation<
 
     protected createSubscriberQueueItem(
         subscriber: TCNSSubscriber<TNeuron, TDendrite>,
-        inputSignal?: TCNSSignal<TCollateralType, any>
+        inputSignal?: TCNSSignal<TCollateralName, any>
     ) {
         if (this.options?.maxNeuronHops) {
             if (
@@ -161,7 +161,7 @@ export class CNSStimulation<
             ) {
                 throw new Error(
                     `Max neuron hops reached for neuron "${subscriber.neuron.name}" ` +
-                        `when trying to enqueue subscriber "${subscriber.dendrite.collateral.type}" ` +
+                        `when trying to enqueue subscriber "${subscriber.dendrite.collateral.name}" ` +
                         `in stimulation "${this.id}"`
                 );
             } else {
@@ -181,7 +181,7 @@ export class CNSStimulation<
 
     private processQueueItem(
         item: TCNSStimulationQueueItem<
-            TCollateralType,
+            TCollateralName,
             TNeuronName,
             TNeuron,
             TDendrite
@@ -200,6 +200,7 @@ export class CNSStimulation<
                 {
                     get: () => this.ctx.get(neuron.name),
                     set: (value: any) => this.ctx.set(neuron.name, value),
+                    delete: () => this.ctx.delete(neuron.name),
                     abortSignal: this.options?.abortSignal,
                     cns: this.cns,
                 }
@@ -212,9 +213,9 @@ export class CNSStimulation<
                             // Mark neuron as inactive when async processing completes
                             this.markNeuronInactive(neuron.name);
                             return this.processResponse(
-                                inputSignal as TCNSSignal<TCollateralType, any>,
+                                inputSignal as TCNSSignal<TCollateralName, any>,
                                 signal as
-                                    | TCNSSignal<TCollateralType, any>
+                                    | TCNSSignal<TCollateralName, any>
                                     | undefined
                             );
                         };
@@ -224,7 +225,7 @@ export class CNSStimulation<
                             // Mark neuron as inactive when async processing fails
                             this.markNeuronInactive(neuron.name);
                             return this.processResponse(
-                                inputSignal as TCNSSignal<TCollateralType, any>,
+                                inputSignal as TCNSSignal<TCollateralName, any>,
                                 undefined,
                                 error
                             );
@@ -236,8 +237,8 @@ export class CNSStimulation<
                     // Mark neuron as inactive when sync processing completes
                     this.markNeuronInactive(neuron.name);
                     return this.processResponse(
-                        inputSignal as TCNSSignal<TCollateralType, any>,
-                        response as TCNSSignal<TCollateralType, any> | undefined
+                        inputSignal as TCNSSignal<TCollateralName, any>,
+                        response as TCNSSignal<TCollateralName, any> | undefined
                     );
                 };
             }
@@ -248,19 +249,19 @@ export class CNSStimulation<
     }
 
     protected processResponse(
-        inputSignal?: TCNSSignal<TCollateralType, TInputPayload>,
-        outputSignal?: TCNSSignal<TCollateralType, TOutputPayload>,
+        inputSignal?: TCNSSignal<TCollateralName, TInputPayload>,
+        outputSignal?: TCNSSignal<TCollateralName, TOutputPayload>,
         error?: any
     ): void {
         const collateral = outputSignal?.collateral;
         const ownerNeuron = collateral
-            ? this.cns.getParentNeuronByCollateralId(collateral.type)
+            ? this.cns.getParentNeuronByCollateralName(collateral.name)
             : undefined;
         const subscribers = collateral
-            ? this.cns.getSubscribers(collateral.type)
+            ? this.cns.getSubscribers(collateral.name)
             : [];
         const subscriberQueueItems: TCNSStimulationQueueItem<
-            TCollateralType,
+            TCollateralName,
             TNeuronName,
             TNeuron,
             TDendrite
@@ -285,13 +286,14 @@ export class CNSStimulation<
             outputSignal: outputSignal,
             ctx: this.ctx,
             queueLength: this.queue.length + this.scheduledCount,
+            stimulationId: this.id,
 
             hops:
                 this.options?.maxNeuronHops && ownerNeuron
                     ? this.nueronVisitMap?.get(ownerNeuron.name) ?? 0
                     : undefined,
             error,
-        });
+        } as any);
 
         // After we traced the response, we can enqueue the pre-enqueued subscribers
         // So if we have a synchronous response - the traces would go
@@ -304,11 +306,11 @@ export class CNSStimulation<
     }
 
     public responseToSignal(
-        signal: TCNSSignal<TCollateralType, TOutputPayload>
+        signal: TCNSSignal<TCollateralName, TOutputPayload>
     ): void {
         // Mark the owner neuron of the initial signal as active
-        const ownerNeuron = this.cns.getParentNeuronByCollateralId(
-            signal.collateral.type
+        const ownerNeuron = this.cns.getParentNeuronByCollateralName(
+            signal.collateral.name
         );
         if (ownerNeuron) {
             this.markNeuronActive(ownerNeuron.name);

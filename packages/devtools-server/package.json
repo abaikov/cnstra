@@ -1,0 +1,50 @@
+{
+  "name": "@cnstra/devtools-server",
+  "version": "1.0.0",
+  "description": "CNStra DevTools server (WebSocket only for now)",
+  "keywords": ["cnstra", "devtools", "server", "websocket"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly",
+    "build:types": "tsc --emitDeclarationOnly",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
+    "test": "jest"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@cnstra/devtools-dto": "1.0.0",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@cnstra/devtools": "1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/ws": "^8.5.10",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
+
+

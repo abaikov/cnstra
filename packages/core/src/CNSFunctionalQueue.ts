@@ -3,12 +3,12 @@ import { TCNSNeuron } from './types/TCNSNeuron';
 import { TCNSDendrite } from './types/TCNSDendrite';
 
 export class CNSFunctionalQueue<
-    TCollateralType extends string,
+    TCollateralName extends string,
     TNeuronName extends string,
     TNeuron extends TCNSNeuron<
         any,
         TNeuronName,
-        TCollateralType,
+        TCollateralName,
         any,
         any,
         any,
@@ -17,7 +17,7 @@ export class CNSFunctionalQueue<
     TDendrite extends TCNSDendrite<any, any, any, any, any, any>
 > {
     private items: TCNSStimulationQueueItem<
-        TCollateralType,
+        TCollateralName,
         TNeuronName,
         TNeuron,
         TDendrite
@@ -35,7 +35,7 @@ export class CNSFunctionalQueue<
     constructor(
         private readonly processor: (
             item: TCNSStimulationQueueItem<
-                TCollateralType,
+                TCollateralName,
                 TNeuronName,
                 TNeuron,
                 TDendrite
@@ -74,7 +74,7 @@ export class CNSFunctionalQueue<
 
     private dequeue():
         | TCNSStimulationQueueItem<
-              TCollateralType,
+              TCollateralName,
               TNeuronName,
               TNeuron,
               TDendrite
@@ -92,7 +92,7 @@ export class CNSFunctionalQueue<
 
     private enqueueItem(
         item: TCNSStimulationQueueItem<
-            TCollateralType,
+            TCollateralName,
             TNeuronName,
             TNeuron,
             TDendrite
@@ -165,7 +165,7 @@ export class CNSFunctionalQueue<
 
     enqueue(
         x: TCNSStimulationQueueItem<
-            TCollateralType,
+            TCollateralName,
             TNeuronName,
             TNeuron,
             TDendrite

@@ -1,22 +1,23 @@
 import { CNSCollateral } from '../CNSCollateral';
+import { ICNS } from '../interfaces/ICNS';
 import { TCNSAxon } from './TCNSAxon';
 import { TCNSLocalContextValueStore } from './TCNSLocalContextValueStore';
 import { TNCNeuronResponseReturn } from './TCNSNeuronResponseReturn';
 
 export type TCNSDendrite<
     TContextValue,
-    TSenderCollateralType extends string,
+    TSenderCollateralName extends string,
     TSenderAxonCollateralPayload,
-    TReceiverCollateralType extends string,
+    TReceiverCollateralName extends string,
     TReceiverAxonCollateralPayload,
     // We need axon type to be able to redirect to different collaterals
     TAxonType extends TCNSAxon<
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload
     >
 > = {
     collateral: CNSCollateral<
-        TSenderCollateralType,
+        TSenderCollateralName,
         TSenderAxonCollateralPayload
     >;
     response: (
@@ -24,10 +25,10 @@ export type TCNSDendrite<
         axon: TAxonType,
         ctx: TCNSLocalContextValueStore<TContextValue> & {
             abortSignal?: AbortSignal;
-            cns?: any;
+            cns?: ICNS<any, any>;
         }
     ) => TNCNeuronResponseReturn<
-        TReceiverCollateralType,
+        TReceiverCollateralName,
         TReceiverAxonCollateralPayload
     >;
 };

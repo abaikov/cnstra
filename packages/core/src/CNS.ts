@@ -9,24 +9,32 @@ import { CNSCollateral } from './CNSCollateral';
 import { TCNSSignal } from './types/TCNSSignal';
 import { CNSTaskQueue } from './CNSTaskQueue';
 import { CNSInstanceNeuronQueue } from './CNSInstanceNeuronQueue';
+import { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
 
 export class CNS<
-    TCollateralType extends string,
+    TCollateralName extends string,
     TNeuronName extends string,
     TNeuron extends TCNSNeuron<any, TNeuronName, any, any, any, any, any>,
     TDendrite extends TCNSDendrite<any, any, any, any, any, any>
 > implements ICNS<TNeuron, TDendrite>
 {
     /**
-     * Fast lookup: collateralId -> list of (neuron, dendrite) subscribers.
+     * Fast lookup: collateralName -> list of (neuron, dendrite) subscribers.
      * Built once at construction time.
      */
     private subIndex = new Map<
-        TCollateralType,
+        TCollateralName,
         TCNSSubscriber<TNeuron, TDendrite>[]
     >();
 
-    private parentNeuronByCollateralId = new Map<TCollateralType, TNeuron>();
+    private neuronIndex = new Map<TNeuronName, TNeuron>();
+    private dendriteIndex = new Map<TCollateralName, TDendrite>();
+    private collateralIndex = new Map<
+        TCollateralName,
+        CNSCollateral<TCollateralName, unknown>
+    >();
+
+    private parentNeuronByCollateralName = new Map<TCollateralName, TNeuron>();
 
     /**
      * Strongly Connected Components of the neuron graph.
@@ -111,7 +119,15 @@ export class CNS<
         }
     }
 
-    public addResponseListener(listener: (response: any) => void): () => void {
+    public addResponseListener(
+        listener: <TInputPayload, TOutputPayload>(
+            response: TCNSStimulationResponse<
+                TCollateralName,
+                TInputPayload,
+                TOutputPayload
+            >
+        ) => void
+    ): () => void {
         this.globalResponseListeners.push(listener);
         let active = true;
         return () => {
@@ -208,22 +224,29 @@ export class CNS<
 
     private buildIndexes() {
         this.subIndex.clear();
-        this.parentNeuronByCollateralId.clear();
+        this.parentNeuronByCollateralName.clear();
         for (const neuron of this.neurons) {
+            this.neuronIndex.set(neuron.name, neuron);
             for (const dendrite of neuron.dendrites) {
-                const key = dendrite.collateral.type as TCollateralType;
+                const key = dendrite.collateral.name as TCollateralName;
                 const arr = this.subIndex.get(key) ?? [];
                 arr.push({ neuron, dendrite: dendrite as TDendrite });
                 this.subIndex.set(
                     key,
                     arr as TCNSSubscriber<TNeuron, TDendrite>[]
                 );
+                this.dendriteIndex.set(key, dendrite as TDendrite);
             }
             Object.values(neuron.axon).forEach(collateral => {
-                this.parentNeuronByCollateralId.set(
-                    (collateral as CNSCollateral<TCollateralType, unknown>)
-                        .type,
+                this.parentNeuronByCollateralName.set(
+                    (collateral as CNSCollateral<TCollateralName, unknown>)
+                        .name,
                     neuron
+                );
+                this.collateralIndex.set(
+                    (collateral as CNSCollateral<TCollateralName, unknown>)
+                        .name,
+                    collateral as CNSCollateral<TCollateralName, unknown>
                 );
             });
         }
@@ -248,10 +271,10 @@ export class CNS<
             // Check what collaterals this neuron can emit
             for (const axonKey in neuron.axon) {
                 const collateral = neuron.axon[axonKey];
-                const collateralType = collateral.type as TCollateralType;
+                const collateralName = collateral.name as TCollateralName;
 
                 // Find which neurons listen to this collateral
-                const subscribers = this.subIndex.get(collateralType);
+                const subscribers = this.subIndex.get(collateralName);
                 if (subscribers) {
                     for (const { neuron: targetNeuron } of subscribers) {
                         reachableNeurons.add(targetNeuron.name);
@@ -494,27 +517,39 @@ export class CNS<
         return true; // Neuron is guaranteed to be done
     }
 
-    public getParentNeuronByCollateralId(collateralType: TCollateralType) {
-        return this.parentNeuronByCollateralId.get(collateralType);
+    public getParentNeuronByCollateralName(collateralName: TCollateralName) {
+        return this.parentNeuronByCollateralName.get(collateralName);
+    }
+
+    public getDendrites() {
+        return Array.from(this.dendriteIndex.values());
+    }
+
+    public getCollaterals() {
+        return Array.from(this.collateralIndex.values());
+    }
+
+    public getNeurons() {
+        return Array.from(this.neuronIndex.values());
     }
 
     public getSubscribers(
-        collateralType: TCollateralType
+        collateralName: TCollateralName
     ): TCNSSubscriber<TNeuron, TDendrite>[] {
-        return this.subIndex.get(collateralType) ?? [];
+        return this.subIndex.get(collateralName) ?? [];
     }
 
     public stimulate<TInputPayload extends TOutputPayload, TOutputPayload>(
-        signal: TCNSSignal<TCollateralType, TInputPayload>,
+        signal: TCNSSignal<TCollateralName, TInputPayload>,
         options?: TCNSStimulationOptions<
-            TCollateralType,
+            TCollateralName,
             TInputPayload,
             TOutputPayload
         >
     ) {
         const wrapped = this.wrapOnResponse(options?.onResponse);
         const stimulation = new CNSStimulation<
-            TCollateralType,
+            TCollateralName,
             TNeuronName,
             TNeuron,
             TDendrite,

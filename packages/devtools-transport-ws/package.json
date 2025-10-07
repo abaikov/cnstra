@@ -1,0 +1,49 @@
+{
+  "name": "@cnstra/devtools-transport-ws",
+  "version": "1.0.0",
+  "description": "WebSocket transport for CNStra DevTools",
+  "keywords": ["devtools", "cnstra", "transport", "websocket", "ws"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly",
+    "build:types": "tsc --emitDeclarationOnly",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@cnstra/devtools-dto": "1.0.0"
+  },
+  "peerDependencies": {
+    "@cnstra/devtools": "1.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "@types/jest": "^29.5.5",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
+
+

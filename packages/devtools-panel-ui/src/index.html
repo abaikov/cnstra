@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title><%= htmlWebpackPlugin.options.title %></title>
+    <style>
+      body {
+                    margin: 0;
+                    padding: 0;
+
+                    color: var(--text-primary, #d4cfc7);
+                    background: var(--bg-primary, #0a0908);
+
+                    font-family: 'Px437_IBM_Conv', 'Courier New', monospace;
+                    font-smooth: never;
+                     /* Pixel rendering */
+
+                    -webkit-font-smoothing: none;
+                    -moz-osx-font-smoothing: grayscale;
+                    image-rendering: pixelated;
+                  }
+                  #root {
+                    width: 100vw;
+                    height: 100vh;
+                  }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+  </html>
+
+

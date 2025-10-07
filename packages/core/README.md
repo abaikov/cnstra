@@ -9,16 +9,18 @@ You explicitly start a run with `cns.stimulate(...)`; CNStra then performs a **d
 
 > **Zero dependencies:** CNS has no third-party dependencies, making it suitable for any JavaScript/TypeScript environment - browsers, Node.js, serverless, edge functions, React Native, or embedded systems.
 
-> **Not pub/sub:** there are no ambient listeners or global `emit`. Only the **signal you return** from a dendrite continues the traversal; returning `null`/`undefined` ends that branch. Hop limits guard against cycles.
+**No pub/sub:** there are no ambient listeners or global `emit`. Only the **signal you return** from a dendrite continues the traversal; returning `null`/`undefined` ends that branch. Hop limits guard against cycles.
+
+We follow the **IERG approach — Inverted Explicit Reactive Graph**. You explicitly stimulate the graph; reactions are local and deterministic; no background listeners or buses exist.
 
 ## 💡 Why CNStra
 
-We follow the ERG approach (Event → Reaction → Graph), not a raw Flux/event-bus.
+IERG is our inverted control flow: you start the run, we walk the reaction graph explicitly. This is not Flux and not an event bus.
 
 - **Deterministic routing**: signals are delivered along an explicit neuron graph, not broadcast to whoever “happens to listen”.
 - **Readable, reliable flows**: each step is local and typed; branches are explicit, so debugging feels like reading a storyboard, not a log stream.
 - **Backpressure & concurrency**: built‑in per‑stimulation and per‑neuron concurrency limits keep workloads controlled without custom plumbing.
-- **Saga‑grade orchestration**: ERG already models long‑running, multi‑step reactions with retries/cancellation hooks (abort), so you rarely need to hand‑roll “sagas”.
+- **Saga‑grade orchestration**: IERG already models long‑running, multi‑step reactions with retries/cancellation hooks (abort), so you rarely need to hand‑roll “sagas”.
 - **Safer than ad‑hoc events**: no hidden global listeners, no accidental fan‑out; every continuation must be returned explicitly.
 
 ## 🏗️ Core Model
@@ -265,12 +267,12 @@ await cns.stimulate(signal, {
 });
 ```
 
-### `allowType?: (collateralId: string) => boolean`
-Filter which collateral types can be processed.
+### `allowName?: (collateralName: string) => boolean`
+Filter which collateral names can be processed.
 
 ```typescript
 await cns.stimulate(signal, {
-  allowType: (type) => type.startsWith('user:') // Only process user-related signals
+  allowName: (name) => name.startsWith('user:') // Only process user-related signals
 });
 ```
 
@@ -446,7 +448,7 @@ const cns = new CNS([validator, handler]);
 
 ### Event Sourcing
 ```typescript
-const eventReceived = collateral<{ type: string; data: any }>('event:received');
+const eventReceived = collateral<{ name: string; data: any }>('event:received');
 const eventStored = collateral<{ eventId: string }>('event:stored');
 const stateUpdated = collateral<{ aggregateId: string }>('state:updated');
 

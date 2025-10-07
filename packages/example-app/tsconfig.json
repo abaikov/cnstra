@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "jsx": "react-jsx",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cnstra/core": ["../core/dist"],
+      "@cnstra/devtools": ["../devtools/src/index.tsx"],
+      "@cnstra/devtools-dto": ["../devtools-dto/dist"],
+      "@cnstra/devtools-transport-ws": ["../devtools-transport-ws/dist"],
+      "@cnstra/devtools-server": ["../devtools-server/dist"],
+      "@cnstra/devtools-server-repository-in-memory": ["../devtools-server-repository-in-memory/dist"]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

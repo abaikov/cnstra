@@ -17,7 +17,8 @@
     "jsx": "react-jsx",
     "baseUrl": "./",
     "paths": {
-      "@cnstra/*": ["packages/*/src"]
+      "@cnstra/*": ["packages/*/src"],
+      "@cnstra/core": ["packages/core/src"]
     }
   },
   "references": [

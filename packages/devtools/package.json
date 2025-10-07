@@ -1,0 +1,46 @@
+{
+  "name": "@cnstra/devtools",
+  "version": "1.0.0",
+  "description": "Developer tools for CNStra",
+  "keywords": ["devtools", "cnstra"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly",
+    "build:types": "tsc --emitDeclarationOnly",
+    "prepublishOnly": "npm run build",
+    "test": "jest -c jest.config.cjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@cnstra/core": "1.5.2"
+  },
+  "dependencies": {
+    "@cnstra/devtools-dto": "1.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "@types/node": "^22.7.4",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
+

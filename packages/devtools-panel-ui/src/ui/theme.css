@@ -1,0 +1,200 @@
+/* Pixel font connection */
+@font-face {
+  font-family: 'Px437_IBM_Conv';
+  font-weight: normal;
+  font-style: normal;
+
+  src: url('../fonts/Px437_IBM_Conv.ttf') format('truetype');
+  font-display: swap;
+}
+
+/* CSS variables for "Rotting Flesh" theme */
+:root {
+  /* === ROTTING FLESH COLORS === */
+  /* Main background colors */
+  --bg-primary: #0a0908;           /* Deep rotting darkness */
+  --bg-secondary: #1a0e0c;         /* Dark dried blood */
+  --bg-tertiary: #2d1b1a;          /* Old coagulated blood */
+  --bg-panel: #1f1412;            /* Panels like rotting wood */
+  --bg-card: #261815;             /* Cards color of old bone */
+  /* Rotting meat colors */
+  --flesh-dark: #3d2824;          /* Dark rotting meat */
+  --flesh-medium: #5c3832;        /* Medium rotting meat */
+  --flesh-light: #7a4940;         /* Light decomposing meat */
+  --flesh-infected: #8b2635;      /* Infected flesh */
+  /* Blood and pus colors */
+  --blood-dark: #4a1e1e;          /* Dark dried blood */
+  --blood-medium: #6b2737;        /* Fresh blood */
+  --blood-bright: #8b2635;        /* Bright scarlet blood */
+  --pus-yellow: #8b7355;          /* Yellow pus */
+  --pus-green: #5c6b47;           /* Green pus */
+  /* Bone and teeth colors */
+  --bone-dark: #4a453f;           /* Dark old bone */
+  --bone-medium: #6b635a;         /* Medium bone */
+  --bone-light: #8b8175;          /* Light bone */
+  --bone-white: #a39d96;          /* Almost white bone */
+  /* Accent infection colors */
+  --infection-red: #a83c3c;       /* Red infection */
+  --infection-green: #4a5c3a;     /* Green infection */
+  --infection-purple: #5c3a5c;    /* Purple infection */
+  --infection-yellow: #8b7c3a;    /* Yellow infection */
+  /* Text colors */
+  --text-primary: #d4cfc7;        /* Primary text color of old bone */
+  --text-secondary: #a39d96;      /* Secondary text */
+  --text-muted: #6b635a;          /* Muted text */
+  --text-accent: #8b2635;         /* Accent text color of blood */
+  --text-success: #5c6b47;        /* Success color of green pus */
+  --text-warning: #8b7355;        /* Warning color of yellow pus */
+  --text-error: #a83c3c;          /* Error color of infection */
+  /* Borders and dividers */
+  --border-primary: #3d2824;      /* Primary borders */
+  --border-secondary: #261815;    /* Secondary borders */
+  --border-accent: #5c3832;       /* Accent borders */
+  --border-infected: #8b2635;     /* Infection borders */
+  /* Decay shadows */
+  --shadow-dark: rgba(10, 9, 8, 0.8);
+  --shadow-blood: rgba(139, 38, 53, 0.3);
+  --shadow-infection: rgba(168, 60, 60, 0.4);
+  --shadow-bone: rgba(163, 157, 150, 0.2);
+  /* === FONTS === */
+  --font-primary: 'Px437_IBM_Conv', 'Courier New', monospace;
+  --font-secondary: 'Px437_IBM_Conv', 'Monaco', monospace;
+  /* Font sizes (pixel-based) */
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-base: 12px;
+  --font-size-lg: 14px;
+  --font-size-xl: 16px;
+  --font-size-2xl: 18px;
+  --font-size-3xl: 24px;
+  /* === SIZES AND SPACING === */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+  /* Radii (minimal for pixel style) */
+  --radius-none: 0px;
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  /* === DECAY ANIMATIONS === */
+  --transition-fast: 0.1s ease-out;
+  --transition-medium: 0.2s ease-out;
+  --transition-slow: 0.3s ease-out;
+  /* Flicker effects */
+  --flicker-duration: 2s;
+  --pulse-duration: 1.5s;
+}
+
+/* === GLOBAL STYLES === */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+
+  color: var(--text-primary);
+  background: var(--bg-primary);
+
+  font-family: var(--font-primary);
+  font-size: var(--font-size-base);
+  font-smooth: never;
+  line-height: 1.4;
+  /* Disable smoothing for pixel effect */
+
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  /* Pixel image rendering */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+
+  background: var(--bg-primary);
+}
+
+/* === DECAY ANIMATIONS === */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes pulse-infection {
+  0%, 100% { 
+    box-shadow: 0 0 5px var(--shadow-infection);
+  }
+  50% { 
+    box-shadow: 0 0 15px var(--shadow-infection), 0 0 25px var(--shadow-blood);
+  }
+}
+
+@keyframes decay-glow {
+  0%, 100% { 
+    text-shadow: 0 0 3px var(--infection-red);
+  }
+  33% { 
+    text-shadow: 0 0 5px var(--infection-green);
+  }
+  66% { 
+    text-shadow: 0 0 4px var(--infection-purple);
+  }
+}
+
+/* === UTILITY CLASSES === */
+.pixel-perfect {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.no-smooth {
+  font-smooth: never;
+
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.flicker {
+  animation: flicker var(--flicker-duration) infinite;
+}
+
+.pulse-infection {
+  animation: pulse-infection var(--pulse-duration) infinite;
+}
+
+.decay-glow {
+  animation: decay-glow 3s infinite;
+}
+
+/* === SCROLLBAR STYLING === */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 1px solid var(--border-accent);
+  background: var(--flesh-medium);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--flesh-infected);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--bg-secondary);
+}
