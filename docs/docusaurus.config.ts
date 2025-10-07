@@ -7,8 +7,8 @@ const config: Config = {
     tagline: 'Central Nervous System for JavaScript apps',
     favicon: 'img/logo.svg',
 
-    url: 'https://abaikov.github.io',
-    baseUrl: '/cnstra/',
+    url: 'https://cnstra.org',
+    baseUrl: '/',
     baseUrlIssueBanner: true,
     trailingSlash: true,
 
