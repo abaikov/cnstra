@@ -13,7 +13,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@cnstra/core": "1.5.2",
+    "@cnstra/core": "1.5.3",
     "@cnstra/react": "1.0.1",
     "@oimdb/core": "^1.0.6",
     "@oimdb/react": "^1.1.0",
