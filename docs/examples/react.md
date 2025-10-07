@@ -2,7 +2,7 @@
 id: react
 title: React Integration
 sidebar_label: React
-slug: /guides/react
+slug: /examples/react
 ---
 
 Use `@cnstra/react` to bind neurons to components.

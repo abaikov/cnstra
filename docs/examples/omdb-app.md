@@ -2,7 +2,7 @@
 id: oimdb-app
 title: Build a Small OIMDB App
 sidebar_label: OIMDB App
-slug: /tutorials/oimdb-app
+slug: /examples/oimdb-app
 ---
 
 In this tutorial, you will build a small search-style UI that uses OIMDB as a reactive in-memory database for derived state, and CNStra for orchestration and cancellation.

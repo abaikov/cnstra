@@ -2,7 +2,7 @@
 id: backend-queues
 title: "Backend: Queues + CNStra"
 sidebar_label: Backend Queues
-slug: /tutorials/backend-queues
+slug: /examples/backend-queues
 ---
 
 This tutorial shows how to consume a queue and orchestrate work with CNStra.

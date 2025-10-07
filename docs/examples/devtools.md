@@ -2,7 +2,7 @@
 id: devtools
 title: Devtools
 sidebar_label: Devtools
-slug: /guides/devtools
+slug: /examples/devtools
 ---
 
 Connect the devtools to visualize neuron graphs and inspect stimulation flows.
