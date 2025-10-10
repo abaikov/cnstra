@@ -17,7 +17,7 @@ slug: /core/stimulation-options
 ```ts
 const controller = new AbortController();
 await cns.stimulate(signal, {
-  maxNeuronHops: 50,
+  maxNeuronHops: 10, // optional, disabled by default
   abortSignal: controller.signal,
   onResponse: r => {
     if (r.queueLength === 0) console.log('done');

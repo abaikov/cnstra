@@ -144,7 +144,12 @@ const config: Config = {
                     position: 'left',
                 },
                 {
-                    to: '/docs/examples/devtools',
+                    to: '/docs/devtools/overview',
+                    label: 'DevTools',
+                    position: 'left',
+                },
+                {
+                    to: '/docs/examples/react',
                     label: 'Examples',
                     position: 'left',
                 },

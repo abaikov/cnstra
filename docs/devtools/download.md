@@ -1,5 +1,8 @@
 ---
-sidebar_position: 7
+id: download
+title: Download DevTools
+sidebar_label: Download
+sidebar_position: 1
 ---
 
 # Download CNStra DevTools

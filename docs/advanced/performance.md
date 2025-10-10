@@ -65,7 +65,7 @@ Default is 1000. For bounded workflows, set a lower limit:
 
 ```ts
 await cns.stimulate(signal, {
-  maxNeuronHops: 50 // stop after 50 hops
+  maxNeuronHops: 10 // stop after 10 hops (optional, disabled by default)
 });
 ```
 

@@ -1,11 +1,14 @@
 ---
-id: devtools
-title: Devtools
-sidebar_label: Devtools
-slug: /examples/devtools
+id: devtools-example
+title: DevTools Example
+sidebar_label: Basic Example
 ---
 
-Connect the devtools to visualize neuron graphs and inspect stimulation flows.
+# DevTools Basic Example
+
+Connect the DevTools to visualize neuron graphs and inspect stimulation flows.
+
+## Setup
 
 ```ts
 import { CNSDevTools } from '@cnstra/devtools';
@@ -18,5 +21,10 @@ const devtools = new CNSDevTools('my-app', transport, {
 devtools.registerCNS(cns);
 ```
 
-- Run the devtools server and open the panel UI to explore the graph.
-- Filter signals, inspect context, and measure timings.
+## Usage
+
+1. Run the DevTools server and open the panel UI to explore the graph
+2. Filter signals, inspect context, and measure timings
+3. Monitor real-time signal propagation through your neural network
+
+For detailed integration instructions, see the [DevTools section](/docs/devtools/overview).
