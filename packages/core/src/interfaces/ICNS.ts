@@ -33,10 +33,18 @@ export interface ICNS<
     /**
      * Wrap a local onResponse with all global listeners.
      */
-    wrapOnResponse<T>(local?: (response: T) => void): (response: T) => void;
+    wrapOnResponse<T>(
+        local?: (response: T) => void | Promise<void>
+    ): (response: T) => void | Promise<void>;
 
     getDendrites(): TDendrite[];
     getCollaterals(): CNSCollateral<any, any>[];
     getNeurons(): TNeuron[];
-    stimulate(signal: TCNSSignal<any, any>): void;
+    getCollateralByName<TName extends string = string>(
+        collateralName: TName
+    ): CNSCollateral<TName, unknown> | undefined;
+    getNeuronByName<TName extends string = string>(
+        neuronName: TName
+    ): TNeuron | undefined;
+    stimulate(signal: TCNSSignal<any, any>): Promise<void>;
 }

@@ -26,6 +26,7 @@ export type TCNSDendrite<
         ctx: TCNSLocalContextValueStore<TContextValue> & {
             abortSignal?: AbortSignal;
             cns?: ICNS<any, any>;
+            stimulationId?: string;
         }
     ) => TNCNeuronResponseReturn<
         TReceiverCollateralName,

@@ -7,7 +7,7 @@ export default function Home(): JSX.Element {
     return (
         <Layout
             title="CNStra Documentation"
-            description="Central Nervous System for apps"
+            description="Central Nervous System Orchestrator for apps"
         >
             <header className="hero hero--primary">
                 <div className="container">
@@ -15,8 +15,14 @@ export default function Home(): JSX.Element {
                         CNStra
                     </Heading>
                     <p className="hero__subtitle">
-                        Central Nervous System for building predictable,
-                        reactive pipelines.
+                        Central Nervous System Orchestrator for building
+                        predictable, reactive pipelines.
+                    </p>
+                    <p
+                        className="hero__subtitle"
+                        style={{ marginTop: '0.25rem' }}
+                    >
+                        The "tra" suffix highlights it's an orchestrator.
                     </p>
                     <div>
                         <Link

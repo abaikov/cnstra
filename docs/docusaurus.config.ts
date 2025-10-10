@@ -39,7 +39,7 @@ const config: Config = {
                     sidebarPath: './sidebars.ts',
                     editUrl:
                         'https://github.com/abaikov/cnstra/edit/master/docs/',
-                    showLastUpdateAuthor: true,
+                    showLastUpdateAuthor: false,
                     showLastUpdateTime: true,
                     include: ['**/*.md', '**/*.mdx'],
                     exclude: [
@@ -108,7 +108,7 @@ const config: Config = {
                 content:
                     'Type-safe orchestration for React & Node.js. Zero dependencies. Deterministic state machines, saga patterns, SOLID/SRP. Alternative to Redux, XState, MobX.',
             },
-            { name: 'theme-color', content: '#0ea5e9' },
+            { name: 'theme-color', content: '#0a0908' },
             { name: 'author', content: 'CNStra Team' },
             { name: 'robots', content: 'index, follow' },
             { name: 'googlebot', content: 'index, follow' },
@@ -174,6 +174,10 @@ const config: Config = {
                         {
                             label: 'Recipes',
                             to: '/docs/recipes/cancel',
+                        },
+                        {
+                            label: 'Credits',
+                            to: '/docs/credits',
                         },
                     ],
                 },

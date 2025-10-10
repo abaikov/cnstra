@@ -112,6 +112,12 @@ const myNeuron = neuron('my-neuron', {
 
 Adds a dendrite (input receptor) to a neuron. Returns the neuron for chaining.
 
+The `response` function can return:
+- A single signal: `axon.output.createSignal(data)`
+- An array of signals: `[axon.output1.createSignal(data1), axon.output2.createSignal(data2)]`
+- A Promise of either
+- `undefined`/`void` to end processing
+
 ```typescript
 myNeuron
   .dendrite({
@@ -121,6 +127,8 @@ myNeuron
       if (ctx.abortSignal?.aborted) return; // graceful cancel
       const prev = ctx.get();
       ctx.set({ ...prev, handled: true });
+      
+      // Return single signal or array of signals
       return axon.output.createSignal(result);
     }
   });
@@ -191,20 +199,27 @@ const unsubscribe = cns.addResponseListener(r => {
 
 #### `stimulate()` Method
 ```typescript
-cns.stimulate(signal, options?)
+cns.stimulate(signal | signal[], options?)
 ```
 
 **Parameters:**
-- `signal`: A signal created by `collateral.createSignal(payload)`
+- `signal`: A signal or array of signals created by `collateral.createSignal(payload)`
 - `options`: Optional stimulation configuration
 
 **Returns:** `Promise<void>` that resolves when stimulation completes
 
 **Example:**
 ```typescript
+// Single signal
 await cns.stimulate(
   userCreated.createSignal({ id: '123', name: 'John' })
 );
+
+// Multiple signals at once
+await cns.stimulate([
+  userCreated.createSignal({ id: '123', name: 'John' }),
+  userCreated.createSignal({ id: '456', name: 'Jane' })
+]);
 ```
 
 ## ⚙️ Stimulation Options
@@ -370,6 +385,88 @@ await cns.stimulate(input.createSignal({ increment: 5 })); // count: 5
 await cns.stimulate(input.createSignal({ increment: 3 })); // count: 8 (separate context)
 ```
 
+### Multiple Signals (Fan-out Pattern)
+
+Neurons can return arrays of signals for parallel processing:
+
+```typescript
+const orderPlaced = collateral<{ orderId: string; items: string[] }>('order:placed');
+const updateInventory = collateral<{ orderId: string; item: string }>('update:inventory');
+const sendEmail = collateral<{ orderId: string }>('send:email');
+const logAudit = collateral<{ orderId: string }>('log:audit');
+
+const orderProcessor = neuron('order-processor', { 
+  updateInventory, 
+  sendEmail, 
+  logAudit 
+}).dendrite({
+  collateral: orderPlaced,
+  response: (payload, axon) => {
+    // Return array of signals - each will be processed independently
+    return [
+      // Create signal for each item
+      ...payload.items.map(item => 
+        axon.updateInventory.createSignal({ orderId: payload.orderId, item })
+      ),
+      // Also send confirmation email
+      axon.sendEmail.createSignal({ orderId: payload.orderId }),
+      // And log the action
+      axon.logAudit.createSignal({ orderId: payload.orderId })
+    ];
+  }
+});
+
+// Downstream neurons process each signal independently
+const inventoryService = neuron('inventory-service', {}).dendrite({
+  collateral: updateInventory,
+  response: (payload) => {
+    console.log(`Updating inventory for ${payload.item}`);
+    // Each item gets its own execution
+  }
+});
+
+const cns = new CNS([orderProcessor, inventoryService /* ... */]);
+
+// Single order triggers multiple parallel operations
+await cns.stimulate(
+  orderPlaced.createSignal({ orderId: 'ORD-001', items: ['A', 'B', 'C'] })
+);
+// Flows: orderPlaced → [inventory(A), inventory(B), inventory(C), email, audit]
+```
+
+**Conditional Arrays:**
+```typescript
+const validator = neuron('validator', { success, error, audit }).dendrite({
+  collateral: input,
+  response: (payload, axon) => {
+    const signals = [];
+    
+    // Conditionally add signals
+    if (isValid(payload.data)) {
+      signals.push(axon.success.createSignal({ validated: payload.data }));
+    } else {
+      signals.push(axon.error.createSignal({ error: 'Invalid' }));
+    }
+    
+    // Always audit
+    signals.push(axon.audit.createSignal({ attempted: true }));
+    
+    return signals; // Return empty array to emit nothing
+  }
+});
+```
+
+**Starting with Multiple Signals:**
+```typescript
+// Process multiple orders in parallel
+await cns.stimulate([
+  orderPlaced.createSignal({ orderId: 'ORD-001', items: ['X'] }),
+  orderPlaced.createSignal({ orderId: 'ORD-002', items: ['Y', 'Z'] })
+]);
+```
+
+See [Multiple Signals Recipe](https://cnstra.org/docs/recipes/multiple-signals) for more patterns and best practices.
+
 ## 🧠 Memory & Performance
 
 ### Memory-Efficient Design
@@ -390,6 +487,8 @@ await cns.stimulate(input.createSignal({ increment: 3 })); // count: 8 (separate
 - Use synchronous responses when possible
 - Set reasonable `maxNeuronHops` limits
 - Implement proper error handling in `onResponse`
+- Use array returns for genuine fan-out patterns, not just convenience
+- Consider concurrency limits when returning many signals
 
 ## 🎯 Common Use Cases
 

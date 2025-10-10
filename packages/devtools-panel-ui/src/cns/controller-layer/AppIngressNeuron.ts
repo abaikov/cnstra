@@ -92,6 +92,7 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                         apps: msg.apps || [],
                     });
                 }
+                // apps:replays handled in page-local listener (ignore here)
                 if (msg.type === 'apps:cns') {
                     console.log('📡 AppIngressNeuron received apps:cns:', {
                         appId: msg.appId,

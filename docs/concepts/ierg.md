@@ -42,6 +42,10 @@ Performance and backpressure
 - No full state tree copies; responses are local and O(1) dispatch along the graph.
 - Built-in concurrency gates and AbortSignal support provide backpressure knobs.
 
+Entry point and cross‑cutting concerns
+- Single entry point: `cns.stimulate(...)` starts every run.
+- Cross‑cutting hooks: use global `addResponseListener(...)` or per‑run `onResponse` to implement logging/metrics/tracing without polluting domain neurons.
+
 Comparison to Flux/Redux
 - Flux relies on global dispatch and slice reducers; cross-slice coordination and ordering are awkward.
 - Immutable tree copies cause extra allocations and render churn.

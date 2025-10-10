@@ -76,7 +76,9 @@ export class CNS<
     /**
      * Global response listeners applied to every stimulation.
      */
-    private readonly globalResponseListeners: Array<(r: any) => void> = [];
+    private readonly globalResponseListeners: Array<
+        (r: any) => void | Promise<void>
+    > = [];
 
     constructor(
         protected readonly neurons: TNeuron[],
@@ -126,7 +128,7 @@ export class CNS<
                 TInputPayload,
                 TOutputPayload
             >
-        ) => void
+        ) => void | Promise<void>
     ): () => void {
         this.globalResponseListeners.push(listener);
         let active = true;
@@ -139,24 +141,39 @@ export class CNS<
     }
 
     public wrapOnResponse<T>(
-        local?: (response: T) => void
-    ): (response: T) => void {
+        local?: (response: T) => void | Promise<void>
+    ): (response: T) => void | Promise<void> {
         if (this.globalResponseListeners.length === 0 && !local) {
             // No-op fast path
             return () => {};
         }
         return (r: T) => {
-            try {
-                if (local) local(r);
-            } finally {
-                // Global listeners should always see the event even if local throws
-                for (let i = 0; i < this.globalResponseListeners.length; i++) {
-                    try {
-                        this.globalResponseListeners[i](r);
-                    } catch (e) {
-                        // Swallow to prevent breaking propagation chain
-                    }
+            let anyPromise = false;
+            const promises: Promise<void>[] = [];
+
+            if (local) {
+                const res = local(r);
+                if (res && typeof (res as any).then === 'function') {
+                    anyPromise = true;
+                    promises.push(res as Promise<void>);
                 }
+            }
+
+            for (let i = 0; i < this.globalResponseListeners.length; i++) {
+                const res = this.globalResponseListeners[i](r);
+                if (res && typeof (res as any).then === 'function') {
+                    anyPromise = true;
+                    promises.push(res as Promise<void>);
+                }
+            }
+
+            if (anyPromise) {
+                return Promise.allSettled(promises).then(results => {
+                    const rejected = results.find(
+                        r => r.status === 'rejected'
+                    ) as PromiseRejectedResult | undefined;
+                    if (rejected) throw rejected.reason;
+                });
             }
         };
     }
@@ -533,6 +550,18 @@ export class CNS<
         return Array.from(this.neuronIndex.values());
     }
 
+    public getCollateralByName<TName extends string = string>(
+        collateralName: TName
+    ) {
+        return this.collateralIndex.get(
+            collateralName as unknown as TCollateralName
+        ) as unknown as CNSCollateral<TName, unknown> | undefined;
+    }
+
+    public getNeuronByName<TName extends string = string>(neuronName: TName) {
+        return this.neuronIndex.get(neuronName as unknown as TNeuronName);
+    }
+
     public getSubscribers(
         collateralName: TCollateralName
     ): TCNSSubscriber<TNeuron, TDendrite>[] {
@@ -540,13 +569,15 @@ export class CNS<
     }
 
     public stimulate<TInputPayload extends TOutputPayload, TOutputPayload>(
-        signal: TCNSSignal<TCollateralName, TInputPayload>,
+        signalOrSignals:
+            | TCNSSignal<TCollateralName, TInputPayload>
+            | TCNSSignal<TCollateralName, TInputPayload>[],
         options?: TCNSStimulationOptions<
             TCollateralName,
             TInputPayload,
             TOutputPayload
         >
-    ) {
+    ): Promise<void> {
         const wrapped = this.wrapOnResponse(options?.onResponse);
         const stimulation = new CNSStimulation<
             TCollateralName,
@@ -559,6 +590,7 @@ export class CNS<
             ...options,
             onResponse: wrapped,
         });
-        stimulation.responseToSignal(signal);
+        stimulation.responseToSignal(signalOrSignals);
+        return stimulation.waitUntilComplete();
     }
 }

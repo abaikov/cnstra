@@ -2,9 +2,13 @@ import React from 'react';
 import { db } from '../model';
 import { useSelectEntitiesByIndexKey } from '@oimdb/react';
 
-type Props = { appId: string };
+type Props = {
+    appId: string;
+    wsRef?: React.MutableRefObject<WebSocket | null>;
+    cnsId?: string | null;
+};
 
-const StimulationsPage: React.FC<Props> = ({ appId }) => {
+const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
     const responses = useSelectEntitiesByIndexKey(
         db.responses,
         db.responses.indexes.appId,
@@ -59,6 +63,36 @@ const StimulationsPage: React.FC<Props> = ({ appId }) => {
         : hasStimulations
         ? 'stimulations'
         : 'responses';
+
+    // Fetch replay history for this app when ws is ready
+    React.useEffect(() => {
+        if (!wsRef?.current || wsRef.current.readyState !== WebSocket.OPEN)
+            return;
+        try {
+            wsRef.current.send(
+                JSON.stringify({ type: 'apps:get-replays', appId })
+            );
+        } catch {}
+    }, [wsRef?.current, appId]);
+
+    // Listen for apps:replays locally and store in component state
+    const [replays, setReplays] = React.useState<any[]>([]);
+    React.useEffect(() => {
+        if (!wsRef?.current) return;
+        const handler = (ev: MessageEvent) => {
+            try {
+                const msg =
+                    typeof ev.data === 'string' ? JSON.parse(ev.data) : null;
+                if (msg && msg.type === 'apps:replays' && msg.appId === appId) {
+                    setReplays(Array.isArray(msg.replays) ? msg.replays : []);
+                }
+            } catch {}
+        };
+        wsRef.current.addEventListener('message', handler as any);
+        return () => {
+            wsRef.current?.removeEventListener('message', handler as any);
+        };
+    }, [wsRef?.current, appId]);
 
     // Build trace map per stimulationId
     const traceByStimulation = React.useMemo(() => {
@@ -147,6 +181,154 @@ const StimulationsPage: React.FC<Props> = ({ appId }) => {
         );
     };
 
+    // Replay UI state
+    const [replayDelay, setReplayDelay] = React.useState<string>('');
+    const [replayTimeout, setReplayTimeout] = React.useState<string>('');
+    const [replayHops, setReplayHops] = React.useState<string>('');
+    const [replayConcurrency, setReplayConcurrency] =
+        React.useState<string>('');
+    const [replayAllowed, setReplayAllowed] = React.useState<string>('');
+    const [lastReplayResult, setLastReplayResult] = React.useState<
+        { ok: true; detail: any } | { ok: false; detail: any } | null
+    >(null);
+
+    // Replay handler
+    const handleReplay = React.useCallback(
+        async (stimulationId: string, payload?: unknown, contexts?: any) => {
+            if (!wsRef?.current || wsRef.current.readyState !== WebSocket.OPEN)
+                return;
+            const stim = stimulationMap.get(stimulationId);
+            if (!stim) return;
+            const cmd = {
+                type: 'stimulate',
+                stimulationCommandId: `${stimulationId}-replay-${Date.now()}`,
+                appId: appId,
+                cnsId: cnsId || undefined,
+                collateralName: stim.collateralName,
+                payload: payload ?? stim.payload,
+                contexts: contexts ?? undefined,
+                options: {
+                    maxNeuronHops: replayHops ? Number(replayHops) : 128,
+                    concurrency: replayConcurrency
+                        ? Number(replayConcurrency)
+                        : undefined,
+                    timeoutMs: replayTimeout
+                        ? Number(replayTimeout)
+                        : undefined,
+                    allowedNames: replayAllowed
+                        ? replayAllowed
+                              .split(',')
+                              .map(s => s.trim())
+                              .filter(Boolean)
+                        : undefined,
+                },
+            } as any;
+            // Wait for ack/nack once
+            const waitForAck = new Promise(resolve => {
+                const handler = (ev: MessageEvent) => {
+                    try {
+                        const msg =
+                            typeof ev.data === 'string'
+                                ? JSON.parse(ev.data)
+                                : null;
+                        if (!msg) return;
+                        if (
+                            msg.type === 'stimulate-accepted' ||
+                            msg.type === 'stimulate-rejected'
+                        ) {
+                            wsRef.current?.removeEventListener(
+                                'message',
+                                handler as any
+                            );
+                            resolve(msg);
+                        }
+                    } catch {}
+                };
+                wsRef.current?.addEventListener('message', handler as any);
+            });
+            const delayMs = replayDelay ? Number(replayDelay) : 0;
+            if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+            wsRef.current.send(JSON.stringify(cmd));
+            const ack = (await waitForAck) as any;
+            setLastReplayResult(
+                ack?.type === 'stimulate-accepted'
+                    ? { ok: true, detail: ack }
+                    : { ok: false, detail: ack }
+            );
+        },
+        [
+            wsRef,
+            appId,
+            cnsId,
+            stimulationMap,
+            replayDelay,
+            replayTimeout,
+            replayHops,
+            replayConcurrency,
+            replayAllowed,
+        ]
+    );
+
+    // Live Replay Log (correlate by stimulationId on accept)
+    const [replayLog, setReplayLog] = React.useState<
+        Array<{
+            time: number;
+            stimulationId: string;
+            message: string;
+            level: 'info' | 'error';
+        }>
+    >([]);
+    React.useEffect(() => {
+        if (!wsRef?.current) return;
+        const handler = (ev: MessageEvent) => {
+            try {
+                const msg =
+                    typeof ev.data === 'string' ? JSON.parse(ev.data) : null;
+                if (!msg) return;
+                if (msg.type === 'stimulate-accepted') {
+                    setReplayLog(prev =>
+                        prev.concat([
+                            {
+                                time: Date.now(),
+                                stimulationId: msg.stimulationCommandId,
+                                message: 'Accepted',
+                                level: 'info',
+                            },
+                        ])
+                    );
+                }
+                if (msg.type === 'stimulate-rejected') {
+                    setReplayLog(prev =>
+                        prev.concat([
+                            {
+                                time: Date.now(),
+                                stimulationId: msg.stimulationCommandId,
+                                message: String(msg.error || 'Rejected'),
+                                level: 'error',
+                            },
+                        ])
+                    );
+                }
+                if (msg.type === 'stimulation-batch') {
+                    const arr = Array.isArray(msg.stimulations)
+                        ? msg.stimulations
+                        : [];
+                    const lines = arr.map((s: any) => ({
+                        time: s.timestamp,
+                        stimulationId: s.stimulationId,
+                        message: `Hop @ ${s.neuronId} via [${s.collateralName}]`,
+                        level: s.error ? ('error' as const) : ('info' as const),
+                    }));
+                    if (lines.length > 0)
+                        setReplayLog(prev => prev.concat(lines));
+                }
+            } catch {}
+        };
+        wsRef.current.addEventListener('message', handler as any);
+        return () =>
+            wsRef.current?.removeEventListener('message', handler as any);
+    }, [wsRef?.current]);
+
     return (
         <div
             data-testid="stimulations-page"
@@ -154,7 +336,116 @@ const StimulationsPage: React.FC<Props> = ({ appId }) => {
         >
             <h3 className="decay-glow" style={{ marginTop: 0 }}>
                 ⚡ Stimulations
+                <span
+                    style={{
+                        marginLeft: 8,
+                        fontSize: 'var(--font-size-xs)',
+                        color: 'var(--text-error)',
+                    }}
+                >
+                    {Array.isArray(stimulations)
+                        ? stimulations.filter((s: any) => s?.error).length
+                        : 0}{' '}
+                    errors
+                </span>
             </h3>
+            {/* Replay options controls */}
+            {wsRef?.current && (
+                <div
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(5, 1fr)',
+                        gap: 8,
+                        alignItems: 'center',
+                        marginBottom: 12,
+                    }}
+                >
+                    <input
+                        placeholder="delay ms"
+                        value={replayDelay}
+                        onChange={e => setReplayDelay(e.target.value)}
+                        style={{ fontSize: '10px', padding: 4 }}
+                    />
+                    <input
+                        placeholder="timeout ms"
+                        value={replayTimeout}
+                        onChange={e => setReplayTimeout(e.target.value)}
+                        style={{ fontSize: '10px', padding: 4 }}
+                    />
+                    <input
+                        placeholder="max hops"
+                        value={replayHops}
+                        onChange={e => setReplayHops(e.target.value)}
+                        style={{ fontSize: '10px', padding: 4 }}
+                    />
+                    <input
+                        placeholder="concurrency"
+                        value={replayConcurrency}
+                        onChange={e => setReplayConcurrency(e.target.value)}
+                        style={{ fontSize: '10px', padding: 4 }}
+                    />
+                    <input
+                        placeholder="allowedNames (comma)"
+                        value={replayAllowed}
+                        onChange={e => setReplayAllowed(e.target.value)}
+                        style={{ fontSize: '10px', padding: 4 }}
+                    />
+                </div>
+            )}
+            {lastReplayResult && (
+                <div
+                    style={{
+                        fontSize: 'var(--font-size-xs)',
+                        marginBottom: 12,
+                        color: lastReplayResult.ok
+                            ? 'var(--text-success)'
+                            : 'var(--text-error)',
+                    }}
+                >
+                    {lastReplayResult.ok ? '✅' : '❌'} Replay{' '}
+                    {lastReplayResult.ok ? 'accepted' : 'rejected'}
+                </div>
+            )}
+            {/* Replay Log panel */}
+            {replayLog.length > 0 && (
+                <div
+                    style={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: 8,
+                        marginBottom: 12,
+                        maxHeight: 160,
+                        overflowY: 'auto',
+                    }}
+                >
+                    <div
+                        style={{
+                            fontSize: 'var(--font-size-xs)',
+                            color: 'var(--text-muted)',
+                            marginBottom: 6,
+                        }}
+                    >
+                        Replay Log
+                    </div>
+                    {replayLog.slice(-100).map((r, i) => (
+                        <div
+                            key={i}
+                            style={{
+                                fontSize: '10px',
+                                color:
+                                    r.level === 'error'
+                                        ? 'var(--text-error)'
+                                        : 'var(--text-secondary)',
+                            }}
+                        >
+                            {new Date(r.time).toLocaleTimeString()} •{' '}
+                            {r.stimulationId}: {r.message}
+                        </div>
+                    ))}
+                </div>
+            )}
+
             <div
                 style={{
                     color: 'var(--text-secondary)',
@@ -172,6 +463,39 @@ const StimulationsPage: React.FC<Props> = ({ appId }) => {
                         Showing stimulations (no responses received yet)
                     </div>
                 )}
+                {/* Replay history summary */}
+                {replays && replays.length > 0 && (
+                    <div
+                        style={{
+                            marginTop: 8,
+                            fontSize: 'var(--font-size-xs)',
+                            color: 'var(--text-secondary)',
+                        }}
+                    >
+                        Replay history: {replays.length}{' '}
+                        <button
+                            className="btn-infected"
+                            onClick={() => {
+                                try {
+                                    wsRef?.current?.send(
+                                        JSON.stringify({
+                                            type: 'apps:get-replays',
+                                            appId,
+                                        })
+                                    );
+                                } catch {}
+                            }}
+                            style={{
+                                marginLeft: 8,
+                                fontSize: '10px',
+                                padding: '2px 6px',
+                                border: '1px solid var(--border-primary)',
+                            }}
+                        >
+                            Refresh
+                        </button>
+                    </div>
+                )}
             </div>
             <div
                 style={{
@@ -182,6 +506,61 @@ const StimulationsPage: React.FC<Props> = ({ appId }) => {
                     paddingRight: '8px',
                 }}
             >
+                {/* Minimal replay list */}
+                {replays && replays.length > 0 && (
+                    <div
+                        style={{
+                            background: 'var(--bg-card)',
+                            border: '1px dashed var(--border-primary)',
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '8px',
+                        }}
+                    >
+                        <div
+                            style={{
+                                fontSize: 'var(--font-size-xs)',
+                                color: 'var(--text-muted)',
+                                marginBottom: 6,
+                            }}
+                        >
+                            Recent Replays
+                        </div>
+                        <div style={{ display: 'grid', gap: 6 }}>
+                            {replays.slice(-10).map((r: any, idx: number) => (
+                                <div
+                                    key={
+                                        (r.stimulationCommandId as string) ||
+                                        idx
+                                    }
+                                    style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        fontSize: 'var(--font-size-xs)',
+                                    }}
+                                >
+                                    <span>
+                                        {new Date(
+                                            r.timestamp
+                                        ).toLocaleTimeString()}{' '}
+                                        • {r.collateralName || '-'}
+                                    </span>
+                                    <span
+                                        style={{
+                                            color:
+                                                r.result === 'accepted'
+                                                    ? 'var(--text-success)'
+                                                    : r.result === 'rejected'
+                                                    ? 'var(--text-error)'
+                                                    : 'var(--text-secondary)',
+                                        }}
+                                    >
+                                        {r.result || 'pending'}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 {list.map(item => {
                     const isResponse = hasResponses && 'responseId' in item;
                     const isStimulation =
@@ -217,7 +596,9 @@ const StimulationsPage: React.FC<Props> = ({ appId }) => {
                             <div
                                 style={{
                                     fontSize: 'var(--font-size-xs)',
-                                    color: 'var(--text-secondary)',
+                                    color: (item as any).error
+                                        ? 'var(--text-error)'
+                                        : 'var(--text-secondary)',
                                 }}
                             >
                                 {isResponse
@@ -253,6 +634,32 @@ const StimulationsPage: React.FC<Props> = ({ appId }) => {
                                                       error:{' '}
                                                       {item.error || 'none'}
                                                   </div>
+                                                  {stimulation &&
+                                                      wsRef?.current && (
+                                                          <div
+                                                              style={{
+                                                                  marginTop: 6,
+                                                              }}
+                                                          >
+                                                              <button
+                                                                  className="btn-infected"
+                                                                  onClick={() =>
+                                                                      handleReplay(
+                                                                          item.stimulationId as any
+                                                                      )
+                                                                  }
+                                                                  style={{
+                                                                      fontSize:
+                                                                          '10px',
+                                                                      padding:
+                                                                          '4px 6px',
+                                                                      border: '1px solid var(--border-primary)',
+                                                                  }}
+                                                              >
+                                                                  ▶️ Replay
+                                                              </button>
+                                                          </div>
+                                                      )}
                                                   {trace.length > 0 && (
                                                       <div
                                                           style={{
@@ -453,6 +860,31 @@ const StimulationsPage: React.FC<Props> = ({ appId }) => {
                                                             '...'
                                                           : 'none'}
                                                   </div>
+                                                  {wsRef?.current && (
+                                                      <div
+                                                          style={{
+                                                              marginTop: 6,
+                                                          }}
+                                                      >
+                                                          <button
+                                                              className="btn-infected"
+                                                              onClick={() =>
+                                                                  handleReplay(
+                                                                      stim.stimulationId
+                                                                  )
+                                                              }
+                                                              style={{
+                                                                  fontSize:
+                                                                      '10px',
+                                                                  padding:
+                                                                      '4px 6px',
+                                                                  border: '1px solid var(--border-primary)',
+                                                              }}
+                                                          >
+                                                              ▶️ Replay
+                                                          </button>
+                                                      </div>
+                                                  )}
                                               </>
                                           );
                                       })()

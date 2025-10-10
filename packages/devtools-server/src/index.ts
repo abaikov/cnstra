@@ -31,6 +31,85 @@ export class CNSDevToolsServer {
     private collateralsByCns = new Map<string, any[]>();
     private responsesByCns = new Map<string, any[]>();
     private cnsByApp = new Map<string, Set<string>>();
+    private replaysByApp = new Map<
+        string,
+        Array<{
+            stimulationCommandId: string;
+            appId: string;
+            cnsId?: string;
+            collateralName?: string;
+            payload?: unknown;
+            contexts?: unknown;
+            options?: unknown;
+            timestamp: number;
+            result?: 'accepted' | 'rejected';
+        }>
+    >();
+
+    private static sanitizeValue(
+        value: unknown,
+        depth: number = 0,
+        limits: {
+            maxDepth: number;
+            maxString: number;
+            maxArray: number;
+            maxObjectKeys: number;
+        } = {
+            maxDepth: 5,
+            maxString: 2000,
+            maxArray: 200,
+            maxObjectKeys: 200,
+        }
+    ): unknown {
+        if (value === null || value === undefined) return value;
+        if (depth >= limits.maxDepth) return '[MaxDepth]';
+        const t = typeof value;
+        if (t === 'string') {
+            const s = value as string;
+            return s.length > limits.maxString
+                ? s.slice(0, limits.maxString) +
+                      `…[+${s.length - limits.maxString}]`
+                : s;
+        }
+        if (
+            t === 'number' ||
+            t === 'boolean' ||
+            t === 'bigint' ||
+            t === 'symbol'
+        )
+            return value as any;
+        if (t === 'function') return '[Function]';
+        if (value instanceof Error) {
+            return {
+                name: value.name,
+                message: value.message,
+                stack: value.stack,
+            };
+        }
+        if (Array.isArray(value)) {
+            const arr = value as unknown[];
+            const slice = arr.slice(0, limits.maxArray);
+            const mapped = slice.map(v =>
+                this.sanitizeValue(v, depth + 1, limits)
+            );
+            if (arr.length > slice.length)
+                mapped.push(`[…+${arr.length - slice.length} items]`);
+            return mapped;
+        }
+        if (t === 'object') {
+            const out: Record<string, unknown> = {};
+            const entries = Object.entries(value as Record<string, unknown>);
+            const slice = entries.slice(0, limits.maxObjectKeys);
+            for (const [k, v] of slice) {
+                out[k] = this.sanitizeValue(v, depth + 1, limits);
+            }
+            if (entries.length > slice.length) {
+                out['…'] = `+${entries.length - slice.length} keys`;
+            }
+            return out;
+        }
+        return value;
+    }
 
     constructor(private repository: ICNSDevToolsServerRepository) {}
 
@@ -50,6 +129,42 @@ export class CNSDevToolsServer {
     /** @internal */
     get connectedAppCount(): number {
         return this.appSockets.size;
+    }
+
+    private static applyWindowAndPaginate<T extends { timestamp: number }>(
+        items: ReadonlyArray<T>,
+        params: {
+            fromTimestamp?: number;
+            toTimestamp?: number;
+            offset?: number;
+            limit?: number;
+        }
+    ): T[] {
+        const { fromTimestamp, toTimestamp } = params;
+        const offset = Math.max(0, params.offset ?? 0);
+        const limit =
+            params.limit !== undefined && params.limit > 0
+                ? params.limit
+                : undefined;
+
+        // Copy, filter by time window, sort ASC by timestamp
+        const filtered = items
+            .filter(
+                item =>
+                    (fromTimestamp === undefined ||
+                        item.timestamp >= fromTimestamp) &&
+                    (toTimestamp === undefined || item.timestamp <= toTimestamp)
+            )
+            .slice() // avoid mutating original arrays
+            .sort((a, b) => a.timestamp - b.timestamp);
+
+        if (offset > 0 || limit !== undefined) {
+            return filtered.slice(
+                offset,
+                limit !== undefined ? offset + limit : undefined
+            );
+        }
+        return filtered;
     }
 
     async handleMessage(ws: WebSocket, message: any): Promise<any> {
@@ -74,11 +189,44 @@ export class CNSDevToolsServer {
             case 'stimulate-accepted':
                 await this.repository.saveMessage(message);
                 // Forward ack to clients
+                try {
+                    const cmdId = (message as any).stimulationCommandId as
+                        | string
+                        | undefined;
+                    const appId = (message as any).appId as string | undefined;
+                    if (cmdId && appId) {
+                        const arr = this.replaysByApp.get(appId) || [];
+                        // Update latest matching replay by command id
+                        for (let i = arr.length - 1; i >= 0; i--) {
+                            if (arr[i].stimulationCommandId === cmdId) {
+                                arr[i].result = 'accepted';
+                                break;
+                            }
+                        }
+                        this.replaysByApp.set(appId, arr);
+                    }
+                } catch {}
                 return message as StimulateAccepted;
 
             case 'stimulate-rejected':
                 await this.repository.saveMessage(message);
                 // Forward nack to clients
+                try {
+                    const cmdId = (message as any).stimulationCommandId as
+                        | string
+                        | undefined;
+                    const appId = (message as any).appId as string | undefined;
+                    if (cmdId && appId) {
+                        const arr = this.replaysByApp.get(appId) || [];
+                        for (let i = arr.length - 1; i >= 0; i--) {
+                            if (arr[i].stimulationCommandId === cmdId) {
+                                arr[i].result = 'rejected';
+                                break;
+                            }
+                        }
+                        this.replaysByApp.set(appId, arr);
+                    }
+                } catch {}
                 return message as StimulateRejected;
 
             case 'stimulation':
@@ -93,29 +241,301 @@ export class CNSDevToolsServer {
             }
 
             case 'apps:get-stimulations': {
-                const { appId, limit } = message as any;
+                const {
+                    appId,
+                    limit,
+                    fromTimestamp,
+                    toTimestamp,
+                    offset,
+                    hasError,
+                    errorContains,
+                    collateralName,
+                    neuronId,
+                } = message as any;
                 let stimulations: StimulationMessage[] = [];
                 if (appId) {
                     stimulations = this.stimulationsByApp.get(appId) || [];
                 } else {
                     // Merge all apps' stimulations when appId is not provided
-                    for (const arr of this.stimulationsByApp.values()) {
+                    const vals = Array.from(this.stimulationsByApp.values());
+                    for (const arr of vals) {
                         stimulations = stimulations.concat(arr);
                     }
-                    // Sort by timestamp ASC to maintain original order
-                    stimulations.sort((a, b) => a.timestamp - b.timestamp);
                 }
-                // Optional limit (take last N)
-                const out =
-                    typeof limit === 'number' && limit > 0
-                        ? stimulations.slice(
-                              Math.max(0, stimulations.length - limit)
-                          )
-                        : stimulations;
+                // Optional error filter
+                if (typeof hasError === 'boolean') {
+                    stimulations = stimulations.filter(s => {
+                        const e = (s as any).error;
+                        const isErr = e !== null && e !== undefined && e !== '';
+                        return hasError ? isErr : !isErr;
+                    });
+                }
+                if (
+                    typeof errorContains === 'string' &&
+                    errorContains.length > 0
+                ) {
+                    const needle = errorContains.toLowerCase();
+                    stimulations = stimulations.filter(s =>
+                        String((s as any).error || '')
+                            .toLowerCase()
+                            .includes(needle)
+                    );
+                }
+                if (
+                    typeof collateralName === 'string' &&
+                    collateralName.length > 0
+                ) {
+                    stimulations = stimulations.filter(
+                        s => s.collateralName === collateralName
+                    );
+                }
+                if (typeof neuronId === 'string' && neuronId.length > 0) {
+                    stimulations = stimulations.filter(
+                        s => (s as any).neuronId === neuronId
+                    );
+                }
+                const out = CNSDevToolsServer.applyWindowAndPaginate(
+                    stimulations,
+                    {
+                        fromTimestamp,
+                        toTimestamp,
+                        offset,
+                        limit,
+                    }
+                );
                 return {
                     type: 'stimulation-batch',
                     stimulations: out,
                 } as StimulationBatchMessage;
+            }
+
+            case 'apps:get-replays': {
+                const { appId, limit, fromTimestamp, toTimestamp, offset } =
+                    message as any;
+                let list: Array<{ timestamp: number }> = [] as any;
+                if (appId) list = (this.replaysByApp.get(appId) || []) as any;
+                const out = CNSDevToolsServer.applyWindowAndPaginate(list, {
+                    fromTimestamp,
+                    toTimestamp,
+                    offset,
+                    limit,
+                });
+                return { type: 'apps:replays', appId, replays: out } as any;
+            }
+
+            // Export endpoints (JSON export over WS)
+            case 'apps:export-topology': {
+                const { appId } = message as any;
+                const inits = Array.from(this.lastInitByApp.values());
+                if (appId) {
+                    const filtered = inits.filter(init => {
+                        const baseAppId =
+                            (init as any).appId ||
+                            (init as any).devToolsInstanceId;
+                        return baseAppId === appId;
+                    });
+                    return { type: 'apps:topology', inits: filtered } as any;
+                }
+                return { type: 'apps:topology', inits } as any;
+            }
+
+            case 'apps:export-stimulations': {
+                const {
+                    appId,
+                    limit,
+                    fromTimestamp,
+                    toTimestamp,
+                    offset,
+                    hasError,
+                    errorContains,
+                    collateralName,
+                    neuronId,
+                } = message as any;
+                let stimulations: StimulationMessage[] = [];
+                if (appId) {
+                    stimulations = this.stimulationsByApp.get(appId) || [];
+                } else {
+                    for (const arr of this.stimulationsByApp.values()) {
+                        stimulations = stimulations.concat(arr);
+                    }
+                }
+                if (typeof hasError === 'boolean') {
+                    stimulations = stimulations.filter(s => {
+                        const e = (s as any).error;
+                        const isErr = e !== null && e !== undefined && e !== '';
+                        return hasError ? isErr : !isErr;
+                    });
+                }
+                if (
+                    typeof errorContains === 'string' &&
+                    errorContains.length > 0
+                ) {
+                    const needle = errorContains.toLowerCase();
+                    stimulations = stimulations.filter(s =>
+                        String((s as any).error || '')
+                            .toLowerCase()
+                            .includes(needle)
+                    );
+                }
+                if (
+                    typeof collateralName === 'string' &&
+                    collateralName.length > 0
+                ) {
+                    stimulations = stimulations.filter(
+                        s => s.collateralName === collateralName
+                    );
+                }
+                if (typeof neuronId === 'string' && neuronId.length > 0) {
+                    stimulations = stimulations.filter(
+                        s => (s as any).neuronId === neuronId
+                    );
+                }
+                const out = CNSDevToolsServer.applyWindowAndPaginate(
+                    stimulations,
+                    {
+                        fromTimestamp,
+                        toTimestamp,
+                        offset,
+                        limit,
+                    }
+                );
+                return {
+                    type: 'apps:export-stimulations',
+                    stimulations: out,
+                } as any;
+            }
+
+            case 'apps:export-snapshot': {
+                const { appId, limitResponses, limitStimulations } =
+                    message as any;
+                const inits = Array.from(this.lastInitByApp.values());
+                const topology = appId
+                    ? inits.filter(
+                          init =>
+                              ((init as any).appId ||
+                                  (init as any).devToolsInstanceId) === appId
+                      )
+                    : inits;
+                // Collect stimulations
+                const stimulations = appId
+                    ? this.stimulationsByApp.get(appId) || []
+                    : Array.from(this.stimulationsByApp.values()).flat();
+                // Collect responses per app
+                const responses: any[] = [];
+                for (const [cnsId, list] of Array.from(
+                    this.responsesByCns.entries()
+                )) {
+                    const base = this.findAppIdByCnsId(cnsId);
+                    if (!appId || base === appId) responses.push(...list);
+                }
+                const tail = (arr: any[], n?: number) =>
+                    typeof n === 'number' && n > 0
+                        ? arr.slice(Math.max(0, arr.length - n))
+                        : arr;
+                const sanitizedStim = tail(stimulations, limitStimulations).map(
+                    s => ({
+                        ...s,
+                        payload: CNSDevToolsServer.sanitizeValue(
+                            (s as any).payload
+                        ),
+                    })
+                );
+                const sanitizedResp = tail(responses, limitResponses).map(
+                    r => ({
+                        ...r,
+                        payload: CNSDevToolsServer.sanitizeValue(
+                            (r as any).payload
+                        ),
+                        contexts: CNSDevToolsServer.sanitizeValue(
+                            (r as any).contexts
+                        ),
+                        responsePayload: CNSDevToolsServer.sanitizeValue(
+                            (r as any).responsePayload
+                        ),
+                    })
+                );
+                const snapshot = {
+                    type: 'apps:snapshot',
+                    appId: appId || null,
+                    topology,
+                    stimulations: sanitizedStim,
+                    responses: sanitizedResp,
+                    createdAt: Date.now(),
+                } as any;
+                try {
+                    const sizeBytes = Buffer.byteLength(
+                        JSON.stringify(snapshot)
+                    );
+                    (snapshot as any).sizeBytes = sizeBytes;
+                    const maxBytes = 5 * 1024 * 1024; // 5MB
+                    if (sizeBytes > maxBytes) {
+                        (
+                            snapshot as any
+                        ).warning = `Snapshot size ${sizeBytes} bytes exceeds ${maxBytes} bytes; consider narrowing filters.`;
+                    }
+                } catch {}
+                return snapshot;
+            }
+
+            case 'cns:export-responses': {
+                const {
+                    cnsId,
+                    limit,
+                    fromTimestamp,
+                    toTimestamp,
+                    offset,
+                    hasError,
+                    errorContains,
+                    neuronId,
+                    collateralName,
+                } = message as any;
+                const responsesAll = this.responsesByCns.get(cnsId) || [];
+                let responses = responsesAll as any[];
+                if (typeof hasError === 'boolean') {
+                    responses = responses.filter(r => {
+                        const e = (r as any).error;
+                        const isErr = e !== null && e !== undefined && e !== '';
+                        return hasError ? isErr : !isErr;
+                    });
+                }
+                if (
+                    typeof errorContains === 'string' &&
+                    errorContains.length > 0
+                ) {
+                    const needle = errorContains.toLowerCase();
+                    responses = responses.filter(r =>
+                        String((r as any).error || '')
+                            .toLowerCase()
+                            .includes(needle)
+                    );
+                }
+                if (typeof neuronId === 'string' && neuronId.length > 0) {
+                    responses = responses.filter(
+                        r => (r as any).neuronId === neuronId
+                    );
+                }
+                if (
+                    typeof collateralName === 'string' &&
+                    collateralName.length > 0
+                ) {
+                    responses = responses.filter(
+                        r => (r as any).collateralName === collateralName
+                    );
+                }
+                responses = CNSDevToolsServer.applyWindowAndPaginate(
+                    responses as any,
+                    {
+                        fromTimestamp,
+                        toTimestamp,
+                        offset,
+                        limit,
+                    }
+                );
+                return {
+                    type: 'cns:export-responses',
+                    cnsId,
+                    responses,
+                } as any;
             }
 
             // REST-like over WS
@@ -154,13 +574,59 @@ export class CNSDevToolsServer {
                 };
             }
             case 'cns:get-responses': {
-                const { cnsId, limit } = message as any;
-                let responses = this.responsesByCns.get(cnsId) || [];
-                if (typeof limit === 'number' && limit > 0) {
-                    responses = responses.slice(
-                        Math.max(0, responses.length - limit)
+                const {
+                    cnsId,
+                    limit,
+                    fromTimestamp,
+                    toTimestamp,
+                    offset,
+                    hasError,
+                    errorContains,
+                    neuronId,
+                    collateralName,
+                } = message as any;
+                const responsesAll = this.responsesByCns.get(cnsId) || [];
+                let responses = responsesAll as any[];
+                if (typeof hasError === 'boolean') {
+                    responses = responses.filter(r => {
+                        const e = (r as any).error;
+                        const isErr = e !== null && e !== undefined && e !== '';
+                        return hasError ? isErr : !isErr;
+                    });
+                }
+                if (
+                    typeof errorContains === 'string' &&
+                    errorContains.length > 0
+                ) {
+                    const needle = errorContains.toLowerCase();
+                    responses = responses.filter(r =>
+                        String((r as any).error || '')
+                            .toLowerCase()
+                            .includes(needle)
                     );
                 }
+                if (typeof neuronId === 'string' && neuronId.length > 0) {
+                    responses = responses.filter(
+                        r => (r as any).neuronId === neuronId
+                    );
+                }
+                if (
+                    typeof collateralName === 'string' &&
+                    collateralName.length > 0
+                ) {
+                    responses = responses.filter(
+                        r => (r as any).collateralName === collateralName
+                    );
+                }
+                responses = CNSDevToolsServer.applyWindowAndPaginate(
+                    responses as any,
+                    {
+                        fromTimestamp,
+                        toTimestamp,
+                        offset,
+                        limit,
+                    }
+                );
                 return { type: 'cns:responses', cnsId, responses };
             }
 
@@ -271,6 +737,24 @@ export class CNSDevToolsServer {
         const appIdFromCmd = (message as any).appId as string | undefined;
 
         try {
+            // Persist replay intent for history (best effort)
+            try {
+                const entry = {
+                    stimulationCommandId: (message as any).stimulationCommandId,
+                    appId: (message as any).appId,
+                    cnsId: (message as any).cnsId,
+                    collateralName: (message as any).collateralName,
+                    payload: (message as any).payload,
+                    contexts: (message as any).contexts,
+                    options: (message as any).options,
+                    timestamp: Date.now(),
+                };
+                const arr = this.replaysByApp.get(entry.appId) || [];
+                arr.push(entry);
+                if (arr.length > 1000) arr.splice(0, arr.length - 1000);
+                this.replaysByApp.set(entry.appId, arr);
+            } catch {}
+
             if (cnsIdFromCmd) {
                 const appWs = this.appSockets.get(cnsIdFromCmd);
                 if (appWs && appWs.readyState === 1) {
@@ -287,7 +771,7 @@ export class CNSDevToolsServer {
                 const cnsSet = this.cnsByApp.get(appIdFromCmd);
                 let count = 0;
                 if (cnsSet) {
-                    for (const cnsId of cnsSet.values()) {
+                    for (const cnsId of Array.from(cnsSet.values())) {
                         const appWs = this.appSockets.get(cnsId);
                         if (appWs && appWs.readyState === 1) {
                             appWs.send(JSON.stringify(message));
@@ -301,7 +785,7 @@ export class CNSDevToolsServer {
             } else {
                 // Fallback: broadcast to all app sockets
                 let count = 0;
-                for (const [, appWs] of this.appSockets.entries()) {
+                for (const [, appWs] of Array.from(this.appSockets.entries())) {
                     if (appWs.readyState === 1) {
                         appWs.send(JSON.stringify(message));
                         count++;
@@ -318,7 +802,7 @@ export class CNSDevToolsServer {
 
     private findAppIdByCnsId(cnsId?: string): string | undefined {
         if (!cnsId) return undefined;
-        for (const [appId, set] of this.cnsByApp.entries()) {
+        for (const [appId, set] of Array.from(this.cnsByApp.entries())) {
             if (set.has(cnsId)) return appId;
         }
         return undefined;
@@ -326,7 +810,7 @@ export class CNSDevToolsServer {
 
     handleDisconnect(ws: WebSocket): void {
         // Remove from app sockets
-        for (const [cnsId, socket] of this.appSockets.entries()) {
+        for (const [cnsId, socket] of Array.from(this.appSockets.entries())) {
             if (socket === ws) {
                 this.appSockets.delete(cnsId);
                 console.log(`❌ CNS disconnected: ${cnsId}`);

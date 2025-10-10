@@ -8,7 +8,7 @@ describe('CNStra Core Tests', () => {
 
             const typedCollateral = collateral<{ message: string }>('test');
             const signal = typedCollateral.createSignal({ message: 'Hello' });
-            expect(signal.collateral.name).toBe('test');
+            expect(signal.collateralName).toBe('test');
             expect(signal.payload).toEqual({ message: 'Hello' });
         });
 
@@ -29,14 +29,14 @@ describe('CNStra Core Tests', () => {
                 const signal = typedCollateral.createSignal({
                     message: 'Hello',
                 });
-                expect(signal.collateral.name).toBe('typed');
+                expect(signal.collateralName).toBe('typed');
                 expect(signal.payload).toEqual({ message: 'Hello' });
             });
 
             it('should create collateral with undefined payload by default', () => {
                 const defaultCollateral = collateral('default');
                 const signal = defaultCollateral.createSignal();
-                expect(signal.collateral.name).toBe('default');
+                expect(signal.collateralName).toBe('default');
                 expect(signal.payload).toBeUndefined();
             });
         });
@@ -181,7 +181,7 @@ describe('CNStra Core Tests', () => {
                 );
 
                 expect(result).toEqual({
-                    collateral: expect.objectContaining({ name: 'output' }),
+                    collateralName: 'output',
                     payload: { processed: 'Processed: Hello' },
                 });
             });
@@ -213,7 +213,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralName:
-                                response.outputSignal?.collateral.name ||
+                                response.outputSignal?.collateralName ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
                         });
@@ -264,7 +264,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralName:
-                                response.outputSignal?.collateral.name ||
+                                response.outputSignal?.collateralName ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
                         });
@@ -310,7 +310,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralName:
-                                response.outputSignal?.collateral.name ||
+                                response.outputSignal?.collateralName ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
                         });
@@ -341,8 +341,8 @@ describe('CNStra Core Tests', () => {
             const local: string[] = [];
             cns.addResponseListener(r => {
                 global.push(
-                    r.outputSignal?.collateral.name ||
-                        r.inputSignal?.collateral.name ||
+                    r.outputSignal?.collateralName ||
+                        r.inputSignal?.collateralName ||
                         'unknown'
                 );
             });
@@ -350,8 +350,8 @@ describe('CNStra Core Tests', () => {
             await cns.stimulate(input.createSignal(), {
                 onResponse: r => {
                     local.push(
-                        r.outputSignal?.collateral.name ||
-                            r.inputSignal?.collateral.name ||
+                        r.outputSignal?.collateralName ||
+                            r.inputSignal?.collateralName ||
                             'unknown'
                     );
                 },
@@ -401,7 +401,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralName:
-                                response.outputSignal?.collateral.name ||
+                                response.outputSignal?.collateralName ||
                                 'unknown',
                             queueLength: response.queueLength,
                         });
@@ -475,7 +475,7 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralName:
-                                response.outputSignal?.collateral.name ||
+                                response.outputSignal?.collateralName ||
                                 'unknown',
                             queueLength: response.queueLength,
                         });
@@ -523,13 +523,13 @@ describe('CNStra Core Tests', () => {
                         onResponse: response => {
                             responses.push({
                                 collateralName:
-                                    response.outputSignal?.collateral.name ||
+                                    response.outputSignal?.collateralName ||
                                     'unknown',
                                 payload: response.outputSignal?.payload,
                             });
 
                             if (
-                                response.outputSignal?.collateral.name ===
+                                response.outputSignal?.collateralName ===
                                 'output'
                             ) {
                                 const elapsed = Date.now() - startTime;
@@ -581,13 +581,13 @@ describe('CNStra Core Tests', () => {
                     onResponse: response => {
                         responses.push({
                             collateralName:
-                                response.outputSignal?.collateral.name ||
+                                response.outputSignal?.collateralName ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
                         });
 
                         if (
-                            response.outputSignal?.collateral.name === 'output'
+                            response.outputSignal?.collateralName === 'output'
                         ) {
                             const elapsed = Date.now() - startTime;
                             expect(elapsed).toBeGreaterThanOrEqual(35);
@@ -651,7 +651,7 @@ describe('CNStra Core Tests', () => {
                 );
 
                 expect(result).toEqual({
-                    collateral: expect.objectContaining({ name: 'output' }),
+                    collateralName: 'output',
                     payload: { result: 'Hello Context' },
                 });
             });
@@ -693,7 +693,7 @@ describe('CNStra Core Tests', () => {
                 );
 
                 expect(result).toEqual({
-                    collateral: expect.objectContaining({ name: 'output' }),
+                    collateralName: 'output',
                     payload: { result: 'default' },
                 });
             });
@@ -717,7 +717,7 @@ describe('CNStra Core Tests', () => {
                 onResponse: response => {
                     responses.push({
                         collateralName:
-                            response.outputSignal?.collateral.name || 'unknown',
+                            response.outputSignal?.collateralName || 'unknown',
                         queueLength: response.queueLength,
                     });
                 },
@@ -750,7 +750,7 @@ describe('CNStra Core Tests', () => {
                 onResponse: response => {
                     responses.push({
                         collateralName:
-                            response.outputSignal?.collateral.name || 'unknown',
+                            response.outputSignal?.collateralName || 'unknown',
                         payload: response.outputSignal?.payload,
                     });
                 },
@@ -821,7 +821,7 @@ describe('CNStra Core Tests', () => {
             await new Promise<void>(resolve => {
                 cns.stimulate(start.createSignal(), {
                     onResponse: r => {
-                        if (r.outputSignal?.collateral.name === 'out') {
+                        if (r.outputSignal?.collateralName === 'out') {
                             outCount++;
                             if (outCount === 2) {
                                 const elapsed = Date.now() - startTime;
@@ -872,7 +872,7 @@ describe('CNStra Core Tests', () => {
             await new Promise<void>(resolve => {
                 cns.stimulate(start.createSignal(), {
                     onResponse: r => {
-                        if (r.outputSignal?.collateral.name === 'out') {
+                        if (r.outputSignal?.collateralName === 'out') {
                             outCount++;
                             if (outCount === 3) {
                                 const elapsed = Date.now() - startTime;
@@ -917,7 +917,7 @@ describe('CNStra Core Tests', () => {
             await new Promise<void>(resolve => {
                 cns.stimulate(start.createSignal(), {
                     onResponse: r => {
-                        if (r.outputSignal?.collateral.name === 'out') {
+                        if (r.outputSignal?.collateralName === 'out') {
                             outCount++;
                             if (outCount === 2) {
                                 const elapsed = Date.now() - startTime;
@@ -951,7 +951,7 @@ describe('CNStra Core Tests', () => {
             let done = 0;
             await new Promise<void>(resolve => {
                 const handler = (r: any) => {
-                    if (r.outputSignal?.collateral.name === 'out') {
+                    if (r.outputSignal?.collateralName === 'out') {
                         done++;
                         if (done === 2) {
                             const elapsed = Date.now() - start;
@@ -1013,6 +1013,456 @@ describe('CNStra Core Tests', () => {
             expect(cns.canNeuronBeGuaranteedDone('C', emptyActiveCounts)).toBe(
                 true
             );
+        });
+    });
+
+    describe('Array Signal Support', () => {
+        it('should handle returning an array of signals from a neuron', async () => {
+            const input = collateral<{ value: number }>('input');
+            const output1 = collateral<{ result: string }>('output1');
+            const output2 = collateral<{ result: string }>('output2');
+            const final = collateral<{ message: string }>('final');
+
+            const splitter = neuron('splitter', { output1, output2 }).dendrite({
+                collateral: input,
+                response: (payload, axon) => {
+                    return [
+                        axon.output1.createSignal({
+                            result: `Output1: ${payload.value}`,
+                        }),
+                        axon.output2.createSignal({
+                            result: `Output2: ${payload.value}`,
+                        }),
+                    ];
+                },
+            });
+
+            const collector1 = neuron('collector1', { final }).dendrite({
+                collateral: output1,
+                response: (payload, axon) => {
+                    return axon.final.createSignal({
+                        message: `Collected from ${payload.result}`,
+                    });
+                },
+            });
+
+            const collector2 = neuron('collector2', { final }).dendrite({
+                collateral: output2,
+                response: (payload, axon) => {
+                    return axon.final.createSignal({
+                        message: `Collected from ${payload.result}`,
+                    });
+                },
+            });
+
+            const cns = new CNS([splitter, collector1, collector2]);
+
+            const results: string[] = [];
+            await new Promise<void>(resolve => {
+                cns.stimulate(input.createSignal({ value: 42 }), {
+                    onResponse: r => {
+                        if (r.outputSignal?.collateralName === 'final') {
+                            results.push(
+                                (r.outputSignal.payload as { message: string })
+                                    .message
+                            );
+                            if (results.length === 2) {
+                                resolve();
+                            }
+                        }
+                    },
+                });
+            });
+
+            expect(results).toHaveLength(2);
+            expect(results).toContain('Collected from Output1: 42');
+            expect(results).toContain('Collected from Output2: 42');
+        });
+
+        it('should handle async array of signals', async () => {
+            const input = collateral<{ count: number }>('input');
+            const output = collateral<{ index: number }>('output');
+
+            const generator = neuron('generator', { output }).dendrite({
+                collateral: input,
+                response: async (payload, axon) => {
+                    await new Promise(r => setTimeout(r, 10));
+                    const signals = [];
+                    for (let i = 0; i < payload.count; i++) {
+                        signals.push(axon.output.createSignal({ index: i }));
+                    }
+                    return signals;
+                },
+            });
+
+            const cns = new CNS([generator]);
+
+            const indices: number[] = [];
+            await new Promise<void>(resolve => {
+                cns.stimulate(input.createSignal({ count: 3 }), {
+                    onResponse: r => {
+                        if (r.outputSignal?.collateralName === 'output') {
+                            indices.push(
+                                (r.outputSignal.payload as { index: number })
+                                    .index
+                            );
+                            if (indices.length === 3) {
+                                resolve();
+                            }
+                        }
+                    },
+                });
+            });
+
+            expect(indices).toEqual([0, 1, 2]);
+        });
+
+        it('should handle stimulate with array of initial signals', async () => {
+            const input = collateral<{ id: number }>('input');
+            const output = collateral<{ processed: number }>('output');
+
+            const processor = neuron('processor', { output }).dendrite({
+                collateral: input,
+                response: (payload, axon) => {
+                    return axon.output.createSignal({
+                        processed: payload.id * 2,
+                    });
+                },
+            });
+
+            const cns = new CNS([processor]);
+
+            const results: number[] = [];
+            await new Promise<void>(resolve => {
+                cns.stimulate(
+                    [
+                        input.createSignal({ id: 1 }),
+                        input.createSignal({ id: 2 }),
+                        input.createSignal({ id: 3 }),
+                    ],
+                    {
+                        onResponse: r => {
+                            if (r.outputSignal?.collateralName === 'output') {
+                                results.push(
+                                    (
+                                        r.outputSignal.payload as {
+                                            processed: number;
+                                        }
+                                    ).processed
+                                );
+                                if (results.length === 3) {
+                                    resolve();
+                                }
+                            }
+                        },
+                    }
+                );
+            });
+
+            expect(results.sort()).toEqual([2, 4, 6]);
+        });
+
+        it('should handle empty array of signals', async () => {
+            const input = collateral<{ shouldEmit: boolean }>('input');
+            const output = collateral<{ data: string }>('output');
+
+            const conditional = neuron('conditional', { output }).dendrite({
+                collateral: input,
+                response: (payload, axon) => {
+                    if (payload.shouldEmit) {
+                        return [axon.output.createSignal({ data: 'emitted' })];
+                    }
+                    return [];
+                },
+            });
+
+            const cns = new CNS([conditional]);
+
+            let outputCount = 0;
+            await new Promise<void>(resolve => {
+                cns.stimulate(input.createSignal({ shouldEmit: false }), {
+                    onResponse: r => {
+                        if (r.outputSignal?.collateralName === 'output') {
+                            outputCount++;
+                        }
+                        if (r.queueLength === 0) {
+                            resolve();
+                        }
+                    },
+                });
+            });
+
+            expect(outputCount).toBe(0);
+        });
+
+        it('should handle mixed single and array signal returns', async () => {
+            const input = collateral<{ mode: 'single' | 'array' }>('input');
+            const output = collateral<{ value: string }>('output');
+
+            const flexible = neuron('flexible', { output }).dendrite({
+                collateral: input,
+                response: (payload, axon) => {
+                    if (payload.mode === 'single') {
+                        return axon.output.createSignal({ value: 'single' });
+                    } else {
+                        return [
+                            axon.output.createSignal({ value: 'array1' }),
+                            axon.output.createSignal({ value: 'array2' }),
+                        ];
+                    }
+                },
+            });
+
+            const cns = new CNS([flexible]);
+
+            // Test single mode
+            const singleResults: string[] = [];
+            await new Promise<void>(resolve => {
+                cns.stimulate(input.createSignal({ mode: 'single' }), {
+                    onResponse: r => {
+                        if (r.outputSignal?.collateralName === 'output') {
+                            singleResults.push(
+                                (r.outputSignal.payload as { value: string })
+                                    .value
+                            );
+                        }
+                        if (r.queueLength === 0) {
+                            resolve();
+                        }
+                    },
+                });
+            });
+
+            expect(singleResults).toEqual(['single']);
+
+            // Test array mode
+            const arrayResults: string[] = [];
+            await new Promise<void>(resolve => {
+                cns.stimulate(input.createSignal({ mode: 'array' }), {
+                    onResponse: r => {
+                        if (r.outputSignal?.collateralName === 'output') {
+                            arrayResults.push(
+                                (r.outputSignal.payload as { value: string })
+                                    .value
+                            );
+                        }
+                        if (r.queueLength === 0) {
+                            resolve();
+                        }
+                    },
+                });
+            });
+
+            expect(arrayResults).toEqual(['array1', 'array2']);
+        });
+    });
+
+    describe('onResponse async and error handling', () => {
+        it('should await onResponse when it returns a Promise and run listeners in parallel', async () => {
+            const input = collateral('input');
+            const output = collateral('output');
+
+            const n = neuron('n', { output }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const cns = new CNS([n]);
+
+            // Global async listener (~25ms)
+            cns.addResponseListener(async () => {
+                await new Promise<void>(r => setTimeout(r, 25));
+            });
+
+            const start = Date.now();
+            await cns.stimulate(input.createSignal(), {
+                onResponse: async _r => {
+                    // Local async listener (~25ms)
+                    await new Promise<void>(r => setTimeout(r, 25));
+                },
+            });
+
+            const elapsed = Date.now() - start;
+            // Should be ~25ms (parallel), definitely less than 45ms
+            expect(elapsed).toBeGreaterThanOrEqual(20);
+            expect(elapsed).toBeLessThan(45);
+        });
+
+        it('should reject stimulate when local onResponse throws', async () => {
+            const input = collateral('input');
+            const output = collateral('output');
+
+            const n = neuron('n', { output }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const cns = new CNS([n]);
+
+            await expect(
+                cns.stimulate(input.createSignal(), {
+                    onResponse: () => {
+                        throw new Error('local-fail');
+                    },
+                })
+            ).rejects.toThrow('local-fail');
+        });
+
+        it('should reject stimulate when a global response listener rejects', async () => {
+            const input = collateral('input');
+            const output = collateral('output');
+
+            const n = neuron('n', { output }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const cns = new CNS([n]);
+
+            cns.addResponseListener(async () => {
+                return Promise.reject(new Error('global-fail'));
+            });
+
+            await expect(
+                cns.stimulate(input.createSignal(), { onResponse: () => {} })
+            ).rejects.toThrow('global-fail');
+        });
+
+        it('should not introduce async when onResponse is purely synchronous', async () => {
+            const input = collateral('input');
+            const output = collateral('output');
+
+            const n = neuron('n', { output }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const cns = new CNS([n]);
+
+            const start = Date.now();
+            await cns.stimulate(input.createSignal(), {
+                onResponse: () => {
+                    // no-op sync
+                },
+            });
+            const elapsed = Date.now() - start;
+            expect(elapsed).toBeLessThan(10);
+        });
+
+        it('should run multiple global listeners in parallel (time ~ max, not sum)', async () => {
+            const input = collateral('input');
+            const output = collateral('output');
+
+            const n = neuron('n', { output }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const cns = new CNS([n]);
+
+            const DELAY = 30;
+            cns.addResponseListener(async () => {
+                await new Promise<void>(r => setTimeout(r, DELAY));
+            });
+            cns.addResponseListener(async () => {
+                await new Promise<void>(r => setTimeout(r, DELAY));
+            });
+
+            const start = Date.now();
+            await cns.stimulate(input.createSignal(), { onResponse: () => {} });
+            const elapsed = Date.now() - start;
+            expect(elapsed).toBeGreaterThanOrEqual(DELAY - 5);
+            expect(elapsed).toBeLessThan(DELAY * 2 - 5);
+        });
+
+        it('should still invoke other global listeners when one rejects asynchronously', async () => {
+            const input = collateral('input');
+            const output = collateral('output');
+
+            const n = neuron('n', { output }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const cns = new CNS([n]);
+
+            let secondRan = false;
+            cns.addResponseListener(async () => {
+                await new Promise<void>(r => setTimeout(r, 10));
+                return Promise.reject(new Error('boom'));
+            });
+            cns.addResponseListener(async () => {
+                await new Promise<void>(r => setTimeout(r, 10));
+                secondRan = true;
+            });
+
+            await expect(
+                cns.stimulate(input.createSignal(), { onResponse: () => {} })
+            ).rejects.toThrow('boom');
+
+            expect(secondRan).toBe(true);
+        });
+
+        it('should resolve stimulate when aborted and no active tasks remain', async () => {
+            const input = collateral('input');
+            const output = collateral('output');
+
+            const n = neuron('n', { output }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const sink = neuron('sink', {}).dendrite({
+                collateral: output,
+                response: () => {
+                    // would run if enqueued; we will abort before enqueue happens
+                },
+            });
+            const cns = new CNS([n, sink]);
+
+            const controller = new AbortController();
+            const start = Date.now();
+
+            const p = cns.stimulate(input.createSignal(), {
+                abortSignal: controller.signal,
+                // delay enqueue of subscribers
+                onResponse: async () => {
+                    await new Promise<void>(r => setTimeout(r, 30));
+                },
+            });
+
+            // abort while no active operations (before enqueue after onResponse)
+            setTimeout(() => controller.abort(), 10);
+
+            await expect(p).resolves.toBeUndefined();
+            const elapsed = Date.now() - start;
+            expect(elapsed).toBeLessThan(40);
+        });
+
+        it('should block subscriber enqueue until onResponse resolves', async () => {
+            const input = collateral('input');
+            const mid = collateral('mid');
+            const output = collateral('output');
+
+            const a = neuron('a', { mid }).dendrite({
+                collateral: input,
+                response: (_p, axon) => axon.mid.createSignal(),
+            });
+            const b = neuron('b', { output }).dendrite({
+                collateral: mid,
+                response: (_p, axon) => axon.output.createSignal(),
+            });
+            const cns = new CNS([a, b]);
+
+            const start = Date.now();
+            let seenOutputAt: number | undefined;
+
+            await cns.stimulate(input.createSignal(), {
+                onResponse: async r => {
+                    if (r.outputSignal?.collateralName === 'mid') {
+                        await new Promise<void>(res => setTimeout(res, 30));
+                    }
+                    if (r.outputSignal?.collateralName === 'output') {
+                        seenOutputAt = Date.now();
+                    }
+                },
+            });
+
+            expect(seenOutputAt).toBeDefined();
+            expect(seenOutputAt! - start).toBeGreaterThanOrEqual(25);
         });
     });
 });

@@ -33,6 +33,7 @@ type InterNeuronAPI<
     name: TNameType;
     axon: TAxonType;
     concurrency?: number;
+    maxDuration?: number;
     dendrites: TCNSDendrite<
         TContextValue,
         string,
@@ -43,6 +44,15 @@ type InterNeuronAPI<
     >[];
     setConcurrency: (
         n: number | undefined
+    ) => InterNeuronAPI<
+        TContextValue,
+        TNameType,
+        TReceiverCollateralName,
+        TReceiverAxonCollateralPayload,
+        TAxonType
+    >;
+    setMaxDuration: (
+        ms: number | undefined
     ) => InterNeuronAPI<
         TContextValue,
         TNameType,
@@ -142,6 +152,10 @@ export const neuron = <
             api.concurrency = n;
             return api;
         },
+        setMaxDuration: (ms: number | undefined) => {
+            api.maxDuration = ms;
+            return api;
+        },
         bind: ((axon, newDendrites) => {
             for (const key in newDendrites) {
                 const value = newDendrites[key] as any;
@@ -177,6 +191,7 @@ export const neuron = <
         >,
         name,
         concurrency: undefined,
+        maxDuration: undefined,
         dendrites,
         dendrite<
             TSenderExactCollateralName extends string,

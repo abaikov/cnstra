@@ -1,4 +1,4 @@
-import { TCNSStimulationQueueItem } from './types/TCNSStimulationQueueItem';
+import { TCNSSerializedQueueItem } from './types/TCNSSerializedSignal';
 import { TCNSNeuron } from './types/TCNSNeuron';
 import { TCNSDendrite } from './types/TCNSDendrite';
 
@@ -16,12 +16,7 @@ export class CNSFunctionalQueue<
     >,
     TDendrite extends TCNSDendrite<any, any, any, any, any, any>
 > {
-    private items: TCNSStimulationQueueItem<
-        TCollateralName,
-        TNeuronName,
-        TNeuron,
-        TDendrite
-    >[] = [];
+    private items: TCNSSerializedQueueItem<TCollateralName, TNeuronName>[] = [];
     private head = 0;
     private tail = 0;
     private size = 0;
@@ -34,12 +29,7 @@ export class CNSFunctionalQueue<
 
     constructor(
         private readonly processor: (
-            item: TCNSStimulationQueueItem<
-                TCollateralName,
-                TNeuronName,
-                TNeuron,
-                TDendrite
-            >
+            item: TCNSSerializedQueueItem<TCollateralName, TNeuronName>
         ) => (() => void) | Promise<() => void>,
         protected readonly concurrency?: number,
         protected readonly abortSignal?: AbortSignal,
@@ -73,12 +63,7 @@ export class CNSFunctionalQueue<
     }
 
     private dequeue():
-        | TCNSStimulationQueueItem<
-              TCollateralName,
-              TNeuronName,
-              TNeuron,
-              TDendrite
-          >
+        | TCNSSerializedQueueItem<TCollateralName, TNeuronName>
         | undefined {
         if (this.size === 0) return undefined;
 
@@ -91,12 +76,7 @@ export class CNSFunctionalQueue<
     }
 
     private enqueueItem(
-        item: TCNSStimulationQueueItem<
-            TCollateralName,
-            TNeuronName,
-            TNeuron,
-            TDendrite
-        >
+        item: TCNSSerializedQueueItem<TCollateralName, TNeuronName>
     ): void {
         if (this.size === this.capacity) {
             this.resize();
@@ -144,8 +124,8 @@ export class CNSFunctionalQueue<
                         throw err; // let it crash "honestly"
                     }
                 );
-                // Stop the loop; continuation will happen from the promise handler
-                break;
+                // Do not break: if concurrency allows, start additional items in this pump
+                continue;
             }
 
             // Sync branch
@@ -163,14 +143,7 @@ export class CNSFunctionalQueue<
         }
     }
 
-    enqueue(
-        x: TCNSStimulationQueueItem<
-            TCollateralName,
-            TNeuronName,
-            TNeuron,
-            TDendrite
-        >
-    ) {
+    enqueue(x: TCNSSerializedQueueItem<TCollateralName, TNeuronName>) {
         this.enqueueItem(x);
         // Start pumping only if not already pumping; avoid re-entrant pump
         if (!this.pumping) this.pump();

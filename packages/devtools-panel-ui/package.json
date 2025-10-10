@@ -10,10 +10,14 @@
     "watch": "webpack --mode development --watch --color",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed --project=chromium",
+    "e2e:ui": "playwright test --ui",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@cnstra/core": "1.5.3",
+    "@cnstra/core": "1.6.0",
     "@cnstra/react": "1.0.1",
     "@oimdb/core": "^1.0.6",
     "@oimdb/react": "^1.1.0",
@@ -26,6 +30,7 @@
     "@testing-library/jest-dom": "^6.1.4",
     "@testing-library/react": "^14.1.2",
     "@testing-library/user-event": "^14.5.1",
+    "@playwright/test": "^1.47.2",
     "@types/jest": "^29.5.12",
     "@types/react": "^18.3.8",
     "@types/react-dom": "^18.3.0",

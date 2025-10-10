@@ -12,6 +12,8 @@ Think of your application as an organism. Instead of a global event bus, you hav
 
 CNStra (Central Nervous System Orchestrator) is an IERG (Inverted Explicit Reactive Graph): you explicitly start a run; each neuron explicitly returns the next step; nothing happens in the background unless you ask for it.
 
+Name: CNS + "tra" (orchestrator) → CNStra.
+
 Analogy: biology ↔ application
 - CNS (central nervous system) ↔ `CNS` orchestrator instance running the graph
 - Neuron ↔ a unit of logic that reacts to one input and produces one continuation

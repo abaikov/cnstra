@@ -9,6 +9,6 @@ export class CNSCollateral<TName extends string, TPayload>
     createSignal(): TCNSSignal<TName, TPayload>;
     createSignal(payload: TPayload): TCNSSignal<TName, TPayload>;
     createSignal(payload?: TPayload): TCNSSignal<TName, TPayload> {
-        return { collateral: this, payload };
+        return { collateralName: this.name, payload };
     }
 }

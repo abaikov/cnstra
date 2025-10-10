@@ -35,6 +35,7 @@ import {
     useSelectPksByIndexKey,
 } from '@oimdb/react';
 import { OIMReactiveIndexManual } from '@oimdb/core';
+import { sanitizeFilters } from '../utils/filterSanitizer';
 
 // Define types for neuron and stimulation data
 interface StimulationData {
@@ -92,6 +93,136 @@ export const AppInner: React.FC = () => {
         'connecting' | 'connected' | 'disconnected'
     >('connecting');
     const [selectedCnsId, setSelectedCnsId] = useState<string | null>(null);
+    const [lastSnapshotSize, setLastSnapshotSize] = useState<number | null>(
+        null
+    );
+    const [lastSnapshotWarning, setLastSnapshotWarning] = useState<string>('');
+    const [exportFrom, setExportFrom] = useState<string>('');
+    const [exportTo, setExportTo] = useState<string>('');
+    const [exportOffset, setExportOffset] = useState<string>('');
+    const [exportLimit, setExportLimit] = useState<string>('');
+    const [onlyErrors, setOnlyErrors] = useState<boolean>(false);
+    const [errorContains, setErrorContains] = useState<string>('');
+
+    // Helper: one-time message wait
+    const waitForMessageOnce = React.useCallback(
+        (predicate: (msg: any) => boolean): Promise<any> => {
+            return new Promise(resolve => {
+                const handler = (ev: MessageEvent) => {
+                    try {
+                        const msg =
+                            typeof ev.data === 'string'
+                                ? JSON.parse(ev.data)
+                                : null;
+                        if (msg && predicate(msg)) {
+                            wsRef.current?.removeEventListener(
+                                'message',
+                                handler as any
+                            );
+                            resolve(msg);
+                        }
+                    } catch {}
+                };
+                wsRef.current?.addEventListener('message', handler as any);
+            });
+        },
+        []
+    );
+
+    // Helper: trigger JSON download
+    const downloadJson = React.useCallback(
+        (data: unknown, filename: string) => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], {
+                type: 'application/json',
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        },
+        []
+    );
+
+    // Export actions
+    const handleExportTopology = React.useCallback(async () => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const appId = selectedAppId || undefined;
+        const filename = `topology${
+            appId ? '-' + appId : ''
+        }-${Date.now()}.json`;
+        const wait = waitForMessageOnce(
+            msg => msg && msg.type === 'apps:topology'
+        );
+        ws.send(
+            JSON.stringify({
+                type: 'apps:export-topology',
+                ...(appId ? { appId } : {}),
+            })
+        );
+        const resp = await wait;
+        downloadJson(resp, filename);
+    }, [selectedAppId, waitForMessageOnce, downloadJson]);
+
+    const handleExportStimulations = React.useCallback(async () => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const appId = selectedAppId;
+        if (!appId) return;
+        const filters = sanitizeFilters({
+            fromTimestamp: exportFrom ? Number(exportFrom) : undefined,
+            toTimestamp: exportTo ? Number(exportTo) : undefined,
+            offset: exportOffset ? Number(exportOffset) : undefined,
+            limit: exportLimit ? Number(exportLimit) : undefined,
+        });
+        const filename = `stimulations-${appId}-${Date.now()}.json`;
+        const wait = waitForMessageOnce(
+            msg => msg && msg.type === 'apps:export-stimulations'
+        );
+        ws.send(
+            JSON.stringify({
+                type: 'apps:export-stimulations',
+                appId,
+                ...filters,
+                hasError: onlyErrors || undefined,
+                errorContains: errorContains || undefined,
+            })
+        );
+        const resp = await wait;
+        downloadJson(resp, filename);
+    }, [selectedAppId, waitForMessageOnce, downloadJson]);
+
+    const handleExportResponses = React.useCallback(async () => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const cnsId = selectedCnsId || selectedAppId;
+        if (!cnsId) return;
+        const filters = sanitizeFilters({
+            fromTimestamp: exportFrom ? Number(exportFrom) : undefined,
+            toTimestamp: exportTo ? Number(exportTo) : undefined,
+            offset: exportOffset ? Number(exportOffset) : undefined,
+            limit: exportLimit ? Number(exportLimit) : undefined,
+        });
+        const filename = `responses-${cnsId}-${Date.now()}.json`;
+        const wait = waitForMessageOnce(
+            msg => msg && msg.type === 'cns:export-responses'
+        );
+        ws.send(
+            JSON.stringify({
+                type: 'cns:export-responses',
+                cnsId,
+                ...filters,
+                hasError: onlyErrors || undefined,
+                errorContains: errorContains || undefined,
+            })
+        );
+        const resp = await wait;
+        downloadJson(resp, filename);
+    }, [selectedCnsId, selectedAppId, waitForMessageOnce, downloadJson]);
 
     // Handle neuron click
     const handleNeuronClick = (neuron: NeuronData) => {
@@ -1215,6 +1346,178 @@ export const AppInner: React.FC = () => {
                             gap: 'var(--spacing-sm)',
                         }}
                     >
+                        {/* Export filter controls */}
+                        <div
+                            style={{
+                                border: `1px solid var(--border-primary)`,
+                                borderRadius: 'var(--radius-sm)',
+                                padding: '8px',
+                                background: 'var(--bg-card)',
+                            }}
+                        >
+                            <div
+                                style={{
+                                    fontSize: 'var(--font-size-xs)',
+                                    color: 'var(--text-muted)',
+                                    marginBottom: 6,
+                                }}
+                            >
+                                Export Filters (optional)
+                            </div>
+                            <div style={{ display: 'grid', gap: 6 }}>
+                                <input
+                                    placeholder="fromTimestamp"
+                                    value={exportFrom}
+                                    onChange={e =>
+                                        setExportFrom(e.target.value)
+                                    }
+                                    style={{
+                                        fontSize: '10px',
+                                        padding: '4px',
+                                        background: 'var(--bg-panel)',
+                                        color: 'var(--text-primary)',
+                                        border: '1px solid var(--border-primary)',
+                                    }}
+                                />
+                                <input
+                                    placeholder="toTimestamp"
+                                    value={exportTo}
+                                    onChange={e => setExportTo(e.target.value)}
+                                    style={{
+                                        fontSize: '10px',
+                                        padding: '4px',
+                                        background: 'var(--bg-panel)',
+                                        color: 'var(--text-primary)',
+                                        border: '1px solid var(--border-primary)',
+                                    }}
+                                />
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                    <input
+                                        placeholder="offset"
+                                        value={exportOffset}
+                                        onChange={e =>
+                                            setExportOffset(e.target.value)
+                                        }
+                                        style={{
+                                            fontSize: '10px',
+                                            padding: '4px',
+                                            background: 'var(--bg-panel)',
+                                            color: 'var(--text-primary)',
+                                            border: '1px solid var(--border-primary)',
+                                            flex: 1,
+                                        }}
+                                    />
+                                    <input
+                                        placeholder="limit"
+                                        value={exportLimit}
+                                        onChange={e =>
+                                            setExportLimit(e.target.value)
+                                        }
+                                        style={{
+                                            fontSize: '10px',
+                                            padding: '4px',
+                                            background: 'var(--bg-panel)',
+                                            color: 'var(--text-primary)',
+                                            border: '1px solid var(--border-primary)',
+                                            flex: 1,
+                                        }}
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                    <label
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 6,
+                                            fontSize: '10px',
+                                            color: 'var(--text-secondary)',
+                                        }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={onlyErrors}
+                                            onChange={e =>
+                                                setOnlyErrors(e.target.checked)
+                                            }
+                                        />
+                                        Only errors
+                                    </label>
+                                    <input
+                                        placeholder="error contains..."
+                                        value={errorContains}
+                                        onChange={e =>
+                                            setErrorContains(e.target.value)
+                                        }
+                                        style={{
+                                            fontSize: '10px',
+                                            padding: '4px',
+                                            background: 'var(--bg-panel)',
+                                            color: 'var(--text-primary)',
+                                            border: '1px solid var(--border-primary)',
+                                            flex: 1,
+                                        }}
+                                    />
+                                </div>
+                                <button
+                                    className="btn-infected"
+                                    onClick={() => {
+                                        const ws = wsRef.current;
+                                        if (
+                                            !ws ||
+                                            ws.readyState !== WebSocket.OPEN
+                                        )
+                                            return;
+                                        try {
+                                            ws.send(
+                                                JSON.stringify({
+                                                    type: 'apps:get-stimulations',
+                                                    appId: selectedAppId,
+                                                    hasError:
+                                                        onlyErrors || undefined,
+                                                    errorContains:
+                                                        errorContains ||
+                                                        undefined,
+                                                })
+                                            );
+                                            const cnsIds =
+                                                (db.cns.indexes.appId.getPksByKey(
+                                                    selectedAppId || ''
+                                                ) || new Set()) as Set<string>;
+                                            const target =
+                                                cnsIds.size > 0
+                                                    ? Array.from(cnsIds)
+                                                    : selectedAppId
+                                                    ? [selectedAppId]
+                                                    : [];
+                                            for (const cnsId of target) {
+                                                ws.send(
+                                                    JSON.stringify({
+                                                        type: 'cns:get-responses',
+                                                        cnsId,
+                                                        hasError:
+                                                            onlyErrors ||
+                                                            undefined,
+                                                        errorContains:
+                                                            errorContains ||
+                                                            undefined,
+                                                    })
+                                                );
+                                            }
+                                        } catch {}
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        fontSize: 'var(--font-size-xs)',
+                                        padding: '6px',
+                                        background: 'var(--flesh-medium)',
+                                        color: 'var(--text-secondary)',
+                                        borderColor: 'var(--border-primary)',
+                                    }}
+                                >
+                                    Apply Filters
+                                </button>
+                            </div>
+                        </div>
                         <button
                             className="btn-infected"
                             onClick={() => {
@@ -1292,6 +1595,223 @@ export const AppInner: React.FC = () => {
                                 ⚡ Stimulations
                             </button>
                         )}
+                        {/* Snapshot export button */}
+                        {selectedAppId && (
+                            <button
+                                className="btn-infected"
+                                onClick={async () => {
+                                    const ws = wsRef.current;
+                                    if (!ws || ws.readyState !== WebSocket.OPEN)
+                                        return;
+                                    const filename = `snapshot-${selectedAppId}-${Date.now()}.json`;
+                                    const wait = waitForMessageOnce(
+                                        msg =>
+                                            msg && msg.type === 'apps:snapshot'
+                                    );
+                                    ws.send(
+                                        JSON.stringify({
+                                            type: 'apps:export-snapshot',
+                                            appId: selectedAppId,
+                                            limitResponses:
+                                                Number(exportLimit) || 1000,
+                                            limitStimulations:
+                                                Number(exportLimit) || 1000,
+                                        })
+                                    );
+                                    const resp = await wait;
+                                    downloadJson(resp, filename);
+                                    try {
+                                        const size = (resp as any)
+                                            ?.sizeBytes as number | undefined;
+                                        if (typeof size === 'number') {
+                                            setLastSnapshotSize(size);
+                                        }
+                                        const warn = (resp as any)?.warning as
+                                            | string
+                                            | undefined;
+                                        setLastSnapshotWarning(warn || '');
+                                    } catch {}
+                                }}
+                                disabled={connectionStatus !== 'connected'}
+                                style={{
+                                    width: '100%',
+                                    fontSize: 'var(--font-size-xs)',
+                                    padding: 'var(--spacing-sm)',
+                                    background: 'var(--flesh-medium)',
+                                    color: 'var(--text-secondary)',
+                                    borderColor: 'var(--border-primary)',
+                                }}
+                            >
+                                ⬇️ Download Snapshot JSON
+                            </button>
+                        )}
+                        {(lastSnapshotSize !== null || lastSnapshotWarning) && (
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    fontSize: '10px',
+                                    color: 'var(--text-secondary)',
+                                }}
+                            >
+                                {lastSnapshotSize !== null && (
+                                    <span
+                                        style={{
+                                            color:
+                                                lastSnapshotSize < 1_000_000
+                                                    ? 'var(--text-success)'
+                                                    : lastSnapshotSize <
+                                                      5_000_000
+                                                    ? 'var(--text-warning)'
+                                                    : 'var(--text-error)',
+                                        }}
+                                    >
+                                        📦 {Math.round(lastSnapshotSize / 1024)}{' '}
+                                        KB
+                                    </span>
+                                )}
+                                {lastSnapshotWarning && (
+                                    <span
+                                        style={{ color: 'var(--text-warning)' }}
+                                    >
+                                        ⚠️ {lastSnapshotWarning}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        {/* Export buttons */}
+                        <button
+                            className="btn-infected"
+                            onClick={handleExportTopology}
+                            disabled={connectionStatus !== 'connected'}
+                            style={{
+                                width: '100%',
+                                fontSize: 'var(--font-size-xs)',
+                                padding: 'var(--spacing-sm)',
+                                background: 'var(--flesh-medium)',
+                                color: 'var(--text-secondary)',
+                                borderColor: 'var(--border-primary)',
+                            }}
+                        >
+                            ⬇️ Download Topology JSON
+                        </button>
+                        {selectedAppId && (
+                            <button
+                                className="btn-infected"
+                                onClick={handleExportStimulations}
+                                disabled={connectionStatus !== 'connected'}
+                                style={{
+                                    width: '100%',
+                                    fontSize: 'var(--font-size-xs)',
+                                    padding: 'var(--spacing-sm)',
+                                    background: 'var(--flesh-medium)',
+                                    color: 'var(--text-secondary)',
+                                    borderColor: 'var(--border-primary)',
+                                }}
+                            >
+                                ⬇️ Download Stimulations JSON
+                            </button>
+                        )}
+                        {selectedAppId && (
+                            <button
+                                className="btn-infected"
+                                onClick={async () => {
+                                    const ws = wsRef.current;
+                                    if (!ws || ws.readyState !== WebSocket.OPEN)
+                                        return;
+                                    const appId = selectedAppId;
+                                    const filename = `stimulations-errors-${appId}-${Date.now()}.json`;
+                                    const wait = waitForMessageOnce(
+                                        msg =>
+                                            msg &&
+                                            msg.type ===
+                                                'apps:export-stimulations'
+                                    );
+                                    ws.send(
+                                        JSON.stringify({
+                                            type: 'apps:export-stimulations',
+                                            appId,
+                                            hasError: true,
+                                            errorContains:
+                                                errorContains || undefined,
+                                            limit: Number(exportLimit) || 1000,
+                                        })
+                                    );
+                                    const resp = await wait;
+                                    downloadJson(resp, filename);
+                                }}
+                                disabled={connectionStatus !== 'connected'}
+                                style={{
+                                    width: '100%',
+                                    fontSize: 'var(--font-size-xs)',
+                                    padding: 'var(--spacing-sm)',
+                                    background: 'var(--flesh-medium)',
+                                    color: 'var(--text-secondary)',
+                                    borderColor: 'var(--border-primary)',
+                                }}
+                            >
+                                ⬇️ Export Stimulations (Errors Only)
+                            </button>
+                        )}
+                        {(selectedCnsId || selectedAppId) && (
+                            <button
+                                className="btn-infected"
+                                onClick={handleExportResponses}
+                                disabled={connectionStatus !== 'connected'}
+                                style={{
+                                    width: '100%',
+                                    fontSize: 'var(--font-size-xs)',
+                                    padding: 'var(--spacing-sm)',
+                                    background: 'var(--flesh-medium)',
+                                    color: 'var(--text-secondary)',
+                                    borderColor: 'var(--border-primary)',
+                                }}
+                            >
+                                ⬇️ Download Responses JSON
+                            </button>
+                        )}
+                        {(selectedCnsId || selectedAppId) && (
+                            <button
+                                className="btn-infected"
+                                onClick={async () => {
+                                    const ws = wsRef.current;
+                                    if (!ws || ws.readyState !== WebSocket.OPEN)
+                                        return;
+                                    const cnsId =
+                                        selectedCnsId || selectedAppId;
+                                    const filename = `responses-errors-${cnsId}-${Date.now()}.json`;
+                                    const wait = waitForMessageOnce(
+                                        msg =>
+                                            msg &&
+                                            msg.type === 'cns:export-responses'
+                                    );
+                                    ws.send(
+                                        JSON.stringify({
+                                            type: 'cns:export-responses',
+                                            cnsId,
+                                            hasError: true,
+                                            errorContains:
+                                                errorContains || undefined,
+                                            limit: Number(exportLimit) || 1000,
+                                        })
+                                    );
+                                    const resp = await wait;
+                                    downloadJson(resp, filename);
+                                }}
+                                disabled={connectionStatus !== 'connected'}
+                                style={{
+                                    width: '100%',
+                                    fontSize: 'var(--font-size-xs)',
+                                    padding: 'var(--spacing-sm)',
+                                    background: 'var(--flesh-medium)',
+                                    color: 'var(--text-secondary)',
+                                    borderColor: 'var(--border-primary)',
+                                }}
+                            >
+                                ⬇️ Export Responses (Errors Only)
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -1308,7 +1828,11 @@ export const AppInner: React.FC = () => {
                 }}
             >
                 {location.pathname.endsWith('/stimulations') ? (
-                    <StimulationsPage appId={effectiveSelectedAppId || ''} />
+                    <StimulationsPage
+                        appId={effectiveSelectedAppId || ''}
+                        wsRef={wsRef}
+                        cnsId={selectedCnsId}
+                    />
                 ) : (
                     <>
                         {realGraphData.neurons.length > 0 ? (

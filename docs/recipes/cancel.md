@@ -48,3 +48,30 @@ cns.stimulate(start.createSignal(payload), { abortSignal: ac.signal });
 // cancel at any time (e.g., on route change)
 ac.abort();
 ```
+
+## Graceful shutdown
+
+Two стратегии завершения активных ранов:
+
+- Естественный drain (рекомендуется):
+  - Перестаньте запускать новые `stimulate(...)` и просто `await` все активные промисы из `stimulate`.
+  - Очередь дренится до конца, ран завершается естественно.
+
+- Принудительное завершение через `AbortSignal` (graceful):
+  - Передайте `abortSignal` в `stimulate(...)` и вызовите `abort()`.
+  - Поведение:
+    - Новые элементы из очереди не стартуют (cancel gate).
+    - Как только активные задачи закончатся, ран автоматически резолвится, даже если в очереди остались не начатые элементы.
+  - Последствия:
+    - Не начатые элементы не будут обработаны; при необходимости сохраните их для последующего рестарта (например, в контексте или своей внешней очереди).
+
+Пример graceful shutdown по сигналу процесса:
+
+```ts
+const ac = new AbortController();
+process.on('SIGTERM', () => ac.abort());
+process.on('SIGINT', () => ac.abort());
+
+// где-то в коде
+await cns.stimulate(start.createSignal(payload), { abortSignal: ac.signal });
+```

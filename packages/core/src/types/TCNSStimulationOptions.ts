@@ -14,7 +14,7 @@ export type TCNSStimulationOptions<
             TInputPayload,
             TOutputPayload
         >
-    ) => void;
+    ) => void | Promise<void>;
     abortSignal?: AbortSignal;
     stimulationId?: string;
     ctx?: ICNSStimulationContextStore;

@@ -26,3 +26,11 @@ CNStra models your app as a typed neuron graph. You explicitly start a run with 
 - Saga-like orchestration via explicit branches and abort
 
 See also: [Quick Start](/docs/core/quick-start), [API](/docs/core/api), [Stimulation Options](/docs/core/stimulation-options).
+
+## Execution model: synchronous vs asynchronous
+
+- Dendrite `response` may be synchronous or `async` (returning a Promise of signal(s)).
+- `onResponse` (local) and global listeners may also be sync or async.
+- If all listeners are synchronous for a given response, CNStra does not introduce extra async steps.
+- If any listener returns a Promise, CNStra waits for all listeners in parallel before proceeding to enqueue next subscribers for that response.
+- `cns.stimulate(...)` returns a Promise that resolves when the run completes, and rejects if any listener throws or rejects.

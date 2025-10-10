@@ -33,7 +33,7 @@
   "peerDependencies": {
     "react": ">=16.8.0",
     "react-dom": ">=16.8.0",
-    "@cnstra/core": "^1.5.0"
+    "@cnstra/core": ">=1.6.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

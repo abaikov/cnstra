@@ -117,7 +117,7 @@ Or integrate with your APM/tracing tool (e.g., OpenTelemetry):
 ```ts
 await cns.stimulate(signal, {
   onResponse: (r) => {
-    span.addEvent('neuron', { collateral: r.outputSignal?.collateral.id });
+    span.addEvent('neuron', { collateral: r.outputSignal?.collateralName });
     if (r.error) span.recordException(r.error);
   }
 });
