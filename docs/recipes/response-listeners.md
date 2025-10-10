@@ -1,6 +1,6 @@
 ---
 id: response-listeners
-title: Response Listeners: Logging, Metrics, and Tracing
+title: "Response Listeners: Logging, Metrics, and Tracing"
 sidebar_label: Response listeners
 description: Learn how to observe every step of a stimulation using per-run onResponse and global addResponseListener for logging, metrics, and tracing.
 keywords: [middleware, logging, metrics, tracing, onResponse, addResponseListener, hooks, interceptors]
