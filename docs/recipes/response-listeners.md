@@ -60,4 +60,4 @@ off();
 ## Tips
 - Keep listeners lightweight; heavy work should be offloaded (e.g., buffer and batch).
 - Exceptions thrown in listeners are swallowed to avoid breaking the run.
-- Combine with `allowName`/`maxNeuronHops` in `stimulate` options to constrain traversal during debugging.
+- Combine with `allowName`/`maxNeuronHops` in `stimulate` options to constrain traversal during debugging. `maxNeuronHops` is disabled by default.

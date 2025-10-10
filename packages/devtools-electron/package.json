@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-electron",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "private": true,
   "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
   "main": "main.js",

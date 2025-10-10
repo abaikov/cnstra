@@ -51,4 +51,4 @@ await cns.stimulate(userCreated.createSignal({ id: '123', name: 'John Doe' }));
 - Understand the architecture: [IERG](/docs/concepts/ierg)
 - Explore API: [Core API](/docs/core/api)
 - Use in React: [React Integration](/docs/examples/react)
-- Debugging: [Devtools](/docs/examples/devtools)
+ - Debugging: [DevTools](/docs/devtools/overview)

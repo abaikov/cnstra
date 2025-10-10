@@ -103,7 +103,7 @@ await cns.stimulate(signal, {
   onResponse: (r) => { /* per-stimulation hook */ },
   abortSignal,                 // Abort the whole run cooperatively
   concurrency: 4,              // Per-stimulation parallelism
-  maxNeuronHops: 256,          // Safety cap for traversal length
+  maxNeuronHops:  undefined,   // Disabled by default; set to cap traversal length
   allowName: (neuronName) => true, // Filter allowed neurons by name
   stimulationId: 'run-123',    // Optional id for tracing
   ctx,                         // Pre-supplied context store

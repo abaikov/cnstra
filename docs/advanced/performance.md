@@ -20,7 +20,7 @@ CNStra is designed to be memory-efficient and fast for reactive orchestration.
 ## Performance characteristics
 
 - **Sync-first**: Synchronous neuron chains execute in a single tick without extra Promise overhead.
-- **Minimal async overhead**: Promises are created only when a neuron returns an async result.
+- **Minimal async overhead**: Async responses only schedule a microtask; not inherently slower. Promises are created only when a neuron returns an async result.
 - **Stack-safe**: Deep chains are handled via an internal queue, avoiding stack overflow.
 - **Bounded execution**: `maxNeuronHops` prevents runaway processing in cyclic graphs.
 
@@ -49,7 +49,7 @@ If a neuron doesn't perform I/O, return the next signal synchronously:
   response: (p, axon) => axon.output.createSignal({ value: p.value * 2 })
 });
 
-// ⚠️ Async response (slower, only when necessary)
+// ⚠️ Async response (schedules a microtask; use when doing I/O)
 .dendrite({
   collateral: input,
   response: async (p, axon) => {
@@ -61,7 +61,7 @@ If a neuron doesn't perform I/O, return the next signal synchronously:
 
 ### Set reasonable `maxNeuronHops`
 
-Default is 1000. For bounded workflows, set a lower limit:
+Default: undefined (disabled). If you need a safety cap for cyclic graphs, set a lower limit:
 
 ```ts
 await cns.stimulate(signal, {

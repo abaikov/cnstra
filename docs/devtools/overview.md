@@ -3,6 +3,7 @@ id: devtools-overview
 title: DevTools Overview
 sidebar_label: Overview
 sidebar_position: 2
+slug: /devtools/overview
 ---
 
 # CNStra DevTools

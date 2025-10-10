@@ -3,6 +3,7 @@ id: devtools-integration
 title: DevTools Integration
 sidebar_label: Integration
 sidebar_position: 3
+slug: /devtools/integration
 ---
 
 # DevTools Integration
