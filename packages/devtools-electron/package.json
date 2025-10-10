@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-electron",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
   "main": "main.js",
@@ -41,7 +41,6 @@
       "hardenedRuntime": true,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
-      "icon": "build/icons/icon.icns",
       "target": ["dmg", "zip"]
     },
     "mas": {
@@ -51,17 +50,14 @@
       "icon": "build/icons/icon.icns"
     },
     "dmg": {
-      "icon": "build/icons/icon.icns",
       "sign": false
     },
     "win": {
-      "target": ["nsis"],
-      "icon": "build/icons/icon.ico"
+      "target": ["nsis"]
     },
     "linux": {
       "target": ["AppImage"],
-      "category": "Development",
-      "icon": "build/icons"
+      "category": "Development"
     }
   },
   "author": "Andrei Baikov <abaikov23@gmail.com>",
