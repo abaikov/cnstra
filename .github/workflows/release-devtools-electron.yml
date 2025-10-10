@@ -21,6 +21,10 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Install devtools-electron deps
+        working-directory: packages/devtools-electron
+        run: npm install
+
       - name: Build dependencies
         run: npm run build:core
 
