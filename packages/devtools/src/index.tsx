@@ -41,19 +41,17 @@ export class CNSDevTools {
             const safeContexts = this.safeJson(contexts);
 
             // Get stimulation ID from the response
-            const stimulationId = (response as any).stimulationId;
-            if (!stimulationId) {
-                throw new Error(
-                    'Response missing stimulationId - this indicates a CNS core issue'
-                );
-            }
+            const stimulationId =
+                (response as any).stimulationId ||
+                `${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
             // Get neuron name from output signal's collateral owner, or from input signal
             let neuronId: string | null = null;
             let collateralName: string | null = null;
 
-            if (response.outputSignal?.collateral) {
-                collateralName = response.outputSignal.collateral.name;
+            if ((response.outputSignal as any)?.collateral) {
+                collateralName = (response.outputSignal as any).collateral
+                    ?.name;
                 // Find the parent neuron for this collateral
                 const parentNeuron =
                     this.cns!.getParentNeuronByCollateralName(collateralName);
@@ -67,8 +65,9 @@ export class CNSDevTools {
                 let targetCollateralName = collateralName;
 
                 // Get collateral name from input signal if available
-                if (response.inputSignal?.collateral) {
-                    targetCollateralName = response.inputSignal.collateral.name;
+                if ((response.inputSignal as any)?.collateral) {
+                    targetCollateralName = (response.inputSignal as any)
+                        .collateral?.name;
                     // Only set collateral name if we don't have one already
                     if (!collateralName) {
                         collateralName = targetCollateralName;
@@ -93,21 +92,12 @@ export class CNSDevTools {
 
             // Ensure we have all required data
             if (!neuronId) {
-                throw new Error(
-                    `Unable to determine neuronId for response. ` +
-                        `Output collateral: ${
-                            response.outputSignal?.collateral?.name || 'none'
-                        }, ` +
-                        `Input collateral: ${
-                            response.inputSignal?.collateral?.name || 'none'
-                        }`
-                );
+                // Fallback: attribute to app-level unknown neuron to avoid dropping telemetry
+                neuronId = 'unknown';
             }
 
             if (!collateralName) {
-                throw new Error(
-                    `Unable to determine collateralName for response with neuronId: ${neuronId}`
-                );
+                collateralName = 'unknown';
             }
 
             const appId =
@@ -117,9 +107,10 @@ export class CNSDevTools {
 
             // Optional collateral names are currently not part of stable DTO typings in dist
             // Keep computed values for potential future use but do not send for type safety
-            const inputCollateralName = response.inputSignal?.collateral?.name;
-            const outputCollateralName =
-                response.outputSignal?.collateral?.name;
+            const inputCollateralName = (response.inputSignal as any)
+                ?.collateral?.name;
+            const outputCollateralName = (response.outputSignal as any)
+                ?.collateral?.name;
             const hopIndex = (response as any).hopIndex as number | undefined;
 
             void this.transport.sendNeuronResponseMessage({

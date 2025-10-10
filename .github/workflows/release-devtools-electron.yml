@@ -1,0 +1,47 @@
+name: Release DevTools Electron
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'devtools-electron-v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build Panel UI
+        run: npm run build --workspace=@cnstra/devtools-panel-ui
+
+      - name: Generate icons
+        run: npm run gen:icons --workspace=@cnstra/devtools-electron
+
+      - name: Build mac dmg/zip
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: true
+        run: npm run dist:mac --workspace=@cnstra/devtools-electron
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          files: |
+            packages/devtools-electron/dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CNStra DevTools Manager</title>
+    <style>
+      body {margin: 16px;  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; }
+            h1 { margin: 0 0 12px 0; }
+            .row { display: flex; align-items: center; margin-bottom: 12px; gap: 8px; }
+            input {width: 140px;  padding: 6px 8px; font-size: 14px; }
+            button { padding: 6px 10px; cursor: pointer; font-size: 14px; }
+            table { width: 100%; margin-top: 12px; border-collapse: collapse; }
+            th, td {padding: 8px; text-align: left;  border-bottom: 1px solid #ddd; }
+            th { background: #f5f5f5; }
+      @font-face {
+        font-family: 'CNStraIBM';
+        src: url('') format('truetype'); /* will be set via script */
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+      .brand img { height: 28px; width: 28px; }
+      .brand-title { font-size: 16px; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="brand">
+      <img id="logo" alt="CNStra" />
+      <div class="brand-title">CNStra DevTools Manager</div>
+    </div>
+    <div class="row">
+      <input id="port" type="number" placeholder="port (default 8080)" />
+      <button id="find">Find Free Port</button>
+      <button id="start">Start Server</button>
+      <button id="refresh">Refresh</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Port</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="list"></tbody>
+    </table>
+    <script>
+      const $ = (s) => document.querySelector(s);
+      const listEl = $('#list');
+      const portEl = $('#port');
+      const logoEl = $('#logo');
+
+      async function refresh() {
+        const { items } = await window.__CNSTRA_DEVTOOLS_BRIDGE__.list();
+        listEl.innerHTML = '';
+        items.forEach((it) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${it.port}</td><td>${it.status}</td><td>
+            <button data-open="${it.port}">Open Panel</button>
+            <button data-stop="${it.port}">Stop</button>
+          </td>`;
+          listEl.appendChild(tr);
+        });
+      }
+
+      $('#refresh').addEventListener('click', refresh);
+      $('#find').addEventListener('click', async () => {
+        const { port } = await window.__CNSTRA_DEVTOOLS_BRIDGE__.findPort(Number(portEl.value || 8080));
+        portEl.value = String(port);
+      });
+      $('#start').addEventListener('click', async () => {
+        const p = Number(portEl.value || 8080);
+        const { port } = await window.__CNSTRA_DEVTOOLS_BRIDGE__.start(p);
+        await refresh();
+        setTimeout(() => window.__CNSTRA_DEVTOOLS_BRIDGE__.openPanel(port), 200);
+      });
+
+      listEl.addEventListener('click', async (e) => {
+        const t = e.target;
+        if (t.matches('button[data-open]')) {
+          const p = Number(t.getAttribute('data-open'));
+          await window.__CNSTRA_DEVTOOLS_BRIDGE__.openPanel(p);
+        }
+        if (t.matches('button[data-stop]')) {
+          const p = Number(t.getAttribute('data-stop'));
+          await window.__CNSTRA_DEVTOOLS_BRIDGE__.stop(p);
+          await refresh();
+        }
+      });
+
+      (function initBranding(){
+        try {
+          const { logoFileUrl, fontFileUrl } = window.__CNSTRA_DEVTOOLS_BRIDGE__.paths();
+          if (logoFileUrl) logoEl.src = logoFileUrl;
+          if (fontFileUrl) {
+            const styleEl = document.createElement('style');
+            styleEl.textContent = `@font-face { font-family: 'CNStraIBM'; src: url(${JSON.stringify(fontFileUrl)}) format('truetype'); font-weight: normal; font-style: normal; font-display: swap; } body { font-family: CNStraIBM, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; }`;
+            document.head.appendChild(styleEl);
+          }
+        } catch {}
+      })();
+
+      refresh();
+    </script>
+  </body>
+  </html>
+
+

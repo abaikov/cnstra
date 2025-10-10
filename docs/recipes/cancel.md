@@ -51,27 +51,27 @@ ac.abort();
 
 ## Graceful shutdown
 
-Two стратегии завершения активных ранов:
+There are two ways to finish active runs:
 
-- Естественный drain (рекомендуется):
-  - Перестаньте запускать новые `stimulate(...)` и просто `await` все активные промисы из `stimulate`.
-  - Очередь дренится до конца, ран завершается естественно.
+- Natural drain (recommended):
+  - Stop starting new `stimulate(...)` calls and simply `await` all in‑flight promises returned by `stimulate`.
+  - The internal queue drains and the run completes naturally.
 
-- Принудительное завершение через `AbortSignal` (graceful):
-  - Передайте `abortSignal` в `stimulate(...)` и вызовите `abort()`.
-  - Поведение:
-    - Новые элементы из очереди не стартуют (cancel gate).
-    - Как только активные задачи закончатся, ран автоматически резолвится, даже если в очереди остались не начатые элементы.
-  - Последствия:
-    - Не начатые элементы не будут обработаны; при необходимости сохраните их для последующего рестарта (например, в контексте или своей внешней очереди).
+- Cooperative termination via `AbortSignal`:
+  - Pass an `abortSignal` to `stimulate(...)` and call `abort()` when you want to stop.
+  - Behavior:
+    - New queued items do not start (cancel gate).
+    - Once active tasks finish, the run resolves even if there are queued items that never started.
+  - Implications:
+    - Not‑started items are skipped; if you need them later, persist them (e.g., in your context store or an external queue) and restart explicitly.
 
-Пример graceful shutdown по сигналу процесса:
+Example: graceful shutdown on process signals
 
 ```ts
 const ac = new AbortController();
 process.on('SIGTERM', () => ac.abort());
 process.on('SIGINT', () => ac.abort());
 
-// где-то в коде
+// elsewhere
 await cns.stimulate(start.createSignal(payload), { abortSignal: ac.signal });
 ```

@@ -17,7 +17,7 @@
     "baseUrl": ".",
     "paths": {
       "@cnstra/core": ["../core/dist"],
-      "@cnstra/devtools": ["../devtools/src/index.tsx"],
+      "@cnstra/devtools": ["../devtools/dist/index.js"],
       "@cnstra/devtools-dto": ["../devtools-dto/dist"],
       "@cnstra/devtools-transport-ws": ["../devtools-transport-ws/dist"],
       "@cnstra/devtools-server": ["../devtools-server/dist"],

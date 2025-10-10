@@ -338,6 +338,36 @@ export const AppInner: React.FC = () => {
         }
     }, [connectedApps]);
 
+    // Proactive short polling on graph: ensure stimulations arrive without visiting the Stimulations page
+    useEffect(() => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!connectedApps || connectedApps.length === 0) return;
+        let isCancelled = false;
+        const startedAt = Date.now();
+        const tick = () => {
+            if (isCancelled) return;
+            try {
+                connectedApps.forEach(app => {
+                    ws.send(
+                        JSON.stringify({
+                            type: 'apps:get-stimulations',
+                            appId: app.appId,
+                            limit: 1000,
+                        })
+                    );
+                });
+            } catch {}
+            const elapsed = Date.now() - startedAt;
+            if (elapsed < 10_000) setTimeout(tick, 1000);
+        };
+        // kick off immediately
+        tick();
+        return () => {
+            isCancelled = true;
+        };
+    }, [connectedApps, wsRef.current]);
+
     // Observe selected app id from DB index (single selection)
     const selectedAppPks = useSelectPksByIndexKey(
         db.apps.indexes.selected as OIMReactiveIndexManual<'selected', string>,

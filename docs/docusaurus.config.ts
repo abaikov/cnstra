@@ -5,7 +5,7 @@ import { themes as prismThemes } from 'prism-react-renderer';
 const config: Config = {
     title: 'CNStra',
     tagline: 'Central Nervous System for JavaScript apps',
-    favicon: 'img/logo.svg',
+    favicon: 'favicon.svg',
 
     url: 'https://cnstra.org',
     baseUrl: '/',

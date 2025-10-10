@@ -132,6 +132,22 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                         apps: msg.apps || [],
                     });
                 }
+                if (msg.type === 'server:metrics') {
+                    try {
+                        db.serverMetrics.collection.upsertOne({
+                            timestamp: Number(msg.timestamp) || Date.now(),
+                            rssMB: Number(msg.rssMB) || 0,
+                            heapUsedMB: Number(msg.heapUsedMB) || 0,
+                            heapTotalMB: Number(msg.heapTotalMB) || 0,
+                            externalMB: Number(msg.externalMB) || 0,
+                            cpuPercent: Number(msg.cpuPercent) || 0,
+                        });
+                        db.serverMetrics.indexes.all.addPks('all', [
+                            String(Number(msg.timestamp) || Date.now()),
+                        ]);
+                    } catch {}
+                    return;
+                }
                 if (msg.type === 'cns:neurons') {
                     const init = {
                         type: 'init',

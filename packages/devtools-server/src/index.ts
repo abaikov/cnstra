@@ -46,6 +46,11 @@ export class CNSDevToolsServer {
         }>
     >();
 
+    // server metrics sampling
+    private lastCpuUsage = process.cpuUsage();
+    private lastCpuTime = Date.now();
+    private metricsTimer?: NodeJS.Timeout;
+
     private static sanitizeValue(
         value: unknown,
         depth: number = 0,
@@ -847,6 +852,10 @@ export class CNSDevToolsServer {
 
     addClient(ws: WebSocket): void {
         this.clientSockets.add(ws);
+        // start metrics loop on first client
+        if (!this.metricsTimer) {
+            this.startMetricsLoop();
+        }
     }
 
     async handleStimulation(
@@ -892,6 +901,41 @@ export class CNSDevToolsServer {
                 clientWs.send(messageStr);
             }
         });
+    }
+
+    private startMetricsLoop(): void {
+        this.lastCpuUsage = process.cpuUsage();
+        this.lastCpuTime = Date.now();
+        this.metricsTimer = setInterval(() => {
+            try {
+                const mem = process.memoryUsage();
+                const now = Date.now();
+                const cpu = process.cpuUsage(this.lastCpuUsage);
+                const elapsedMs = Math.max(1, now - this.lastCpuTime);
+                const userMs = cpu.user / 1000;
+                const systemMs = cpu.system / 1000;
+                const cpuPercent = Math.min(
+                    100,
+                    Math.round(((userMs + systemMs) / elapsedMs) * 100)
+                );
+                this.lastCpuUsage = process.cpuUsage();
+                this.lastCpuTime = now;
+
+                const payload = {
+                    type: 'server:metrics',
+                    timestamp: now,
+                    rssMB: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
+                    heapUsedMB:
+                        Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
+                    heapTotalMB:
+                        Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100,
+                    externalMB:
+                        Math.round((mem.external / 1024 / 1024) * 100) / 100,
+                    cpuPercent,
+                } as any;
+                this.broadcastToClients(payload);
+            } catch {}
+        }, 1000);
     }
 
     async getActiveApps(): Promise<DevToolsApp[]> {

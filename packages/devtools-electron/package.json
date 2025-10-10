@@ -1,0 +1,93 @@
+{
+  "name": "@cnstra/devtools-electron",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "cross-env DEV=1 CNSTRA_DEVTOOLS_PORT=8080 electron .",
+    "start": "electron .",
+    "start:prod": "cross-env DEV=0 electron .",
+    "gen:icons": "node ./scripts/gen-icons.js",
+    "dist:mac": "electron-builder --mac dmg,zip",
+    "dist:win": "electron-builder --win nsis",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist:mas": "electron-builder --mac mas",
+    "dist": "electron-builder -mwl"
+  },
+  "build": {
+    "appId": "com.cnstra.devtools",
+    "productName": "CNStra DevTools",
+    "directories": {
+      "app": ".",
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "manager.html",
+      "package.json",
+      {
+        "from": "../devtools-panel-ui/dist",
+        "to": "../devtools-panel-ui/dist"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "../devtools-panel-ui/dist",
+        "to": "devtools-panel-ui/dist"
+      },
+      {
+        "from": "../../docs/static/fonts/Px437_IBM_Conv.ttf",
+        "to": "assets/fonts/Px437_IBM_Conv.ttf"
+      },
+      {
+        "from": "../../docs/static/img/logo.svg",
+        "to": "assets/logo.svg"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "icon": "build/icons/icon.icns",
+      "target": ["dmg", "zip"]
+    },
+    "mas": {
+      "entitlements": "entitlements.mas.plist",
+      "entitlementsInherit": "entitlements.mas.plist",
+      "provisioningProfile": "provisioning.provisionprofile",
+      "icon": "build/icons/icon.icns"
+    },
+    "dmg": {
+      "icon": "build/icons/icon.icns",
+      "sign": false
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icons/icon.ico"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Development",
+      "icon": "build/icons"
+    }
+  },
+  "dependencies": {
+    "@cnstra/devtools-server": "1.0.0",
+    "@cnstra/devtools-server-repository-in-memory": "1.0.0",
+    "electron": "^30.0.0",
+    "sharp": "^0.33.4",
+    "ws": "^8.18.0",
+    "cross-env": "^7.0.3"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.13.3",
+    "icon-gen": "^3.0.0"
+  }
+}
+
+

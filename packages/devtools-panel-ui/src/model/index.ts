@@ -198,4 +198,23 @@ export const db = {
                 }` as TGraphEdgePk,
         },
     }),
+
+    // Server runtime metrics (memory, CPU) timeline
+    serverMetrics: new OIMRICollection(dbEventQueue, {
+        indexes: {
+            all: new OIMReactiveIndexManual<'all', string>(dbEventQueue),
+        },
+        collectionOpts: {
+            selectPk: (m: TServerMetrics) => `${m.timestamp}`,
+        },
+    }),
+};
+
+export type TServerMetrics = {
+    timestamp: number;
+    rssMB: number;
+    heapUsedMB: number;
+    heapTotalMB: number;
+    externalMB: number;
+    cpuPercent: number;
 };

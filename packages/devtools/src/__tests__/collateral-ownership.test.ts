@@ -348,21 +348,28 @@ describe('CNSDevTools Collateral Ownership Logic', () => {
             const initMessage = mockTransport.sentMessages[0] as InitMessage;
 
             // Verify neurons contain axon information for edge generation
-            expect(
-                initMessage.neurons.map(n => ({
-                    id: n.id,
-                    axonCollaterals: n.axonCollaterals,
-                }))
-            ).toEqual([
-                {
-                    id: 'ecommerce-app:auth-service',
-                    axonCollaterals: ['userAuthenticated', 'tokenGenerated'],
+            // New DTO from init: neurons do not carry axonCollaterals in DTO; validate by collateral ownership instead
+            const byNeuron = initMessage.collaterals.reduce(
+                (acc: Record<string, string[]>, c) => {
+                    const list = acc[c.neuronId] || [];
+                    list.push(c.collateralName);
+                    acc[c.neuronId] = list;
+                    return acc;
                 },
-                {
-                    id: 'ecommerce-app:user-service',
-                    axonCollaterals: ['userRegistration', 'userProfileUpdated'],
-                },
-            ]);
+                {}
+            );
+            expect(byNeuron['ecommerce-app:auth-service']).toEqual(
+                expect.arrayContaining([
+                    'user-authenticated',
+                    'token-generated',
+                ])
+            );
+            expect(byNeuron['ecommerce-app:user-service']).toEqual(
+                expect.arrayContaining([
+                    'user-registration',
+                    'user-profile-updated',
+                ])
+            );
 
             // Verify collaterals are properly owned
             expect(

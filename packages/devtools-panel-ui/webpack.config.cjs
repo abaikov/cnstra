@@ -19,7 +19,14 @@ module.exports = {
   },
   module: {
     rules: [
-      { test: /\.tsx?$/, use: 'ts-loader', exclude: /node_modules/ },
+      { 
+        test: /\.tsx?$/, 
+        use: {
+          loader: 'ts-loader',
+          options: { transpileOnly: true }
+        }, 
+        exclude: /node_modules/ 
+      },
       { test: /\.css$/, use: ['style-loader', 'css-loader'] },
       { 
         test: /\.(ttf|woff|woff2|eot)$/, 

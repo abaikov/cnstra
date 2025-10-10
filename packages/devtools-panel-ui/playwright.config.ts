@@ -1,22 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
-import { spawn } from 'child_process';
 import path from 'path';
 
-// Helper to run example-app server before tests using its build output
-function startExampleApp(): {
-    command: string;
-    cwd: string;
-    env?: NodeJS.ProcessEnv;
-} {
-    const repoRoot = path.resolve(__dirname, '..', '..');
-    const exampleAppDir = path.resolve(repoRoot, 'example-app');
-    return {
-        command:
-            'npm run prestart --silent --workspaces=false && npm run start --silent',
-        cwd: exampleAppDir,
-        env: { ...process.env, PORT: '8080' },
-    } as any;
-}
+const repoRoot = path.resolve(__dirname, '..', '..');
 
 export default defineConfig({
     testDir: './e2e',
@@ -29,14 +14,12 @@ export default defineConfig({
         baseURL: 'http://localhost:8080',
         trace: 'on-first-retry',
     },
-    webServer: {
-        ...startExampleApp(),
-        url: 'http://localhost:8080',
-        reuseExistingServer: !process.env.CI,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        timeout: 120_000,
-    },
+    globalSetup: path.resolve(__dirname, 'e2e', 'playwright.global-setup.ts'),
+    globalTeardown: path.resolve(
+        __dirname,
+        'e2e',
+        'playwright.global-teardown.ts'
+    ),
     projects: [
         {
             name: 'chromium',
