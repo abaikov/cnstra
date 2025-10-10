@@ -149,11 +149,6 @@ const config: Config = {
                     position: 'left',
                 },
                 {
-                    to: '/docs/examples/react',
-                    label: 'Examples',
-                    position: 'left',
-                },
-                {
                     href: 'https://github.com/abaikov/cnstra',
                     label: 'GitHub',
                     position: 'right',
