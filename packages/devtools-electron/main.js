@@ -45,8 +45,8 @@ async function startDevToolsServer(port) {
         res.end();
         return;
       }
-      // In prod, serve built panel UI from @cnstra/devtools-panel-ui/dist
-      const uiDist = path.resolve(__dirname, '..', 'devtools-panel-ui', 'dist');
+      // In prod, serve built panel UI from resources (copied during build)
+      const uiDist = path.resolve(process.resourcesPath, 'devtools-panel-ui', 'dist');
       let filePath = path.join(
         uiDist,
         !req?.url || req.url === '/' ? 'index.html' : req.url
@@ -157,7 +157,7 @@ async function createPanelWindow(effectivePort) {
     await win.loadURL('http://localhost:5173');
     win.webContents.openDevTools({ mode: 'detach' });
   } else {
-    const indexPath = path.resolve(__dirname, '..', 'devtools-panel-ui', 'dist', 'index.html');
+    const indexPath = path.resolve(process.resourcesPath, 'devtools-panel-ui', 'dist', 'index.html');
     await win.loadFile(indexPath);
   }
 }

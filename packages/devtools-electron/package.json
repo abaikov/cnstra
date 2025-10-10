@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-electron",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
   "main": "main.js",
@@ -28,23 +28,12 @@
       "preload.js",
       "manager.html",
       "package.json",
-      {
-        "from": "../devtools-panel-ui/dist",
-        "to": "../devtools-panel-ui/dist"
-      }
+      "resources/**/*"
     ],
     "extraResources": [
       {
-        "from": "../devtools-panel-ui/dist",
+        "from": "resources/devtools-panel-ui-dist",
         "to": "devtools-panel-ui/dist"
-      },
-      {
-        "from": "../../docs/static/fonts/Px437_IBM_Conv.ttf",
-        "to": "assets/fonts/Px437_IBM_Conv.ttf"
-      },
-      {
-        "from": "../../docs/static/img/logo.svg",
-        "to": "assets/logo.svg"
       }
     ],
     "mac": {
