@@ -42,18 +42,22 @@ jobs:
       - name: Generate icons
         run: npm run gen:icons --workspace=@cnstra/devtools-electron
 
-      - name: Build mac dmg/zip
+      - name: Build mac dmg/zip (arm64 + x64)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: true
-        run: npm run dist:mac --workspace=@cnstra/devtools-electron
+        run: |
+          npm run dist:mac --workspace=@cnstra/devtools-electron
+          npx electron-builder --project packages/devtools-electron --mac dmg zip --x64
 
       - name: Upload mac artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mac-artifacts
-          path: packages/devtools-electron/dist/*.{dmg,zip}
+          path: |
+            packages/devtools-electron/dist/*.dmg
+            packages/devtools-electron/dist/*.zip
 
   build-windows:
     runs-on: windows-latest
@@ -141,13 +145,18 @@ jobs:
         with:
           path: artifacts
 
+      - name: List artifacts
+        run: find artifacts -type f
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           draft: false
           prerelease: false
           files: |
-            artifacts/**/*
+            artifacts/mac-artifacts/*
+            artifacts/windows-artifacts/*
+            artifacts/linux-artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

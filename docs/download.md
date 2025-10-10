@@ -19,73 +19,67 @@ import BrowserOnly from '@docusaurus/BrowserOnly';
 
 <BrowserOnly>
   {() => {
-    const platform = typeof window !== 'undefined' ? window.navigator.platform.toLowerCase() : '';
-    const userAgent = typeof window !== 'undefined' ? window.navigator.userAgent.toLowerCase() : '';
-    const isMac = platform.includes('mac') || userAgent.includes('mac');
-    const isWindows = platform.includes('win') || userAgent.includes('win');
-    const isLinux = (platform.includes('linux') || userAgent.includes('linux')) && !userAgent.includes('android');
-    const isAppleSilicon = userAgent.includes('arm') || userAgent.includes('aarch64');
+    const React = require('react');
+    const [state, setState] = React.useState({ loading: true, url: '', error: '' });
+
+    React.useEffect(() => {
+      async function pick() {
+        try {
+          const platform = (window.navigator.platform || '').toLowerCase();
+          const ua = (window.navigator.userAgent || '').toLowerCase();
+          const isMac = platform.includes('mac') || ua.includes('mac');
+          const isWindows = platform.includes('win') || ua.includes('win');
+          const isLinux = (platform.includes('linux') || ua.includes('linux')) && !ua.includes('android');
+          const isArm = ua.includes('arm') || ua.includes('aarch64') || ua.includes('apple');
+
+          const res = await fetch('https://api.github.com/repos/abaikov/cnstra/releases/latest', { headers: { 'Accept': 'application/vnd.github+json' } });
+          if (!res.ok) throw new Error('Failed to fetch latest release');
+          const json = await res.json();
+          const assets = json.assets || [];
+
+          function findAsset(regex) {
+            return assets.find(a => regex.test(a.name));
+          }
+
+          let asset;
+          if (isMac) {
+            // Prefer DMG; choose arch by UA
+            asset = isArm
+              ? findAsset(/DevTools-.*-arm64\.dmg$/)
+              : findAsset(/DevTools-.*-x64\.dmg$/) || findAsset(/DevTools-.*-intel\.dmg$/);
+          } else if (isWindows) {
+            asset = findAsset(/Setup .*\.exe$/) || findAsset(/DevTools-.*\.exe$/);
+          } else if (isLinux) {
+            asset = findAsset(/DevTools-.*\.AppImage$/);
+          }
+
+          if (!asset) throw new Error('No matching asset for your platform');
+          setState({ loading: false, url: asset.browser_download_url, error: '' });
+        } catch (e) {
+          setState({ loading: false, url: '', error: (e && e.message) || 'Unknown error' });
+        }
+      }
+      pick();
+    }, []);
 
     return (
       <div>
-        {isMac && (
+        {state.loading ? (
+          <p>Detecting your platform and preparing the latest download…</p>
+        ) : state.url ? (
           <div>
-            <h3>macOS</h3>
-            <p><strong>Recommended for your system:</strong></p>
-            <ul>
-              <li><a href="https://github.com/abaikov/cnstra/releases/latest/download/CNStra%20DevTools-1.0.7-arm64.dmg">Download DMG (Apple Silicon)</a></li>
-              <li><a href="https://github.com/abaikov/cnstra/releases/latest/download/CNStra%20DevTools-1.0.7-arm64-mac.zip">Download ZIP (Apple Silicon)</a></li>
-            </ul>
+            <a className="button button--primary button--lg" href={state.url}>Download latest for your system</a>
+            <p style={{ marginTop: 8 }}>
+              Not your platform? <a href="https://github.com/abaikov/cnstra/releases/latest">See all downloads</a>
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p>Could not determine a suitable installer automatically.</p>
+            <p><a href="https://github.com/abaikov/cnstra/releases/latest">Open latest releases page</a> and pick your platform manually.</p>
+            {state.error && <pre>{state.error}</pre>}
           </div>
         )}
-        {isWindows && (
-          <div>
-            <h3>Windows</h3>
-            <p><strong>Recommended for your system:</strong></p>
-            <ul>
-              <li><a href="https://github.com/abaikov/cnstra/releases/latest/download/CNStra%20DevTools%20Setup%201.0.7.exe">Download Installer (.exe)</a></li>
-            </ul>
-          </div>
-        )}
-        {isLinux && (
-          <div>
-            <h3>Linux</h3>
-            <p><strong>Recommended for your system:</strong></p>
-            <ul>
-              <li><a href="https://github.com/abaikov/cnstra/releases/latest/download/CNStra%20DevTools-1.0.7.AppImage">Download AppImage</a></li>
-            </ul>
-            <p>Make the AppImage executable:</p>
-            <pre><code>chmod +x CNStra\ DevTools-1.0.7.AppImage{'\n'}./CNStra\ DevTools-1.0.7.AppImage</code></pre>
-          </div>
-        )}
-        {!isMac && !isWindows && !isLinux && (
-          <div>
-            <p>Choose your platform below:</p>
-          </div>
-        )}
-        <details>
-          <summary><strong>All Platforms</strong></summary>
-          <h4>macOS</h4>
-          <p><strong>Apple Silicon (M1/M2/M3)</strong></p>
-          <ul>
-            <li><a href="https://github.com/abaikov/cnstra/releases/latest/download/CNStra%20DevTools-1.0.7-arm64.dmg">Download DMG</a></li>
-            <li><a href="https://github.com/abaikov/cnstra/releases/latest/download/CNStra%20DevTools-1.0.7-arm64-mac.zip">Download ZIP</a></li>
-          </ul>
-          <p><strong>Intel (x64)</strong></p>
-          <ul>
-            <li>Coming soon</li>
-          </ul>
-          <h4>Windows</h4>
-          <ul>
-            <li><a href="https://github.com/abaikov/cnstra/releases/latest/download/CNStra%20DevTools%20Setup%201.0.7.exe">Download Installer (.exe)</a></li>
-          </ul>
-          <h4>Linux</h4>
-          <ul>
-            <li><a href="https://github.com/abaikov/cnstra/releases/latest/download/CNStra%20DevTools-1.0.7.AppImage">Download AppImage</a></li>
-          </ul>
-          <p>Make the AppImage executable:</p>
-          <pre><code>chmod +x CNStra\ DevTools-1.0.7.AppImage{'\n'}./CNStra\ DevTools-1.0.7.AppImage</code></pre>
-        </details>
       </div>
     );
   }}
