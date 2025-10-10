@@ -22,6 +22,12 @@ Explore advanced capabilities of CNStra DevTools.
 - Export captured session for offline analysis
 - Share minimal repro bundles
 
+## Snapshots & Replay
+- Capture snapshots of signals, responses, and context transitions
+- Export/import snapshots as JSON files
+- Deterministic replay engine to reproduce a session step-by-step
+- Useful for bug reports, CI regression tests, and perf analysis
+
 ## Shortcuts
 - Cmd/Ctrl+K: Command palette
 - Cmd/Ctrl+F: Focus search

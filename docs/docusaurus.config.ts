@@ -122,7 +122,7 @@ const config: Config = {
                 src: 'img/logo.svg',
             },
             items: [
-                { to: '/docs/intro', label: 'Intro', position: 'left' },
+                // Intro moved under Core section
                 {
                     to: '/docs/core/quick-start',
                     label: 'Quick Start',

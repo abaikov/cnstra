@@ -155,6 +155,12 @@ CNSTRA_DEVTOOLS_URL=ws://localhost:8080
 CNSTRA_DEVTOOLS_APP_NAME=my-app
 ```
 
+## Recording & Replay
+
+- Use the DevTools UI to start/stop a recording of a stimulation session
+- Export the snapshot to a JSON file and share with your team
+- Replay the snapshot inside DevTools to reproduce and debug deterministically
+
 ## Troubleshooting
 
 ### Connection Issues

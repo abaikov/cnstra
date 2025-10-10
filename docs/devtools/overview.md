@@ -28,6 +28,11 @@ Powerful debugging and monitoring tools for CNStra applications. Visualize your 
 - **Performance Metrics**: Measure response times and identify bottlenecks
 - **Error Tracking**: Catch and analyze errors in your neural network
 
+### 🧪 Snapshots & Replay
+- **Record Sessions**: Capture full stimulation sessions with inputs, responses, and context deltas
+- **Deterministic Replay**: Re-run captured sessions to reproduce issues exactly
+- **Shareable Artifacts**: Export/import snapshots for team debugging and CI reproduction
+
 ### 🚀 Multi-Instance Support
 - **Server Manager**: Start/stop DevTools servers on custom ports
 - **Multiple Apps**: Connect to multiple CNStra applications simultaneously

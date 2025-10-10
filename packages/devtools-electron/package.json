@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-electron",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "private": true,
   "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
   "main": "main.js",
@@ -43,10 +43,6 @@
       "entitlementsInherit": "entitlements.mac.plist",
       "target": ["dmg", "zip"],
       "notarize": {
-        "tool": "notarytool",
-        "appleId": "${APPLE_ID}",
-        "appleIdPassword": "${APPLE_APP_SPECIFIC_PASSWORD}",
-        "teamId": "${APPLE_TEAM_ID}",
         "appBundleId": "org.cnstra.devtools"
       }
     },
