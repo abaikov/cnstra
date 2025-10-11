@@ -42,6 +42,23 @@ jobs:
       - name: Generate icons
         run: npm run gen:icons --workspace=@cnstra/devtools-electron
 
+      - name: Validate notarization env
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          missing=0
+          for v in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "❌ Missing required secret: $v"; missing=1; fi
+          done
+          if [ $missing -ne 0 ]; then exit 1; fi
+          if [ -n "$CSC_LINK" ] && ! echo "$CSC_LINK" | grep -q '^data:application/x-pkcs12;base64,'; then
+            echo "❌ CSC_LINK must be data:application/x-pkcs12;base64,<base64>"; exit 1;
+          fi
+
       - name: Build mac dmg/zip (arm64 + x64)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}

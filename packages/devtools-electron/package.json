@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-electron",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "private": true,
   "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
   "main": "main.js",
@@ -10,57 +10,13 @@
     "start": "electron .",
     "start:prod": "cross-env DEV=0 electron .",
     "gen:icons": "node ./scripts/gen-icons.js",
-    "dist:mac": "electron-builder --mac dmg zip",
-    "dist:win": "electron-builder --win nsis",
-    "dist:linux": "electron-builder --linux AppImage",
-    "dist:mas": "electron-builder --mac mas",
-    "dist": "electron-builder -mwl"
+    "dist:mac": "electron-builder --config ./electron-builder.config.js --mac dmg zip",
+    "dist:win": "electron-builder --config ./electron-builder.config.js --win nsis",
+    "dist:linux": "electron-builder --config ./electron-builder.config.js --linux AppImage",
+    "dist:mas": "electron-builder --config ./electron-builder.config.js --mac mas",
+    "dist": "electron-builder --config ./electron-builder.config.js -mwl"
   },
-  "build": {
-    "appId": "org.cnstra.devtools",
-    "productName": "CNStra DevTools",
-    "directories": {
-      "buildResources": "build",
-      "output": "dist"
-    },
-    "afterSign": "build/after-sign.js",
-    "files": [
-      "main.js",
-      "preload.js",
-      "manager.html",
-      "package.json",
-      "resources/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "resources/devtools-panel-ui-dist",
-        "to": "devtools-panel-ui/dist"
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "hardenedRuntime": true,
-      "entitlements": "entitlements.mac.plist",
-      "entitlementsInherit": "entitlements.mac.plist",
-      "target": ["dmg", "zip"]
-    },
-    "mas": {
-      "entitlements": "entitlements.mas.plist",
-      "entitlementsInherit": "entitlements.mas.plist",
-      "provisioningProfile": "provisioning.provisionprofile",
-      "icon": "build/icons/icon.icns"
-    },
-    "dmg": {
-      "sign": false
-    },
-    "win": {
-      "target": ["nsis"]
-    },
-    "linux": {
-      "target": ["AppImage"],
-      "category": "Development"
-    }
-  },
+  "build": "./electron-builder.config.js",
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "dependencies": {
     "@cnstra/devtools-server": "1.0.0",

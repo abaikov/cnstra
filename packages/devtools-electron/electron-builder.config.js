@@ -24,6 +24,7 @@ module.exports = {
     entitlements: 'entitlements.mac.plist',
     entitlementsInherit: 'entitlements.mac.plist',
     target: ['dmg', 'zip'],
+    notarize: false, // disable built-in notarize; handled in afterSign
   },
   win: {
     target: ['nsis'],
