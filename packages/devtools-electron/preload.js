@@ -41,6 +41,16 @@ contextBridge.exposeInMainWorld('__CNSTRA_DEVTOOLS_BRIDGE__', {
   async closeAllWindows(port) {
     return await ipcRenderer.invoke('mgr:closeAllWindows', port);
   },
+  onServersChanged(handler) {
+    const fn = (_event, payload) => handler(payload || {});
+    ipcRenderer.on('mgr:evt:servers', fn);
+    return () => ipcRenderer.removeListener('mgr:evt:servers', fn);
+  },
+  onWindowsChanged(handler) {
+    const fn = (_event, payload) => handler(payload || {});
+    ipcRenderer.on('mgr:evt:windows', fn);
+    return () => ipcRenderer.removeListener('mgr:evt:windows', fn);
+  },
 });
 
 

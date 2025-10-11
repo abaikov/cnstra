@@ -222,6 +222,21 @@
         } catch (e) {
           console.warn('Failed to load branding assets:', e);
         }
+        // subscribe to live updates
+        try {
+          const refreshSafe = async () => {
+            try { await refresh(); } catch {}
+          };
+          const off1 = window.__CNSTRA_DEVTOOLS_BRIDGE__.onServersChanged(() => {
+            refreshSafe();
+          });
+          const off2 = window.__CNSTRA_DEVTOOLS_BRIDGE__.onWindowsChanged(() => {
+            refreshSafe();
+          });
+          window.addEventListener('beforeunload', () => { try { off1?.(); off2?.(); } catch {} });
+        } catch (e) {
+          console.warn('Live updates unavailable:', e);
+        }
       })();
 
       refresh();

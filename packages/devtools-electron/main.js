@@ -7,6 +7,21 @@ const { WebSocketServer } = require('ws');
 let DevToolsCore = null;
 const servers = new Map(); // port -> { server, wss, devToolsServer }
 const panelWindows = new Map(); // port -> BrowserWindow[]
+const managerWindows = new Set(); // BrowserWindow set for manager UIs
+
+function broadcastToManagers(channel, payload) {
+  for (const win of managerWindows) {
+    try { win.webContents.send(channel, payload); } catch {}
+  }
+}
+
+function notifyServersChanged() {
+  broadcastToManagers('mgr:evt:servers', {});
+}
+
+function notifyWindowsChanged(port) {
+  broadcastToManagers('mgr:evt:windows', { port });
+}
 
 // Set human-friendly app name for menus/dock
 try { app.setName('CNStra DevTools'); } catch {}
@@ -185,6 +200,7 @@ async function createPanelWindow(effectivePort) {
     panelWindows.set(effectivePort, []);
   }
   panelWindows.get(effectivePort).push(win);
+  notifyWindowsChanged(effectivePort);
 
   // Remove window from tracking when it's closed
   win.on('closed', () => {
@@ -199,6 +215,7 @@ async function createPanelWindow(effectivePort) {
       }
     }
     console.log(`[CNStra DevTools] Panel window closed for port ${effectivePort}`);
+    notifyWindowsChanged(effectivePort);
   });
 
   const wsUrl = `ws://localhost:${effectivePort}`;
@@ -255,6 +272,12 @@ async function createManagerWindow() {
   
   // Открываем DevTools для Manager окна
   win.webContents.openDevTools({ mode: 'detach' });
+
+  // track manager window
+  managerWindows.add(win);
+  win.on('closed', () => {
+    managerWindows.delete(win);
+  });
 }
 
 // IPC wiring for manager
@@ -278,6 +301,7 @@ ipcMain.handle('mgr:start', async (_e, maybePort) => {
   const { server, wss } = await startDevToolsServer(port);
   // store devToolsServer via closure in startDevToolsServer by attaching listener on wss
   servers.set(port, { server, wss });
+  notifyServersChanged();
   return { port };
 });
 
@@ -332,6 +356,8 @@ ipcMain.handle('mgr:stop', async (_e, port) => {
     
     servers.delete(portNum);
     console.log('[CNStra DevTools] Server removed from map');
+    notifyWindowsChanged(portNum);
+    notifyServersChanged();
   }
   
   return { stopped: true };
