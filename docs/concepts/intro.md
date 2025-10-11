@@ -36,6 +36,6 @@ Short vs long flows
 - Long‑lived (many stimulations): continue on external events (queue/webhook/cron) by re‑stimulating with correlation data
 
 Where to go next
-- Concepts: [IERG](/docs/concepts/ierg), [Architecture](/docs/concepts/architecture)
+- Concepts: [IERG](/docs/concepts/ierg)
 - Frontend: [CNStra & OIMDB](/docs/frontend/oimdb)
 - Core: [Quick Start](/docs/core/quick-start), [API](/docs/core/api)
