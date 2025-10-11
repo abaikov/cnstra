@@ -71,7 +71,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: true
         run: |
           npm run dist:mac --workspace=@cnstra/devtools-electron
-          npx electron-builder --project packages/devtools-electron --mac dmg zip --x64
+          npx electron-builder --project packages/devtools-electron --config packages/devtools-electron/electron-builder.config.js --mac dmg zip --x64
 
       - name: Upload mac artifacts
         uses: actions/upload-artifact@v4
