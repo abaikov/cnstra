@@ -1,7 +1,9 @@
 // Custom electron-builder config with programmatic afterSign notarization
 const path = require('path');
+const entitlementsPath = path.join(__dirname, 'entitlements.mac.plist');
 
 module.exports = {
+  electronVersion: '30.0.0',
   appId: 'org.cnstra.devtools',
   productName: 'CNStra DevTools',
   directories: {
@@ -17,14 +19,18 @@ module.exports = {
   ],
   extraResources: [
     { from: 'resources/devtools-panel-ui-dist', to: 'devtools-panel-ui/dist' },
+    { from: 'resources/img', to: 'img' },
+    { from: 'resources/fonts', to: 'fonts' },
   ],
   mac: {
     category: 'public.app-category.developer-tools',
     hardenedRuntime: true,
-    entitlements: 'entitlements.mac.plist',
-    entitlementsInherit: 'entitlements.mac.plist',
+    entitlements: entitlementsPath,
+    entitlementsInherit: entitlementsPath,
     target: ['dmg', 'zip'],
-    notarize: false, // disable built-in notarize; handled in afterSign
+    notarize: process.env.APPLE_TEAM_ID || process.env.TEAM_ID ? {
+      teamId: process.env.APPLE_TEAM_ID || process.env.TEAM_ID,
+    } : false,
   },
   win: {
     target: ['nsis'],
@@ -32,34 +38,6 @@ module.exports = {
   linux: {
     target: ['AppImage'],
     category: 'Development',
-  },
-  afterSign: async (context) => {
-    if (context.electronPlatformName !== 'darwin') return;
-
-    const { notarize } = require('@electron/notarize');
-
-    const appBundleId = context.packager.appInfo.bundleId;
-    const appOutDir = context.appOutDir;
-    const appName = context.packager.appInfo.productFilename;
-    const appPath = path.join(appOutDir, `${appName}.app`);
-
-    const appleId = process.env.APPLE_ID;
-    const applePassword = process.env.APPLE_PASSWORD || process.env.APPLE_APP_SPECIFIC_PASSWORD;
-    const teamId = process.env.TEAM_ID || process.env.APPLE_TEAM_ID;
-
-    if (!appleId || !applePassword || !teamId) {
-      console.warn('Skipping notarization: missing APPLE_ID/APPLE_PASSWORD(or APPLE_APP_SPECIFIC_PASSWORD)/TEAM_ID');
-      return;
-    }
-
-    await notarize({
-      tool: 'notarytool',
-      appBundleId,
-      appleId,
-      appleIdPassword: applePassword,
-      teamId,
-      appPath,
-    });
   },
 };
 

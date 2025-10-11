@@ -24,54 +24,14 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Build dependencies
-        run: npm run build:core
-      
-      - name: Install Electron in workspace
-        working-directory: packages/devtools-electron
-        run: npm install electron@30.0.0 --save-dev
-
-      - name: Build Panel UI
-        run: npm run build --workspace=@cnstra/devtools-panel-ui
-
-      - name: Copy Panel UI dist to electron package
-        run: |
-          mkdir -p packages/devtools-electron/resources
-          cp -r packages/devtools-panel-ui/dist packages/devtools-electron/resources/devtools-panel-ui-dist
-
-      - name: Generate icons
-        run: npm run gen:icons --workspace=@cnstra/devtools-electron
-
-      - name: Validate notarization env
+      - name: Build mac (arm64 + x64) with notarization
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: |
-          missing=0
-          for v in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID CSC_LINK CSC_KEY_PASSWORD; do
-            if [ -z "${!v}" ]; then echo "❌ Missing required secret: $v"; missing=1; fi
-          done
-          if [ $missing -ne 0 ]; then exit 1; fi
-          if [ -n "$CSC_LINK" ] && ! echo "$CSC_LINK" | grep -q '^data:application/x-pkcs12;base64,'; then
-            echo "❌ CSC_LINK must be data:application/x-pkcs12;base64,<base64>"; exit 1;
-          fi
-
-      - name: Build mac dmg/zip (arm64 + x64)
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_IDENTITY_AUTO_DISCOVERY: true
-        run: |
-          npm run dist:mac --workspace=@cnstra/devtools-electron
-          npx electron-builder --project packages/devtools-electron --config electron-builder.config.js --mac dmg zip --x64
+        run: ./scripts/build-electron-local.sh mac
 
       - name: Upload mac artifacts
         uses: actions/upload-artifact@v4
@@ -96,23 +56,8 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Build dependencies
-        run: npm run build:core
-      
-      - name: Install Electron in workspace
-        working-directory: packages/devtools-electron
-        run: npm install electron@30.0.0 --save-dev
-
-      - name: Build Panel UI
-        run: npm run build --workspace=@cnstra/devtools-panel-ui
-
-      - name: Copy Panel UI dist to electron package
-        run: |
-          New-Item -ItemType Directory -Force -Path packages/devtools-electron/resources
-          Copy-Item -Recurse packages/devtools-panel-ui/dist packages/devtools-electron/resources/devtools-panel-ui-dist
-
       - name: Build windows exe
-        run: npm run dist:win --workspace=@cnstra/devtools-electron
+        run: bash ./scripts/build-electron-local.sh win
 
       - name: Upload windows artifacts
         uses: actions/upload-artifact@v4
@@ -135,23 +80,8 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Build dependencies
-        run: npm run build:core
-      
-      - name: Install Electron in workspace
-        working-directory: packages/devtools-electron
-        run: npm install electron@30.0.0 --save-dev
-
-      - name: Build Panel UI
-        run: npm run build --workspace=@cnstra/devtools-panel-ui
-
-      - name: Copy Panel UI dist to electron package
-        run: |
-          mkdir -p packages/devtools-electron/resources
-          cp -r packages/devtools-panel-ui/dist packages/devtools-electron/resources/devtools-panel-ui-dist
-
       - name: Build linux AppImage
-        run: npm run dist:linux --workspace=@cnstra/devtools-electron
+        run: ./scripts/build-electron-local.sh linux
 
       - name: Upload linux artifacts
         uses: actions/upload-artifact@v4

@@ -1,5 +1,4 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const path = require('path');
 
 function toFileUrl(absPath) {
   // Basic file:// URL for mac/linux (sufficient for our dev env)
@@ -11,7 +10,7 @@ function toFileUrl(absPath) {
 contextBridge.exposeInMainWorld('__CNSTRA_DEVTOOLS_BRIDGE__', {
   async list() {
     const items = await ipcRenderer.invoke('mgr:list');
-    return { items };
+    return items;
   },
   async findPort(startPort) {
     return await ipcRenderer.invoke('mgr:findPort', startPort);
@@ -20,20 +19,27 @@ contextBridge.exposeInMainWorld('__CNSTRA_DEVTOOLS_BRIDGE__', {
     return await ipcRenderer.invoke('mgr:start', port);
   },
   async stop(port) {
-    return await ipcRenderer.invoke('mgr:stop', port);
+    console.log('[CNStra DevTools] Preload: calling stop for port:', port);
+    try {
+      const result = await ipcRenderer.invoke('mgr:stop', port);
+      console.log('[CNStra DevTools] Preload: stop result:', result);
+      return result;
+    } catch (error) {
+      console.error('[CNStra DevTools] Preload: stop error:', error);
+      throw error;
+    }
   },
   async openPanel(port) {
     return await ipcRenderer.invoke('mgr:openPanel', port);
   },
-  paths() {
-    const logoPath = path.resolve(__dirname, '..', '..', 'docs', 'static', 'img', 'logo.svg');
-    const fontPath = path.resolve(__dirname, '..', '..', 'docs', 'static', 'fonts', 'Px437_IBM_Conv.ttf');
-    return {
-      logoFileUrl: toFileUrl(logoPath),
-      fontFileUrl: toFileUrl(fontPath),
-      logoPath,
-      fontPath,
-    };
+  async paths() {
+    return await ipcRenderer.invoke('mgr:paths');
+  },
+  async listWindows() {
+    return await ipcRenderer.invoke('mgr:listWindows');
+  },
+  async closeAllWindows(port) {
+    return await ipcRenderer.invoke('mgr:closeAllWindows', port);
   },
 });
 

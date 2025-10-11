@@ -6,14 +6,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CNStra DevTools Manager</title>
     <style>
-      body {margin: 16px;  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; }
+      :root {
+        --bg: #120e12;           /* deep rotten plum */
+        --panel: #1b141b;        /* darker panel */
+        --panel-2: #231823;      /* alt panel */
+        --border: #2a1d2a;       /* subtle border */
+        --text: #f2e9f5;         /* pale bone */
+        --muted: #a093a6;        /* faded tissue */
+        --accent: #ff4d6d;       /* fresh wound */
+        --accent-2: #b3254b;     /* dried blood */
+        --ok: #46d39a;           /* septic green */
+        --warn: #f2b705;         /* bile yellow */
+      }
+      body {margin: 16px;  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; background: linear-gradient(180deg, var(--bg), #0c090c); color: var(--text); }
             h1 { margin: 0 0 12px 0; }
             .row { display: flex; align-items: center; margin-bottom: 12px; gap: 8px; }
-            input {width: 140px;  padding: 6px 8px; font-size: 14px; }
-            button { padding: 6px 10px; cursor: pointer; font-size: 14px; }
-            table { width: 100%; margin-top: 12px; border-collapse: collapse; }
-            th, td {padding: 8px; text-align: left;  border-bottom: 1px solid #ddd; }
-            th { background: #f5f5f5; }
+            input {width: 160px;  padding: 8px 10px; font-size: 14px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+            input::placeholder{ color: var(--muted); }
+            button { padding: 8px 12px; cursor: pointer; font-size: 13px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; transition: background .15s ease, border-color .15s ease, transform .04s ease; }
+            button:hover { background: #2b1f2b; border-color: #3a253a; }
+            button:active { transform: translateY(1px); }
+            button.primary { background: var(--accent-2); border-color: var(--accent-2); }
+            button.primary:hover { background: var(--accent); border-color: var(--accent); }
+            button.ghost { background: transparent; border-color: var(--border); }
+            button.good { background: #123228; border-color: #1f4d3e; }
+            button.warn { background: #3b2e12; border-color: #5a4418; }
+            button:disabled { opacity: 0.6; cursor: not-allowed; }
+            table { width: 100%; margin-top: 12px; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+            th, td {padding: 10px 12px; text-align: left;  border-bottom: 1px solid var(--border); }
+            th { background: #241a24; color: var(--muted); font-weight: 600; }
+            .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+            .brand img { height: 28px; width: 28px; filter: drop-shadow(0 2px 8px rgba(255,77,109,.25)); }
+            .brand-title { font-size: 16px; font-weight: 700; letter-spacing: .2px; color: var(--text); }
+            .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #2a1d2a; color: var(--muted); font-size: 12px; margin-left: 8px; border: 1px solid var(--border); }
+            .details-row { background: #181118; }
+            .details { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+            .details__row { display: flex; align-items: center; gap: 10px; }
       @font-face {
         font-family: 'CNStraIBM';
         src: url('') format('truetype'); /* will be set via script */
@@ -21,9 +49,6 @@
         font-style: normal;
         font-display: swap;
       }
-      .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-      .brand img { height: 28px; width: 28px; }
-      .brand-title { font-size: 16px; font-weight: 600; }
     </style>
   </head>
   <body>
@@ -50,15 +75,67 @@
       const logoEl = $('#logo');
 
       async function refresh() {
-        const { items } = await window.__CNSTRA_DEVTOOLS_BRIDGE__.list();
+        const items = await window.__CNSTRA_DEVTOOLS_BRIDGE__.list();
         listEl.innerHTML = '';
         items.forEach((it) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${it.port}</td><td>${it.status}</td><td>
-            <button data-open="${it.port}">Open Panel</button>
-            <button data-stop="${it.port}">Stop</button>
-          </td>`;
+          tr.setAttribute('data-port', it.port);
+          
+          // Create port cell
+          const portCell = document.createElement('td');
+          portCell.textContent = it.port;
+          
+          // Create status cell
+          const statusCell = document.createElement('td');
+          statusCell.innerHTML = `${it.status} <span class="pill">${it.windowCount || 0} window${(it.windowCount||0)===1?'':'s'}</span>`;
+          
+          // Create actions cell
+          const actionsCell = document.createElement('td');
+          
+          // Toggle details
+          const toggleBtn = document.createElement('button');
+          toggleBtn.textContent = 'Details';
+          toggleBtn.className = 'ghost';
+          toggleBtn.setAttribute('data-toggle', it.port);
+          
+          // Create Open Panel button
+          const openBtn = document.createElement('button');
+          openBtn.textContent = 'Open Panel';
+          openBtn.className = 'good';
+          openBtn.setAttribute('data-open', it.port);
+          
+          // Create Stop button
+          const stopBtn = document.createElement('button');
+          stopBtn.textContent = 'Stop';
+          stopBtn.className = 'primary';
+          stopBtn.setAttribute('data-stop', it.port);
+          
+          actionsCell.appendChild(toggleBtn);
+          actionsCell.appendChild(openBtn);
+          actionsCell.appendChild(stopBtn);
+          
+          tr.appendChild(portCell);
+          tr.appendChild(statusCell);
+          tr.appendChild(actionsCell);
+          
           listEl.appendChild(tr);
+          
+          // Details row
+          const detailsTr = document.createElement('tr');
+          detailsTr.className = 'details-row';
+          detailsTr.style.display = 'none';
+          detailsTr.setAttribute('data-details-for', it.port);
+          const detailsTd = document.createElement('td');
+          detailsTd.colSpan = 3;
+          detailsTd.innerHTML = `<div class="details">
+            <div class="details__row">
+              <span>Windows: <strong>${it.windowCount || 0}</strong></span>
+              <button data-close-all-inline="${it.port}" ${it.windowCount ? '' : 'disabled'}>Close All</button>
+              <button data-open-panel-inline="${it.port}">Open Panel</button>
+            </div>
+          </div>`;
+          detailsTr.appendChild(detailsTd);
+          listEl.appendChild(detailsTr);
         });
       }
 
@@ -70,33 +147,81 @@
       $('#start').addEventListener('click', async () => {
         const p = Number(portEl.value || 8080);
         const { port } = await window.__CNSTRA_DEVTOOLS_BRIDGE__.start(p);
+        // Open panel first so the window is tracked immediately, then refresh UI
+        await window.__CNSTRA_DEVTOOLS_BRIDGE__.openPanel(port);
         await refresh();
-        setTimeout(() => window.__CNSTRA_DEVTOOLS_BRIDGE__.openPanel(port), 200);
       });
 
       listEl.addEventListener('click', async (e) => {
         const t = e.target;
+        console.log('Button clicked:', t.tagName, t.textContent, t.attributes);
+        
         if (t.matches('button[data-open]')) {
           const p = Number(t.getAttribute('data-open'));
+          console.log('Open button clicked for port:', p);
           await window.__CNSTRA_DEVTOOLS_BRIDGE__.openPanel(p);
+          await refresh();
         }
         if (t.matches('button[data-stop]')) {
           const p = Number(t.getAttribute('data-stop'));
-          await window.__CNSTRA_DEVTOOLS_BRIDGE__.stop(p);
+          console.log('Stop button clicked for port:', p);
+          
+          // Disable button to prevent multiple clicks
+          t.disabled = true;
+          t.textContent = 'Stopping...';
+          
+          try {
+            const result = await window.__CNSTRA_DEVTOOLS_BRIDGE__.stop(p);
+            console.log('Stop result:', result);
+            await refresh();
+          } catch (error) {
+            console.error('Error stopping server:', error);
+            // Re-enable button on error
+            t.disabled = false;
+            t.textContent = 'Stop';
+          }
+        }
+      });
+
+      listEl.addEventListener('click', async (e) => {
+        const t = e.target;
+        if (t.matches('button[data-toggle]')) {
+          const p = Number(t.getAttribute('data-toggle'));
+          const row = document.querySelector(`tr[data-details-for="${p}"]`);
+          if (row) {
+            row.style.display = row.style.display === 'none' ? '' : 'none';
+          }
+        }
+        if (t.matches('button[data-close-all-inline]')) {
+          const p = Number(t.getAttribute('data-close-all-inline'));
+          t.disabled = true;
+          t.textContent = 'Closing...';
+          try {
+            await window.__CNSTRA_DEVTOOLS_BRIDGE__.closeAllWindows(p);
+          } catch {}
+          await refresh();
+        }
+        if (t.matches('button[data-open-panel-inline]')) {
+          const p = Number(t.getAttribute('data-open-panel-inline'));
+          await window.__CNSTRA_DEVTOOLS_BRIDGE__.openPanel(p);
           await refresh();
         }
       });
 
-      (function initBranding(){
+      (async function initBranding(){
         try {
-          const { logoFileUrl, fontFileUrl } = window.__CNSTRA_DEVTOOLS_BRIDGE__.paths();
-          if (logoFileUrl) logoEl.src = logoFileUrl;
-          if (fontFileUrl) {
+          const { logoFileUrl, fontFileUrl } = await window.__CNSTRA_DEVTOOLS_BRIDGE__.paths();
+          if (logoFileUrl && logoFileUrl !== null) {
+            logoEl.src = logoFileUrl;
+          }
+          if (fontFileUrl && fontFileUrl !== null) {
             const styleEl = document.createElement('style');
             styleEl.textContent = `@font-face { font-family: 'CNStraIBM'; src: url(${JSON.stringify(fontFileUrl)}) format('truetype'); font-weight: normal; font-style: normal; font-display: swap; } body { font-family: CNStraIBM, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; }`;
             document.head.appendChild(styleEl);
           }
-        } catch {}
+        } catch (e) {
+          console.warn('Failed to load branding assets:', e);
+        }
       })();
 
       refresh();
