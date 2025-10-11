@@ -122,7 +122,6 @@ const config: Config = {
                 src: 'img/logo.svg',
             },
             items: [
-                // Intro moved under Core section
                 {
                     to: '/docs/core/quick-start',
                     label: 'Quick Start',
@@ -162,7 +161,6 @@ const config: Config = {
                 {
                     title: 'Docs',
                     items: [
-                        { label: 'Introduction', to: '/docs/intro' },
                         {
                             label: 'Quick Start',
                             to: '/docs/core/quick-start',

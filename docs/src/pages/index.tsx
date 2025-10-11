@@ -18,12 +18,7 @@ export default function Home(): JSX.Element {
                         Central Nervous System Orchestrator for building
                         predictable, reactive pipelines.
                     </p>
-                    <p
-                        className="hero__subtitle"
-                        style={{ marginTop: '0.25rem' }}
-                    >
-                        The "tra" suffix highlights it's an orchestrator.
-                    </p>
+                    {/* removed extra tagline */}
                     <div>
                         <Link
                             className="button button--secondary button--lg"

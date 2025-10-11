@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-electron",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "private": true,
   "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
   "main": "main.js",
@@ -23,6 +23,7 @@
       "buildResources": "build",
       "output": "dist"
     },
+    "afterSign": "build/after-sign.js",
     "files": [
       "main.js",
       "preload.js",
@@ -41,10 +42,7 @@
       "hardenedRuntime": true,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
-      "target": ["dmg", "zip"],
-      "notarize": {
-        "appBundleId": "org.cnstra.devtools"
-      }
+      "target": ["dmg", "zip"]
     },
     "mas": {
       "entitlements": "entitlements.mas.plist",
