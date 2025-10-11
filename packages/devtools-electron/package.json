@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-electron",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "private": true,
   "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
   "main": "main.js",
@@ -16,54 +16,7 @@
     "dist:mas": "electron-builder --mac mas",
     "dist": "electron-builder -mwl"
   },
-  "build": {
-    "appId": "org.cnstra.devtools",
-    "productName": "CNStra DevTools",
-    "directories": {
-      "buildResources": "build",
-      "output": "dist"
-    },
-    
-    "files": [
-      "main.js",
-      "preload.js",
-      "manager.html",
-      "package.json",
-      "resources/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "resources/devtools-panel-ui-dist",
-        "to": "devtools-panel-ui/dist"
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "hardenedRuntime": true,
-      "entitlements": "entitlements.mac.plist",
-      "entitlementsInherit": "entitlements.mac.plist",
-      "target": ["dmg", "zip"],
-      "notarize": {
-        "appBundleId": "org.cnstra.devtools"
-      }
-    },
-    "mas": {
-      "entitlements": "entitlements.mas.plist",
-      "entitlementsInherit": "entitlements.mas.plist",
-      "provisioningProfile": "provisioning.provisionprofile",
-      "icon": "build/icons/icon.icns"
-    },
-    "dmg": {
-      "sign": false
-    },
-    "win": {
-      "target": ["nsis"]
-    },
-    "linux": {
-      "target": ["AppImage"],
-      "category": "Development"
-    }
-  },
+  "build": "./electron-builder.config.js",
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "dependencies": {
     "@cnstra/devtools-server": "1.0.0",
