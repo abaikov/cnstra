@@ -27,7 +27,8 @@ function notifyWindowsChanged(port) {
 try { app.setName('CNStra DevTools'); } catch {}
 
 const DEFAULT_PORT = Number(process.env.CNSTRA_DEVTOOLS_PORT || 8080);
-const IS_DEV = process.env.DEV === '1' || process.env.DEV === 'true';
+// IS_DEV = true только если явно указан DEV=1 или DEV=true И приложение не запаковано
+const IS_DEV = (process.env.DEV === '1' || process.env.DEV === 'true') && !app.isPackaged;
 
 /**
  * Create application menu with DevTools options
@@ -255,8 +256,10 @@ async function createManagerWindow() {
   });
   await win.loadFile(path.join(__dirname, 'manager.html'));
   
-  // Открываем DevTools для Manager окна
-  win.webContents.openDevTools({ mode: 'detach' });
+  // Открываем DevTools для Manager окна только в режиме разработки
+  if (IS_DEV) {
+    win.webContents.openDevTools({ mode: 'detach' });
+  }
 
   // track manager window
   managerWindows.add(win);
