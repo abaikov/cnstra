@@ -221,8 +221,6 @@ async function createPanelWindow(effectivePort) {
   } else {
     const indexPath = path.resolve(process.resourcesPath, 'devtools-panel-ui', 'dist', 'index.html');
     await win.loadFile(indexPath);
-    // Открываем DevTools в production для отладки
-    win.webContents.openDevTools({ mode: 'detach' });
   }
 }
 
