@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { db } from '../model';
 import { useSelectEntitiesByIndexKey } from '@oimdb/react';
+import { safeStringify } from '../utils/safeJson';
+import { ResponseDataViewer } from './ResponseDataViewer';
 
 interface Props {
     selectedAppId: string | null;
@@ -16,7 +18,6 @@ interface StimulationFlow {
     hops?: number;
     responses: Array<{
         responseId: string;
-        neuronId: string;
         timestamp: number;
         duration?: number;
         error?: string;
@@ -30,34 +31,48 @@ export const ContextStoreMonitor: React.FC<Props> = ({ selectedAppId }) => {
     const [showOnlyWithContexts, setShowOnlyWithContexts] = useState(false);
 
     // Get stimulations and responses for the selected app
-    const allStimulations = useSelectEntitiesByIndexKey(
+    const allStimulationsRaw = useSelectEntitiesByIndexKey(
         db.stimulations,
         db.stimulations.indexes.appId,
         selectedAppId || 'dummy-id'
     );
 
-    const allResponses = useSelectEntitiesByIndexKey(
+    const allResponsesRaw = useSelectEntitiesByIndexKey(
         db.responses,
         db.responses.indexes.appId,
         selectedAppId || 'dummy-id'
     );
+
+    // Filter out undefined elements
+    const allStimulations = allStimulationsRaw
+        ? allStimulationsRaw.filter(
+              (s): s is NonNullable<typeof s> => s != null
+          )
+        : null;
+
+    const allResponses = allResponsesRaw
+        ? allResponsesRaw.filter((r): r is NonNullable<typeof r> => r != null)
+        : null;
 
     // Build stimulation flows with context tracking
     const stimulationFlows = useMemo((): StimulationFlow[] => {
         if (!allStimulations || !allResponses) return [];
 
         const flows = allStimulations.map(stim => {
-            const responses = allResponses
+            const responsesData = allResponses
                 .filter(resp => resp.stimulationId === stim.stimulationId)
-                .map(resp => ({
-                    responseId: resp.responseId,
-                    neuronId: resp.neuronId ?? '(unknown)',
-                    timestamp: resp.timestamp,
-                    duration: resp.duration,
-                    error: resp.error,
-                    hops: undefined, // hops not available in StimulationResponse DTO
-                }))
                 .sort((a, b) => a.timestamp - b.timestamp);
+
+            const responses = responsesData.map(resp => ({
+                responseId: resp.responseId,
+                timestamp: resp.timestamp,
+                duration: resp.duration,
+                error: resp.error,
+                hops: resp.hopIndex,
+            }));
+
+            // Contexts are accumulated during response processing, get from last response
+            const lastResponse = responsesData[responsesData.length - 1];
 
             return {
                 stimulationId: stim.stimulationId,
@@ -65,11 +80,8 @@ export const ContextStoreMonitor: React.FC<Props> = ({ selectedAppId }) => {
                 neuronId: stim.neuronId,
                 collateralName: stim.collateralName,
                 payload: stim.payload,
-                contexts: stim.contexts,
-                hops:
-                    responses.length > 0
-                        ? responses[responses.length - 1].hops
-                        : undefined,
+                contexts: lastResponse?.contexts,
+                hops: lastResponse?.hopIndex,
                 responses,
             };
         });
@@ -465,12 +477,11 @@ export const ContextStoreMonitor: React.FC<Props> = ({ selectedAppId }) => {
                                                             fontSize: '8px',
                                                         }}
                                                     >
-                                                        {JSON.stringify(
+                                                        {safeStringify(
                                                             flow.contexts,
-                                                            null,
                                                             1
                                                         ).substring(0, 100)}
-                                                        {JSON.stringify(
+                                                        {safeStringify(
                                                             flow.contexts
                                                         ).length > 100 && '...'}
                                                     </div>
@@ -518,18 +529,6 @@ export const ContextStoreMonitor: React.FC<Props> = ({ selectedAppId }) => {
                                                             >
                                                                 <span
                                                                     style={{
-                                                                        color: resp.error
-                                                                            ? 'var(--infection-red)'
-                                                                            : 'var(--infection-green)',
-                                                                    }}
-                                                                >
-                                                                    {index + 1}.{' '}
-                                                                    {
-                                                                        resp.neuronId
-                                                                    }
-                                                                </span>
-                                                                <span
-                                                                    style={{
                                                                         color: 'var(--text-muted)',
                                                                         marginLeft:
                                                                             '8px',
@@ -570,43 +569,17 @@ export const ContextStoreMonitor: React.FC<Props> = ({ selectedAppId }) => {
                                                     </div>
                                                 )}
 
-                                                {flow.payload ? (
-                                                    <div
-                                                        style={{
-                                                            marginTop: '3px',
-                                                        }}
-                                                    >
-                                                        <div
-                                                            style={{
-                                                                color: 'var(--infection-green)',
-                                                                marginBottom:
-                                                                    '1px',
-                                                            }}
-                                                        >
-                                                            📦 Payload:
-                                                        </div>
-                                                        <div
-                                                            style={{
-                                                                background:
-                                                                    'var(--bg-card)',
-                                                                border: '1px solid var(--border-accent)',
-                                                                borderRadius:
-                                                                    '2px',
-                                                                padding: '3px',
-                                                                fontFamily:
-                                                                    'monospace',
-                                                                fontSize: '7px',
-                                                                color: 'var(--text-secondary)',
-                                                            }}
-                                                        >
-                                                            {JSON.stringify(
-                                                                flow.payload,
-                                                                null,
-                                                                1
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ) : undefined}
+                                                <ResponseDataViewer
+                                                    data={{
+                                                        inputPayload:
+                                                            flow.payload,
+                                                        contexts: flow.contexts,
+                                                        snapshot: (flow as any)
+                                                            .snapshot,
+                                                    }}
+                                                    title="Flow Data"
+                                                    defaultExpanded={false}
+                                                />
                                             </div>
                                         )}
                                     </div>

@@ -6,28 +6,27 @@ export const dendriteNeuron = neuron('dendrite-neuron', appModelAxon).bind(
     appModelAxon,
     {
         devtoolsInit: (payload: any) => {
-            const appId = (payload as any).appId as string;
             for (const d of (payload.dendrites as Array<{
-                dendriteId: string;
+                id: string;
                 appId: string;
+                cnsId: string;
                 neuronId: string;
-                collateralName: string;
-                type: string;
-                collateralNames: string[];
+                name: string;
             }>) || []) {
                 // Ensure dendrites are present in DB (idempotent upsert)
                 db.dendrites.upsertOne({
-                    dendriteId: d.dendriteId,
+                    id: d.id,
                     appId: d.appId,
+                    cnsId: d.cnsId,
                     neuronId: d.neuronId,
-                    collateralName: d.collateralName,
-                    type: d.type,
-                } as any);
+                    name: d.name,
+                });
             }
         },
         devtoolsResponseBatch: () => undefined,
         selectAppClicked: () => undefined,
         appsActive: () => undefined,
+        appAdded: () => undefined,
         appDisconnected: () => undefined,
         stimulationBatch: () => undefined,
     }

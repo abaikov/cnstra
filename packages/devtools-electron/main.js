@@ -127,6 +127,7 @@ async function startDevToolsServer(port) {
   });
 
   const wss = new WebSocketServer({ server });
+  let devToolsServer = null;
 
   try {
     if (!DevToolsCore) {
@@ -136,41 +137,27 @@ async function startDevToolsServer(port) {
       };
     }
     const repository = new DevToolsCore.CNSDevToolsServerRepositoryInMemory();
-    const devToolsServer = new DevToolsCore.CNSDevToolsServer(repository);
+    devToolsServer = new DevToolsCore.CNSDevToolsServer(repository);
 
-    const messageBuffer = [];
-
-    async function processMessage(ws, message) {
-      const res = await devToolsServer.handleMessage(ws, message);
-      if (res) {
-        const payload = JSON.stringify(res);
-        wss.clients.forEach((client) => {
-          if (client.readyState === 1) client.send(payload);
-        });
-      }
-      if (message?.type === 'init') {
-        const initPayload = JSON.stringify(message);
-        wss.clients.forEach((client) => {
-          if (client.readyState === 1) client.send(initPayload);
-        });
-      }
-    }
+    // Removed processMessage - all logic is now in the server
 
     wss.on('connection', (ws) => {
       ws.on('message', async (data) => {
         try {
           const message = JSON.parse(String(data));
-          if (message?.type === 'batch' && Array.isArray(message.items)) {
-            for (const item of message.items) {
-              const payload = item.payload || item;
-              // eslint-disable-next-line no-await-in-loop
-              await processMessage(ws, payload);
-            }
-            return;
+          console.log('🔍 Electron proxying message:', message?.type);
+          
+          // Simply proxy all messages to the server - no custom logic
+          const res = await devToolsServer.handleMessage(ws, message);
+          if (res) {
+            console.log('📤 Electron broadcasting response:', res.type);
+            const payload = JSON.stringify(res);
+            wss.clients.forEach((client) => {
+              if (client.readyState === 1) client.send(payload);
+            });
           }
-          await processMessage(ws, message);
-        } catch {
-          // ignore
+        } catch (error) {
+          console.error('❌ Electron message processing error:', error);
         }
       });
       ws.on('close', () => devToolsServer.handleDisconnect(ws));
@@ -180,7 +167,7 @@ async function startDevToolsServer(port) {
     console.warn('[DevTools] server core not available:', e?.message);
   }
 
-  return { server, wss, port };
+  return { server, wss, port, devToolsServer };
 }
 
 async function createPanelWindow(effectivePort) {
@@ -298,9 +285,9 @@ ipcMain.handle('mgr:start', async (_e, maybePort) => {
   const desired = Number(maybePort || DEFAULT_PORT);
   const port = await findAvailablePort(desired);
   if (servers.has(port)) return { port, alreadyRunning: true };
-  const { server, wss } = await startDevToolsServer(port);
-  // store devToolsServer via closure in startDevToolsServer by attaching listener on wss
-  servers.set(port, { server, wss });
+  const { server, wss, devToolsServer } = await startDevToolsServer(port);
+  // store devToolsServer in the servers map
+  servers.set(port, { server, wss, devToolsServer });
   notifyServersChanged();
   return { port };
 });
@@ -330,6 +317,9 @@ ipcMain.handle('mgr:stop', async (_e, port) => {
       
       entry.server.close((err) => {
         clearTimeout(timeout);
+        if (entry.devToolsServer) {
+          entry.devToolsServer.stop();
+        }
         if (err) {
           console.log('[CNStra DevTools] Error closing server:', err);
           reject(err);

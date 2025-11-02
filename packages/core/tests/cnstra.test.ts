@@ -1,23 +1,6 @@
-import { CNS, collateral, neuron, withCtx } from '../src/index';
+import { CNS, collateral, neuron, withCtx, TCNSSignal } from '../src/index';
 
 describe('CNStra Core Tests', () => {
-    describe('Type Safety', () => {
-        it('should enforce correct types for collateral factory', () => {
-            const testCollateral = collateral('test');
-            expect(testCollateral.name).toBe('test');
-
-            const typedCollateral = collateral<{ message: string }>('test');
-            const signal = typedCollateral.createSignal({ message: 'Hello' });
-            expect(signal.collateralName).toBe('test');
-            expect(signal.payload).toEqual({ message: 'Hello' });
-        });
-
-        it('should handle special characters in collateral id', () => {
-            const specialCollateral = collateral('test:collateral:123');
-            expect(specialCollateral.name).toBe('test:collateral:123');
-        });
-    });
-
     describe('Factory Functions', () => {
         describe('collateral', () => {
             it('should create collateral with typed payload', () => {
@@ -207,6 +190,12 @@ describe('CNStra Core Tests', () => {
                 const responses: Array<{
                     collateralName: string;
                     payload: unknown;
+                    inputSignal?: TCNSSignal<
+                        string,
+                        {
+                            message: string;
+                        }
+                    >;
                 }> = [];
 
                 cns.stimulate(input.createSignal({ message: 'Hello World' }), {
@@ -216,6 +205,7 @@ describe('CNStra Core Tests', () => {
                                 response.outputSignal?.collateralName ||
                                 'unknown',
                             payload: response.outputSignal?.payload,
+                            inputSignal: response.inputSignal,
                         });
                     },
                 });
@@ -224,6 +214,12 @@ describe('CNStra Core Tests', () => {
                 expect(responses[0].collateralName).toBe('input');
                 expect(responses[0].payload).toEqual({
                     message: 'Hello World',
+                });
+                expect(responses[1].inputSignal).toEqual({
+                    collateralName: 'input',
+                    payload: {
+                        message: 'Hello World',
+                    },
                 });
                 expect(responses[1].collateralName).toBe('output');
                 expect(responses[1].payload).toEqual({

@@ -6,9 +6,17 @@ import {
     DecayDivider,
 } from './DecayComponents';
 import { DECAY_ICONS } from './theme-utils';
+import { JsonViewer } from './JsonViewer';
 import { db } from '../model';
-import type { TNeuronId, TStimulation, TDendrite, UINeuron } from '../model';
+import type {
+    TNeuronId,
+    TStimulation,
+    TDendrite,
+    UINeuron,
+    TStimulationResponse,
+} from '../model';
 import { useSelectEntitiesByIndexKey, useSelectEntityByPk } from '@oimdb/react';
+import { IdUtils } from '@cnstra/devtools-dto';
 
 interface NeuronDetailsPanelProps {
     neuronId: TNeuronId;
@@ -44,48 +52,64 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
 
     const activity = getActivityLevel(neuron?.stimulationCount || 0);
 
-    // Get output stimulations from database (stimulations initiated by this neuron)
     const currentAppId = appId || 'unknown';
-    const allStimulations =
-        (useSelectEntitiesByIndexKey(
-            db.stimulations,
-            db.stimulations.indexes.appId,
-            currentAppId
-        ) as TStimulation[]) || [];
 
     // Dendrites of this neuron
-    const neuronDendrites =
-        (useSelectEntitiesByIndexKey(
-            db.dendrites,
-            db.dendrites.indexes.neuronId,
-            neuronId
-        ) as TDendrite[]) || [];
-
-    // Input signals: stimulations targeting collaterals this neuron listens to
-    const listenedCollaterals = neuronDendrites.map(d => d.collateralName);
-    const normalize = (c?: string) => (c || '').replace(/^.*:collateral:/, '');
-    const inputSignals = allStimulations.filter(s =>
-        listenedCollaterals.some(
-            col => normalize(col) === normalize(s.collateralName)
-        )
+    const neuronDendritesRaw = useSelectEntitiesByIndexKey(
+        db.dendrites,
+        db.dendrites.indexes.neuronId,
+        neuronId
     );
 
-    // Output signals: stimulations where this neuron was the source
-    const outputSignals = allStimulations.filter(
-        stim => stim.neuronId === neuron?.id || stim.neuronId === neuron?.name
+    const neuronDendrites = (neuronDendritesRaw || []).filter(
+        (d): d is NonNullable<typeof d> => d != null
+    ) as TDendrite[];
+
+    // Get all responses for this app
+    const allResponsesRaw = useSelectEntitiesByIndexKey(
+        db.responses,
+        db.responses.indexes.appId,
+        currentAppId
     );
 
-    const recentInputSignals = inputSignals
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 5);
-    const recentOutputSignals = outputSignals
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 5);
+    const allResponses = (allResponsesRaw || []).filter(
+        (r): r is NonNullable<typeof r> => r != null
+    );
 
-    // Aggregate recent stimulations (input + output)
-    const recentStimulations = [...inputSignals, ...outputSignals]
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 10);
+    // Get all collaterals to find which ones belong to this neuron
+    const allCollaterals = db.collaterals.getAll();
+    const neuronCollaterals = allCollaterals.filter(
+        c => c.neuronId === neuronId
+    );
+    const neuronCollateralNames = neuronCollaterals.map(c => c.name);
+
+    // Input signals: responses where inputCollateralName matches dendrite names
+    const dendriteNames = neuronDendrites.map(d => d.name);
+    const inputSignals = allResponses.filter(
+        r =>
+            r.inputCollateralName &&
+            dendriteNames.includes(r.inputCollateralName)
+    );
+
+    // Output signals: responses where outputCollateralName matches neuron's collaterals
+    const outputSignals = allResponses.filter(
+        r =>
+            r.outputCollateralName &&
+            neuronCollateralNames.includes(r.outputCollateralName)
+    );
+
+    // Debug logging for E2E
+    try {
+        (window as any).__neuronPanelDebug = {
+            neuronId,
+            appId: currentAppId,
+            allResponses: allResponses.length,
+            inputSignals: inputSignals.length,
+            outputSignals: outputSignals.length,
+            dendriteNames,
+            neuronCollateralNames,
+        };
+    } catch {}
 
     if (!neuron) return null;
 
@@ -96,7 +120,7 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                 position: 'fixed',
                 top: 0,
                 right: 0,
-                width: '400px',
+                width: '600px',
                 height: '100vh',
                 background: 'var(--bg-panel)',
                 border: '2px solid var(--border-infected)',
@@ -252,65 +276,152 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                 </div>
             </DecayCard>
 
-            {/* Recent Input & Output Signals */}
-            <DecayCard title="Recent Input Signals">
-                {recentInputSignals.length > 0 ? (
-                    <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                        {recentInputSignals.map(stimulation => (
-                            <div
-                                key={stimulation.stimulationId}
-                                style={{
-                                    padding: 'var(--spacing-sm)',
-                                    marginBottom: 'var(--spacing-xs)',
-                                    background: 'var(--bg-card)',
-                                    border: '1px solid var(--border-primary)',
-                                    borderRadius: 'var(--radius-sm)',
-                                    fontSize: 'var(--font-size-xs)',
-                                }}
-                            >
+            {/* Dendrites & Response History */}
+            <DecayCard title="Dendrites & Response History">
+                {neuronDendrites.length > 0 ? (
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 'var(--spacing-md)',
+                        }}
+                    >
+                        {neuronDendrites.map(dendrite => {
+                            // Get all responses for this dendrite (inputCollateralName matches dendrite name)
+                            const dendriteResponses = allResponses.filter(
+                                r => r.inputCollateralName === dendrite.name
+                            );
+
+                            const recentResponses = dendriteResponses
+                                .sort((a, b) => b.timestamp - a.timestamp)
+                                .slice(0, 15);
+
+                            return (
                                 <div
+                                    key={dendrite.id}
                                     style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
+                                        padding: 'var(--spacing-sm)',
+                                        background: 'var(--bg-card)',
+                                        border: '1px solid var(--border-primary)',
+                                        borderRadius: 'var(--radius-sm)',
                                     }}
                                 >
-                                    <span
-                                        style={{ color: 'var(--text-accent)' }}
+                                    <div
+                                        style={{
+                                            marginBottom: 'var(--spacing-xs)',
+                                            color: 'var(--decay-blue)',
+                                            fontWeight: 'bold',
+                                        }}
                                     >
-                                        {DECAY_ICONS.lightning} Stimulation ID:{' '}
-                                        {stimulation.stimulationId}
-                                    </span>
-                                    <span
-                                        style={{ color: 'var(--text-muted)' }}
+                                        {DECAY_ICONS.dna} {dendrite.name}
+                                    </div>
+                                    <div
+                                        style={{
+                                            fontSize: 'var(--font-size-xs)',
+                                            color: 'var(--text-muted)',
+                                        }}
                                     >
-                                        {formatTimestamp(stimulation.timestamp)}
-                                    </span>
-                                </div>
+                                        Responses: {dendriteResponses.length}
+                                    </div>
 
-                                <div style={{ marginTop: 'var(--spacing-xs)' }}>
-                                    <div>
-                                        <strong>Collateral:</strong>{' '}
-                                        {stimulation.collateralName ||
-                                            'unknown'}
-                                    </div>
-                                    <div>
-                                        <strong>Source Neuron:</strong>{' '}
-                                        <code>{stimulation.neuronId}</code>
-                                    </div>
-                                    {'payload' in stimulation &&
-                                    (stimulation as any).payload ? (
-                                        <div>
-                                            <strong>Payload:</strong>{' '}
-                                            {JSON.stringify(
-                                                (stimulation as any).payload
-                                            ).substring(0, 50)}
-                                            ...
+                                    {recentResponses.length > 0 && (
+                                        <div
+                                            style={{
+                                                marginTop: 'var(--spacing-xs)',
+                                                paddingLeft:
+                                                    'var(--spacing-sm)',
+                                                borderLeft:
+                                                    '2px solid var(--border-primary)',
+                                            }}
+                                        >
+                                            {recentResponses.map(resp => (
+                                                <div
+                                                    key={resp.responseId}
+                                                    style={{
+                                                        fontSize:
+                                                            'var(--font-size-xs)',
+                                                        padding:
+                                                            'var(--spacing-xs) 0',
+                                                        borderBottom:
+                                                            '1px dashed var(--border-primary)',
+                                                    }}
+                                                >
+                                                    <div
+                                                        style={{
+                                                            display: 'flex',
+                                                            justifyContent:
+                                                                'space-between',
+                                                        }}
+                                                    >
+                                                        <span
+                                                            style={{
+                                                                color: 'var(--text-accent)',
+                                                            }}
+                                                        >
+                                                            {resp.inputCollateralName ||
+                                                                '?'}
+                                                        </span>
+                                                        <span>→</span>
+                                                        <span
+                                                            style={{
+                                                                color: 'var(--decay-orange)',
+                                                            }}
+                                                        >
+                                                            {resp.outputCollateralName ||
+                                                                'no output'}
+                                                        </span>
+                                                    </div>
+                                                    <div
+                                                        style={{
+                                                            color: 'var(--text-muted)',
+                                                            fontSize:
+                                                                'var(--font-size-2xs)',
+                                                        }}
+                                                    >
+                                                        {formatTimestamp(
+                                                            resp.timestamp
+                                                        )}
+                                                    </div>
+                                                    {resp.inputPayload ||
+                                                    resp.outputPayload ? (
+                                                        <div
+                                                            style={{
+                                                                marginTop: 4,
+                                                                fontSize:
+                                                                    'var(--font-size-2xs)',
+                                                            }}
+                                                        >
+                                                            {resp.inputPayload ? (
+                                                                <JsonViewer
+                                                                    data={
+                                                                        resp.inputPayload
+                                                                    }
+                                                                    title="💉 Input Payload"
+                                                                    defaultExpanded={
+                                                                        false
+                                                                    }
+                                                                />
+                                                            ) : undefined}
+                                                            {resp.outputPayload ? (
+                                                                <JsonViewer
+                                                                    data={
+                                                                        resp.outputPayload
+                                                                    }
+                                                                    title="⚡ Output Payload"
+                                                                    defaultExpanded={
+                                                                        false
+                                                                    }
+                                                                />
+                                                            ) : undefined}
+                                                        </div>
+                                                    ) : undefined}
+                                                </div>
+                                            ))}
                                         </div>
-                                    ) : null}
+                                    )}
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <div
@@ -318,173 +429,11 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                             textAlign: 'center',
                             color: 'var(--text-muted)',
                             fontStyle: 'italic',
-                            padding: 'var(--spacing-lg)',
                         }}
                     >
-                        {DECAY_ICONS.skull} No input signals recorded
+                        {DECAY_ICONS.skull} No dendrites found
                     </div>
                 )}
-            </DecayCard>
-
-            {/* Recent Output Signals */}
-            <DecayCard title="Recent Output Signals">
-                {recentOutputSignals.length > 0 ? (
-                    <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                        {recentOutputSignals.map((stimulation, index) => (
-                            <div
-                                key={stimulation.stimulationId}
-                                style={{
-                                    padding: 'var(--spacing-sm)',
-                                    marginBottom: 'var(--spacing-xs)',
-                                    background: 'var(--bg-card)',
-                                    border: '1px solid var(--border-primary)',
-                                    borderRadius: 'var(--radius-sm)',
-                                    fontSize: 'var(--font-size-xs)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                    }}
-                                >
-                                    <span
-                                        style={{ color: 'var(--text-accent)' }}
-                                    >
-                                        {DECAY_ICONS.lightning} Stimulation ID:{' '}
-                                        {stimulation.stimulationId}
-                                    </span>
-                                    <span
-                                        style={{ color: 'var(--text-muted)' }}
-                                    >
-                                        {formatTimestamp(stimulation.timestamp)}
-                                    </span>
-                                </div>
-
-                                <div style={{ marginTop: 'var(--spacing-xs)' }}>
-                                    <div>
-                                        <strong>Collateral:</strong>{' '}
-                                        {stimulation.collateralName ||
-                                            'unknown'}
-                                    </div>
-                                    <div>
-                                        <strong>Source Neuron:</strong>{' '}
-                                        <code>{stimulation.neuronId}</code>
-                                    </div>
-                                    {stimulation.payload ? (
-                                        <div>
-                                            <strong>Payload:</strong>{' '}
-                                            <span>
-                                                {JSON.stringify(
-                                                    stimulation.payload as any
-                                                ).substring(0, 50)}
-                                                ...
-                                            </span>
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div
-                        style={{
-                            textAlign: 'center',
-                            color: 'var(--text-muted)',
-                            fontStyle: 'italic',
-                            padding: 'var(--spacing-lg)',
-                        }}
-                    >
-                        {DECAY_ICONS.skull} No output signals recorded
-                    </div>
-                )}
-            </DecayCard>
-
-            {/* Input & Output Signal Analysis */}
-            <DecayCard title="Input & Output Signal Analysis">
-                <div
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 'var(--spacing-sm)',
-                    }}
-                >
-                    <div>
-                        <strong>Output Signals Count:</strong>
-                        <span style={{ color: 'var(--decay-orange)' }}>
-                            {outputSignals.length}
-                        </span>
-                    </div>
-
-                    <div>
-                        <strong>Input Signal Types:</strong>
-                        <div style={{ marginTop: 'var(--spacing-xs)' }}>
-                            {inputSignals.length > 0 ? (
-                                Object.entries(
-                                    inputSignals.reduce((acc, s) => {
-                                        const type =
-                                            s.collateralName || 'unknown';
-                                        acc[type] = (acc[type] || 0) + 1;
-                                        return acc;
-                                    }, {} as Record<string, number>)
-                                ).map(([type, count]) => (
-                                    <div
-                                        key={type}
-                                        style={{
-                                            fontSize: 'var(--font-size-xs)',
-                                        }}
-                                    >
-                                        {DECAY_ICONS.microbe} {type}: {count}
-                                    </div>
-                                ))
-                            ) : (
-                                <span
-                                    style={{
-                                        color: 'var(--text-muted)',
-                                        fontSize: 'var(--font-size-xs)',
-                                    }}
-                                >
-                                    No data available
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    <div>
-                        <strong>Output Signal Types:</strong>
-                        <div style={{ marginTop: 'var(--spacing-xs)' }}>
-                            {outputSignals.length > 0 ? (
-                                Object.entries(
-                                    outputSignals.reduce((acc, s) => {
-                                        const type =
-                                            s.collateralName || 'unknown';
-                                        acc[type] = (acc[type] || 0) + 1;
-                                        return acc;
-                                    }, {} as Record<string, number>)
-                                ).map(([type, count]) => (
-                                    <div
-                                        key={type}
-                                        style={{
-                                            fontSize: 'var(--font-size-xs)',
-                                        }}
-                                    >
-                                        {DECAY_ICONS.microbe} {type}: {count}
-                                    </div>
-                                ))
-                            ) : (
-                                <span
-                                    style={{
-                                        color: 'var(--text-muted)',
-                                        fontSize: 'var(--font-size-xs)',
-                                    }}
-                                >
-                                    No data available
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                </div>
             </DecayCard>
         </div>
     );

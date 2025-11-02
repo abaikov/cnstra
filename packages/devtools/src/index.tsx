@@ -12,6 +12,7 @@ import {
     Neuron,
     Collateral,
     Dendrite,
+    StimulationMessage,
 } from '@cnstra/devtools-dto';
 
 export class CNSDevTools {
@@ -26,7 +27,7 @@ export class CNSDevTools {
     /**
      * Register a CNS instance to this DevTools instance and emit init/topology.
      */
-    registerCNS(cns: CNS<any, any, any, any>): void {
+    registerCNS(cns: CNS<any, any, any, any>, cnsName: string): void {
         if (this.cns) return; // already registered
         this.cns = cns;
 
@@ -41,89 +42,86 @@ export class CNSDevTools {
             const safeContexts = this.safeJson(contexts);
 
             // Get stimulation ID from the response
-            const stimulationId =
-                (response as any).stimulationId ||
-                `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+            // For replays, the stimulationId should come from the CNS stimulation options
+            // which we set in handleStimulate as cmd.stimulationCommandId
+            const stimulationIdFromResponse = (response as any).stimulationId;
 
-            // Get neuron name from output signal's collateral owner, or from input signal
-            let neuronId: string | null = null;
-            let collateralName: string | null = null;
+            // inputSignal is optional - if not present, this is initial stimulation
+            // For initial stimulation, use outputSignal's collateralName as inputCollateralName
+            // This ensures inputCollateralName is always present (required field)
+            const inputCollateralName =
+                response.inputSignal?.collateralName ||
+                response.outputSignal?.collateralName ||
+                'unknown';
 
-            if ((response.outputSignal as any)?.collateral) {
-                collateralName = (response.outputSignal as any).collateral
-                    ?.name;
-                // Find the parent neuron for this collateral
-                const parentNeuron =
-                    this.cns!.getParentNeuronByCollateralName(collateralName);
-                if (parentNeuron) {
-                    neuronId = parentNeuron.name;
-                }
-            }
-
-            // If still not found, try to identify from input signal or from collateral
-            if (!neuronId) {
-                let targetCollateralName = collateralName;
-
-                // Get collateral name from input signal if available
-                if ((response.inputSignal as any)?.collateral) {
-                    targetCollateralName = (response.inputSignal as any)
-                        .collateral?.name;
-                    // Only set collateral name if we don't have one already
-                    if (!collateralName) {
-                        collateralName = targetCollateralName;
-                    }
-                }
-
-                // Find neurons that listen to this collateral (dendrites)
-                if (targetCollateralName) {
-                    const neurons = this.cns!.getNeurons();
-                    const processingNeuron = neurons.find(neuron =>
-                        neuron.dendrites.some(
-                            (dendrite: any) =>
-                                dendrite.collateral?.name ===
-                                targetCollateralName
-                        )
-                    );
-                    if (processingNeuron) {
-                        neuronId = processingNeuron.name;
-                    }
-                }
-            }
-
-            // Ensure we have all required data
-            if (!neuronId) {
-                // Fallback: attribute to app-level unknown neuron to avoid dropping telemetry
-                neuronId = 'unknown';
-            }
-
-            if (!collateralName) {
-                collateralName = 'unknown';
-            }
+            const outputCollateralName = response.outputSignal?.collateralName;
 
             const appId =
                 this.appId || this.options.devToolsInstanceId || 'cns-devtools';
-            const cnsId =
-                this.options.cnsId || this.options.devToolsInstanceId || appId;
 
-            // Optional collateral names are currently not part of stable DTO typings in dist
-            // Keep computed values for potential future use but do not send for type safety
-            const inputCollateralName = (response.inputSignal as any)
-                ?.collateral?.name;
-            const outputCollateralName = (response.outputSignal as any)
-                ?.collateral?.name;
-            const hopIndex = (response as any).hopIndex as number | undefined;
+            const stimulationId =
+                stimulationIdFromResponse ||
+                `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+
+            // Debug: ALWAYS log if stimulationId is missing (for debugging replay issue)
+            if (!stimulationIdFromResponse) {
+                console.warn('⚠️ [DevTools] Response missing stimulationId!', {
+                    responseKeys: Object.keys(response || {}),
+                    hasStimulationId: 'stimulationId' in (response || {}),
+                    responseType: typeof response,
+                });
+            } else if (stimulationIdFromResponse.includes('-replay-')) {
+                // Always log replay responses to debug
+                console.log('🔁 [DevTools] Processing REPLAY response:', {
+                    stimulationId: stimulationIdFromResponse,
+                    appId,
+                    inputCollateralName,
+                    outputCollateralName,
+                });
+            }
+
+            const responseId = `${appId}:resp:${stimulationId}:${Date.now()}`;
+
+            if (this.options.consoleLogEnabled) {
+                try {
+                    console.log(
+                        '🧠 DevTools response:',
+                        JSON.stringify(
+                            {
+                                stimulationId,
+                                inputCollateralName,
+                                outputCollateralName,
+                                inputPayload: safeInputPayload,
+                                outputPayload: safeOutputPayload,
+                                contexts: safeContexts,
+                                hopIndex: (response as any).hopIndex,
+                                duration: (response as any).duration,
+                                error: (response as any).error
+                                    ? String((response as any).error)
+                                    : undefined,
+                            },
+                            null,
+                            2
+                        )
+                    );
+                } catch {}
+            }
 
             void this.transport.sendNeuronResponseMessage({
+                responseId,
                 stimulationId,
-                neuronId: `${cnsId}:${neuronId}`,
                 appId,
-                collateralName,
+                cnsId: this.options.cnsId || `${appId}:${cnsName}`,
                 timestamp: Date.now(),
-                payload: (safeInputPayload ?? undefined) as any,
+                inputCollateralName,
+                outputCollateralName,
+                inputPayload: (safeInputPayload ?? undefined) as any,
+                outputPayload: (safeOutputPayload ?? undefined) as any,
                 contexts: (safeContexts as any) || undefined,
                 responsePayload: (safeOutputPayload ?? undefined) as any,
                 error: (response.error as any) || undefined,
                 duration: (response as any).duration || undefined,
+                hopIndex: (response as any).hopIndex,
             });
         });
 
@@ -197,12 +195,13 @@ export class CNSDevTools {
                 );
             }
 
+            const neuronId = `${cnsId}:${parentNeuron.name}`;
             return {
-                collateralName: collateral.name,
-                neuronId: `${cnsId}:${parentNeuron.name}`,
+                id: `${neuronId}:${collateral.name}`,
+                name: collateral.name,
+                neuronId,
                 appId,
                 cnsId,
-                type: 'default',
             };
         });
 
@@ -212,19 +211,19 @@ export class CNSDevTools {
                 (
                     dendrite: TCNSDendrite<any, any, any, any, any, any>,
                     index: number
-                ) => ({
-                    dendriteId:
-                        `${cnsId}:${neuron.name}:d:${dendrite.collateral.name}`.replace(
+                ) => {
+                    const neuronId = `${cnsId}:${neuron.name}`;
+                    return {
+                        id: `${neuronId}:d:${dendrite.collateral.name}`.replace(
                             /\s+/g,
                             '-'
                         ),
-                    neuronId: `${cnsId}:${neuron.name}`,
-                    appId,
-                    cnsId,
-                    collateralName: dendrite.collateral.name,
-                    type: 'default',
-                    collateralNames: [dendrite.collateral.name],
-                })
+                        neuronId,
+                        appId,
+                        cnsId,
+                        name: dendrite.collateral.name,
+                    };
+                }
             );
         });
 
@@ -240,10 +239,14 @@ export class CNSDevTools {
             dendrites: dendriteDTOs,
         } as any;
 
-        console.log(
-            '📤 DevTools sending init message:',
-            JSON.stringify(initMessage, null, 2)
-        );
+        if (this.options.consoleLogEnabled) {
+            try {
+                console.log(
+                    '📤 DevTools sending init message:',
+                    JSON.stringify(initMessage, null, 2)
+                );
+            } catch {}
+        }
         return transport.sendInitMessage(initMessage);
     }
 
@@ -291,12 +294,30 @@ export class CNSDevTools {
             return;
         }
 
+        if (this.options.consoleLogEnabled) {
+            try {
+                console.log(
+                    '⚡ DevTools stimulate command:',
+                    JSON.stringify(cmd, null, 2)
+                );
+            } catch {}
+        }
+
         const ctx = new CNSStimulationContextStore();
         if (cmd.contexts) ctx.setAll(cmd.contexts);
 
         const options: TCNSStimulationOptions<any, any, any> = {
             stimulationId: cmd.stimulationCommandId,
         };
+
+        // Debug: verify stimulationId is set correctly for replays
+        if (cmd.stimulationCommandId.includes('-replay-')) {
+            console.log('🔁 [DevTools] Setting stimulationId in options:', {
+                stimulationCommandId: cmd.stimulationCommandId,
+                optionsStimulationId: options.stimulationId,
+                willBeReplay: options.stimulationId?.includes('-replay-'),
+            });
+        }
         if (cmd.options) {
             const src = cmd.options as any;
             if (src.maxNeuronHops) options.maxNeuronHops = src.maxNeuronHops;
@@ -311,7 +332,79 @@ export class CNSDevTools {
         }
         options.ctx = ctx;
 
+        // Send initial stimulation message for replay tracking
+        try {
+            const neurons = this.cns.getNeurons();
+            const appId =
+                this.appId || this.options.devToolsInstanceId || 'cns-devtools';
+            const cnsId =
+                this.options.cnsId ||
+                `${appId}:${this.options.devToolsInstanceName || 'cns'}`;
+
+            // Find the parent neuron for this collateral
+            const parentNeuron = neurons.find(neuron => {
+                const neuronAxonKeys = Object.keys(neuron.axon || {});
+
+                // Try direct match first
+                if (neuronAxonKeys.includes(cmd.collateralName)) {
+                    return true;
+                }
+
+                // Try converting kebab-case to camelCase
+                const camelCaseName = cmd.collateralName.replace(
+                    /-([a-z])/g,
+                    (_: string, letter: string) => letter.toUpperCase()
+                );
+                if (neuronAxonKeys.includes(camelCaseName)) {
+                    return true;
+                }
+
+                // Try converting camelCase to kebab-case
+                const kebabCaseName = cmd.collateralName
+                    .replace(/([A-Z])/g, '-$1')
+                    .toLowerCase();
+                if (neuronAxonKeys.includes(kebabCaseName)) {
+                    return true;
+                }
+
+                return false;
+            });
+
+            if (parentNeuron && this.transport.sendStimulationMessage) {
+                const neuronId = `${cnsId}:${parentNeuron.name}`;
+                const stimulationMessage: StimulationMessage = {
+                    type: 'stimulation',
+                    stimulationId: cmd.stimulationCommandId,
+                    appId,
+                    cnsId,
+                    neuronId,
+                    collateralName: cmd.collateralName,
+                    timestamp: Date.now(),
+                    payload: this.safeJson(cmd.payload),
+                    queueLength: 0,
+                    hops: 0,
+                };
+                void this.transport.sendStimulationMessage(stimulationMessage);
+            }
+        } catch (e) {
+            // Ignore errors when sending stimulation message
+            if (this.options.consoleLogEnabled) {
+                console.warn('Failed to send initial stimulation message:', e);
+            }
+        }
+
         const signal = (collateral as any).createSignal(cmd.payload);
+
+        // Debug log for replay commands
+        if (this.options.consoleLogEnabled) {
+            console.log('🔁 [DevTools] Executing replay stimulation:', {
+                stimulationCommandId: cmd.stimulationCommandId,
+                stimulationId: options.stimulationId,
+                collateralName: cmd.collateralName,
+                appId: this.appId || this.options.devToolsInstanceId,
+            });
+        }
+
         this.cns.stimulate(signal, options as any);
     }
 }

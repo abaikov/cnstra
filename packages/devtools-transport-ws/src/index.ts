@@ -5,6 +5,7 @@ import type {
     StimulateCommand,
     StimulateAccepted,
     StimulateRejected,
+    StimulationMessage,
 } from '@cnstra/devtools-dto';
 
 export type TWSOpts = {
@@ -129,11 +130,15 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
                         typeof ev.data === 'string' ? ev.data : '' + ev.data;
                     const msg = JSON.parse(data);
                     if (msg && msg.type === 'stimulate') {
-                        const cmd = msg as StimulateCommand;
+                        const cmd = msg as StimulateCommand & {
+                            appId?: string;
+                            cnsId?: string;
+                        };
                         const ack: StimulateAccepted = {
                             type: 'stimulate-accepted',
                             stimulationCommandId: cmd.stimulationCommandId,
                             stimulationId: cmd.stimulationCommandId,
+                            appId: cmd.appId,
                         };
                         try {
                             this.ws?.send(JSON.stringify(ack));
@@ -164,11 +169,45 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
         else void this.flush();
     }
 
+    async sendStimulationMessage(message: StimulationMessage): Promise<void> {
+        await this.ensureSocket();
+        if (!this.ws || this.ws.readyState !== 1) return; // OPEN = 1
+        try {
+            this.ws.send(JSON.stringify(message));
+        } catch {
+            // ignore send errors
+        }
+    }
+
     private async flush(): Promise<void> {
         if (this.buffer.length === 0) return;
         await this.ensureSocket();
         if (!this.ws || this.ws.readyState !== 1) return; // OPEN = 1
         const items = this.buffer.splice(0, this.buffer.length);
+
+        // Check for replay responses in the batch
+        const replayResponses = items
+            .filter(item => item.type === 'response')
+            .filter(item => {
+                const stimId = item.payload?.stimulationId || '';
+                return (
+                    typeof stimId === 'string' && stimId.includes('-replay-')
+                );
+            });
+
+        if (replayResponses.length > 0) {
+            console.log('🔁 [Transport] Flushing REPLAY responses batch:', {
+                totalItems: items.length,
+                replayResponsesCount: replayResponses.length,
+                replayStimIds: replayResponses
+                    .slice(0, 3)
+                    .map(r => r.payload?.stimulationId),
+                replayAppIds: replayResponses
+                    .slice(0, 3)
+                    .map(r => r.payload?.appId),
+            });
+        }
+
         try {
             this.ws.send(JSON.stringify({ type: 'batch', items }));
         } catch {

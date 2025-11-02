@@ -47,29 +47,48 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
     const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
 
     // Get all data for the selected app
-    const allStimulations = useSelectEntitiesByIndexKey(
+    const allStimulationsRaw = useSelectEntitiesByIndexKey(
         db.stimulations,
         db.stimulations.indexes.appId,
         selectedAppId || 'dummy-id'
     );
 
-    const allResponses = useSelectEntitiesByIndexKey(
+    const allResponsesRaw = useSelectEntitiesByIndexKey(
         db.responses,
         db.responses.indexes.appId,
         selectedAppId || 'dummy-id'
     );
 
-    const allNeurons = useSelectEntitiesByIndexKey(
+    const allNeuronsRaw = useSelectEntitiesByIndexKey(
         db.neurons,
         db.neurons.indexes.appId,
         selectedAppId || 'dummy-id'
     );
 
-    const allDendrites = useSelectEntitiesByIndexKey(
+    const allDendritesRaw = useSelectEntitiesByIndexKey(
         db.dendrites,
         db.dendrites.indexes.appId,
         selectedAppId || 'dummy-id'
     );
+
+    // Filter out undefined elements
+    const allStimulations = allStimulationsRaw
+        ? allStimulationsRaw.filter(
+              (s): s is NonNullable<typeof s> => s != null
+          )
+        : null;
+
+    const allResponses = allResponsesRaw
+        ? allResponsesRaw.filter((r): r is NonNullable<typeof r> => r != null)
+        : null;
+
+    const allNeurons = allNeuronsRaw
+        ? allNeuronsRaw.filter((n): n is NonNullable<typeof n> => n != null)
+        : null;
+
+    const allDendrites = allDendritesRaw
+        ? allDendritesRaw.filter((d): d is NonNullable<typeof d> => d != null)
+        : null;
 
     // Calculate comprehensive analytics
     const analytics = useMemo((): AnalyticsData | null => {
@@ -157,17 +176,17 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
             neuronStats.get(stim.neuronId)!.stimulationCount++;
         });
 
-        filteredResponses.forEach(resp => {
-            if (neuronStats.has(resp?.neuronId || '')) {
-                const stats = neuronStats.get(resp?.neuronId || '')!;
-                if (resp.duration) {
-                    stats.responseTimes.push(resp.duration);
-                }
-                if (resp.error) {
-                    stats.errorCount++;
-                }
-            }
-        });
+        // filteredResponses.forEach(resp => {
+        //     if (neuronStats.has(resp?.neuronId || '')) {
+        //         const stats = neuronStats.get(resp?.neuronId || '')!;
+        //         if (resp.duration) {
+        //             stats.responseTimes.push(resp.duration);
+        //         }
+        //         if (resp.error) {
+        //             stats.errorCount++;
+        //         }
+        //     }
+        // });
 
         const topPerformingNeurons = Array.from(neuronStats.entries())
             .map(([neuronId, stats]) => ({
@@ -367,17 +386,29 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                 >
                     {analytics && (
                         <>
-                            <div style={{ color: 'var(--infection-green)' }}>
+                            <div
+                                key="compact-stims"
+                                style={{ color: 'var(--infection-green)' }}
+                            >
                                 ⚡ {analytics.totalStimulations} stims
                             </div>
-                            <div style={{ color: 'var(--infection-blue)' }}>
+                            <div
+                                key="compact-resp"
+                                style={{ color: 'var(--infection-blue)' }}
+                            >
                                 📡 {analytics.totalResponses} resp
                             </div>
-                            <div style={{ color: 'var(--infection-yellow)' }}>
+                            <div
+                                key="compact-avg"
+                                style={{ color: 'var(--infection-yellow)' }}
+                            >
                                 ⏱️ {analytics.avgResponseTime}ms avg
                             </div>
                             {analytics.errorRate > 0 && (
-                                <div style={{ color: 'var(--infection-red)' }}>
+                                <div
+                                    key="compact-errors"
+                                    style={{ color: 'var(--infection-red)' }}
+                                >
                                     ❌ {analytics.errorRate}% errors
                                 </div>
                             )}
@@ -509,12 +540,12 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                 <div
                                     style={{
                                         display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr 1fr',
+                                        gridTemplateColumns: '1fr 1fr',
                                         gap: 'var(--spacing-xs)',
                                         fontSize: '10px',
                                     }}
                                 >
-                                    <div>
+                                    <div key="stimulations">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',
@@ -531,7 +562,7 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                             {analytics.totalStimulations}
                                         </span>
                                     </div>
-                                    <div>
+                                    <div key="responses">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',
@@ -548,7 +579,7 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                             {analytics.totalResponses}
                                         </span>
                                     </div>
-                                    <div>
+                                    <div key="neurons">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',
@@ -565,7 +596,24 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                             {analytics.totalNeurons}
                                         </span>
                                     </div>
-                                    <div>
+                                    <div key="connections">
+                                        <span
+                                            style={{
+                                                color: 'var(--text-muted)',
+                                            }}
+                                        >
+                                            🔗 Connections:
+                                        </span>
+                                        <br />
+                                        <span
+                                            style={{
+                                                color: 'var(--text-primary)',
+                                            }}
+                                        >
+                                            {analytics.totalConnections}
+                                        </span>
+                                    </div>
+                                    <div key="avg-response">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',
@@ -586,7 +634,7 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                             {analytics.avgResponseTime}ms
                                         </span>
                                     </div>
-                                    <div>
+                                    <div key="error-rate">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',
@@ -604,23 +652,6 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                             }}
                                         >
                                             {analytics.errorRate}%
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            🔗 Connections:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--text-primary)',
-                                            }}
-                                        >
-                                            {analytics.totalConnections}
                                         </span>
                                     </div>
                                 </div>
@@ -653,7 +684,7 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                         fontSize: '10px',
                                     }}
                                 >
-                                    <div>
+                                    <div key="stim-per-sec">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',
@@ -673,7 +704,7 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                             }
                                         </span>
                                     </div>
-                                    <div>
+                                    <div key="resp-per-sec">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',
@@ -810,7 +841,7 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                         fontSize: '10px',
                                     }}
                                 >
-                                    <div>
+                                    <div key="max-hops">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',
@@ -830,7 +861,7 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
                                             }
                                         </span>
                                     </div>
-                                    <div>
+                                    <div key="avg-hops">
                                         <span
                                             style={{
                                                 color: 'var(--text-muted)',

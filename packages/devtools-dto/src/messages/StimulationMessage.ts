@@ -1,33 +1,20 @@
-import { DevToolsAppId } from '../entities/DevToolsApp';
+import { Stimulation } from '../entities/Stimulation';
 
 /**
  * Real-time stimulation message sent over DevTools protocol.
  *
- * This differs from the Stimulation entity by including runtime
- * information like queue length, hop count, and errors that are
- * relevant for live monitoring but not for stored data.
+ * Extends Stimulation entity with runtime-only monitoring fields.
+ * These fields are NOT stored in the database, only used for live metrics.
  *
- * @see Stimulation - for stored entity version without runtime data
+ * @see Stimulation - the base entity with all persistent data
  */
-export interface StimulationMessage {
-    /** Message type discriminator */
+export interface StimulationMessage extends Stimulation {
+    /** Message type discriminator for transport layer */
     type: 'stimulation';
-    /** Application this stimulation belongs to */
-    appId: DevToolsAppId;
-    /** Unique identifier for this stimulation */
-    stimulationId: string;
-    /** When this stimulation occurred */
-    timestamp: number;
-    /** ID of the neuron that initiated this stimulation */
-    neuronId: string;
-    /** Name of the collateral this stimulation was sent on */
-    collateralName: string;
-    /** Data payload of the stimulation */
-    payload?: unknown;
-    /** Number of stimulations in the processing queue (runtime info) */
+    /** Number of stimulations in the processing queue (runtime metric) */
     queueLength: number;
-    /** Number of hops this stimulation has taken (runtime info) */
+    /** Number of hops this stimulation has taken (runtime metric) */
     hops?: number;
-    /** Error information if stimulation failed (runtime info) */
+    /** Error information if stimulation failed (runtime metric) */
     error?: unknown;
 }

@@ -2,6 +2,7 @@ import { collateral } from '@cnstra/core';
 import {
     AppsActiveMessage,
     AppDisconnectedMessage,
+    DevToolsApp,
     InitMessage,
     ResponseBatchMessage,
     StimulationBatchMessage,
@@ -14,6 +15,9 @@ export const appModelAxon = {
         'devtools:response-batch'
     >('devtools:response-batch'),
     appsActive: collateral<AppsActiveMessage, 'apps:active'>('apps:active'),
+    appAdded: collateral<{ type: 'app:added'; app: DevToolsApp }, 'app:added'>(
+        'app:added'
+    ),
     appDisconnected: collateral<AppDisconnectedMessage, 'app:disconnected'>(
         'app:disconnected'
     ),

@@ -14,7 +14,7 @@ import type {
     Neuron,
     NeuronId,
     Collateral,
-    CollateralName,
+    CollateralId,
     Dendrite,
     DendriteId,
     Stimulation,
@@ -30,7 +30,7 @@ export type TNeuron = Neuron;
 export type UINeuron = TNeuron & { stimulationCount?: number };
 export type TNeuronId = NeuronId;
 export type TCollateral = Collateral;
-export type TCollateralName = CollateralName;
+export type TCollateralId = CollateralId;
 export type TDendrite = Dendrite;
 export type TDendriteId = DendriteId;
 export type TStimulation = Stimulation;
@@ -65,21 +65,6 @@ export type TCns = {
     appId: TDevToolsAppId;
 };
 
-// UI type to tolerate DTO migration (optional legacy fields)
-export type UIStimulationResponse = Omit<
-    TStimulationResponse,
-    'appId' | 'neuronId'
-> & {
-    appId?: TDevToolsAppId;
-    neuronId?: TNeuronId;
-    inputCollateralName?: string;
-    outputCollateralName?: string;
-    hopIndex?: number;
-    contexts?: Record<string, unknown>;
-    inputPayload?: unknown;
-    outputPayload?: unknown;
-};
-
 export const dbEventQueue = new OIMEventQueue({
     scheduler: new OIMEventQueueSchedulerMicrotask(),
 });
@@ -111,15 +96,15 @@ export const db = {
     }),
     collaterals: new OIMRICollection(dbEventQueue, {
         indexes: {
-            appId: new OIMReactiveIndexManual<TDevToolsAppId, TCollateralName>(
+            appId: new OIMReactiveIndexManual<TDevToolsAppId, string>(
                 dbEventQueue
             ),
-            neuronId: new OIMReactiveIndexManual<TNeuronId, TCollateralName>(
+            neuronId: new OIMReactiveIndexManual<TNeuronId, string>(
                 dbEventQueue
             ),
         },
         collectionOpts: {
-            selectPk: (collateral: TCollateral) => collateral.collateralName,
+            selectPk: (collateral: TCollateral) => collateral.id,
         },
     }),
     dendrites: new OIMRICollection(dbEventQueue, {
@@ -132,7 +117,7 @@ export const db = {
             ),
         },
         collectionOpts: {
-            selectPk: (dendrite: TDendrite) => dendrite.dendriteId,
+            selectPk: (dendrite: TDendrite) => dendrite.id,
         },
     }),
     cns: new OIMRICollection(dbEventQueue, {
@@ -167,7 +152,7 @@ export const db = {
             >(dbEventQueue),
         },
         collectionOpts: {
-            selectPk: (response: UIStimulationResponse) => response.responseId,
+            selectPk: (response: TStimulationResponse) => response.responseId,
         },
     }),
 
@@ -202,10 +187,18 @@ export const db = {
     // Server runtime metrics (memory, CPU) timeline
     serverMetrics: new OIMRICollection(dbEventQueue, {
         indexes: {
-            all: new OIMReactiveIndexManual<'all', string>(dbEventQueue),
+            all: new OIMReactiveIndexManual<'all', `${number}`>(dbEventQueue),
         },
         collectionOpts: {
             selectPk: (m: TServerMetrics) => `${m.timestamp}`,
+        },
+    }),
+
+    // UI state for response collapsible blocks
+    responseUIState: new OIMRICollection(dbEventQueue, {
+        indexes: {},
+        collectionOpts: {
+            selectPk: (state: TResponseUIState) => state.responseId,
         },
     }),
 };
@@ -217,4 +210,10 @@ export type TServerMetrics = {
     heapTotalMB: number;
     externalMB: number;
     cpuPercent: number;
+};
+
+// UI state for response collapsible blocks
+export type TResponseUIState = {
+    responseId: TStimulationResponseId;
+    isExpanded: boolean;
 };

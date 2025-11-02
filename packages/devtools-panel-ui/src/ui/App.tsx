@@ -1,11 +1,10 @@
 import React, {
     useEffect,
     useRef,
-    useMemo,
-    useLayoutEffect,
     useState,
+    useCallback,
+    useMemo,
 } from 'react';
-import * as PIXI from 'pixi.js';
 import { mainCNS } from '../cns';
 import { wsAxon } from '../cns/ws/WsAxon';
 import { appModelAxon } from '../cns/controller-layer/AppModelAxon';
@@ -54,6 +53,9 @@ interface NeuronData {
     stimulationCount: number;
     stimulations: StimulationData[];
     type: 'input' | 'processing' | 'output';
+    responseCount?: number;
+    errorCount?: number;
+    avgDuration?: number;
 }
 
 interface ConnectionData {
@@ -63,6 +65,18 @@ interface ConnectionData {
     stimulationCount: number;
     label?: string;
 }
+
+// Debounce utility
+const debounce = <T extends (...args: any[]) => void>(
+    func: T,
+    delay: number
+): ((...args: Parameters<T>) => void) => {
+    let timeoutId: NodeJS.Timeout;
+    return (...args: Parameters<T>) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func(...args), delay);
+    };
+};
 
 export const App: React.FC = () => {
     return (
@@ -103,6 +117,7 @@ export const AppInner: React.FC = () => {
     const [exportLimit, setExportLimit] = useState<string>('');
     const [onlyErrors, setOnlyErrors] = useState<boolean>(false);
     const [errorContains, setErrorContains] = useState<string>('');
+    const [cnsDataLoaded, setCnsDataLoaded] = useState<boolean>(false);
 
     // Helper: one-time message wait
     const waitForMessageOnce = React.useCallback(
@@ -222,7 +237,34 @@ export const AppInner: React.FC = () => {
         );
         const resp = await wait;
         downloadJson(resp, filename);
-    }, [selectedCnsId, selectedAppId, waitForMessageOnce, downloadJson]);
+    }, [
+        selectedCnsId,
+        selectedAppId,
+        waitForMessageOnce,
+        downloadJson,
+        exportFrom,
+        exportTo,
+        exportOffset,
+        exportLimit,
+        onlyErrors,
+        errorContains,
+    ]);
+
+    // Helper: Safe WebSocket send with error handling
+    const safeSend = useCallback((message: any) => {
+        try {
+            const ws = wsRef.current;
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                console.warn('WebSocket not ready, skipping message:', message);
+                return false;
+            }
+            ws.send(JSON.stringify(message));
+            return true;
+        } catch (error) {
+            console.error('Failed to send WebSocket message:', error, message);
+            return false;
+        }
+    }, []);
 
     // Handle neuron click
     const handleNeuronClick = (neuron: NeuronData) => {
@@ -241,10 +283,15 @@ export const AppInner: React.FC = () => {
         setSelectedNeuron(null);
     };
 
-    useEffect(() => {
-        // Initialize data limiter
-        // dataLimiter.startCleanup();
+    // Reconnection logic
+    const [reconnectAttempts, setReconnectAttempts] = useState(0);
+    const [reconnectTimer, setReconnectTimer] = useState<NodeJS.Timeout | null>(
+        null
+    );
+    const maxReconnectAttempts = 10;
+    const reconnectDelay = 2000; // 2 seconds
 
+    const connectToServer = React.useCallback(() => {
         const url =
             (window as any).__CNSTRA_DEVTOOLS_WS__ || 'ws://localhost:8080';
         const ws = new WebSocket(url);
@@ -253,17 +300,22 @@ export const AppInner: React.FC = () => {
         ws.addEventListener('open', () => {
             console.log('🔗 Connected to DevTools server');
             setConnectionStatus('connected');
+            setReconnectAttempts(0); // Reset on successful connection
 
             // Identify as DevTools client
-            ws.send(JSON.stringify({ type: 'devtools-client-connect' }));
+            safeSend({ type: 'devtools-client-connect' });
 
-            // Request topology data for any already-connected apps
-            console.log('📡 Requesting topology data...');
-            ws.send(JSON.stringify({ type: 'apps:get-topology' }));
-
-            // Request apps list (REST-over-WS)
-            console.log('📡 Requesting apps list...');
-            ws.send(JSON.stringify({ type: 'apps:list' }));
+            // Request initial data
+            console.log('📡 Requesting initial data...');
+            safeSend({ type: 'apps:get-topology' });
+            safeSend({ type: 'apps:list' });
+            safeSend({
+                type: 'apps:get-responses',
+                appId: 'all',
+                limit: 1000,
+                fromTimestamp: Date.now() - 24 * 60 * 60 * 1000, // Last 24 hours
+                toTimestamp: Date.now(),
+            });
 
             mainCNS.stimulate(wsAxon.open.createSignal());
         });
@@ -278,19 +330,48 @@ export const AppInner: React.FC = () => {
             mainCNS.stimulate(
                 wsAxon.close.createSignal({ code: ev.code, reason: ev.reason })
             );
+
+            // Attempt reconnection
+            if (reconnectAttempts < maxReconnectAttempts) {
+                console.log(
+                    `🔄 Attempting reconnection ${
+                        reconnectAttempts + 1
+                    }/${maxReconnectAttempts}...`
+                );
+                setConnectionStatus('connecting');
+                const timer = setTimeout(() => {
+                    setReconnectAttempts(prev => prev + 1);
+                    connectToServer();
+                }, reconnectDelay);
+                setReconnectTimer(timer);
+            } else {
+                console.log('❌ Max reconnection attempts reached');
+            }
         });
 
-        ws.addEventListener('error', () => {
-            console.error('❌ DevTools WebSocket error');
+        ws.addEventListener('error', error => {
+            console.error('❌ DevTools WebSocket error:', error);
             setConnectionStatus('disconnected');
             mainCNS.stimulate(
                 wsAxon.error.createSignal({ message: 'ws error' })
             );
         });
+    }, [reconnectAttempts, safeSend]);
+
+    useEffect(() => {
+        // Initialize data limiter
+        // dataLimiter.startCleanup();
+
+        connectToServer();
 
         return () => {
-            ws.close();
-            wsRef.current = null;
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+            }
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
             // dataLimiter.stopCleanup();
         };
     }, []);
@@ -305,6 +386,18 @@ export const AppInner: React.FC = () => {
         'all'
     );
 
+    // Debug: Log when connectedApps changes
+    React.useEffect(() => {
+        console.log('🔍 UI: connectedApps changed:', {
+            count: connectedApps?.length || 0,
+            apps:
+                connectedApps?.map(app => ({
+                    appId: app.appId,
+                    appName: app.appName,
+                })) || [],
+        });
+    }, [connectedApps]);
+
     // CNS list for selected app
     const cnsIdsForApp = React.useMemo(() => {
         if (!selectedAppId) return [] as string[];
@@ -313,60 +406,45 @@ export const AppInner: React.FC = () => {
         return Array.from(pks);
     }, [selectedAppId]);
 
-    // Request stimulations when apps are connected
-    useEffect(() => {
-        if (
-            connectedApps &&
-            connectedApps.length > 0 &&
-            wsRef.current &&
-            wsRef.current.readyState === WebSocket.OPEN
-        ) {
-            console.log(
-                '🧠 Requesting stimulations for',
-                connectedApps.length,
-                'apps'
-            );
-            connectedApps.forEach(app => {
-                console.log('🧠 Requesting stimulations for app:', app.appId);
-                wsRef.current!.send(
-                    JSON.stringify({
+    // Debounced request stimulations function
+    const debouncedRequestStimulations = useMemo(
+        () =>
+            debounce((apps: readonly any[]) => {
+                if (!apps || apps.length === 0) return;
+                console.log(
+                    '🧠 Requesting stimulations for',
+                    apps.length,
+                    'apps'
+                );
+                apps.forEach(app => {
+                    safeSend({
                         type: 'apps:get-stimulations',
                         appId: app.appId,
-                    })
-                );
+                        limit: 1000,
+                    });
+                });
+            }, 1000),
+        [safeSend]
+    );
+
+    // Request stimulations when apps are connected
+    useEffect(() => {
+        if (connectedApps && connectedApps.length > 0) {
+            debouncedRequestStimulations(connectedApps);
+        }
+    }, [connectedApps, debouncedRequestStimulations]);
+
+    // Request replays for connected apps
+    useEffect(() => {
+        if (connectedApps && connectedApps.length > 0) {
+            connectedApps.forEach(app => {
+                safeSend({
+                    type: 'apps:get-replays',
+                    appId: app.appId,
+                });
             });
         }
-    }, [connectedApps]);
-
-    // Proactive short polling on graph: ensure stimulations arrive without visiting the Stimulations page
-    useEffect(() => {
-        const ws = wsRef.current;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        if (!connectedApps || connectedApps.length === 0) return;
-        let isCancelled = false;
-        const startedAt = Date.now();
-        const tick = () => {
-            if (isCancelled) return;
-            try {
-                connectedApps.forEach(app => {
-                    ws.send(
-                        JSON.stringify({
-                            type: 'apps:get-stimulations',
-                            appId: app.appId,
-                            limit: 1000,
-                        })
-                    );
-                });
-            } catch {}
-            const elapsed = Date.now() - startedAt;
-            if (elapsed < 10_000) setTimeout(tick, 1000);
-        };
-        // kick off immediately
-        tick();
-        return () => {
-            isCancelled = true;
-        };
-    }, [connectedApps, wsRef.current]);
+    }, [connectedApps, safeSend]);
 
     // Observe selected app id from DB index (single selection)
     const selectedAppPks = useSelectPksByIndexKey(
@@ -416,6 +494,7 @@ export const AppInner: React.FC = () => {
     React.useEffect(() => {
         if (!selectedAppId) {
             setSelectedCnsId(null);
+            setCnsDataLoaded(false);
             return;
         }
         if (cnsIdsForApp.length > 0) {
@@ -427,46 +506,72 @@ export const AppInner: React.FC = () => {
         }
     }, [selectedAppId, cnsIdsForApp]);
 
-    // Fetch topology and data for selected app/CNS via REST-over-WS
-    useEffect(() => {
-        const ws = wsRef.current;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        if (!selectedAppId) return;
+    // Handle CNS response and request data
+    const handleCnsResponse = useCallback(
+        (msg: any) => {
+            if (msg.type === 'apps:cns' && msg.appId === selectedAppId) {
+                const cnsIds = msg.cns.map((c: any) => c.cnsId);
+                console.log(
+                    '📡 Received CNS list, requesting data for:',
+                    cnsIds
+                );
 
-        // Request CNS list for the selected app (do not assume 1:1 mapping)
-        try {
-            ws.send(
-                JSON.stringify({ type: 'apps:get-cns', appId: selectedAppId })
-            );
-        } catch {}
-
-        // If CNS list already known in DB, fetch for all, else fallback to selectedAppId-as-cnsId for backward compat
-        try {
-            const cnsIds = (db.cns.indexes.appId.getPksByKey(selectedAppId) ||
-                new Set()) as Set<string>;
-            const targetCnsIds =
-                cnsIds.size > 0 ? Array.from(cnsIds) : [selectedAppId];
-            for (const cnsId of targetCnsIds) {
-                ws.send(JSON.stringify({ type: 'cns:get-neurons', cnsId }));
-                ws.send(JSON.stringify({ type: 'cns:get-dendrites', cnsId }));
-                ws.send(JSON.stringify({ type: 'cns:get-collaterals', cnsId }));
-                ws.send(
-                    JSON.stringify({
+                // Request data for each CNS
+                cnsIds.forEach((cnsId: string) => {
+                    safeSend({ type: 'cns:get-neurons', cnsId });
+                    safeSend({ type: 'cns:get-dendrites', cnsId });
+                    safeSend({ type: 'cns:get-collaterals', cnsId });
+                    safeSend({
                         type: 'cns:get-responses',
                         cnsId,
                         limit: 1000,
-                    })
-                );
+                    });
+                });
+
+                setCnsDataLoaded(true);
             }
-            ws.send(
-                JSON.stringify({
-                    type: 'apps:get-stimulations',
-                    appId: selectedAppId,
-                    limit: 1000,
-                })
-            );
-        } catch {}
-    }, [selectedAppId, selectedCnsId]);
+        },
+        [selectedAppId, safeSend]
+    );
+
+    // Listen for CNS responses
+    useEffect(() => {
+        const ws = wsRef.current;
+        if (!ws) return;
+
+        const messageHandler = (ev: MessageEvent) => {
+            try {
+                const msg =
+                    typeof ev.data === 'string' ? JSON.parse(ev.data) : null;
+                if (msg) {
+                    handleCnsResponse(msg);
+                }
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
+            }
+        };
+
+        ws.addEventListener('message', messageHandler);
+        return () => ws.removeEventListener('message', messageHandler);
+    }, [handleCnsResponse]);
+
+    // Fetch topology and data for selected app/CNS via REST-over-WS
+    useEffect(() => {
+        if (!selectedAppId) return;
+
+        // Reset CNS data loaded state
+        setCnsDataLoaded(false);
+
+        // Request CNS list for the selected app
+        safeSend({ type: 'apps:get-cns', appId: selectedAppId });
+
+        // Request stimulations for the selected app
+        safeSend({
+            type: 'apps:get-stimulations',
+            appId: selectedAppId,
+            limit: 1000,
+        });
+    }, [selectedAppId, safeSend]);
 
     // Always call hooks unconditionally (Rules of Hooks)
     const allNeuronsRaw = useSelectEntitiesByIndexKey(
@@ -499,12 +604,48 @@ export const AppInner: React.FC = () => {
         effectiveSelectedAppId || 'dummy-id'
     );
 
-    // Filter out data when no app is selected
-    const allNeurons = effectiveSelectedAppId ? allNeuronsRaw : null;
-    const allDendrites = effectiveSelectedAppId ? allDendritesRaw : null;
-    const allResponses = effectiveSelectedAppId ? allResponsesRaw : null;
-    const allStimulations = effectiveSelectedAppId ? allStimulationsRaw : null;
-    const allCollaterals = effectiveSelectedAppId ? allCollateralsRaw : null;
+    // Filter out data when no app is selected and undefined elements
+    const allNeurons = effectiveSelectedAppId
+        ? (allNeuronsRaw || []).filter(
+              (n): n is NonNullable<typeof n> => n != null
+          )
+        : null;
+    const allDendrites = effectiveSelectedAppId
+        ? (allDendritesRaw || []).filter(
+              (d): d is NonNullable<typeof d> => d != null
+          )
+        : null;
+    const allResponses = effectiveSelectedAppId
+        ? (allResponsesRaw || []).filter(
+              (r): r is NonNullable<typeof r> => r != null
+          )
+        : null;
+    const allStimulations = effectiveSelectedAppId
+        ? (allStimulationsRaw || []).filter(
+              (s): s is NonNullable<typeof s> => s != null
+          )
+        : null;
+    const allCollaterals = effectiveSelectedAppId
+        ? (allCollateralsRaw || []).filter(
+              (c): c is NonNullable<typeof c> => c != null
+          )
+        : null;
+
+    // Expose counts for E2E assertions
+    React.useEffect(() => {
+        try {
+            if (typeof window !== 'undefined') {
+                (window as any).__cnstraCounts = {
+                    stimulations: Array.isArray(allStimulations)
+                        ? allStimulations.length
+                        : 0,
+                    responses: Array.isArray(allResponses)
+                        ? allResponses.length
+                        : 0,
+                };
+            }
+        } catch {}
+    }, [allStimulations, allResponses]);
 
     console.log('🔍 App.tsx query results for app:', effectiveSelectedAppId, {
         allNeuronsRaw: allNeuronsRaw?.length || 0,
@@ -519,7 +660,6 @@ export const AppInner: React.FC = () => {
         firstDendrite: allDendrites?.[0],
         firstResponse: allResponses?.[0],
         firstCollateral: allCollaterals?.[0],
-        sampleResponseNeuronIds: allResponses?.slice(0, 3).map(r => r.neuronId),
     });
 
     // Debug: Check what's actually in the database
@@ -538,29 +678,28 @@ export const AppInner: React.FC = () => {
             .getAll()
             .slice(0, 3)
             .map(s => ({
-                stimulationId: s.stimulationId,
-                appId: s.appId,
-                neuronId: s.neuronId,
-                collateralName: s.collateralName,
+                stimulationId: (s as any).stimulationId,
+                appId: (s as any).appId,
+                collateralName: (s as any).collateralName,
             })),
         allStimulationsDebug: allStimulations?.map(s => ({
-            stimulationId: s.stimulationId,
-            neuronId: s.neuronId,
-            collateralName: s.collateralName,
+            stimulationId: (s as any).stimulationId,
+            collateralName: (s as any).collateralName,
         })),
         dbDendritesSample: db.dendrites
             .getAll()
             .slice(0, 3)
             .map(d => ({
-                id: d.dendriteId,
+                id: d.id,
                 appId: d.appId,
                 neuronId: d.neuronId,
-                collateralName: d.collateralName,
+                collateralName: d.name,
+                cnsId: d.cnsId,
             })),
         allStimulationsAppIds: db.stimulations
             .getAll()
             .slice(0, 10)
-            .map(s => s.appId),
+            .map(s => (s as any).appId),
         stimulationIndexKeys: Array.from(
             db.stimulations.indexes.appId.getKeys() || []
         ),
@@ -590,69 +729,59 @@ export const AppInner: React.FC = () => {
 
         // Create neuron nodes
         const graphNeurons: NeuronData[] = allNeurons.map((neuron, index) => {
-            // Debug: Log available response neuron IDs vs current neuron ID
-            const responseNeuronIds = Array.isArray(allResponses)
-                ? [...new Set(allResponses.map(r => r.neuronId))]
+            // Debug: Log available response collateral names vs current neuron
+            const responseOutputCollaterals = Array.isArray(allResponses)
+                ? [
+                      ...new Set(
+                          allResponses
+                              .filter(r => r != null)
+                              .map(r => r.outputCollateralName)
+                              .filter(Boolean)
+                      ),
+                  ]
                 : [];
 
             console.log(
-                `🔍 Neuron "${neuron.name}" (id: "${neuron.id}") vs response neuronIds:`,
-                responseNeuronIds
+                `🔍 Neuron "${neuron.name}" (id: "${neuron.id}") vs response output collaterals:`,
+                responseOutputCollaterals
             );
 
-            // Compute response count for this neuron from responses (both input and output)
-            // Handle neuronId format mismatch: some responses use short IDs ('auth-service')
-            // while neurons use full IDs ('ecommerce-app:auth-service')
-            const extractShortNeuronId = (fullId: string) =>
-                fullId.split(':').pop() || fullId;
-            const shortNeuronId = extractShortNeuronId(neuron.id);
+            // Compute response count for this neuron from responses
+            // Find responses where this neuron is the output (via collaterals)
+            const neuronCollateralNames = allCollaterals
+                ?.filter(c => c.neuronId === neuron.id)
+                .map(c => c.name);
 
-            // Count responses FROM this neuron (where neuronId = this neuron in responses)
             const outgoingResponses = Array.isArray(allResponses)
-                ? allResponses.filter(
-                      r =>
-                          r.neuronId === neuron.id || // exact match
-                          r.neuronId === shortNeuronId || // short ID match
-                          extractShortNeuronId(r.neuronId) === shortNeuronId // both normalized
-                  )
-                : [];
-
-            // Count responses TO this neuron via stimulations this neuron received
-            // First find stimulations that were sent to this neuron via its input collaterals
-            const neuronDendrites = Array.isArray(allDendrites)
-                ? allDendrites.filter(
-                      d =>
-                          d.neuronId === neuron.id ||
-                          d.neuronId === shortNeuronId ||
-                          extractShortNeuronId(d.neuronId) === shortNeuronId
-                  )
-                : [];
-
-            const listenedCollaterals = neuronDendrites.map(
-                d => d.collateralName
-            );
-
-            // Find stimulations sent to this neuron
-            const incomingStimulations = Array.isArray(allStimulations)
-                ? allStimulations.filter(s =>
-                      listenedCollaterals.some(
-                          colName =>
-                              s.collateralName === colName ||
-                              s.collateralName ===
-                                  colName.replace(/^.*:collateral:/, '') ||
-                              colName.includes(s.collateralName)
+                ? allResponses.filter(r => {
+                      if (
+                          !r ||
+                          !neuronCollateralNames ||
+                          !r.outputCollateralName
                       )
-                  )
+                          return false;
+                      return neuronCollateralNames.includes(
+                          r.outputCollateralName as string
+                      );
+                  })
                 : [];
 
-            // Find responses to those incoming stimulations (responses by this neuron to signals it received)
+            // Find responses where this neuron is the input (via dendrites)
+            const neuronDendriteNames = allDendrites
+                ?.filter(d => d.neuronId === neuron.id)
+                .map(d => d.name);
+
             const incomingResponses = Array.isArray(allResponses)
-                ? allResponses.filter(r =>
-                      incomingStimulations.some(
-                          stim => stim.stimulationId === r.stimulationId
-                      )
-                  )
+                ? allResponses.filter(r => {
+                      if (!r || !neuronDendriteNames || !r.inputCollateralName)
+                          return false;
+                      return neuronDendriteNames.includes(
+                          r.inputCollateralName as string
+                      );
+                  })
                 : [];
+
+            // incomingResponses already calculated above
 
             // Total responses = outgoing + incoming (dedupe by responseId)
             const allRelevantResponses = [
@@ -676,79 +805,80 @@ export const AppInner: React.FC = () => {
                     `   Incoming responses: ${incomingResponses.length}`
                 );
                 console.log(`   Total unique responses: ${responseCount}`);
-                console.log(`   Dendrites found: ${neuronDendrites.length}`);
                 console.log(
-                    `   Listened collaterals: [${listenedCollaterals.join(
+                    `   Dendrites found: ${neuronDendriteNames?.length}`
+                );
+                console.log(
+                    `   Listened collaterals: [${neuronDendriteNames?.join(
                         ', '
                     )}]`
                 );
 
-                if (Array.isArray(allStimulations)) {
-                    const uniqueStimCollaterals = [
-                        ...new Set(allStimulations.map(s => s.collateralName)),
-                    ];
-                    console.log(
-                        `   Available stimulation collaterals: [${uniqueStimCollaterals.join(
-                            ', '
-                        )}]`
-                    );
-
-                    // Test each matching condition
-                    listenedCollaterals.forEach(colName => {
-                        const exactMatches = allStimulations.filter(
-                            s => s.collateralName === colName
-                        );
-                        const cleanMatches = allStimulations.filter(
-                            s =>
-                                s.collateralName ===
-                                colName.replace(/^.*:collateral:/, '')
-                        );
-                        const includesMatches = allStimulations.filter(s =>
-                            colName.includes(s.collateralName)
-                        );
-                        console.log(
-                            `   Collateral "${colName}": exact=${exactMatches.length}, clean=${cleanMatches.length}, includes=${includesMatches.length}`
-                        );
-                    });
-                }
+                // Debug collateral matching
+                console.log(
+                    `   Available response collaterals: [${Array.from(
+                        new Set(
+                            allResponses
+                                ?.filter(r => r != null)
+                                .map(r => r.outputCollateralName)
+                        )
+                    ).join(', ')}]`
+                );
+                console.log(
+                    `   Available input collaterals: [${Array.from(
+                        new Set(
+                            allResponses
+                                ?.filter(r => r != null)
+                                .map(r => r?.inputCollateralName)
+                                .filter(Boolean)
+                        )
+                    ).join(', ')}]`
+                );
             }
 
-            // Debug: Show which neuron has stimulations and the ID mapping
+            // Debug: Show which neuron has responses
             if (responseCount > 0) {
                 console.log(
-                    `💥 NEURON WITH RESPONSES: ${neuron.name} (${neuron.id}) -> shortId: ${shortNeuronId} -> ${responseCount} total responses`
+                    `💥 NEURON WITH RESPONSES: ${neuron.name} (${neuron.id}) -> ${responseCount} total responses`
                 );
                 console.log(
                     `   📤 Outgoing responses: ${outgoingResponses.length}, 📥 Incoming responses: ${incomingResponses.length}, 🔄 Unique responses: ${uniqueResponses.length}`
                 );
                 console.log(
-                    `   🎯 Listens to collaterals: [${listenedCollaterals.join(
+                    `   🎯 Listens to collaterals: [${neuronDendriteNames?.join(
                         ', '
                     )}]`
                 );
             } else {
-                // For neurons with 0 responses, check what response neuronIds actually exist
-                const responseNeuronIds = Array.isArray(allResponses)
-                    ? [...new Set(allResponses.map(r => r.neuronId))]
-                    : [];
                 console.log(
-                    `⚫ NEURON NO RESPONSES: ${neuron.name} (${neuron.id}) -> shortId: ${shortNeuronId} -> ${responseCount} responses`
+                    `⚫ NEURON NO RESPONSES: ${neuron.name} (${neuron.id}) -> ${responseCount} responses`
                 );
                 console.log(
                     `   📤 Outgoing: ${outgoingResponses.length}, 📥 Incoming: ${incomingResponses.length}`
                 );
                 console.log(
-                    `   🎯 Listens to collaterals: [${listenedCollaterals.join(
+                    `   🎯 Listens to collaterals: [${neuronDendriteNames?.join(
                         ', '
                     )}]`
                 );
                 console.log(
-                    `   Available response neuronIds: [${responseNeuronIds.join(
-                        ', '
-                    )}]`
+                    `   Available response collaterals: [${Array.from(
+                        new Set(
+                            allResponses
+                                ?.filter(r => r != null)
+                                .map(r => r.outputCollateralName)
+                        )
+                    ).join(', ')}]`
                 );
                 console.log(
-                    `   Looking for matches with: "${neuron.id}", "${shortNeuronId}"`
+                    `   Available input collaterals: [${Array.from(
+                        new Set(
+                            allResponses
+                                ?.filter(r => r != null)
+                                .map(r => r?.inputCollateralName)
+                                .filter(Boolean)
+                        )
+                    ).join(', ')}]`
                 );
             }
 
@@ -776,23 +906,45 @@ export const AppInner: React.FC = () => {
             x = Math.max(padding, Math.min(canvasWidth - padding, x));
             y = Math.max(padding, Math.min(canvasHeight - padding, y));
 
+            // Calculate error count and average duration from unique responses
+            const errorCount = uniqueResponses.filter(
+                (r: any) => r?.error
+            ).length;
+
+            const durationsWithValues = uniqueResponses
+                .map((r: any) => r?.duration)
+                .filter((d: any) => typeof d === 'number' && d > 0);
+            const avgDuration =
+                durationsWithValues.length > 0
+                    ? durationsWithValues.reduce(
+                          (sum: number, d: number) => sum + d,
+                          0
+                      ) / durationsWithValues.length
+                    : 0;
+
             const graphNeuron = {
                 id: neuron.id,
                 name: neuron.name,
                 x: x,
                 y: y,
                 stimulationCount: responseCount,
+                responseCount: uniqueResponses.length,
+                errorCount: errorCount,
+                avgDuration: avgDuration,
                 stimulations:
-                    incomingStimulations.length > 0
-                        ? incomingStimulations
+                    incomingResponses.length > 0
+                        ? incomingResponses
                               .slice(0, 10)
-                              .map((stimulation: any) => ({
-                                  id: stimulation.stimulationId,
-                                  timestamp: stimulation.timestamp,
+                              .map((response: any) => ({
+                                  id: response.responseId,
+                                  timestamp: response.timestamp,
                                   signal: {
-                                      type: 'stimulation',
-                                      collateral: stimulation.collateralName,
-                                      payload: stimulation.payload,
+                                      type: 'response',
+                                      inputCollateral:
+                                          response?.inputCollateralName,
+                                      outputCollateral:
+                                          response?.outputCollateralName,
+                                      payload: response.outputPayload,
                                   },
                                   sourceNeuron: neuron.id,
                                   targetNeuron: undefined,
@@ -827,10 +979,7 @@ export const AppInner: React.FC = () => {
             // Index dendrites by collateral and neuron
             const dendritesByCollateral = new Map<string, Set<string>>(); // collateralName(raw) -> set(neuronId)
             allDendrites.forEach(d => {
-                const key = String(d.collateralName).replace(
-                    /^.*:collateral:/,
-                    ''
-                );
+                const key = String(d.name).replace(/^.*:collateral:/, '');
                 const set = dendritesByCollateral.get(key) || new Set<string>();
                 set.add(d.neuronId);
                 dendritesByCollateral.set(key, set);
@@ -859,10 +1008,11 @@ export const AppInner: React.FC = () => {
                         return;
                     }
 
-                    // Use 'name' field instead of 'collateralName' for the stored collateral entities
-                    const key = String(
-                        collateral.name || collateral.collateralName
-                    ).replace(/^.*:collateral:/, '');
+                    // Use 'name' field for the stored collateral entities
+                    const key = String(collateral.name).replace(
+                        /^.*:collateral:/,
+                        ''
+                    );
                     ownerByCollateral.set(key, collateral.neuronId);
                 });
             }
@@ -894,12 +1044,9 @@ export const AppInner: React.FC = () => {
             if (allCollaterals && allCollaterals.length > 0) {
                 console.log('📡 RAW COLLATERALS:', allCollaterals.slice(0, 3));
                 allCollaterals.slice(0, 3).forEach(c => {
-                    const key = String(c.collateralName).replace(
-                        /^.*:collateral:/,
-                        ''
-                    );
+                    const key = String(c.name).replace(/^.*:collateral:/, '');
                     console.log(
-                        `  📡 Collateral mapping: name="${c.collateralName}" -> key="${key}" -> owner="${c.neuronId}"`
+                        `  📡 Collateral mapping: name="${c.name}" -> key="${key}" -> owner="${c.neuronId}"`
                     );
                 });
             } else {
@@ -909,12 +1056,9 @@ export const AppInner: React.FC = () => {
             if (allDendrites && allDendrites.length > 0) {
                 console.log('🌿 RAW DENDRITES:', allDendrites.slice(0, 3));
                 allDendrites.slice(0, 3).forEach(d => {
-                    const key = String(d.collateralName).replace(
-                        /^.*:collateral:/,
-                        ''
-                    );
+                    const key = String(d.name).replace(/^.*:collateral:/, '');
                     console.log(
-                        `  🌿 Dendrite: neuron="${d.neuronId}" listens to collateral="${d.collateralName}" -> key="${key}"`
+                        `  🌿 Dendrite: neuron="${d.neuronId}" listens to collateral="${d.name}" -> key="${key}"`
                     );
                 });
             }
@@ -958,13 +1102,17 @@ export const AppInner: React.FC = () => {
             // Then, enhance with response data if available
             if (Array.isArray(allResponses)) {
                 for (const r of allResponses) {
+                    if (!r) continue;
                     const inColl = (
-                        r.inputCollateralName as string | undefined
+                        r?.inputCollateralName as string | undefined
                     )?.replace(/^.*:collateral:/, '');
                     const outColl = (
-                        r.outputCollateralName as string | undefined
+                        r?.outputCollateralName as string | undefined
                     )?.replace(/^.*:collateral:/, '');
-                    const sourceNeuronId = r.neuronId as string | undefined;
+                    // Find source neuron by looking up the collateral owner
+                    const sourceNeuronId = outColl
+                        ? ownerByCollateral.get(outColl)
+                        : undefined;
                     // If there is an input collateral, map it to neurons that listen to it (dendrites)
                     if (inColl) {
                         const listeners = dendritesByCollateral.get(inColl);
@@ -1161,16 +1309,61 @@ export const AppInner: React.FC = () => {
                 </div>
 
                 <div style={{ marginBottom: 'var(--spacing-xl)' }}>
-                    <h3
+                    <div
                         style={{
-                            margin: `0 0 var(--spacing-md) 0`,
-                            fontSize: 'var(--font-size-sm)',
-                            color: 'var(--text-muted)',
-                            letterSpacing: '1px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 'var(--spacing-md)',
                         }}
                     >
-                        📱 CONNECTED APPS ({connectedApps?.length || 0})
-                    </h3>
+                        <h3
+                            style={{
+                                margin: 0,
+                                fontSize: 'var(--font-size-sm)',
+                                color: 'var(--text-muted)',
+                                letterSpacing: '1px',
+                            }}
+                        >
+                            📱 CONNECTED APPS ({connectedApps?.length || 0})
+                        </h3>
+                        <button
+                            onClick={() => {
+                                console.log('🔄 Refreshing data...');
+                                safeSend({ type: 'apps:get-topology' });
+                                safeSend({ type: 'apps:list' });
+                                safeSend({
+                                    type: 'apps:get-responses',
+                                    appId: 'all',
+                                    limit: 1000,
+                                });
+                            }}
+                            style={{
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border-accent)',
+                                color: 'var(--text-primary)',
+                                padding: 'var(--spacing-xs) var(--spacing-sm)',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: 'var(--font-size-xs)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.background =
+                                    'var(--flesh-infected)';
+                                e.currentTarget.style.borderColor =
+                                    'var(--border-infected)';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.background =
+                                    'var(--bg-card)';
+                                e.currentTarget.style.borderColor =
+                                    'var(--border-accent)';
+                            }}
+                        >
+                            🔄 Refresh
+                        </button>
+                    </div>
                     {connectedApps?.length ? (
                         connectedApps.map(app => (
                             <div
@@ -1491,49 +1684,34 @@ export const AppInner: React.FC = () => {
                                 <button
                                     className="btn-infected"
                                     onClick={() => {
-                                        const ws = wsRef.current;
-                                        if (
-                                            !ws ||
-                                            ws.readyState !== WebSocket.OPEN
-                                        )
-                                            return;
-                                        try {
-                                            ws.send(
-                                                JSON.stringify({
-                                                    type: 'apps:get-stimulations',
-                                                    appId: selectedAppId,
-                                                    hasError:
-                                                        onlyErrors || undefined,
-                                                    errorContains:
-                                                        errorContains ||
-                                                        undefined,
-                                                })
-                                            );
-                                            const cnsIds =
-                                                (db.cns.indexes.appId.getPksByKey(
-                                                    selectedAppId || ''
-                                                ) || new Set()) as Set<string>;
-                                            const target =
-                                                cnsIds.size > 0
-                                                    ? Array.from(cnsIds)
-                                                    : selectedAppId
-                                                    ? [selectedAppId]
-                                                    : [];
-                                            for (const cnsId of target) {
-                                                ws.send(
-                                                    JSON.stringify({
-                                                        type: 'cns:get-responses',
-                                                        cnsId,
-                                                        hasError:
-                                                            onlyErrors ||
-                                                            undefined,
-                                                        errorContains:
-                                                            errorContains ||
-                                                            undefined,
-                                                    })
-                                                );
-                                            }
-                                        } catch {}
+                                        if (!selectedAppId) return;
+                                        safeSend({
+                                            type: 'apps:get-stimulations',
+                                            appId: selectedAppId,
+                                            hasError: onlyErrors || undefined,
+                                            errorContains:
+                                                errorContains || undefined,
+                                        });
+                                        const cnsIds =
+                                            (db.cns.indexes.appId.getPksByKey(
+                                                selectedAppId || ''
+                                            ) || new Set()) as Set<string>;
+                                        const target =
+                                            cnsIds.size > 0
+                                                ? Array.from(cnsIds)
+                                                : selectedAppId
+                                                ? [selectedAppId]
+                                                : [];
+                                        for (const cnsId of target) {
+                                            safeSend({
+                                                type: 'cns:get-responses',
+                                                cnsId,
+                                                hasError:
+                                                    onlyErrors || undefined,
+                                                errorContains:
+                                                    errorContains || undefined,
+                                            });
+                                        }
                                     }}
                                     style={{
                                         width: '100%',
@@ -1630,24 +1808,20 @@ export const AppInner: React.FC = () => {
                             <button
                                 className="btn-infected"
                                 onClick={async () => {
-                                    const ws = wsRef.current;
-                                    if (!ws || ws.readyState !== WebSocket.OPEN)
-                                        return;
+                                    if (!selectedAppId) return;
                                     const filename = `snapshot-${selectedAppId}-${Date.now()}.json`;
                                     const wait = waitForMessageOnce(
                                         msg =>
                                             msg && msg.type === 'apps:snapshot'
                                     );
-                                    ws.send(
-                                        JSON.stringify({
-                                            type: 'apps:export-snapshot',
-                                            appId: selectedAppId,
-                                            limitResponses:
-                                                Number(exportLimit) || 1000,
-                                            limitStimulations:
-                                                Number(exportLimit) || 1000,
-                                        })
-                                    );
+                                    safeSend({
+                                        type: 'apps:export-snapshot',
+                                        appId: selectedAppId,
+                                        limitResponses:
+                                            Number(exportLimit) || 1000,
+                                        limitStimulations:
+                                            Number(exportLimit) || 1000,
+                                    });
                                     const resp = await wait;
                                     downloadJson(resp, filename);
                                     try {
@@ -1747,27 +1921,22 @@ export const AppInner: React.FC = () => {
                             <button
                                 className="btn-infected"
                                 onClick={async () => {
-                                    const ws = wsRef.current;
-                                    if (!ws || ws.readyState !== WebSocket.OPEN)
-                                        return;
-                                    const appId = selectedAppId;
-                                    const filename = `stimulations-errors-${appId}-${Date.now()}.json`;
+                                    if (!selectedAppId) return;
+                                    const filename = `stimulations-errors-${selectedAppId}-${Date.now()}.json`;
                                     const wait = waitForMessageOnce(
                                         msg =>
                                             msg &&
                                             msg.type ===
                                                 'apps:export-stimulations'
                                     );
-                                    ws.send(
-                                        JSON.stringify({
-                                            type: 'apps:export-stimulations',
-                                            appId,
-                                            hasError: true,
-                                            errorContains:
-                                                errorContains || undefined,
-                                            limit: Number(exportLimit) || 1000,
-                                        })
-                                    );
+                                    safeSend({
+                                        type: 'apps:export-stimulations',
+                                        appId: selectedAppId,
+                                        hasError: true,
+                                        errorContains:
+                                            errorContains || undefined,
+                                        limit: Number(exportLimit) || 1000,
+                                    });
                                     const resp = await wait;
                                     downloadJson(resp, filename);
                                 }}
@@ -1805,27 +1974,23 @@ export const AppInner: React.FC = () => {
                             <button
                                 className="btn-infected"
                                 onClick={async () => {
-                                    const ws = wsRef.current;
-                                    if (!ws || ws.readyState !== WebSocket.OPEN)
-                                        return;
                                     const cnsId =
                                         selectedCnsId || selectedAppId;
+                                    if (!cnsId) return;
                                     const filename = `responses-errors-${cnsId}-${Date.now()}.json`;
                                     const wait = waitForMessageOnce(
                                         msg =>
                                             msg &&
                                             msg.type === 'cns:export-responses'
                                     );
-                                    ws.send(
-                                        JSON.stringify({
-                                            type: 'cns:export-responses',
-                                            cnsId,
-                                            hasError: true,
-                                            errorContains:
-                                                errorContains || undefined,
-                                            limit: Number(exportLimit) || 1000,
-                                        })
-                                    );
+                                    safeSend({
+                                        type: 'cns:export-responses',
+                                        cnsId,
+                                        hasError: true,
+                                        errorContains:
+                                            errorContains || undefined,
+                                        limit: Number(exportLimit) || 1000,
+                                    });
                                     const resp = await wait;
                                     downloadJson(resp, filename);
                                 }}
@@ -1913,8 +2078,28 @@ export const AppInner: React.FC = () => {
                                                 color: 'var(--text-secondary)',
                                             }}
                                         >
-                                            ⚡ {allStimulations?.length || 0}{' '}
+                                            ⚡{' '}
+                                            <span
+                                                data-testid="stats-stimulations"
+                                                className="stats-stimulations"
+                                            >
+                                                {allStimulations?.length || 0}
+                                            </span>{' '}
                                             stimulations
+                                        </span>
+                                        <span
+                                            style={{
+                                                color: 'var(--text-secondary)',
+                                            }}
+                                        >
+                                            📨{' '}
+                                            <span
+                                                data-testid="stats-responses"
+                                                className="stats-responses"
+                                            >
+                                                {allResponses?.length || 0}
+                                            </span>{' '}
+                                            responses
                                         </span>
                                         {selectedAppId && (
                                             <span>
@@ -1967,7 +2152,9 @@ export const AppInner: React.FC = () => {
                                     <NeuronDetailsPanel
                                         neuronId={selectedNeuron?.id || ''}
                                         onClose={handleCloseNeuronDetails}
-                                        appId={selectedAppId || undefined}
+                                        appId={
+                                            effectiveSelectedAppId || undefined
+                                        }
                                     />
                                 </div>
                             </>

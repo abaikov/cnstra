@@ -1,10 +1,4 @@
-export type TCNSSerializedSignal<
-    TCollateralName extends string = string,
-    TPayload = any
-> = {
-    collateralName: TCollateralName;
-    payload: TPayload | undefined;
-};
+import { TCNSSignal } from './TCNSSignal';
 
 export type TCNSSerializedQueueItem<
     TCollateralName extends string = string,
@@ -12,5 +6,5 @@ export type TCNSSerializedQueueItem<
 > = {
     neuronId: TNeuronName;
     dendriteCollateralName: TCollateralName;
-    input?: TCNSSerializedSignal<TCollateralName, any>;
+    input?: TCNSSignal<TCollateralName, any>;
 };

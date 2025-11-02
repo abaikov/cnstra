@@ -5,5 +5,8 @@ export type TCNSDevToolsOptions = {
     devToolsInstanceId?: string;
     devToolsInstanceName?: string;
 
+    /** When true, print detailed console logs for init/topology, responses and commands */
+    consoleLogEnabled?: boolean;
+
     takeDataSnapshot?: () => object | Promise<object>;
 };

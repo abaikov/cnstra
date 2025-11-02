@@ -17,6 +17,7 @@
     "start:standalone": "node dist/standalone-demo.js",
     "start:all": "concurrently \"npm run start:server\" \"npm run start\"",
     "demo:standalone": "concurrently \"npm run start:standalone\" \"npm run start\"",
+    "start:attach-electron": "sh -c 'tsc && CNSTRA_DEVTOOLS_SERVER=0 CNSTRA_DEVTOOLS_CLIENT=1 CNSTRA_DEVTOOLS_WS_URL=${CNSTRA_DEVTOOLS_WS_URL:-ws://localhost:8080} node dist/index.js'",
     "clean": "rm -rf dist"
   },
   "files": [

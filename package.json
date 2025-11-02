@@ -20,6 +20,8 @@
     "demo": "npm run build:example && npm run start:all --workspace=@cnstra/example-app",
     "dev:electron": "npm run dev --workspace=@cnstra/devtools-panel-ui & npm run dev --workspace=@cnstra/devtools-electron",
     "start:electron": "npm run start --workspace=@cnstra/devtools-electron",
+    "example:start": "npm run start --workspace=@cnstra/example-app",
+    "example:start:attach-electron": "npm run start:attach-electron --workspace=@cnstra/example-app",
     "release:electron": "./scripts/release-devtools-electron.sh",
     "publish:all": "npm run build && npm publish --workspaces --access public",
     "publish:core": "npm run build --workspace=@cnstra/core && npm publish --workspace=@cnstra/core --access public",

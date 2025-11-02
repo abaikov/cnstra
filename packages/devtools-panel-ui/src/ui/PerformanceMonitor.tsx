@@ -178,7 +178,7 @@ export const PerformanceMonitor: React.FC = () => {
             });
         };
 
-        const interval = setInterval(updateMetrics, 1000); // Update every second
+        const interval = setInterval(updateMetrics, 2000); // Update every 2 seconds
         updateMetrics(); // Initial update
 
         return () => clearInterval(interval);
@@ -252,22 +252,36 @@ export const PerformanceMonitor: React.FC = () => {
                     <div style={{ color: 'var(--infection-blue)' }}>
                         🎯 {metrics.cnsMetrics.activeNeurons}n
                     </div>
-                    {/* server metrics compact: show latest CPU if present */}
+                    {/* server metrics compact: show latest CPU and memory if present */}
                     {(() => {
                         const latest = db.serverMetrics
                             .getAll()
                             .slice(-1)[0] as any;
                         return latest ? (
-                            <div
-                                style={{
-                                    color:
-                                        latest.cpuPercent > 70
-                                            ? 'var(--infection-red)'
-                                            : 'var(--infection-green)',
-                                }}
-                            >
-                                🖥️ {latest.cpuPercent}% CPU
-                            </div>
+                            <>
+                                <div
+                                    style={{
+                                        color:
+                                            latest.cpuPercent > 70
+                                                ? 'var(--infection-red)'
+                                                : 'var(--infection-green)',
+                                    }}
+                                >
+                                    🖥️ {latest.cpuPercent.toFixed(1)}% CPU
+                                </div>
+                                <div
+                                    style={{
+                                        color:
+                                            latest.rssMB > 500
+                                                ? 'var(--infection-red)'
+                                                : latest.rssMB > 200
+                                                ? 'var(--infection-yellow)'
+                                                : 'var(--infection-blue)',
+                                    }}
+                                >
+                                    💾 {latest.rssMB.toFixed(0)}MB
+                                </div>
+                            </>
                         ) : null;
                     })()}
                     {metrics.cnsMetrics.errorRate > 0 && (
@@ -462,10 +476,22 @@ export const PerformanceMonitor: React.FC = () => {
                                     marginBottom: 'var(--spacing-xs)',
                                     color: 'var(--text-muted)',
                                     fontSize: '10px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
                                 }}
                             >
-                                📈 Stimulations Trend (last{' '}
-                                {history.stimulationsPerSecond.length}s)
+                                <span>
+                                    📈 Stimulations Trend (last{' '}
+                                    {history.stimulationsPerSecond.length}s)
+                                </span>
+                                <span
+                                    style={{ color: 'var(--infection-green)' }}
+                                >
+                                    {history.stimulationsPerSecond[
+                                        history.stimulationsPerSecond.length - 1
+                                    ].toFixed(1)}
+                                    /s
+                                </span>
                             </div>
                             <div
                                 style={{
@@ -517,9 +543,20 @@ export const PerformanceMonitor: React.FC = () => {
                                     marginBottom: 'var(--spacing-xs)',
                                     color: 'var(--text-muted)',
                                     fontSize: '10px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
                                 }}
                             >
-                                📈 Memory Trend (last {history.memory.length}s)
+                                <span>
+                                    📈 Memory Trend (last{' '}
+                                    {history.memory.length}s)
+                                </span>
+                                <span style={{ color: memoryColor }}>
+                                    {history.memory[
+                                        history.memory.length - 1
+                                    ].toFixed(1)}
+                                    %
+                                </span>
                             </div>
                             <div
                                 style={{
@@ -591,108 +628,240 @@ export const PerformanceMonitor: React.FC = () => {
                                         No server metrics
                                     </div>
                                 );
+
+                            const latest = points[points.length - 1];
                             const cpuMax = Math.max(
                                 ...points.map(p => p.cpuPercent),
                                 1
                             );
-                            const memMax = Math.max(
+                            const rssMax = Math.max(
+                                ...points.map(p => p.rssMB),
+                                1
+                            );
+                            const heapMax = Math.max(
                                 ...points.map(p => p.heapUsedMB),
                                 1
                             );
+
                             return (
-                                <div style={{ display: 'grid', gap: '6px' }}>
-                                    <div
-                                        style={{
-                                            fontSize: '10px',
-                                            color: 'var(--text-muted)',
-                                        }}
-                                    >
-                                        CPU%
-                                    </div>
-                                    <div
-                                        style={{
-                                            height: '20px',
-                                            background: 'var(--bg-secondary)',
-                                            borderRadius: '2px',
-                                            position: 'relative',
-                                            overflow: 'hidden',
-                                        }}
-                                    >
-                                        <svg
-                                            width="100%"
-                                            height="100%"
-                                            style={{ position: 'absolute' }}
+                                <div style={{ display: 'grid', gap: '8px' }}>
+                                    {/* CPU Usage */}
+                                    <div>
+                                        <div
+                                            style={{
+                                                fontSize: '10px',
+                                                color: 'var(--text-muted)',
+                                                marginBottom: '4px',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                            }}
                                         >
-                                            <polyline
-                                                fill="none"
-                                                stroke="var(--infection-green)"
-                                                strokeWidth="1"
-                                                points={points
-                                                    .map(
-                                                        (p, i) =>
-                                                            `${
-                                                                (i /
-                                                                    (points.length -
-                                                                        1)) *
-                                                                100
-                                                            },${
-                                                                20 -
-                                                                (p.cpuPercent /
-                                                                    Math.max(
-                                                                        cpuMax,
-                                                                        100
-                                                                    )) *
-                                                                    20
-                                                            }`
-                                                    )
-                                                    .join(' ')}
-                                            />
-                                        </svg>
-                                    </div>
-                                    <div
-                                        style={{
-                                            fontSize: '10px',
-                                            color: 'var(--text-muted)',
-                                        }}
-                                    >
-                                        Heap Used (MB)
-                                    </div>
-                                    <div
-                                        style={{
-                                            height: '20px',
-                                            background: 'var(--bg-secondary)',
-                                            borderRadius: '2px',
-                                            position: 'relative',
-                                            overflow: 'hidden',
-                                        }}
-                                    >
-                                        <svg
-                                            width="100%"
-                                            height="100%"
-                                            style={{ position: 'absolute' }}
+                                            <span>CPU%</span>
+                                            <span
+                                                style={{
+                                                    color: 'var(--infection-green)',
+                                                }}
+                                            >
+                                                {latest.cpuPercent.toFixed(1)}%
+                                            </span>
+                                        </div>
+                                        <div
+                                            style={{
+                                                height: '20px',
+                                                background:
+                                                    'var(--bg-secondary)',
+                                                borderRadius: '2px',
+                                                position: 'relative',
+                                                overflow: 'hidden',
+                                            }}
                                         >
-                                            <polyline
-                                                fill="none"
-                                                stroke="var(--infection-blue)"
-                                                strokeWidth="1"
-                                                points={points
-                                                    .map(
-                                                        (p, i) =>
-                                                            `${
-                                                                (i /
-                                                                    (points.length -
-                                                                        1)) *
-                                                                100
-                                                            },${
-                                                                20 -
-                                                                (p.heapUsedMB /
-                                                                    memMax) *
-                                                                    20
-                                                            }`
-                                                    )
-                                                    .join(' ')}
-                                            />
-                                        </svg>
+                                            <svg
+                                                width="100%"
+                                                height="100%"
+                                                style={{ position: 'absolute' }}
+                                            >
+                                                <polyline
+                                                    fill="none"
+                                                    stroke="var(--infection-green)"
+                                                    strokeWidth="1"
+                                                    points={points
+                                                        .map(
+                                                            (p, i) =>
+                                                                `${
+                                                                    (i /
+                                                                        (points.length -
+                                                                            1)) *
+                                                                    100
+                                                                },${
+                                                                    20 -
+                                                                    (p.cpuPercent /
+                                                                        Math.max(
+                                                                            cpuMax,
+                                                                            100
+                                                                        )) *
+                                                                        20
+                                                                }`
+                                                        )
+                                                        .join(' ')}
+                                                />
+                                            </svg>
+                                        </div>
+                                    </div>
+
+                                    {/* RSS Memory */}
+                                    <div>
+                                        <div
+                                            style={{
+                                                fontSize: '10px',
+                                                color: 'var(--text-muted)',
+                                                marginBottom: '4px',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                            }}
+                                        >
+                                            <span>RSS Memory</span>
+                                            <span
+                                                style={{
+                                                    color: 'var(--infection-blue)',
+                                                }}
+                                            >
+                                                {latest.rssMB.toFixed(1)}MB
+                                            </span>
+                                        </div>
+                                        <div
+                                            style={{
+                                                height: '20px',
+                                                background:
+                                                    'var(--bg-secondary)',
+                                                borderRadius: '2px',
+                                                position: 'relative',
+                                                overflow: 'hidden',
+                                            }}
+                                        >
+                                            <svg
+                                                width="100%"
+                                                height="100%"
+                                                style={{ position: 'absolute' }}
+                                            >
+                                                <polyline
+                                                    fill="none"
+                                                    stroke="var(--infection-blue)"
+                                                    strokeWidth="1"
+                                                    points={points
+                                                        .map(
+                                                            (p, i) =>
+                                                                `${
+                                                                    (i /
+                                                                        (points.length -
+                                                                            1)) *
+                                                                    100
+                                                                },${
+                                                                    20 -
+                                                                    (p.rssMB /
+                                                                        rssMax) *
+                                                                        20
+                                                                }`
+                                                        )
+                                                        .join(' ')}
+                                                />
+                                            </svg>
+                                        </div>
+                                    </div>
+
+                                    {/* Heap Memory */}
+                                    <div>
+                                        <div
+                                            style={{
+                                                fontSize: '10px',
+                                                color: 'var(--text-muted)',
+                                                marginBottom: '4px',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                            }}
+                                        >
+                                            <span>Heap Used</span>
+                                            <span
+                                                style={{
+                                                    color: 'var(--infection-yellow)',
+                                                }}
+                                            >
+                                                {latest.heapUsedMB.toFixed(1)}MB
+                                            </span>
+                                        </div>
+                                        <div
+                                            style={{
+                                                height: '20px',
+                                                background:
+                                                    'var(--bg-secondary)',
+                                                borderRadius: '2px',
+                                                position: 'relative',
+                                                overflow: 'hidden',
+                                            }}
+                                        >
+                                            <svg
+                                                width="100%"
+                                                height="100%"
+                                                style={{ position: 'absolute' }}
+                                            >
+                                                <polyline
+                                                    fill="none"
+                                                    stroke="var(--infection-yellow)"
+                                                    strokeWidth="1"
+                                                    points={points
+                                                        .map(
+                                                            (p, i) =>
+                                                                `${
+                                                                    (i /
+                                                                        (points.length -
+                                                                            1)) *
+                                                                    100
+                                                                },${
+                                                                    20 -
+                                                                    (p.heapUsedMB /
+                                                                        heapMax) *
+                                                                        20
+                                                                }`
+                                                        )
+                                                        .join(' ')}
+                                                />
+                                            </svg>
+                                        </div>
+                                    </div>
+
+                                    {/* Additional server metrics */}
+                                    <div
+                                        style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '1fr 1fr',
+                                            gap: '4px',
+                                            fontSize: '9px',
+                                            color: 'var(--text-muted)',
+                                            marginTop: '4px',
+                                        }}
+                                    >
+                                        <div>
+                                            <span>Heap Total:</span>
+                                            <br />
+                                            <span
+                                                style={{
+                                                    color: 'var(--text-primary)',
+                                                }}
+                                            >
+                                                {latest.heapTotalMB.toFixed(1)}
+                                                MB
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span>External:</span>
+                                            <br />
+                                            <span
+                                                style={{
+                                                    color: 'var(--text-primary)',
+                                                }}
+                                            >
+                                                {latest.externalMB.toFixed(1)}MB
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             );

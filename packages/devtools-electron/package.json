@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-electron",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "private": true,
   "description": "CNStra DevTools desktop app (Electron) bundling DevTools server + panel UI",
   "main": "main.js",
@@ -27,7 +27,8 @@
   },
   "devDependencies": {
     "electron": "^30.0.0",
-    "electron-builder": "^24.13.3",
-    "icon-gen": "^3.0.0"
+    "electron-builder": "24.6.4",
+    "icon-gen": "^3.0.0",
+    "7zip-bin": "^5.2.0"
   }
 }

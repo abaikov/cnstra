@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug DevTools Messages</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 5px 0; border-radius: 4px; font-family: monospace; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+        .warning { background: #fff3e0; color: #f57c00; }
+        button { padding: 10px 20px; margin: 5px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #1976d2; }
+        #status { font-weight: bold; margin: 10px 0; }
+        #messages { max-height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Debug DevTools Messages</h1>
+    
+    <div>
+        <button onclick="connect()">Connect to Server</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+
+    <div id="status">Not connected</div>
+    
+    <div id="messages"></div>
+
+    <script>
+        let ws = null;
+        let messageCount = 0;
+
+        function log(message, type = 'log') {
+            const messagesDiv = document.getElementById('messages');
+            const logDiv = document.createElement('div');
+            logDiv.className = `log ${type}`;
+            logDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            messagesDiv.appendChild(logDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('messages').innerHTML = '';
+            messageCount = 0;
+        }
+
+        function connect() {
+            if (ws) {
+                ws.close();
+            }
+
+            const url = 'ws://localhost:8080';
+            log(`Connecting to ${url}...`, 'warning');
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                log('✅ Connected to server', 'success');
+                document.getElementById('status').textContent = 'Connected';
+                
+                // Send devtools-client-connect
+                const connectMsg = { type: 'devtools-client-connect' };
+                ws.send(JSON.stringify(connectMsg));
+                log(`📤 Sent: ${JSON.stringify(connectMsg)}`, 'success');
+                
+                // Request apps list
+                const appsListMsg = { type: 'apps:list' };
+                ws.send(JSON.stringify(appsListMsg));
+                log(`📤 Sent: ${JSON.stringify(appsListMsg)}`, 'success');
+            };
+
+            ws.onmessage = (event) => {
+                messageCount++;
+                try {
+                    const message = JSON.parse(event.data);
+                    log(`📥 Received #${messageCount}: ${message.type}`, 'success');
+                    
+                    if (message.type === 'app:added') {
+                        log(`🆕 APP ADDED: ${message.app?.appName} (${message.app?.appId})`, 'success');
+                    } else if (message.type === 'apps:active') {
+                        log(`📱 APPS ACTIVE: ${message.apps?.length || 0} apps`, 'success');
+                        if (message.apps) {
+                            message.apps.forEach(app => {
+                                log(`  - ${app.appName} (${app.appId})`, 'log');
+                            });
+                        }
+                    } else if (message.type === 'devtools-client-connected') {
+                        log('✅ Server confirmed devtools client connection', 'success');
+                    } else if (message.type === 'apps:list') {
+                        log(`📋 APPS LIST: ${message.apps?.length || 0} apps`, 'success');
+                        if (message.apps) {
+                            message.apps.forEach(app => {
+                                log(`  - ${app.appName} (${app.appId})`, 'log');
+                            });
+                        }
+                    } else {
+                        log(`📨 Other message: ${JSON.stringify(message, null, 2)}`, 'log');
+                    }
+                } catch (error) {
+                    log(`❌ Error parsing message: ${error.message}`, 'error');
+                    log(`Raw data: ${event.data}`, 'error');
+                }
+            };
+
+            ws.onclose = (event) => {
+                log(`❌ Disconnected: ${event.code} - ${event.reason}`, 'error');
+                document.getElementById('status').textContent = 'Disconnected';
+            };
+
+            ws.onerror = (error) => {
+                log(`❌ WebSocket error: ${error}`, 'error');
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        // Auto-connect on page load
+        window.onload = () => {
+            log('Page loaded. Click "Connect to Server" to start debugging.', 'warning');
+        };
+    </script>
+</body>
+</html>

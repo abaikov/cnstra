@@ -6,38 +6,33 @@ import { OIMReactiveIndexManual } from '@oimdb/core';
 export const collateralNeuron = neuron('collateral-neuron', appModelAxon).bind(
     appModelAxon,
     {
-        devtoolsInit: (payload: any) => {
-            const appId = (payload as any).appId as string;
-            for (const c of (payload.collaterals as Array<{
-                collateralName: string;
-                neuronId: string;
-                appId: string;
-                type: string;
-            }>) || []) {
+        devtoolsInit: payload => {
+            for (const c of payload.collaterals || []) {
                 db.collaterals.upsertOne({
-                    collateralName: c.collateralName,
-                    name: c.collateralName,
+                    id: c.id,
+                    name: c.name,
                     appId: c.appId,
                     neuronId: c.neuronId,
-                    type: c.type,
-                } as any);
+                    cnsId: c.cnsId,
+                });
                 (
                     db.collaterals.indexes.appId as OIMReactiveIndexManual<
                         string,
                         string
                     >
-                ).addPks(c.appId, [c.collateralName]);
+                ).addPks(c.appId, [c.id]);
                 (
                     db.collaterals.indexes.neuronId as OIMReactiveIndexManual<
                         string,
                         string
                     >
-                ).addPks(c.neuronId, [c.collateralName]);
+                ).addPks(c.neuronId, [c.id]);
             }
         },
         devtoolsResponseBatch: () => undefined,
         selectAppClicked: () => undefined,
         appsActive: () => undefined,
+        appAdded: () => undefined,
         appDisconnected: () => undefined,
         stimulationBatch: () => undefined,
     }

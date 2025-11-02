@@ -1,6 +1,5 @@
 import { DevToolsAppId } from './DevToolsApp';
 import { NeuronId } from './Neuron';
-import { CollateralName } from './Collateral';
 import type { CNSId } from './CNSInstance';
 
 export type DendriteId = string;
@@ -11,19 +10,21 @@ export type DendriteId = string;
  * Dendrites are input channels that neurons use to receive signals from collaterals.
  * The neuronId field indicates which neuron OWNS this dendrite (i.e., which neuron
  * will receive signals when this collateral is stimulated).
- * The collateralName field indicates which collateral this dendrite listens to.
+ * The name field indicates which collateral this dendrite listens to.
+ *
+ * ID Format: `${neuronId}:d:${collateralName}` (e.g., "myApp:core:userService:d:user-created")
  *
  * To build neural network connections:
  * - Use Collateral.neuronId to find which neuron owns each collateral (signal source)
- * - Use Dendrite.collateralName + Dendrite.neuronId to find which neurons listen to each collateral (signal destination)
+ * - Use Dendrite.name + Dendrite.neuronId to find which neurons listen to each collateral (signal destination)
  * - Connect: Collateral owner → Dendrite listener
  *
  * @see Neuron - the entity that owns this dendrite
  * @see Collateral - the collateral this dendrite listens to
  */
 export interface Dendrite {
-    /** Unique identifier for this dendrite */
-    dendriteId: DendriteId;
+    /** Unique identifier for this dendrite (format: `${neuronId}:d:${name}`) */
+    id: DendriteId;
     /** ID of the neuron that owns this dendrite (will receive signals) */
     neuronId: NeuronId;
     /** Application this dendrite belongs to */
@@ -31,9 +32,5 @@ export interface Dendrite {
     /** CNS instance */
     cnsId: CNSId;
     /** Name of the collateral this dendrite listens to */
-    collateralName: CollateralName;
-    /** Type classification of the dendrite (for visualization: input/processing/output) */
-    type: string;
-    /** Array of collateral names this dendrite listens to (backward compatibility) */
-    collateralNames: CollateralName[];
+    name: string;
 }

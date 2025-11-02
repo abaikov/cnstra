@@ -4,6 +4,7 @@ import { wsAxon } from '../ws/WsAxon';
 import { mainCNS } from '../index';
 import { db } from '../../model';
 import { OIMReactiveIndexManual } from '@oimdb/core';
+import { dbEventQueue } from '../../model';
 
 export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
     wsAxon,
@@ -16,7 +17,11 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                 const msg =
                     typeof raw === 'string' ? JSON.parse(raw) : undefined;
                 if (!msg) return;
-                console.log('🔍 AppIngressNeuron received:', msg.type);
+                console.log('🔍 AppIngressNeuron received:', msg.type, {
+                    timestamp: new Date().toISOString(),
+                    payload:
+                        raw.length > 200 ? raw.substring(0, 200) + '...' : raw,
+                });
                 if (msg.type === 'init') {
                     console.log(
                         '🔗 AppIngressNeuron forwarding init message:',
@@ -29,7 +34,7 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                             dendritesCount: msg.dendrites?.length || 0,
                         }
                     );
-                    return appModelAxon.devtoolsInit.createSignal(msg);
+                    return axon.devtoolsInit.createSignal(msg);
                 }
                 if (msg.type === 'apps:topology') {
                     console.log(
@@ -52,9 +57,7 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                             // Use setTimeout to avoid blocking the current neuron response
                             setTimeout(() => {
                                 mainCNS.stimulate(
-                                    appModelAxon.devtoolsInit.createSignal(
-                                        initMsg
-                                    )
+                                    axon.devtoolsInit.createSignal(initMsg)
                                 );
                             }, 0);
                         }
@@ -65,11 +68,36 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                     msg.type === 'neuron-response-batch' ||
                     msg.type === 'response-batch'
                 ) {
-                    return appModelAxon.devtoolsResponseBatch.createSignal(msg);
+                    const responses = (msg as any).responses || [];
+                    const replayResponses = responses.filter((r: any) => {
+                        const stimId = r.stimulationId || '';
+                        return (
+                            typeof stimId === 'string' &&
+                            stimId.includes('-replay-')
+                        );
+                    });
+
+                    if (replayResponses.length > 0) {
+                        console.log(
+                            '🔁 [AppIngressNeuron] Got REPLAY response-batch:',
+                            {
+                                totalResponses: responses.length,
+                                replayResponsesCount: replayResponses.length,
+                                replayStimIds: replayResponses
+                                    .slice(0, 3)
+                                    .map((r: any) => r.stimulationId),
+                                replayAppIds: replayResponses
+                                    .slice(0, 3)
+                                    .map((r: any) => r.appId),
+                            }
+                        );
+                    }
+
+                    return axon.devtoolsResponseBatch.createSignal(msg);
                 }
                 if (msg.type === 'cns:responses') {
                     // Normalize to devtoolsResponseBatch
-                    return appModelAxon.devtoolsResponseBatch.createSignal({
+                    return axon.devtoolsResponseBatch.createSignal({
                         type: 'response-batch',
                         responses: msg.responses || [],
                     });
@@ -81,15 +109,27 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                             stimulationsCount: msg.stimulations?.length || 0,
                         }
                     );
-                    return appModelAxon.stimulationBatch.createSignal(msg);
+                    return axon.stimulationBatch.createSignal(msg);
                 }
                 if (msg.type === 'apps:active') {
                     console.log('📤 AppIngressNeuron sending appsActive:', {
                         apps: msg.apps || [],
                     });
-                    return appModelAxon.appsActive.createSignal({
+                    return axon.appsActive.createSignal({
                         type: 'apps:active',
                         apps: msg.apps || [],
+                    });
+                }
+                if (msg.type === 'app:added') {
+                    console.log('📤 AppIngressNeuron sending appAdded:', {
+                        app: msg.app,
+                        appId: msg.app?.appId,
+                        appName: msg.app?.appName,
+                        fullMessage: msg,
+                    });
+                    return axon.appAdded.createSignal({
+                        type: 'app:added',
+                        app: msg.app,
                     });
                 }
                 // apps:replays handled in page-local listener (ignore here)
@@ -127,10 +167,55 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                             apps: msg.apps || [],
                         }
                     );
-                    return appModelAxon.appsActive.createSignal({
+                    return axon.appsActive.createSignal({
                         type: 'apps:active',
                         apps: msg.apps || [],
                     });
+                }
+                if (msg.type === 'apps:responses') {
+                    // Process historical responses
+                    const responses = msg.responses || [];
+                    console.log(
+                        '📊 AppIngressNeuron received historical responses:',
+                        responses.length
+                    );
+
+                    for (const response of responses) {
+                        try {
+                            // Store response in OIMDB
+                            db.responses.collection.upsertOne({
+                                responseId: response.responseId,
+                                stimulationId: response.stimulationId,
+                                timestamp: response.timestamp,
+                                appId: response.appId,
+                                inputCollateralName:
+                                    response.inputCollateralName,
+                                outputCollateralName:
+                                    response.outputCollateralName,
+                                hopIndex: response.hopIndex,
+                                contexts: response.contexts,
+                                inputPayload: response.inputPayload,
+                                outputPayload: response.outputPayload,
+                                responsePayload: response.responsePayload,
+                                error: response.error,
+                                duration: response.duration,
+                                cnsId: response.cnsId,
+                            });
+                            db.responses.indexes.appId.addPks(response.appId, [
+                                response.responseId,
+                            ]);
+                            db.responses.indexes.stimulationId.addPks(
+                                response.stimulationId,
+                                [response.responseId]
+                            );
+                        } catch (e) {
+                            console.error(
+                                '❌ Failed to save historical response:',
+                                e
+                            );
+                        }
+                    }
+                    return;
                 }
                 if (msg.type === 'server:metrics') {
                     try {
@@ -143,53 +228,13 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                             cpuPercent: Number(msg.cpuPercent) || 0,
                         });
                         db.serverMetrics.indexes.all.addPks('all', [
-                            String(Number(msg.timestamp) || Date.now()),
+                            `${Number(msg.timestamp) || Date.now()}`,
                         ]);
                     } catch {}
                     return;
                 }
-                if (msg.type === 'cns:neurons') {
-                    const init = {
-                        type: 'init',
-                        appId: msg.appId || 'unknown',
-                        cnsId: msg.cnsId,
-                        appName: 'unknown',
-                        timestamp: Date.now(),
-                        neurons: msg.neurons || [],
-                        collaterals: [],
-                        dendrites: [],
-                    } as any;
-                    return appModelAxon.devtoolsInit.createSignal(init);
-                }
-                if (msg.type === 'cns:collaterals') {
-                    const init = {
-                        type: 'init',
-                        appId: msg.appId || 'unknown',
-                        cnsId: msg.cnsId,
-                        appName: 'unknown',
-                        timestamp: Date.now(),
-                        neurons: [],
-                        collaterals: msg.collaterals || [],
-                        dendrites: [],
-                    } as any;
-                    return appModelAxon.devtoolsInit.createSignal(init);
-                }
-                if (msg.type === 'cns:dendrites') {
-                    const init = {
-                        type: 'init',
-                        appId: msg.appId || 'unknown',
-                        cnsId: msg.cnsId,
-                        appName: 'unknown',
-                        timestamp: Date.now(),
-                        neurons: [],
-                        collaterals: [],
-                        dendrites: msg.dendrites || [],
-                    } as any;
-                    return appModelAxon.devtoolsInit.createSignal(init);
-                }
                 if (msg.type === 'app:disconnected') {
-                    return appModelAxon.appDisconnected.createSignal({
-                        type: 'app:disconnected',
+                    return axon.appDisconnected.createSignal({
                         appId: msg.appId as string,
                     });
                 }

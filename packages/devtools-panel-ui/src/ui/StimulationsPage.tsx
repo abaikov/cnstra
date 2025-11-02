@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useMemo, useRef, useCallback } from 'react';
 import { db } from '../model';
 import { useSelectEntitiesByIndexKey } from '@oimdb/react';
+import { JsonViewer } from './JsonViewer';
+import { ResponseDataViewer } from './ResponseDataViewer';
 
 type Props = {
     appId: string;
@@ -8,37 +10,588 @@ type Props = {
     cnsId?: string | null;
 };
 
+// Component for virtual list item
+interface ResponseListItemProps {
+    index: number;
+    style: React.CSSProperties;
+    data: {
+        list: any[];
+        hasResponses: boolean;
+        stimulationMap: Map<string, any>;
+        traceByStimulation: Map<string, any[]>;
+        wsRef?: React.MutableRefObject<WebSocket | null>;
+        handleReplay: (
+            stimulationId: string,
+            payload?: unknown,
+            contexts?: any
+        ) => Promise<void>;
+    };
+}
+
+const ResponseListItem: React.FC<ResponseListItemProps> = ({
+    index,
+    style,
+    data,
+}) => {
+    const {
+        list,
+        hasResponses,
+        stimulationMap,
+        traceByStimulation,
+        wsRef,
+        handleReplay,
+    } = data;
+    const item = list[index];
+    const isResponse = hasResponses && 'responseId' in item;
+    const isStimulation = !isResponse && 'stimulationId' in item;
+    const itemId = isResponse ? item.responseId : item.stimulationId;
+
+    return (
+        <div
+            style={{
+                paddingRight: '8px',
+                paddingBottom: 'var(--spacing-sm)',
+            }}
+        >
+            <div
+                style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-accent)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--spacing-md)',
+                    position: 'relative',
+                    transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={e => {
+                    e.currentTarget.style.borderColor =
+                        'var(--border-infected)';
+                    e.currentTarget.style.boxShadow =
+                        '0 2px 8px rgba(0,0,0,0.1)';
+                }}
+                onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'var(--border-accent)';
+                    e.currentTarget.style.boxShadow = 'none';
+                }}
+            >
+                {/* Header with type indicator and timestamp */}
+                <div
+                    style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 'var(--spacing-sm)',
+                        paddingBottom: 'var(--spacing-xs)',
+                        borderBottom: '1px solid var(--border-subtle)',
+                    }}
+                >
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--spacing-xs)',
+                        }}
+                    >
+                        <span
+                            style={{
+                                background: isResponse
+                                    ? 'var(--decay-orange)'
+                                    : 'var(--decay-blue)',
+                                color: 'white',
+                                padding: '2px 6px',
+                                borderRadius: 'var(--radius-xs)',
+                                fontSize: 'var(--font-size-2xs)',
+                                fontWeight: 'bold',
+                                textTransform: 'uppercase',
+                            }}
+                        >
+                            {isResponse ? 'Response' : 'Stimulation'}
+                        </span>
+                        <span
+                            style={{
+                                fontSize: 'var(--font-size-xs)',
+                                color: 'var(--text-muted)',
+                                fontFamily: 'var(--font-mono)',
+                            }}
+                        >
+                            #{itemId}
+                        </span>
+                    </div>
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--spacing-xs)',
+                        }}
+                    >
+                        <span
+                            style={{
+                                fontSize: 'var(--font-size-xs)',
+                                color: 'var(--text-muted)',
+                            }}
+                        >
+                            {new Date(item.timestamp).toLocaleTimeString()}
+                        </span>
+                        {(item as any).error && (
+                            <span
+                                style={{
+                                    color: 'var(--text-error)',
+                                    fontSize: 'var(--font-size-xs)',
+                                }}
+                            >
+                                ⚠️ Error
+                            </span>
+                        )}
+                        {/* Show replay indicator if stimulationId contains "-replay-" */}
+                        {typeof item.stimulationId === 'string' &&
+                            item.stimulationId.includes('-replay-') && (
+                                <span
+                                    style={{
+                                        color: 'var(--text-muted)',
+                                        fontSize: 'var(--font-size-xs)',
+                                        fontStyle: 'italic',
+                                    }}
+                                    title="This response was generated from a replay"
+                                >
+                                    🔁 Replay
+                                </span>
+                            )}
+                    </div>
+                </div>
+
+                {/* Content - same as before */}
+                <div
+                    style={{
+                        fontSize: 'var(--font-size-xs)',
+                        color: (item as any).error
+                            ? 'var(--text-error)'
+                            : 'var(--text-primary)',
+                    }}
+                >
+                    {isResponse
+                        ? renderResponse(
+                              item,
+                              stimulationMap,
+                              traceByStimulation,
+                              wsRef,
+                              handleReplay
+                          )
+                        : isStimulation
+                        ? renderStimulation(item, wsRef, handleReplay)
+                        : 'Unknown item type'}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Helper functions to render response and stimulation content
+const renderResponse = (
+    item: any,
+    stimulationMap: Map<string, any>,
+    traceByStimulation: Map<string, any[]>,
+    wsRef?: React.MutableRefObject<WebSocket | null>,
+    handleReplay?: (
+        stimulationId: string,
+        payload?: unknown,
+        contexts?: any
+    ) => Promise<void>
+) => {
+    const stimulation = stimulationMap.get(item.stimulationId);
+    const trace = traceByStimulation.get(item.stimulationId as any) || [];
+
+    return (
+        <>
+            {/* Flow information */}
+            {stimulation && (
+                <div
+                    style={{
+                        marginBottom: 'var(--spacing-sm)',
+                        padding: 'var(--spacing-xs)',
+                        background: 'var(--bg-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-subtle)',
+                    }}
+                >
+                    <div
+                        style={{
+                            fontSize: 'var(--font-size-xs)',
+                            color: 'var(--text-muted)',
+                            marginBottom: '2px',
+                        }}
+                    >
+                        🔄 Signal Flow
+                    </div>
+                    <div
+                        style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--font-size-xs)',
+                            color: 'var(--text-primary)',
+                        }}
+                    >
+                        {stimulation.neuronId} → [
+                        {item.inputCollateralName || stimulation.collateralName}
+                        ]
+                    </div>
+                </div>
+            )}
+
+            {/* Replay indicator badge */}
+            {typeof item.stimulationId === 'string' &&
+                item.stimulationId.includes('-replay-') && (
+                    <div
+                        style={{
+                            marginBottom: 'var(--spacing-xs)',
+                            padding: '4px 8px',
+                            background: 'var(--bg-subtle)',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px dashed var(--border-primary)',
+                            display: 'inline-block',
+                        }}
+                    >
+                        <span
+                            style={{
+                                fontSize: 'var(--font-size-xs)',
+                                color: 'var(--text-muted)',
+                                fontStyle: 'italic',
+                            }}
+                        >
+                            🔁 Replay response
+                        </span>
+                    </div>
+                )}
+
+            {/* Metrics */}
+            <div
+                style={{
+                    display: 'flex',
+                    gap: 'var(--spacing-md)',
+                    marginBottom: 'var(--spacing-sm)',
+                    flexWrap: 'wrap',
+                }}
+            >
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                    }}
+                >
+                    <span style={{ color: 'var(--text-muted)' }}>⏱️</span>
+                    <span style={{ fontSize: 'var(--font-size-xs)' }}>
+                        {item.duration || '-'} ms
+                    </span>
+                </div>
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                    }}
+                >
+                    <span style={{ color: 'var(--text-muted)' }}>🔗</span>
+                    <span style={{ fontSize: 'var(--font-size-xs)' }}>
+                        {item.inputCollateralName || 'N/A'} →{' '}
+                        {item.outputCollateralName || 'N/A'}
+                    </span>
+                </div>
+                {item.error && (
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: 'var(--text-error)',
+                        }}
+                    >
+                        <span>⚠️</span>
+                        <span style={{ fontSize: 'var(--font-size-xs)' }}>
+                            {item.error}
+                        </span>
+                    </div>
+                )}
+            </div>
+            {stimulation && wsRef?.current && handleReplay && (
+                <div style={{ marginTop: 6 }}>
+                    <button
+                        className="btn-infected"
+                        onClick={() => handleReplay(item.stimulationId as any)}
+                        style={{
+                            fontSize: '10px',
+                            padding: '4px 6px',
+                            border: '1px solid var(--border-primary)',
+                        }}
+                    >
+                        ▶️ Replay
+                    </button>
+                </div>
+            )}
+            {trace.length > 0 && (
+                <div
+                    style={{
+                        marginTop: 'var(--spacing-sm)',
+                        padding: 'var(--spacing-xs)',
+                        background: 'var(--bg-panel)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-subtle)',
+                    }}
+                >
+                    <div
+                        style={{
+                            fontSize: 'var(--font-size-xs)',
+                            color: 'var(--text-muted)',
+                            marginBottom: 'var(--spacing-xs)',
+                            fontWeight: 'bold',
+                        }}
+                    >
+                        🔍 Execution Trace ({trace.length} hops)
+                    </div>
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
+                        }}
+                    >
+                        {trace.map((hop, idx) => (
+                            <div
+                                key={(hop.responseId as string) || idx}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 'var(--spacing-xs)',
+                                    padding: '2px 4px',
+                                    borderRadius: 'var(--radius-xs)',
+                                    background:
+                                        idx % 2 === 0
+                                            ? 'var(--bg-subtle)'
+                                            : 'transparent',
+                                    fontSize: 'var(--font-size-xs)',
+                                }}
+                            >
+                                <span
+                                    style={{
+                                        color: 'var(--text-muted)',
+                                        fontFamily: 'var(--font-mono)',
+                                        minWidth: '20px',
+                                    }}
+                                >
+                                    {hop.hopIndex ?? idx + 1}.
+                                </span>
+                                <span
+                                    style={{
+                                        color: 'var(--text-accent)',
+                                        fontFamily: 'var(--font-mono)',
+                                    }}
+                                >
+                                    {hop.neuronId}
+                                </span>
+                                {hop.outputCollateralName && (
+                                    <>
+                                        <span
+                                            style={{
+                                                color: 'var(--text-muted)',
+                                            }}
+                                        >
+                                            →
+                                        </span>
+                                        <span
+                                            style={{
+                                                color: 'var(--decay-orange)',
+                                                fontFamily: 'var(--font-mono)',
+                                            }}
+                                        >
+                                            [{hop.outputCollateralName}]
+                                        </span>
+                                    </>
+                                )}
+                                {typeof hop.duration === 'number' && (
+                                    <span
+                                        style={{
+                                            color: 'var(--text-muted)',
+                                            fontSize: 'var(--font-size-2xs)',
+                                            marginLeft: 'auto',
+                                        }}
+                                    >
+                                        {hop.duration} ms
+                                    </span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {(item.responsePayload ||
+                item.inputPayload ||
+                item.outputPayload ||
+                item.contexts) && (
+                <div
+                    style={{
+                        marginTop: 'var(--spacing-sm)',
+                        padding: 'var(--spacing-xs)',
+                        background: 'var(--bg-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-subtle)',
+                    }}
+                >
+                    <div
+                        style={{
+                            fontSize: 'var(--font-size-xs)',
+                            color: 'var(--text-muted)',
+                            marginBottom: 'var(--spacing-xs)',
+                            fontWeight: 'bold',
+                        }}
+                    >
+                        📦 Data Payloads
+                    </div>
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns:
+                                'repeat(auto-fit, minmax(250px, 1fr))',
+                            gap: 'var(--spacing-sm)',
+                        }}
+                    >
+                        <ResponseDataViewer
+                            data={{
+                                inputPayload: item.inputPayload,
+                                outputPayload: item.outputPayload,
+                                responsePayload: item.responsePayload,
+                                contexts: item.contexts,
+                                snapshot: (item as any).snapshot,
+                            }}
+                            title="Response Data"
+                            defaultExpanded={false}
+                            responseId={item.responseId}
+                        />
+                    </div>
+                </div>
+            )}
+        </>
+    );
+};
+
+const renderStimulation = (
+    item: any,
+    wsRef?: React.MutableRefObject<WebSocket | null>,
+    handleReplay?: (
+        stimulationId: string,
+        payload?: unknown,
+        contexts?: any
+    ) => Promise<void>
+) => {
+    const stim = item;
+    return (
+        <>
+            <div
+                style={{
+                    marginBottom: 'var(--spacing-sm)',
+                    padding: 'var(--spacing-xs)',
+                    background: 'var(--bg-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-subtle)',
+                }}
+            >
+                <div
+                    style={{
+                        fontSize: 'var(--font-size-xs)',
+                        color: 'var(--text-muted)',
+                        marginBottom: '2px',
+                    }}
+                >
+                    🚀 Signal Trigger
+                </div>
+                <div
+                    style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 'var(--font-size-xs)',
+                        color: 'var(--text-primary)',
+                    }}
+                >
+                    {stim.neuronId} → [{stim.collateralName}]
+                </div>
+            </div>
+            <div style={{ marginBottom: 'var(--spacing-sm)' }}>
+                <div
+                    style={{
+                        fontSize: 'var(--font-size-xs)',
+                        color: 'var(--text-muted)',
+                        marginBottom: 'var(--spacing-xs)',
+                        fontWeight: 'bold',
+                    }}
+                >
+                    📦 Signal Payload
+                </div>
+                <JsonViewer
+                    data={stim.payload || 'none'}
+                    title=""
+                    defaultExpanded={false}
+                />
+            </div>
+            {wsRef?.current && handleReplay && (
+                <div
+                    style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        marginTop: 'var(--spacing-sm)',
+                    }}
+                >
+                    <button
+                        className="btn-infected"
+                        onClick={() => handleReplay(stim.stimulationId)}
+                        style={{
+                            fontSize: 'var(--font-size-xs)',
+                            padding: 'var(--spacing-xs) var(--spacing-sm)',
+                            border: '1px solid var(--border-primary)',
+                            borderRadius: 'var(--radius-sm)',
+                            background: 'var(--decay-blue)',
+                            color: 'white',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={e => {
+                            e.currentTarget.style.background =
+                                'var(--decay-orange)';
+                            e.currentTarget.style.transform = 'scale(1.05)';
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.background =
+                                'var(--decay-blue)';
+                            e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                    >
+                        ▶️ Replay Signal
+                    </button>
+                </div>
+            )}
+        </>
+    );
+};
+
 const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
-    const responses = useSelectEntitiesByIndexKey(
+    const listContainerRef = useRef<HTMLDivElement>(null);
+
+    const responsesRaw = useSelectEntitiesByIndexKey(
         db.responses,
         db.responses.indexes.appId,
         appId
     );
 
-    const stimulations = useSelectEntitiesByIndexKey(
+    const stimulationsRaw = useSelectEntitiesByIndexKey(
         db.stimulations,
         db.stimulations.indexes.appId,
         appId
     );
 
-    // Debug logging to understand the data discrepancy
-    React.useEffect(() => {
-        console.log('🔍 STIMULATIONS PAGE DEBUG:', {
-            appId,
-            responsesCount: responses?.length || 0,
-            stimulationsCount: stimulations?.length || 0,
-            totalResponsesInDB: db.responses.getAll().length,
-            totalStimulationsInDB: db.stimulations.getAll().length,
-            responsesAppIds: responses?.slice(0, 5).map(r => r.appId),
-            stimulationsAppIds: stimulations?.slice(0, 5).map(s => s.appId),
-            allResponseAppIds: [
-                ...new Set(db.responses.getAll().map(r => r.appId)),
-            ],
-            allStimulationAppIds: [
-                ...new Set(db.stimulations.getAll().map(s => s.appId)),
-            ],
-        });
-    }, [appId, responses, stimulations]);
+    // Filter out undefined elements
+    const responses = responsesRaw
+        ? responsesRaw.filter((r): r is NonNullable<typeof r> => r != null)
+        : null;
+
+    const stimulations = stimulationsRaw
+        ? stimulationsRaw.filter((s): s is NonNullable<typeof s> => s != null)
+        : null;
+
+    // Removed verbose debug logging
     // Create a map of stimulations for quick lookup
     const stimulationMap = React.useMemo(() => {
         const map = new Map();
@@ -52,11 +605,38 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
     const hasResponses = responses && responses.length > 0;
     const hasStimulations = stimulations && stimulations.length > 0;
 
-    const list = hasResponses
-        ? (responses || []).slice().sort((a, b) => b.timestamp - a.timestamp)
-        : hasStimulations
-        ? (stimulations || []).slice().sort((a, b) => b.timestamp - a.timestamp)
-        : [];
+    // Filter by input collateral name
+    const [collateralNameFilter, setCollateralNameFilter] =
+        React.useState<string>('');
+
+    // Filter and sort: newest first (last responses at top), oldest at bottom
+    const filteredList = React.useMemo(() => {
+        const rawList = hasResponses
+            ? (responses || []).slice()
+            : hasStimulations
+            ? (stimulations || []).slice()
+            : [];
+
+        // Filter by input collateral name (partial match)
+        if (collateralNameFilter.trim()) {
+            const filterLower = collateralNameFilter.toLowerCase().trim();
+            return rawList.filter((item: any) => {
+                const inputCollateral =
+                    item.inputCollateralName || item.collateralName || '';
+                return inputCollateral.toLowerCase().includes(filterLower);
+            });
+        }
+
+        return rawList;
+    }, [
+        hasResponses,
+        hasStimulations,
+        responses,
+        stimulations,
+        collateralNameFilter,
+    ]);
+
+    const list = filteredList.sort((a, b) => b.timestamp - a.timestamp);
 
     const displayType = hasResponses
         ? 'responses'
@@ -123,65 +703,7 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
         return map;
     }, [responses]);
 
-    // Simple collapsible JSON viewer
-    const JsonView: React.FC<{ data: unknown; level?: number }> = ({
-        data,
-        level = 0,
-    }) => {
-        const [open, setOpen] = React.useState(level < 1);
-        if (data === null || typeof data !== 'object') {
-            return (
-                <span style={{ color: 'var(--text-secondary)' }}>
-                    {JSON.stringify(data)}
-                </span>
-            );
-        }
-        const isArray = Array.isArray(data);
-        const keys = isArray
-            ? (data as unknown[]).map((_, i) => i)
-            : Object.keys(data as Record<string, unknown>);
-        return (
-            <div style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                <span
-                    onClick={() => setOpen(!open)}
-                    style={{
-                        cursor: 'pointer',
-                        color: 'var(--infection-blue)',
-                    }}
-                >
-                    {open ? '▼' : '▶'} {isArray ? 'Array' : 'Object'} (
-                    {keys.length})
-                </span>
-                {open && (
-                    <div style={{ paddingLeft: 12 }}>
-                        {keys.map((k: any) => (
-                            <div key={String(k)}>
-                                {!isArray && (
-                                    <span
-                                        style={{ color: 'var(--text-muted)' }}
-                                    >
-                                        {String(k)}:{' '}
-                                    </span>
-                                )}
-                                <JsonView
-                                    data={
-                                        isArray
-                                            ? (data as unknown[])[k as number]
-                                            : (data as Record<string, unknown>)[
-                                                  k as string
-                                              ]
-                                    }
-                                    level={level + 1}
-                                />
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    // Replay UI state
+    // Replay UI state (hidden by default, can be set via defaults)
     const [replayDelay, setReplayDelay] = React.useState<string>('');
     const [replayTimeout, setReplayTimeout] = React.useState<string>('');
     const [replayHops, setReplayHops] = React.useState<string>('');
@@ -332,9 +854,15 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
     return (
         <div
             data-testid="stimulations-page"
-            style={{ padding: 'var(--spacing-xl)' }}
+            style={{
+                padding: 'var(--spacing-xl)',
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                overflow: 'hidden',
+            }}
         >
-            <h3 className="decay-glow" style={{ marginTop: 0 }}>
+            <h3 className="decay-glow" style={{ marginTop: 0, flexShrink: 0 }}>
                 ⚡ Stimulations
                 <span
                     style={{
@@ -349,49 +877,28 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                     errors
                 </span>
             </h3>
-            {/* Replay options controls */}
-            {wsRef?.current && (
-                <div
+            {/* Search filter for input collateral name */}
+            <div
+                style={{
+                    marginBottom: 12,
+                    flexShrink: 0,
+                }}
+            >
+                <input
+                    placeholder="🔍 Search by input collateral name..."
+                    value={collateralNameFilter}
+                    onChange={e => setCollateralNameFilter(e.target.value)}
                     style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(5, 1fr)',
-                        gap: 8,
-                        alignItems: 'center',
-                        marginBottom: 12,
+                        width: '100%',
+                        fontSize: 'var(--font-size-sm)',
+                        padding: '8px 12px',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'var(--bg-card)',
+                        color: 'var(--text-primary)',
                     }}
-                >
-                    <input
-                        placeholder="delay ms"
-                        value={replayDelay}
-                        onChange={e => setReplayDelay(e.target.value)}
-                        style={{ fontSize: '10px', padding: 4 }}
-                    />
-                    <input
-                        placeholder="timeout ms"
-                        value={replayTimeout}
-                        onChange={e => setReplayTimeout(e.target.value)}
-                        style={{ fontSize: '10px', padding: 4 }}
-                    />
-                    <input
-                        placeholder="max hops"
-                        value={replayHops}
-                        onChange={e => setReplayHops(e.target.value)}
-                        style={{ fontSize: '10px', padding: 4 }}
-                    />
-                    <input
-                        placeholder="concurrency"
-                        value={replayConcurrency}
-                        onChange={e => setReplayConcurrency(e.target.value)}
-                        style={{ fontSize: '10px', padding: 4 }}
-                    />
-                    <input
-                        placeholder="allowedNames (comma)"
-                        value={replayAllowed}
-                        onChange={e => setReplayAllowed(e.target.value)}
-                        style={{ fontSize: '10px', padding: 4 }}
-                    />
-                </div>
-            )}
+                />
+            </div>
             {lastReplayResult && (
                 <div
                     style={{
@@ -400,6 +907,7 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                         color: lastReplayResult.ok
                             ? 'var(--text-success)'
                             : 'var(--text-error)',
+                        flexShrink: 0,
                     }}
                 >
                     {lastReplayResult.ok ? '✅' : '❌'} Replay{' '}
@@ -417,6 +925,7 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                         marginBottom: 12,
                         maxHeight: 160,
                         overflowY: 'auto',
+                        flexShrink: 0,
                     }}
                 >
                     <div
@@ -450,6 +959,7 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                 style={{
                     color: 'var(--text-secondary)',
                     marginBottom: 'var(--spacing-md)',
+                    flexShrink: 0,
                 }}
             >
                 Total {displayType}: {list.length}
@@ -499,11 +1009,11 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
             </div>
             <div
                 style={{
-                    display: 'grid',
-                    gap: 'var(--spacing-sm)',
-                    maxHeight: '70vh',
-                    overflowY: 'auto',
-                    paddingRight: '8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: 'hidden',
                 }}
             >
                 {/* Minimal replay list */}
@@ -514,6 +1024,8 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                             border: '1px dashed var(--border-primary)',
                             borderRadius: 'var(--radius-sm)',
                             padding: '8px',
+                            marginBottom: 'var(--spacing-sm)',
+                            flexShrink: 0,
                         }}
                     >
                         <div
@@ -561,347 +1073,87 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                         </div>
                     </div>
                 )}
-                {list.map(item => {
-                    const isResponse = hasResponses && 'responseId' in item;
-                    const isStimulation =
-                        !isResponse && 'stimulationId' in item;
-                    const itemId = isResponse
-                        ? item.responseId
-                        : item.stimulationId;
-
-                    return (
-                        <div
-                            key={itemId}
-                            style={{
-                                background: 'var(--bg-card)',
-                                border: '1px solid var(--border-accent)',
-                                borderRadius: 'var(--radius-sm)',
-                                padding: 'var(--spacing-sm)',
-                            }}
-                        >
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    fontSize: 'var(--font-size-xs)',
-                                }}
-                            >
-                                <span>id: {itemId}</span>
-                                <span>
-                                    {new Date(
-                                        item.timestamp
-                                    ).toLocaleTimeString()}
-                                </span>
-                            </div>
-                            <div
-                                style={{
-                                    fontSize: 'var(--font-size-xs)',
-                                    color: (item as any).error
-                                        ? 'var(--text-error)'
-                                        : 'var(--text-secondary)',
-                                }}
-                            >
-                                {isResponse
-                                    ? (() => {
-                                          const stimulation =
-                                              stimulationMap.get(
-                                                  item.stimulationId
-                                              );
-                                          const trace =
-                                              traceByStimulation.get(
-                                                  item.stimulationId as any
-                                              ) || [];
-                                          return (
-                                              <>
-                                                  {stimulation && (
-                                                      <div
-                                                          style={{
-                                                              marginBottom:
-                                                                  '4px',
-                                                          }}
-                                                      >
-                                                          <strong>Flow:</strong>{' '}
-                                                          {stimulation.neuronId}{' '}
-                                                          → [
-                                                          {item.inputCollateralName ||
-                                                              stimulation.collateralName}
-                                                          ] → {item.neuronId}
-                                                      </div>
-                                                  )}
-                                                  <div>
-                                                      duration:{' '}
-                                                      {item.duration || '-'}ms |
-                                                      error:{' '}
-                                                      {item.error || 'none'}
-                                                  </div>
-                                                  {stimulation &&
-                                                      wsRef?.current && (
-                                                          <div
-                                                              style={{
-                                                                  marginTop: 6,
-                                                              }}
-                                                          >
-                                                              <button
-                                                                  className="btn-infected"
-                                                                  onClick={() =>
-                                                                      handleReplay(
-                                                                          item.stimulationId as any
-                                                                      )
-                                                                  }
-                                                                  style={{
-                                                                      fontSize:
-                                                                          '10px',
-                                                                      padding:
-                                                                          '4px 6px',
-                                                                      border: '1px solid var(--border-primary)',
-                                                                  }}
-                                                              >
-                                                                  ▶️ Replay
-                                                              </button>
-                                                          </div>
-                                                      )}
-                                                  {trace.length > 0 && (
-                                                      <div
-                                                          style={{
-                                                              marginTop: 6,
-                                                          }}
-                                                      >
-                                                          <strong>
-                                                              Trace:
-                                                          </strong>
-                                                          <ol
-                                                              style={{
-                                                                  paddingLeft: 16,
-                                                              }}
-                                                          >
-                                                              {trace.map(
-                                                                  (
-                                                                      hop,
-                                                                      idx
-                                                                  ) => (
-                                                                      <li
-                                                                          key={
-                                                                              (hop.responseId as string) ||
-                                                                              idx
-                                                                          }
-                                                                      >
-                                                                          <span>
-                                                                              {hop.hopIndex ??
-                                                                                  idx}
-                                                                              .{' '}
-                                                                              {
-                                                                                  hop.neuronId
-                                                                              }
-                                                                              {hop.outputCollateralName && (
-                                                                                  <>
-                                                                                      {' '}
-                                                                                      →
-                                                                                      [
-                                                                                      {
-                                                                                          hop.outputCollateralName
-                                                                                      }
-
-                                                                                      ]
-                                                                                  </>
-                                                                              )}
-                                                                          </span>
-                                                                          {typeof hop.duration ===
-                                                                              'number' && (
-                                                                              <span
-                                                                                  style={{
-                                                                                      color: 'var(--text-muted)',
-                                                                                  }}
-                                                                              >
-                                                                                  {' '}
-                                                                                  (
-                                                                                  {
-                                                                                      hop.duration
-                                                                                  }
-                                                                                  ms)
-                                                                              </span>
-                                                                          )}
-                                                                      </li>
-                                                                  )
-                                                              )}
-                                                          </ol>
-                                                      </div>
-                                                  )}
-                                                  {(item.responsePayload ||
-                                                      item.inputPayload ||
-                                                      item.outputPayload ||
-                                                      item.contexts) && (
-                                                      <div
-                                                          style={{
-                                                              marginTop: 6,
-                                                          }}
-                                                      >
-                                                          <div
-                                                              style={{
-                                                                  display:
-                                                                      'flex',
-                                                                  gap: 8,
-                                                                  flexWrap:
-                                                                      'wrap',
-                                                              }}
-                                                          >
-                                                              {Boolean(
-                                                                  item.inputPayload
-                                                              ) && (
-                                                                  <div
-                                                                      style={{
-                                                                          background:
-                                                                              'var(--bg-panel)',
-                                                                          border: '1px solid var(--border-primary)',
-                                                                          borderRadius: 4,
-                                                                          padding: 6,
-                                                                          minWidth: 200,
-                                                                      }}
-                                                                  >
-                                                                      <strong
-                                                                          style={{
-                                                                              color: 'var(--text-primary)',
-                                                                          }}
-                                                                      >
-                                                                          Input
-                                                                          Payload
-                                                                      </strong>
-                                                                      <JsonView
-                                                                          data={
-                                                                              item.inputPayload as any
-                                                                          }
-                                                                      />
-                                                                  </div>
-                                                              )}
-                                                              {Boolean(
-                                                                  item.outputPayload ||
-                                                                      item.responsePayload
-                                                              ) && (
-                                                                  <div
-                                                                      style={{
-                                                                          background:
-                                                                              'var(--bg-panel)',
-                                                                          border: '1px solid var(--border-primary)',
-                                                                          borderRadius: 4,
-                                                                          padding: 6,
-                                                                          minWidth: 200,
-                                                                      }}
-                                                                  >
-                                                                      <strong
-                                                                          style={{
-                                                                              color: 'var(--text-primary)',
-                                                                          }}
-                                                                      >
-                                                                          Output
-                                                                          Payload
-                                                                      </strong>
-                                                                      <JsonView
-                                                                          data={
-                                                                              (item.outputPayload as any) ??
-                                                                              (item.responsePayload as any)
-                                                                          }
-                                                                      />
-                                                                  </div>
-                                                              )}
-                                                              {Boolean(
-                                                                  item.contexts
-                                                              ) && (
-                                                                  <div
-                                                                      style={{
-                                                                          background:
-                                                                              'var(--bg-panel)',
-                                                                          border: '1px solid var(--border-primary)',
-                                                                          borderRadius: 4,
-                                                                          padding: 6,
-                                                                          minWidth: 200,
-                                                                      }}
-                                                                  >
-                                                                      <strong
-                                                                          style={{
-                                                                              color: 'var(--text-primary)',
-                                                                          }}
-                                                                      >
-                                                                          Contexts
-                                                                          Snapshot
-                                                                      </strong>
-                                                                      <JsonView
-                                                                          data={
-                                                                              item.contexts
-                                                                          }
-                                                                      />
-                                                                  </div>
-                                                              )}
-                                                          </div>
-                                                      </div>
-                                                  )}
-                                              </>
-                                          );
-                                      })()
-                                    : isStimulation
-                                    ? // Render stimulation details
-                                      (() => {
-                                          const stim = item as any; // Type assertion for stimulation
-                                          return (
-                                              <>
-                                                  <div
-                                                      style={{
-                                                          marginBottom: '4px',
-                                                      }}
-                                                  >
-                                                      <strong>Signal:</strong>{' '}
-                                                      {stim.neuronId} → [
-                                                      {stim.collateralName}]
-                                                  </div>
-                                                  <div>
-                                                      payload:{' '}
-                                                      {stim.payload
-                                                          ? JSON.stringify(
-                                                                stim.payload
-                                                            ).substring(0, 50) +
-                                                            '...'
-                                                          : 'none'}
-                                                  </div>
-                                                  {wsRef?.current && (
-                                                      <div
-                                                          style={{
-                                                              marginTop: 6,
-                                                          }}
-                                                      >
-                                                          <button
-                                                              className="btn-infected"
-                                                              onClick={() =>
-                                                                  handleReplay(
-                                                                      stim.stimulationId
-                                                                  )
-                                                              }
-                                                              style={{
-                                                                  fontSize:
-                                                                      '10px',
-                                                                  padding:
-                                                                      '4px 6px',
-                                                                  border: '1px solid var(--border-primary)',
-                                                              }}
-                                                          >
-                                                              ▶️ Replay
-                                                          </button>
-                                                      </div>
-                                                  )}
-                                              </>
-                                          );
-                                      })()
-                                    : 'Unknown item type'}
-                            </div>
-                        </div>
-                    );
-                })}
-                {list.length === 0 && (
+                {/* List with pagination for performance */}
+                {list.length > 0 ? (
                     <div
                         style={{
-                            color: 'var(--text-muted)',
-                            fontStyle: 'italic',
+                            flex: 1,
+                            overflowY: 'auto',
+                            minHeight: 0,
+                        }}
+                        ref={listContainerRef}
+                    >
+                        {list.map((item, index) => {
+                            const isResponse =
+                                !!hasResponses && 'responseId' in item;
+                            const isStimulation =
+                                !isResponse && 'stimulationId' in item;
+                            const itemId = isResponse
+                                ? item.responseId
+                                : item.stimulationId;
+
+                            return (
+                                <ResponseListItem
+                                    key={itemId}
+                                    index={index}
+                                    style={{}}
+                                    data={{
+                                        list,
+                                        hasResponses: !!hasResponses,
+                                        stimulationMap,
+                                        traceByStimulation,
+                                        wsRef,
+                                        handleReplay,
+                                    }}
+                                />
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: 'var(--spacing-xl)',
+                            textAlign: 'center',
+                            background: 'var(--bg-subtle)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '2px dashed var(--border-accent)',
+                            margin: 'var(--spacing-md) 0',
                         }}
                     >
-                        No stimulations yet. Interact with your app to generate
-                        activity.
+                        <div
+                            style={{
+                                fontSize: '48px',
+                                marginBottom: 'var(--spacing-sm)',
+                            }}
+                        >
+                            🔌
+                        </div>
+                        <div
+                            style={{
+                                fontSize: 'var(--font-size-sm)',
+                                color: 'var(--text-muted)',
+                                marginBottom: 'var(--spacing-xs)',
+                                fontWeight: 'bold',
+                            }}
+                        >
+                            No Activity Detected
+                        </div>
+                        <div
+                            style={{
+                                fontSize: 'var(--font-size-xs)',
+                                color: 'var(--text-muted)',
+                                maxWidth: '300px',
+                                lineHeight: '1.4',
+                            }}
+                        >
+                            Interact with your application to generate neural
+                            network activity. Stimulations and responses will
+                            appear here in real-time.
+                        </div>
                     </div>
                 )}
             </div>

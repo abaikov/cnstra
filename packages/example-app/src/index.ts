@@ -1,12 +1,23 @@
 import { CNS, collateral, withCtx } from '@cnstra/core';
-import { CNSDevTools } from '@cnstra/devtools';
-import { CNSDevToolsTransportWs } from '@cnstra/devtools-transport-ws';
+// DevTools client is loaded dynamically when enabled
 import { WebSocket as NodeWebSocket, WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 // DevTools server modules will be loaded dynamically to work without workspace install
+const DEVTOOLS_ENABLED =
+    process.env.CNSTRA_DEVTOOLS_ENABLED !== '0' &&
+    process.env.CNSTRA_DEVTOOLS_ENABLED !== 'false';
+const parseFlag = (v?: string) => v !== '0' && v !== 'false';
+const DEVTOOLS_CLIENT_ENABLED =
+    process.env.CNSTRA_DEVTOOLS_CLIENT !== undefined
+        ? parseFlag(process.env.CNSTRA_DEVTOOLS_CLIENT)
+        : DEVTOOLS_ENABLED;
+const DEVTOOLS_SERVER_ENABLED =
+    process.env.CNSTRA_DEVTOOLS_SERVER !== undefined
+        ? parseFlag(process.env.CNSTRA_DEVTOOLS_SERVER)
+        : DEVTOOLS_ENABLED;
 
 // E-commerce domain collaterals
 const userLogin = collateral<{ email: string; password: string }>('user-login');
@@ -689,7 +700,7 @@ const auditNeuron = withCtx()
         }
     );
 
-// Create DevTools server + UI HTTP server first
+// Create DevTools server + UI HTTP server first (only when devtools enabled)
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const panelUIDir = join(__dirname, '..', '..', 'devtools-panel-ui', 'dist');
 
@@ -731,11 +742,15 @@ const httpServer = createServer((req, res) => {
 });
 
 const port = Number(process.env.PORT || 8080);
-httpServer.listen(port, () => {
-    console.log('🚀 DevTools Server started:');
-    console.log(`   📡 WebSocket: ws://localhost:${port}`);
-    console.log(`   🌐 DevTools UI: http://localhost:${port}`);
-});
+if (DEVTOOLS_SERVER_ENABLED) {
+    httpServer.listen(port, () => {
+        console.log('🚀 DevTools Server started:');
+        console.log(`   📡 WebSocket: ws://localhost:${port}`);
+        console.log(`   🌐 DevTools UI: http://localhost:${port}`);
+    });
+} else {
+    console.log('🚫 DevTools Server is disabled (CNSTRA_DEVTOOLS_SERVER=0)');
+}
 
 // Attach WebSocket server and wire DevTools server logic
 const wss = new WebSocketServer({ server: httpServer });
@@ -800,6 +815,7 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
 
 (async () => {
     try {
+        if (!DEVTOOLS_SERVER_ENABLED) throw new Error('DevTools disabled');
         const { CNSDevToolsServer } = await import('@cnstra/devtools-server');
         const { CNSDevToolsServerRepositoryInMemory } = await import(
             '@cnstra/devtools-server-repository-in-memory'
@@ -816,7 +832,9 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
         messageBuffer.length = 0; // Clear buffer
     } catch {
         console.warn(
-            '⚠️ DevTools server packages not found. Only UI static will be served.'
+            DEVTOOLS_SERVER_ENABLED
+                ? '⚠️ DevTools server packages not found. Only UI static will be served.'
+                : 'ℹ️ DevTools disabled. Skipping server core init.'
         );
     }
 })();
@@ -848,37 +866,19 @@ wss.on('connection', ws => {
 // Extract message processing logic
 async function processMessage(ws: any, message: any): Promise<void> {
     if (devToolsServer) {
-        // unwrap transport batch envelope
-        if (message?.type === 'batch' && Array.isArray(message.items)) {
-            console.log(
-                `📦 Batch received with ${message.items.length} items:`,
-                message.items.map((i: any) => i.type)
-            );
-            for (const item of message.items) {
-                // Extract payload if it's wrapped
-                const actualMessage = item.payload || item;
-                const res = await devToolsServer.handleMessage(
-                    ws,
-                    actualMessage
-                );
-                if (res) {
-                    const payload = JSON.stringify(res);
-                    wss.clients.forEach(client => {
-                        // @ts-ignore - runtime check only
-                        if (client.readyState === 1) client.send(payload);
-                    });
-                }
-                // Also forward init topology to DevTools clients so UI can build graph
-                if (actualMessage?.type === 'init') {
-                    const initPayload = JSON.stringify(actualMessage);
-                    wss.clients.forEach(client => {
-                        // @ts-ignore - runtime check only
-                        if (client.readyState === 1) client.send(initPayload);
-                    });
-                }
-            }
-            return;
+        // Simply proxy all messages to the server - no custom batch processing
+        console.log('📤 Example-app proxying message:', message?.type);
+
+        // Handle all messages through the server
+        const res = await devToolsServer.handleMessage(ws, message);
+        if (res) {
+            console.log('📤 Example-app broadcasting response:', res.type);
+            const payload = JSON.stringify(res);
+            wss.clients.forEach(client => {
+                if (client.readyState === 1) client.send(payload);
+            });
         }
+
         if (message?.type === 'devtools-client-connect') {
             // Register this connection as a DevTools client to receive live broadcasts
             try {
@@ -904,22 +904,6 @@ async function processMessage(ws: any, message: any): Promise<void> {
             );
             if (topo) ws.send(JSON.stringify(topo));
             return;
-        }
-        const response = await devToolsServer.handleMessage(ws, message);
-        if (response) {
-            const payload = JSON.stringify(response);
-            wss.clients.forEach(client => {
-                // @ts-ignore - runtime check only
-                if (client.readyState === 1) client.send(payload);
-            });
-        }
-        // Forward init topology as-is to clients
-        if (message?.type === 'init') {
-            const initPayload = JSON.stringify(message);
-            wss.clients.forEach(client => {
-                // @ts-ignore - runtime check only
-                if (client.readyState === 1) client.send(initPayload);
-            });
         }
     } else {
         // Fallback minimal behavior if server packages are not installed
@@ -1000,29 +984,41 @@ const cns = new CNS([
     auditNeuron,
 ]);
 
-// Setup DevTools with WebSocket transport
-const transport = new CNSDevToolsTransportWs({
-    url: 'ws://localhost:8080',
-    webSocketImpl: NodeWebSocket as any,
-});
+// Setup DevTools with WebSocket transport (optional)
+console.log('🔧 DevTools CLIENT enabled:', DEVTOOLS_CLIENT_ENABLED);
+if (DEVTOOLS_CLIENT_ENABLED) {
+    const { CNSDevTools } = await import('@cnstra/devtools');
+    const { CNSDevToolsTransportWs } = await import(
+        '@cnstra/devtools-transport-ws'
+    );
+    const wsUrl =
+        process.env.CNSTRA_DEVTOOLS_WS_URL || `ws://localhost:${port}`;
+    const transport = new CNSDevToolsTransportWs({
+        url: wsUrl,
+        webSocketImpl: NodeWebSocket as any,
+    });
 
-const devtools = new CNSDevTools('ecommerce-app', transport, {
-    cnsId: 'ecommerce-app:core',
-    devToolsInstanceName: 'E-commerce Demo App',
-    takeDataSnapshot: () => ({
-        timestamp: Date.now(),
-        activeUsers: Array.from(users.values()).filter(u => u.isAuthenticated)
-            .length,
-        totalProducts: products.size,
-        totalOrders: orders.size,
-    }),
-});
-devtools.registerCNS(cns);
+    const devtools = new CNSDevTools('ecommerce-app', transport as any, {
+        cnsId: 'ecommerce-app:core',
+        devToolsInstanceName: 'E-commerce Demo App',
+        takeDataSnapshot: () => ({
+            timestamp: Date.now(),
+            activeUsers: Array.from(users.values()).filter(
+                u => u.isAuthenticated
+            ).length,
+            totalProducts: products.size,
+            totalOrders: orders.size,
+        }),
+    });
+    devtools.registerCNS(cns, 'root');
 
-console.log('🚀 E-commerce CNS app started with DevTools enabled');
-console.log('   📡 Connecting to DevTools server: ws://localhost:8080');
-console.log('   🎭 Complex demo scenarios will run every 8 seconds');
-console.log('   ⏳ Waiting for DevTools connection...');
+    console.log('🚀 E-commerce CNS app started with DevTools CLIENT enabled');
+    console.log(`   📡 Connecting to DevTools server: ${wsUrl}`);
+    console.log('   🎭 Complex demo scenarios will run every 8 seconds');
+    console.log('   ⏳ Waiting for DevTools connection...');
+} else {
+    console.log('🚀 E-commerce CNS app started WITHOUT DevTools CLIENT');
+}
 
 // Real Developer Debugging Experience Guide
 console.log(`
@@ -1071,7 +1067,8 @@ Step 5: Verify UI components query correct data tables
 
 // Demo realistic e-commerce flows
 async function runDemo() {
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    console.log('🎭 Demo starting in 5 seconds...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     console.log('\n🎭 Running e-commerce demo scenarios...');
 
@@ -1213,7 +1210,7 @@ async function runDemo() {
     );
 
     // Schedule next demo run with slight randomization
-    const nextRunDelay = 8000 + Math.random() * 4000; // 8-12 seconds
+    const nextRunDelay = 30000 + Math.random() * 10000; // 30-40 seconds (reduced frequency)
     setTimeout(runDemo, nextRunDelay);
 }
 

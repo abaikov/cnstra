@@ -12,7 +12,7 @@ export interface InitMessage {
     /** Optional legacy field kept for compatibility; not used by new clients */
     devToolsInstanceId?: DevToolsAppId;
     appName: string;
-    version?: string;
+    version: string;
     timestamp: number;
     neurons: Neuron[];
     collaterals: Collateral[];

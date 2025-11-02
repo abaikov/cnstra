@@ -32,15 +32,27 @@ async function startExampleServer() {
     child = spawn('node', ['dist/index.js'], {
         cwd: exampleDir,
         env: { ...process.env, PORT: '8080' },
-        stdio: 'inherit',
+        stdio: 'pipe',
     });
+
+    // Log server output
+    child.stdout?.on('data', data => {
+        console.log('Example app:', data.toString());
+    });
+    child.stderr?.on('data', data => {
+        console.error('Example app error:', data.toString());
+    });
+
     // Wait for server to be ready
     const startedAt = Date.now();
     const timeoutMs = 30000;
     while (Date.now() - startedAt < timeoutMs) {
         try {
             const res = await fetch('http://localhost:8080');
-            if (res.ok) return;
+            if (res.ok) {
+                console.log('✅ Example app server is ready');
+                return;
+            }
         } catch {}
         await new Promise(r => setTimeout(r, 500));
     }
@@ -48,7 +60,10 @@ async function startExampleServer() {
 }
 
 export default async function globalSetup(_config: FullConfig) {
-    // Assume prebuilt artifacts exist (dist folders) and just start the example server
+    // Ensure artifacts are built before starting server (CI safety)
+    try {
+        await buildWorkspace();
+    } catch {}
     await startExampleServer();
 }
 

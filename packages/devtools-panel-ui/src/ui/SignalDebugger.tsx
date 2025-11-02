@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { db } from '../model';
 import { useSelectEntitiesByIndexKey } from '@oimdb/react';
+import { JsonViewer } from './JsonViewer';
+import { safeStringify } from '../utils/safeJson';
 
 interface SignalInjectionPayload {
     collateralName: string;
@@ -46,15 +48,17 @@ export const SignalDebugger: React.FC<Props> = ({
     );
 
     // Get recent stimulations for inspection
-    const recentStimulations =
-        useSelectEntitiesByIndexKey(
-            db.stimulations,
-            db.stimulations.indexes.appId,
-            selectedAppId || 'dummy-id'
-        )
-            ?.slice()
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, 10) || [];
+    const recentStimulationsRaw = useSelectEntitiesByIndexKey(
+        db.stimulations,
+        db.stimulations.indexes.appId,
+        selectedAppId || 'dummy-id'
+    );
+
+    const recentStimulations = (recentStimulationsRaw || [])
+        .filter((s): s is NonNullable<typeof s> => s != null)
+        .slice()
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 10);
 
     const handleInjectSignal = () => {
         if (!wsRef.current || !selectedAppId || !injectionData.collateralName) {
@@ -134,8 +138,8 @@ export const SignalDebugger: React.FC<Props> = ({
     const handleCopyStimulation = (stimulation: any) => {
         setInjectionData({
             collateralName: stimulation.collateralName,
-            payload: JSON.stringify(stimulation.payload || {}, null, 2),
-            contexts: JSON.stringify(stimulation.contexts || {}, null, 2),
+            payload: safeStringify(stimulation.payload || {}, 2),
+            contexts: safeStringify(stimulation.contexts || {}, 2),
             options: '{}',
         });
     };
@@ -249,11 +253,8 @@ export const SignalDebugger: React.FC<Props> = ({
                             >
                                 <option value="">Select collateral...</option>
                                 {allCollaterals?.map(col => (
-                                    <option
-                                        key={col.collateralName}
-                                        value={col.collateralName}
-                                    >
-                                        {col.collateralName} ({col.type})
+                                    <option key={col.name} value={col.name}>
+                                        {col.name}
                                     </option>
                                 ))}
                             </select>
@@ -473,12 +474,13 @@ export const SignalDebugger: React.FC<Props> = ({
                                             {new Date(
                                                 stim.timestamp
                                             ).toLocaleTimeString()}{' '}
-                                            | from: {stim.neuronId} | payload:{' '}
-                                            {JSON.stringify(
-                                                stim.payload
-                                            ).substring(0, 30)}
-                                            ...
+                                            | from: {stim.neuronId}
                                         </div>
+                                        <JsonViewer
+                                            data={stim.payload || {}}
+                                            title="Payload"
+                                            defaultExpanded={false}
+                                        />
                                     </div>
                                 ))
                             ) : (

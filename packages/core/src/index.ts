@@ -8,10 +8,7 @@ export type { TCNSNeuron } from './types/TCNSNeuron';
 export type { TCNSAxon } from './types/TCNSAxon';
 export type { TCNSDendrite } from './types/TCNSDendrite';
 export type { TCNSSignal } from './types/TCNSSignal';
-export type {
-    TCNSSerializedSignal,
-    TCNSSerializedQueueItem,
-} from './types/TCNSSerializedSignal';
+export type { TCNSSerializedQueueItem } from './types/TCNSSerializedSignal';
 export type { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
 
 // Factory

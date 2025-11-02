@@ -463,6 +463,8 @@ export class CNSStimulation<
                     this.markNeuronActive(ownerNeuron.name);
                 }
             }
+            // For initial stimulation: signals are outputs (to find subscribers)
+            // In onResponse, inputSignal will be undefined for initial stimulation
             this.processResponseOrResponses(undefined, signalOrSignals);
             return;
         }
@@ -475,6 +477,8 @@ export class CNSStimulation<
             this.markNeuronActive(ownerNeuron.name);
         }
 
+        // For initial stimulation: signal is the output (to find subscribers)
+        // In onResponse, inputSignal will be undefined for initial stimulation
         this.processResponse(undefined, signalOrSignals);
         this.tryResolveCompleted();
     }

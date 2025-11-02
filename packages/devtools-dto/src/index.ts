@@ -16,3 +16,6 @@ export * from './messages/StimulationBatchMessage';
 
 // Batch types
 export * from './batch/ResponseBatch';
+
+// Utilities
+export * from './utils/IdUtils';

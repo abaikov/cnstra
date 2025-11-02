@@ -1,4 +1,5 @@
 // Test setup for DevTools Panel UI
+import '@testing-library/jest-dom';
 
 // Mock PixiJS to avoid WebGL issues in tests
 jest.mock('pixi.js', () => ({

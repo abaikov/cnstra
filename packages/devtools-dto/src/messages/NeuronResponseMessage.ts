@@ -1,22 +1,13 @@
-import { DevToolsAppId } from '../entities/DevToolsApp';
-import { NeuronId } from '../entities/Neuron';
-import { StimulationId } from '../entities/Stimulation';
+import { StimulationResponse } from '../entities/StimulationResponse';
 
-export interface NeuronResponseMessage {
-    stimulationId: StimulationId;
-    neuronId: NeuronId;
-    appId: DevToolsAppId;
-    collateralName: string;
-    /** Optional: name of input collateral that triggered this response */
-    inputCollateralName?: string;
-    /** Optional: name of output collateral produced by this response */
-    outputCollateralName?: string;
-    timestamp: number;
-    payload?: unknown;
-    contexts?: Record<string, unknown>;
-    responsePayload?: unknown;
-    error?: string;
-    duration?: number;
-    /** Optional hop index in the stimulation path (0-based). Not always available. */
-    hopIndex?: number;
-}
+/**
+ * Transport message for neuron responses.
+ *
+ * This is a direct alias of StimulationResponse - no additional fields needed.
+ * Kept as separate type for backwards compatibility and semantic clarity in transport layer.
+ *
+ * TODO: Consider deprecating this in favor of using StimulationResponse directly.
+ *
+ * @see StimulationResponse - the actual data model
+ */
+export type NeuronResponseMessage = StimulationResponse;
