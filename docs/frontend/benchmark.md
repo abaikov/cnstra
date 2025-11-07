@@ -166,13 +166,6 @@ In practice, higher boilerplate buys structure (Redux) or expressive reactive gr
 - Metrics calculated using median/mean aggregation with IQR outlier detection
 - All tests run on the same environment for consistency
 
-## Recommendations
-
-- **For Maximum Performance**: Choose **Cnstra + OIMDB** - best execution times across all scenarios
-- **For Simplicity**: Choose **Zustand** - lowest LOC with good performance
-- **For Enterprise/Team Projects**: **Redux Toolkit** - familiar patterns, good documentation
-- **For Reactive Programming Style**: **Effector** - good for complex reactive workflows
-
 ---
 
 ## Why Cnstra + OIMDB Wins: The Performance Advantage
