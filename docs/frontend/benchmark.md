@@ -11,7 +11,7 @@ keywords: [React state management benchmark, performance comparison, Redux Toolk
 
 We conducted a comprehensive performance benchmark comparing **Cnstra + OIMDB** against leading React state management libraries: **Redux Toolkit**, **Zustand**, and **Effector**. The benchmark evaluates execution time, memory usage, and code complexity across three critical scenarios.
 
-**🔗 [View Interactive Benchmark Results](https://abaikov.github.io/cnstra-oimdb-bench/)**
+**🔗 [View Interactive Benchmark Results](https://abaikov.github.io/cnstra-oimdb-bench/)** | **📦 [Benchmark Source Code](https://github.com/abaikov/cnstra-oimdb-bench)**
 
 ## Tested Libraries
 
@@ -166,6 +166,8 @@ In practice, higher boilerplate buys structure (Redux) or expressive reactive gr
 - Metrics calculated using median/mean aggregation with IQR outlier detection
 - All tests run on the same environment for consistency
 
+**Note**: This is a browser-based benchmark. While specific hardware configurations may vary, the observed performance differences (often measured in multiples) are substantial enough to draw meaningful conclusions. The relative performance characteristics remain consistent regardless of the testing environment.
+
 ---
 
 ## Why Cnstra + OIMDB Wins: The Performance Advantage
@@ -209,5 +211,5 @@ The benchmark results speak for themselves: **Cnstra + OIMDB is the optimal choi
 
 The architectural advantages—incremental indexing, batched transactions, and fine-grained reactivity—translate directly to measurable performance gains. And with code complexity that's second only to Zustand, you get these benefits without sacrificing developer experience.
 
-**Ready to experience the performance difference?** [View the interactive benchmark](https://abaikov.github.io/cnstra-oimdb-bench/) and see for yourself why Cnstra + OIMDB is the future of React state management.
+**Ready to experience the performance difference?** [View the interactive benchmark](https://abaikov.github.io/cnstra-oimdb-bench/) and see for yourself why Cnstra + OIMDB is the future of React state management. [Explore the benchmark source code](https://github.com/abaikov/cnstra-oimdb-bench) to see how each library was implemented.
 
