@@ -143,7 +143,7 @@ For all adapters we implemented id-based indexing to minimize re-renders:
 ### Cnstra + OIMDB Architecture
 
 - **Core model**: Normalized collections keyed by id with reactive secondary indexes (OIMDB).
-- **Data structures**: Primary storage is Map-like PK→entity; indexes are Map<Key, Set<PK>> for O(1) membership and fast fanout; PK APIs expose Set semantics (e.g., getPksByKey).
+- **Data structures**: Primary storage is Map-like PK→entity; indexes are `Map<Key, Set<PK>>` for O(1) membership and fast fanout; PK APIs expose Set semantics (e.g., getPksByKey).
 - **Subscriptions**: Components subscribe to item-level data and index-driven queries; dependency tracking keeps subscriptions precise.
 - **Updates**: Batched via an event queue; writes upsert/remove PKs and incrementally update Map/Set indexes; `flush()` applies diffs atomically.
 - **Rendering**: Fine-grained invalidation means only affected rows/items re-render; index lookups avoid array scans on lists and tags.
@@ -162,7 +162,7 @@ For all adapters we implemented id-based indexing to minimize re-renders:
 
 **Effector**:
 - Core model: Event/store graph; base stores hold normalized Records, derived stores recompute indexes via `combine`.
-- Data structures: Entity maps are plain objects; grouping helpers produce Map<Key, Value[]> for intermediate rebuilds.
+- Data structures: Entity maps are plain objects; grouping helpers produce `Map<Key, Value[]>` for intermediate rebuilds.
 - Subscriptions: Fine-grained at store level; derived graph fanout depends on dependency breadth.
 
 ## Why the Results Differ
