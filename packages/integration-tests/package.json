@@ -9,7 +9,7 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@cnstra/core": "workspace:*",
+    "@cnstra/core": "file:../core",
     "bullmq": "^5.0.0",
     "ioredis": "^5.3.2"
   },
