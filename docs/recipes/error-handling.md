@@ -11,10 +11,10 @@ Handle errors gracefully using `onResponse` callbacks (sync or async) and contex
 
 ## Error delivery
 
-Errors are delivered immediately via `onResponse` and also cause `stimulate(...)` to reject if any response listener (local or global) throws or rejects:
+Errors are delivered immediately via `onResponse` and also cause `stimulation.waitUntilComplete()` to reject if any response listener (local or global) throws or rejects:
 
 ```ts
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   onResponse: async (response) => {
     if (response.error) {
       await errorsRepo.store({
@@ -29,9 +29,10 @@ await cns.stimulate(signal, {
     }
   }
 });
+await stimulation.waitUntilComplete();
 ```
 
-If you do not await `stimulate(...)`, the run still proceeds, but rejections from listeners won’t be observed by the caller.
+If you do not await `stimulation.waitUntilComplete()`, the run still proceeds, but rejections from listeners won't be observed by the caller.
 
 ## Error recovery with context
 
@@ -40,17 +41,19 @@ Save context for retry on failure:
 ```ts
 let savedContext: ICNSStimulationContextStore | undefined;
 
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   onResponse: (response) => {
     if (response.error) {
-      savedContext = response.contextStore; // save for retry
+      savedContext = response.stimulation.getContext(); // save for retry
     }
   }
 });
+await stimulation.waitUntilComplete();
 
 // Retry with preserved context
 if (savedContext) {
-  await cns.stimulate(retrySignal, { ctx: savedContext });
+  const retryStimulation = cns.stimulate(retrySignal, { ctx: savedContext });
+  await retryStimulation.waitUntilComplete();
 }
 ```
 
@@ -98,7 +101,7 @@ const taskRunner = withCtx<{ attempt: number }>()
 
 ### Global listeners
 
-Global listeners registered via `addResponseListener` run for every stimulation alongside the local `onResponse`. They also can be async; failures in any listener reject the `stimulate(...)` Promise.
+Global listeners registered via `addResponseListener` run for every stimulation alongside the local `onResponse`. They also can be async; failures in any listener reject the `stimulation.waitUntilComplete()` Promise.
 
 ## Best practices
 

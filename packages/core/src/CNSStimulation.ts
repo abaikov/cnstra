@@ -1,14 +1,16 @@
 import { CNSStimulationContextStore } from './CNSStimulationContextStore';
-import { ICNS } from './interfaces/ICNS';
 import { ICNSStimulationContextStore } from './interfaces/ICNSStimulationContextStore';
 import { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
 import { TCNSNeuron } from './types/TCNSNeuron';
 import { TCNSDendrite } from './types/TCNSDendrite';
 import { TCNSSubscriber } from './types/TCNSSubscriber';
-import { CNSFunctionalQueue } from './CNSFunctionalQueue';
+import { CNSNeuronActivationPump } from './CNSNeuronActivationPump';
 import { CNSInstanceNeuronQueue } from './CNSInstanceNeuronQueue';
 import { TCNSSignal } from './types/TCNSSignal';
-import { TCNSSerializedQueueItem } from './types/TCNSSerializedSignal';
+import { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
+import { CNS } from './CNS';
+import { ICNS } from './interfaces/ICNS';
+import { TCNSNeuronActivationTaskFailure } from './types/TCNSNeuronActivationTaskFailure';
 
 export class CNSStimulation<
     TCollateralName extends string,
@@ -27,15 +29,19 @@ export class CNSStimulation<
     TOutputPayload
 > {
     private readonly ctx: ICNSStimulationContextStore;
-    private readonly queue: CNSFunctionalQueue<
+    private readonly queue: CNSNeuronActivationPump<
         TCollateralName,
-        TNeuronName,
-        TNeuron,
-        TDendrite
+        TNeuronName
     >;
     private readonly nueronVisitMap?: Map<TNeuronName, number>;
     private readonly instanceNeuronQueue: CNSInstanceNeuronQueue<TNeuron>;
     private scheduledCount = 0;
+    private readonly pendingTasks = new Set<
+        TCNSNeuronActivationTask<TCollateralName, TNeuronName>
+    >();
+    private readonly failedTasks: Array<
+        TCNSNeuronActivationTaskFailure<TCollateralName, TNeuronName>
+    > = [];
     private completed = new Promise<void>((resolve, reject) => {
         this.resolveCompleted = resolve;
         this.rejectCompleted = reject;
@@ -43,6 +49,7 @@ export class CNSStimulation<
     private resolveCompleted!: () => void;
     private rejectCompleted!: (e: any) => void;
     private isCompleted = false;
+    private onResponseError: Error | undefined;
 
     /**
      * Track active SCCs: SCC index -> count of active neurons in that SCC
@@ -52,21 +59,27 @@ export class CNSStimulation<
     public readonly id: string;
 
     constructor(
-        private readonly cns: ICNS<TNeuron, TDendrite>,
+        private readonly cns: CNS<
+            TCollateralName,
+            TNeuronName,
+            TNeuron,
+            TDendrite
+        >,
         instanceNeuronQueue: CNSInstanceNeuronQueue<TNeuron>,
         public readonly options?: TCNSStimulationOptions<
             TCollateralName,
             TInputPayload,
-            TOutputPayload
+            TOutputPayload,
+            TNeuronName
         >
     ) {
-        this.ctx =
-            options?.ctx ??
-            options?.createContextStore?.() ??
-            new CNSStimulationContextStore();
+        this.ctx = new CNSStimulationContextStore(
+            new Map(Object.entries(options?.contextValues ?? {}))
+        );
         this.id = options?.stimulationId || Math.random().toString(36).slice(2);
-        this.queue = new CNSFunctionalQueue(
-            item => this.processQueueItem(item),
+        this.queue = new CNSNeuronActivationPump(
+            neuronActivationTask =>
+                this.executeActivationTask(neuronActivationTask),
             options?.concurrency,
             options?.abortSignal
         );
@@ -76,28 +89,110 @@ export class CNSStimulation<
         if (this.options?.maxNeuronHops) {
             this.nueronVisitMap = new Map();
         }
-
-        // If aborted, re-check completion condition (to allow graceful shutdown)
-        if (this.options?.abortSignal) {
-            this.options.abortSignal.addEventListener('abort', () => {
-                this.tryResolveCompleted();
-            });
-        }
     }
+
     private tryResolveCompleted(): void {
         if (this.isCompleted) return;
         const noActive = this.queue.getActiveOperationsCount() === 0;
         const noPending = this.queue.length + this.scheduledCount === 0;
         const aborted = !!this.options?.abortSignal?.aborted;
 
-        if ((noPending && noActive) || (aborted && noActive)) {
+        if ((noPending && noActive) || (aborted && noActive && !noPending)) {
+            // When completing due to abort, mark all remaining queued tasks as aborted
+            if (aborted) {
+                const queuedTasks = this.queue.getQueuedTasks();
+
+                for (const task of [...queuedTasks]) {
+                    const alreadyTracked = this.failedTasks.some(
+                        ft =>
+                            ft.task.neuronId === task.neuronId &&
+                            ft.task.dendriteCollateralName ===
+                                task.dendriteCollateralName &&
+                            ft.task.stimulationId === task.stimulationId
+                    );
+                    if (!alreadyTracked) {
+                        this.failedTasks.push({
+                            task,
+                            error: new Error(
+                                'Task aborted - not started due to abort signal'
+                            ),
+                            aborted: true,
+                        });
+                    }
+                }
+
+                this.isCompleted = true;
+                this.rejectCompleted(new Error('Stimulation aborted'));
+                return;
+            }
+
             this.isCompleted = true;
-            this.resolveCompleted();
+            // If there are failed tasks or onResponse error, reject the promise
+            // Otherwise resolve it
+            if (this.failedTasks.length > 0 || this.onResponseError) {
+                const error =
+                    this.onResponseError ||
+                    new Error(
+                        `Stimulation completed with ${this.failedTasks.length} failed task(s)`
+                    );
+                this.rejectCompleted(error);
+            } else {
+                this.resolveCompleted();
+            }
         }
     }
 
     public waitUntilComplete(): Promise<void> {
         return this.completed;
+    }
+
+    /**
+     * Returns all current activation tasks: queued, active, and pending (scheduled but not yet enqueued)
+     */
+    public getAllActivationTasks(): TCNSNeuronActivationTask<
+        TCollateralName,
+        TNeuronName
+    >[] {
+        const queuedTasks = this.queue.getQueuedTasks();
+        const activeTasks = this.queue.getActiveTasks();
+        const pendingTasks = Array.from(this.pendingTasks);
+        return [...queuedTasks, ...activeTasks, ...pendingTasks];
+    }
+
+    /**
+     * Returns all tasks that failed or were aborted
+     */
+    public getFailedTasks(): Array<
+        TCNSNeuronActivationTaskFailure<TCollateralName, TNeuronName>
+    > {
+        return [...this.failedTasks];
+    }
+
+    /**
+     * Get the context store for this stimulation
+     */
+    public getContext(): ICNSStimulationContextStore {
+        return this.ctx;
+    }
+
+    /**
+     * Enqueue activation tasks directly into the stimulation queue
+     */
+    public enqueueTasks(
+        tasks: TCNSNeuronActivationTask<TCollateralName, TNeuronName>[]
+    ): void {
+        for (const task of tasks) {
+            // Ensure task has correct stimulationId
+            const taskWithId: TCNSNeuronActivationTask<
+                TCollateralName,
+                TNeuronName
+            > = {
+                ...task,
+                stimulationId: this.id,
+            };
+            this.queue.enqueue(taskWithId);
+        }
+        this.tryResolveCompleted();
     }
 
     protected get concurrencyEnabled(): boolean {
@@ -133,7 +228,7 @@ export class CNSStimulation<
      * Increment the active count for the SCC containing this neuron
      */
     private incrementSccCount(neuronId: TNeuronName): void {
-        const sccIndex = this.cns.getSccIndexByNeuronName(neuronId);
+        const sccIndex = this.cns.network.getSccIndexByNeuronName(neuronId);
         if (sccIndex === undefined) return;
 
         const currentCount = this.activeSccCounts.get(sccIndex) || 0;
@@ -144,7 +239,7 @@ export class CNSStimulation<
      * Decrement the active count for the SCC containing this neuron
      */
     private decrementSccCount(neuronId: TNeuronName): void {
-        const sccIndex = this.cns.getSccIndexByNeuronName(neuronId);
+        const sccIndex = this.cns.network.getSccIndexByNeuronName(neuronId);
         if (sccIndex === undefined) return;
 
         const currentCount = this.activeSccCounts.get(sccIndex) || 0;
@@ -164,7 +259,7 @@ export class CNSStimulation<
      */
     protected canNeuronBeGuaranteedDone(neuronId: TNeuronName): boolean {
         if (!this.autoCleanupContextsEnabled) return false;
-        return this.cns.canNeuronBeGuaranteedDone(
+        return this.cns.network.canNeuronBeGuaranteedDone(
             neuronId,
             this.activeSccCounts
         );
@@ -201,43 +296,49 @@ export class CNSStimulation<
             }
         }
 
-        const serialized: TCNSSerializedQueueItem<
+        const neuronActivationTask: TCNSNeuronActivationTask<
             TCollateralName,
             TNeuronName
         > = {
+            stimulationId: this.id,
             neuronId: subscriber.neuron.name,
-            dendriteCollateralName: subscriber.dendrite.collateral
-                .name as TCollateralName,
-            input: inputSignal
-                ? {
-                      collateralName:
-                          inputSignal.collateralName as TCollateralName,
-                      payload: inputSignal.payload,
-                  }
-                : undefined,
+            dendriteCollateralName: subscriber.dendrite.collateral.name,
+            input: inputSignal,
         };
-
-        return serialized;
+        return neuronActivationTask;
     }
 
-    private processQueueItem(
-        item: TCNSSerializedQueueItem<TCollateralName, TNeuronName>
+    private executeActivationTask(
+        neuronActivationTask: TCNSNeuronActivationTask<
+            TCollateralName,
+            TNeuronName
+        >
     ) {
-        const subscribers = this.cns.getSubscribers(
-            item.dendriteCollateralName as any
+        const subscribers = this.cns.network.getSubscribers(
+            neuronActivationTask.dendriteCollateralName
         );
         const subscriber = subscribers.find(
-            s => (s.neuron.name as any) === (item.neuronId as any)
+            s => s.neuron.name === neuronActivationTask.neuronId
         );
-        if (!subscriber) return () => {};
+        if (!subscriber) {
+            // Task failed: subscriber not found
+            this.failedTasks.push({
+                task: neuronActivationTask,
+                error: new Error(
+                    `Subscriber not found for neuron "${neuronActivationTask.neuronId}" and collateral "${neuronActivationTask.dendriteCollateralName}"`
+                ),
+                aborted: false,
+            });
+            return () => {};
+        }
 
         const neuron = subscriber.neuron;
         const dendrite = subscriber.dendrite as TDendrite;
 
-        const inputSignal = item.input
+        const inputSignal = neuronActivationTask.input
             ? ({
-                  collateralName: item.input.collateralName as any,
-                  payload: item.input.payload,
+                  collateralName: neuronActivationTask.input.collateralName,
+                  payload: neuronActivationTask.input.payload,
               } as TCNSSignal<TCollateralName, any>)
             : undefined;
 
@@ -245,18 +346,44 @@ export class CNSStimulation<
             // Mark neuron as active only when we actually start processing (after gate allows it)
             this.markNeuronActive(neuron.name);
 
-            const response = dendrite.response(
-                inputSignal?.payload,
-                neuron.axon,
-                {
-                    get: () => this.ctx.get(neuron.name),
-                    set: (value: any) => this.ctx.set(neuron.name, value),
-                    delete: () => this.ctx.delete(neuron.name),
-                    abortSignal: this.options?.abortSignal,
-                    cns: this.cns,
-                    stimulationId: this.id,
-                }
-            );
+            let response;
+            try {
+                response = dendrite.response(
+                    inputSignal?.payload,
+                    neuron.axon,
+                    {
+                        get: () => this.ctx.get(neuron.name),
+                        set: (value: any) => this.ctx.set(neuron.name, value),
+                        delete: () => this.ctx.delete(neuron.name),
+                        abortSignal: this.options?.abortSignal,
+                        cns: this.cns as ICNS<
+                            TCollateralName,
+                            TNeuronName,
+                            TNeuron,
+                            TDendrite
+                        >,
+                        stimulationId: this.id,
+                    }
+                );
+            } catch (error) {
+                // Sync error occurred
+                this.markNeuronInactive(neuron.name);
+                const isAborted = this.options?.abortSignal?.aborted ?? false;
+                this.failedTasks.push({
+                    task: neuronActivationTask,
+                    error:
+                        error instanceof Error
+                            ? error
+                            : new Error(String(error)),
+                    aborted: isAborted,
+                });
+                this.processResponseOrResponses(
+                    inputSignal as TCNSSignal<TCollateralName, any>,
+                    undefined,
+                    error
+                );
+                return () => {};
+            }
 
             const maxDuration = (neuron as any).maxDuration as
                 | number
@@ -318,6 +445,17 @@ export class CNSStimulation<
                         return () => {
                             // Mark neuron as inactive when async processing fails
                             this.markNeuronInactive(neuron.name);
+                            // Track failed task
+                            const isAborted =
+                                this.options?.abortSignal?.aborted ?? false;
+                            this.failedTasks.push({
+                                task: neuronActivationTask,
+                                error:
+                                    error instanceof Error
+                                        ? error
+                                        : new Error(String(error)),
+                                aborted: isAborted,
+                            });
                             return this.processResponseOrResponses(
                                 inputSignal as TCNSSignal<TCollateralName, any>,
                                 undefined,
@@ -379,12 +517,12 @@ export class CNSStimulation<
             | TCollateralName
             | undefined;
         const ownerNeuron = collateralName
-            ? this.cns.getParentNeuronByCollateralName(collateralName)
+            ? this.cns.network.getParentNeuronByCollateralName(collateralName)
             : undefined;
         const subscribers = collateralName
-            ? this.cns.getSubscribers(collateralName)
+            ? this.cns.network.getSubscribers(collateralName)
             : [];
-        const subscriberQueueItems: TCNSSerializedQueueItem<
+        const subscriberActivationTasks: TCNSNeuronActivationTask<
             TCollateralName,
             TNeuronName
         >[] = [];
@@ -395,21 +533,25 @@ export class CNSStimulation<
             }
 
             for (let i = 0; i < subscribers.length; i++) {
-                subscriberQueueItems.push(
-                    this.createSubscriberQueueItem(subscribers[i], outputSignal)
+                const task = this.createSubscriberQueueItem(
+                    subscribers[i],
+                    outputSignal
                 );
+                subscriberActivationTasks.push(task);
+                this.pendingTasks.add(task);
             }
         }
-        this.scheduledCount += subscriberQueueItems.length;
+        this.scheduledCount += subscriberActivationTasks.length;
 
         // After we pre-enqueued all subscribers, we can trace the response
-        let maybePromise: any;
+        let maybePromise: void | Promise<void>;
         try {
             maybePromise = this.options?.onResponse?.({
                 inputSignal: inputSignal,
                 outputSignal: outputSignal,
-                ctx: this.ctx,
+                contextValue: this.ctx.getAll(),
                 queueLength: this.queue.length + this.scheduledCount,
+                stimulation: this,
                 stimulationId: this.id,
 
                 hops:
@@ -417,33 +559,55 @@ export class CNSStimulation<
                         ? this.nueronVisitMap?.get(ownerNeuron.name) ?? 0
                         : undefined,
                 error,
-            } as any);
+            });
         } catch (e) {
-            this.rejectCompleted(e);
+            // Remember the error but don't reject immediately - wait for all tasks to complete
+            this.onResponseError =
+                e instanceof Error ? e : new Error(String(e));
+            // Still enqueue subscribers and continue processing
+            for (let i = 0; i < subscriberActivationTasks.length; i++) {
+                this.scheduledCount--;
+                this.pendingTasks.delete(subscriberActivationTasks[i]);
+                this.queue.enqueue(subscriberActivationTasks[i]);
+            }
+            this.tryResolveCompleted();
             return;
         }
 
         // If onResponse returned a promise, wait for it before enqueuing subscribers
-        if (maybePromise && typeof (maybePromise as any).then === 'function') {
+        if (maybePromise && typeof maybePromise.then === 'function') {
             (maybePromise as Promise<void>).then(
                 () => {
-                    for (let i = 0; i < subscriberQueueItems.length; i++) {
+                    for (let i = 0; i < subscriberActivationTasks.length; i++) {
                         this.scheduledCount--;
-                        this.queue.enqueue(subscriberQueueItems[i]);
+                        this.pendingTasks.delete(subscriberActivationTasks[i]);
+                        this.queue.enqueue(subscriberActivationTasks[i]);
                     }
                     this.tryResolveCompleted();
                 },
                 error => {
-                    this.rejectCompleted(error);
+                    // Remember the error but don't reject immediately - wait for all tasks to complete
+                    this.onResponseError =
+                        error instanceof Error
+                            ? error
+                            : new Error(String(error));
+                    // Still enqueue subscribers and continue processing
+                    for (let i = 0; i < subscriberActivationTasks.length; i++) {
+                        this.scheduledCount--;
+                        this.pendingTasks.delete(subscriberActivationTasks[i]);
+                        this.queue.enqueue(subscriberActivationTasks[i]);
+                    }
+                    this.tryResolveCompleted();
                 }
             );
             return;
         }
 
         // Sync path: enqueue subscribers immediately
-        for (let i = 0; i < subscriberQueueItems.length; i++) {
+        for (let i = 0; i < subscriberActivationTasks.length; i++) {
             this.scheduledCount--;
-            this.queue.enqueue(subscriberQueueItems[i]);
+            this.pendingTasks.delete(subscriberActivationTasks[i]);
+            this.queue.enqueue(subscriberActivationTasks[i]);
         }
         this.tryResolveCompleted();
     }
@@ -456,9 +620,10 @@ export class CNSStimulation<
         // Handle array of signals
         if (Array.isArray(signalOrSignals)) {
             for (const signal of signalOrSignals) {
-                const ownerNeuron = this.cns.getParentNeuronByCollateralName(
-                    signal.collateralName as any
-                );
+                const ownerNeuron =
+                    this.cns.network.getParentNeuronByCollateralName(
+                        signal.collateralName
+                    );
                 if (ownerNeuron) {
                     this.markNeuronActive(ownerNeuron.name);
                 }
@@ -470,8 +635,8 @@ export class CNSStimulation<
         }
 
         // Handle single signal
-        const ownerNeuron = this.cns.getParentNeuronByCollateralName(
-            signalOrSignals.collateralName as any
+        const ownerNeuron = this.cns.network.getParentNeuronByCollateralName(
+            signalOrSignals.collateralName
         );
         if (ownerNeuron) {
             this.markNeuronActive(ownerNeuron.name);

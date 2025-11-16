@@ -1,27 +1,19 @@
-import { TCNSSerializedQueueItem } from './types/TCNSSerializedSignal';
-import { TCNSNeuron } from './types/TCNSNeuron';
-import { TCNSDendrite } from './types/TCNSDendrite';
+import { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
 
-export class CNSFunctionalQueue<
+export class CNSNeuronActivationPump<
     TCollateralName extends string,
-    TNeuronName extends string,
-    TNeuron extends TCNSNeuron<
-        any,
-        TNeuronName,
-        TCollateralName,
-        any,
-        any,
-        any,
-        any
-    >,
-    TDendrite extends TCNSDendrite<any, any, any, any, any, any>
+    TNeuronName extends string
 > {
-    private items: TCNSSerializedQueueItem<TCollateralName, TNeuronName>[] = [];
+    private items: TCNSNeuronActivationTask<TCollateralName, TNeuronName>[] =
+        [];
     private head = 0;
     private tail = 0;
     private size = 0;
     private capacity = 16;
     protected activeOperations = 0;
+    private activeTasks = new Set<
+        TCNSNeuronActivationTask<TCollateralName, TNeuronName>
+    >();
 
     // NEW: prevent re-entrant pump; defer extra runs
     private pumping = false;
@@ -29,7 +21,10 @@ export class CNSFunctionalQueue<
 
     constructor(
         private readonly processor: (
-            item: TCNSSerializedQueueItem<TCollateralName, TNeuronName>
+            neuronActivationTask: TCNSNeuronActivationTask<
+                TCollateralName,
+                TNeuronName
+            >
         ) => (() => void) | Promise<() => void>,
         protected readonly concurrency?: number,
         protected readonly abortSignal?: AbortSignal,
@@ -63,26 +58,29 @@ export class CNSFunctionalQueue<
     }
 
     private dequeue():
-        | TCNSSerializedQueueItem<TCollateralName, TNeuronName>
+        | TCNSNeuronActivationTask<TCollateralName, TNeuronName>
         | undefined {
         if (this.size === 0) return undefined;
 
-        const item = this.items[this.head];
+        const neuronActivationTask = this.items[this.head];
         this.items[this.head] = undefined as any; // Clear reference
         this.head = (this.head + 1) % this.capacity;
         this.size--;
 
-        return item;
+        return neuronActivationTask;
     }
 
     private enqueueItem(
-        item: TCNSSerializedQueueItem<TCollateralName, TNeuronName>
+        neuronActivationTask: TCNSNeuronActivationTask<
+            TCollateralName,
+            TNeuronName
+        >
     ): void {
         if (this.size === this.capacity) {
             this.resize();
         }
 
-        this.items[this.tail] = item;
+        this.items[this.tail] = neuronActivationTask;
         this.tail = (this.tail + 1) % this.capacity;
         this.size++;
     }
@@ -95,10 +93,11 @@ export class CNSFunctionalQueue<
         this.pumping = true;
 
         while (this.canStartOperation && this.size > 0) {
-            const item = this.dequeue()!;
+            const neuronActivationTask = this.dequeue()!;
             this.activeOperations++;
+            this.activeTasks.add(neuronActivationTask);
 
-            const ret = this.processor(item);
+            const ret = this.processor(neuronActivationTask);
 
             // Async branch
             if (ret && typeof (ret as any).then === 'function') {
@@ -106,6 +105,7 @@ export class CNSFunctionalQueue<
                     cb => {
                         // finish this item
                         this.activeOperations--;
+                        this.activeTasks.delete(neuronActivationTask);
                         if (typeof cb === 'function') cb();
 
                         // schedule another pass (but don't re-enter if already pumping)
@@ -116,6 +116,7 @@ export class CNSFunctionalQueue<
                     },
                     err => {
                         this.activeOperations--;
+                        this.activeTasks.delete(neuronActivationTask);
                         // resume if there's more work
                         if (this.size > 0 && this.canStartOperation) {
                             if (this.pumping) this.needsPump = true;
@@ -130,6 +131,7 @@ export class CNSFunctionalQueue<
 
             // Sync branch
             this.activeOperations--;
+            this.activeTasks.delete(neuronActivationTask);
             if (typeof ret === 'function') (ret as () => void)();
             // Loop continues; any items added by ret() stay in the same flat loop
         }
@@ -143,8 +145,13 @@ export class CNSFunctionalQueue<
         }
     }
 
-    enqueue(x: TCNSSerializedQueueItem<TCollateralName, TNeuronName>) {
-        this.enqueueItem(x);
+    enqueue(
+        neuronActivationTask: TCNSNeuronActivationTask<
+            TCollateralName,
+            TNeuronName
+        >
+    ) {
+        this.enqueueItem(neuronActivationTask);
         // Start pumping only if not already pumping; avoid re-entrant pump
         if (!this.pumping) this.pump();
         else this.needsPump = true;
@@ -156,5 +163,26 @@ export class CNSFunctionalQueue<
 
     getActiveOperationsCount() {
         return this.activeOperations;
+    }
+
+    public getQueuedTasks(): TCNSNeuronActivationTask<
+        TCollateralName,
+        TNeuronName
+    >[] {
+        const result: TCNSNeuronActivationTask<TCollateralName, TNeuronName>[] =
+            [];
+        let index = this.head;
+        for (let i = 0; i < this.size; i++) {
+            result.push(this.items[index]);
+            index = (index + 1) % this.capacity;
+        }
+        return result;
+    }
+
+    public getActiveTasks(): TCNSNeuronActivationTask<
+        TCollateralName,
+        TNeuronName
+    >[] {
+        return Array.from(this.activeTasks);
     }
 }

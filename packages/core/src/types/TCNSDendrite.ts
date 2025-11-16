@@ -1,8 +1,8 @@
 import { CNSCollateral } from '../CNSCollateral';
-import { ICNS } from '../interfaces/ICNS';
 import { TCNSAxon } from './TCNSAxon';
 import { TCNSLocalContextValueStore } from './TCNSLocalContextValueStore';
 import { TNCNeuronResponseReturn } from './TCNSNeuronResponseReturn';
+import { ICNS } from '../interfaces/ICNS';
 
 export type TCNSDendrite<
     TContextValue,
@@ -25,7 +25,7 @@ export type TCNSDendrite<
         axon: TAxonType,
         ctx: TCNSLocalContextValueStore<TContextValue> & {
             abortSignal?: AbortSignal;
-            cns?: ICNS<any, any>;
+            cns?: ICNS<any, any, any>;
             stimulationId?: string;
         }
     ) => TNCNeuronResponseReturn<

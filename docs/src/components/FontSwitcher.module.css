@@ -1,0 +1,31 @@
+.fontSwitcher {
+    background: var(--ifm-color-emphasis-100);
+    border: 1px solid var(--ifm-color-emphasis-300);
+    border-radius: 6px;
+    color: var(--ifm-font-color-base);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 8px 10px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 36px;
+}
+
+.fontSwitcher:hover {
+    background: var(--ifm-color-emphasis-200);
+    border-color: var(--infection-red);
+    transform: translateY(-1px);
+}
+
+.fontSwitcher:active {
+    transform: translateY(0);
+}
+
+.fontIcon {
+    display: inline-block;
+    line-height: 1;
+}
+

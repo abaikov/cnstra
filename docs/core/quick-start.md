@@ -43,7 +43,8 @@ const userService = neuron('user-service', { userRegistered }).dendrite({
 });
 
 const cns = new CNS([userService]);
-await cns.stimulate(userCreated.createSignal({ id: '123', name: 'John Doe' }));
+const stimulation = cns.stimulate(userCreated.createSignal({ id: '123', name: 'John Doe' }));
+await stimulation.waitUntilComplete();
 ```
 
 ## Next Steps

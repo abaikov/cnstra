@@ -16,28 +16,30 @@ slug: /core/stimulation-options
 
 ```ts
 const controller = new AbortController();
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   maxNeuronHops: 10, // optional, disabled by default
   abortSignal: controller.signal,
   onResponse: r => {
     if (r.queueLength === 0) console.log('done');
   }
 });
+await stimulation.waitUntilComplete();
 ```
 
 ### Async listeners and failure semantics
 
 - Local `onResponse` and all global listeners (added via `addResponseListener`) can be synchronous or asynchronous.
-- They run in parallel for each response. If any throws or returns a rejected Promise, the current `stimulate(...)` Promise rejects.
+- They run in parallel for each response. If any throws or returns a rejected Promise, the `stimulation.waitUntilComplete()` Promise rejects.
 - If all listeners are synchronous, CNStra does not introduce extra async deferrals for that response.
 
 ```ts
 // Async onResponse example (e.g., persist to DB/Redis)
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   onResponse: async (r) => {
     if (r.outputSignal) {
       await repo.save(r.stimulationId, r.outputSignal);
     }
   }
 });
+await stimulation.waitUntilComplete();
 ```

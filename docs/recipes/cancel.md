@@ -10,12 +10,13 @@ Use `AbortSignal` to cancel in-flight stimulation runs.
 ```ts
 const controller = new AbortController();
 
-cns.stimulate(collateral.createSignal(input), {
+const stimulation = cns.stimulate(collateral.createSignal(input), {
   abortSignal: controller.signal,
 });
 
 // Later
 controller.abort();
+await stimulation.waitUntilComplete();
 ```
 
 Notes:
@@ -43,10 +44,11 @@ Cancelling a running stimulation
 const ac = new AbortController();
 
 // start the run
-cns.stimulate(start.createSignal(payload), { abortSignal: ac.signal });
+const stimulation = cns.stimulate(start.createSignal(payload), { abortSignal: ac.signal });
 
 // cancel at any time (e.g., on route change)
 ac.abort();
+await stimulation.waitUntilComplete();
 ```
 
 ## Graceful shutdown
@@ -54,7 +56,7 @@ ac.abort();
 There are two ways to finish active runs:
 
 - Natural drain (recommended):
-  - Stop starting new `stimulate(...)` calls and simply `await` all in‑flight promises returned by `stimulate`.
+  - Stop starting new `stimulate(...)` calls and simply `await` all in‑flight stimulations via `stimulation.waitUntilComplete()`.
   - The internal queue drains and the run completes naturally.
 
 - Cooperative termination via `AbortSignal`:
@@ -73,5 +75,6 @@ process.on('SIGTERM', () => ac.abort());
 process.on('SIGINT', () => ac.abort());
 
 // elsewhere
-await cns.stimulate(start.createSignal(payload), { abortSignal: ac.signal });
+const stimulation = cns.stimulate(start.createSignal(payload), { abortSignal: ac.signal });
+await stimulation.waitUntilComplete();
 ```

@@ -1,50 +1,73 @@
-import { CNSCollateral } from '../CNSCollateral';
-import { TCNSDendrite } from '../types/TCNSDendrite';
-import { TCNSNeuron } from '../types/TCNSNeuron';
-import { TCNSSubscriber } from '../types/TCNSSubscriber';
-import { TCNSOptions } from '../types/TCNSOptions';
-import { TCNSSignal } from '../types/TCNSSignal';
+import type { TCNSNeuron } from '../types/TCNSNeuron';
+import type { TCNSDendrite } from '../types/TCNSDendrite';
+import type { TCNSOptions } from '../types/TCNSOptions';
+import type { TCNSStimulationOptions } from '../types/TCNSStimulationOptions';
+import type { TCNSSignal } from '../types/TCNSSignal';
+import type { TCNSStimulationResponse } from '../types/TCNSStimulationResponse';
+import type { CNSNetwork } from '../CNSNetwork';
+import type { CNSStimulation } from '../CNSStimulation';
 
 export interface ICNS<
-    TNeuron extends TCNSNeuron<any, any, any, any, any, any, any>,
-    TDendrite extends TCNSDendrite<any, any, any, any, any, any>
+    TCollateralName extends string,
+    TNeuronName extends string,
+    TNeuron extends TCNSNeuron<
+        any,
+        TNeuronName,
+        TCollateralName,
+        any,
+        any,
+        any,
+        any
+    >,
+    TDendrite extends TCNSDendrite<any, any, any, any, any, any> = TCNSDendrite<
+        any,
+        any,
+        any,
+        any,
+        any,
+        any
+    >
 > {
     options?: TCNSOptions;
-    getParentNeuronByCollateralName(
-        collateralName: string
-    ): TNeuron | undefined;
-    getSCCSetByNeuronName(neuronName: string): Set<string> | undefined;
-    getSccIndexByNeuronName(neuronName: string): number | undefined;
-    getSubscribers(
-        collateralName: string
-    ): TCNSSubscriber<TNeuron, TDendrite>[];
-    canNeuronBeGuaranteedDone(
-        neuronName: string,
-        activeSccCounts: Map<number, number>
-    ): boolean;
-    readonly stronglyConnectedComponents: Set<string>[];
+
+    network: CNSNetwork<TCollateralName, TNeuronName, TNeuron, TDendrite>;
 
     /**
      * Add a global response listener applied to all stimulations.
      * Returns an unsubscribe function.
      */
-    addResponseListener(listener: (response: any) => void): () => void;
+    addResponseListener<TInputPayload, TOutputPayload>(
+        listener: (
+            response: TCNSStimulationResponse<
+                TCollateralName,
+                TInputPayload,
+                TOutputPayload,
+                TNeuronName
+            >
+        ) => void
+    ): () => void;
 
-    /**
-     * Wrap a local onResponse with all global listeners.
-     */
-    wrapOnResponse<T>(
-        local?: (response: T) => void | Promise<void>
-    ): (response: T) => void | Promise<void>;
-
-    getDendrites(): TDendrite[];
-    getCollaterals(): CNSCollateral<any, any>[];
-    getNeurons(): TNeuron[];
-    getCollateralByName<TName extends string = string>(
-        collateralName: TName
-    ): CNSCollateral<TName, unknown> | undefined;
-    getNeuronByName<TName extends string = string>(
-        neuronName: TName
-    ): TNeuron | undefined;
-    stimulate(signal: TCNSSignal<any, any>): Promise<void>;
+    stimulate<
+        TInputPayload extends TOutputPayload,
+        TOutputPayload = TInputPayload
+    >(
+        signalOrSignals:
+            | TCNSSignal<TCollateralName, TInputPayload>
+            | TCNSSignal<TCollateralName, TInputPayload>[],
+        options?: TCNSStimulationOptions<
+            TCollateralName,
+            TInputPayload,
+            TOutputPayload,
+            TNeuronName,
+            TNeuron,
+            TDendrite
+        >
+    ): CNSStimulation<
+        TCollateralName,
+        TNeuronName,
+        TNeuron,
+        TDendrite,
+        TInputPayload,
+        TOutputPayload
+    >;
 }

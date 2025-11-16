@@ -33,4 +33,4 @@ See also: [Quick Start](/docs/core/quick-start), [API](/docs/core/api), [Stimula
 - `onResponse` (local) and global listeners may also be sync or async.
 - If all listeners are synchronous for a given response, CNStra does not introduce extra async steps.
 - If any listener returns a Promise, CNStra waits for all listeners in parallel before proceeding to enqueue next subscribers for that response.
-- `cns.stimulate(...)` returns a Promise that resolves when the run completes, and rejects if any listener throws or rejects.
+- `cns.stimulate(...)` returns a `CNSStimulation` instance. Use `stimulation.waitUntilComplete()` to await completion; it rejects if any listener throws or rejects.

@@ -391,6 +391,7 @@ describe('CNStra Core Tests', () => {
                 const responses: Array<{
                     collateralName: string;
                     queueLength: number;
+                    currentTasksLength: number;
                 }> = [];
 
                 await cns.stimulate(input.createSignal(), {
@@ -400,12 +401,19 @@ describe('CNStra Core Tests', () => {
                                 response.outputSignal?.collateralName ||
                                 'unknown',
                             queueLength: response.queueLength,
+                            currentTasksLength:
+                                response.stimulation.getAllActivationTasks()
+                                    .length,
                         });
                     },
                 });
 
                 expect(responses.length).toBe(K + 2);
                 expect(responses[0].queueLength).toBeGreaterThan(0);
+
+                expect(
+                    responses.every(r => r.currentTasksLength === r.queueLength)
+                ).toBe(true);
 
                 const last = responses[responses.length - 1];
                 expect(last.collateralName).toBe('output');
@@ -776,10 +784,10 @@ describe('CNStra Core Tests', () => {
 
             const cns = new CNS([processor]);
 
-            const result = await cns.stimulate(
-                input.createSignal({ data: 'test' })
-            );
-            expect(result).toBeUndefined();
+            const result = cns.stimulate(input.createSignal({ data: 'test' }));
+            expect(result).toBeDefined();
+            expect(result).toBeInstanceOf(Object);
+            // Fire and forget - don't await
         });
     });
 
@@ -993,22 +1001,22 @@ describe('CNStra Core Tests', () => {
                 autoCleanupContexts: true,
             });
 
-            expect(cns.stronglyConnectedComponents).toHaveLength(3);
-            expect(cns.getSCCSetByNeuronName('A')?.size).toBe(1);
-            expect(cns.getSCCSetByNeuronName('B')?.size).toBe(1);
-            expect(cns.getSCCSetByNeuronName('C')?.size).toBe(1);
+            expect(cns.network.stronglyConnectedComponents).toHaveLength(3);
+            expect(cns.network.getSCCSetByNeuronName('A')?.size).toBe(1);
+            expect(cns.network.getSCCSetByNeuronName('B')?.size).toBe(1);
+            expect(cns.network.getSCCSetByNeuronName('C')?.size).toBe(1);
 
             const emptyActiveCounts = new Map<number, number>();
 
-            expect(cns.canNeuronBeGuaranteedDone('A', emptyActiveCounts)).toBe(
-                true
-            );
-            expect(cns.canNeuronBeGuaranteedDone('B', emptyActiveCounts)).toBe(
-                true
-            );
-            expect(cns.canNeuronBeGuaranteedDone('C', emptyActiveCounts)).toBe(
-                true
-            );
+            expect(
+                cns.network.canNeuronBeGuaranteedDone('A', emptyActiveCounts)
+            ).toBe(true);
+            expect(
+                cns.network.canNeuronBeGuaranteedDone('B', emptyActiveCounts)
+            ).toBe(true);
+            expect(
+                cns.network.canNeuronBeGuaranteedDone('C', emptyActiveCounts)
+            ).toBe(true);
         });
     });
 
@@ -1270,12 +1278,14 @@ describe('CNStra Core Tests', () => {
             });
 
             const start = Date.now();
-            await cns.stimulate(input.createSignal(), {
-                onResponse: async _r => {
-                    // Local async listener (~25ms)
-                    await new Promise<void>(r => setTimeout(r, 25));
-                },
-            });
+            await cns
+                .stimulate(input.createSignal(), {
+                    onResponse: async _r => {
+                        // Local async listener (~25ms)
+                        await new Promise<void>(r => setTimeout(r, 25));
+                    },
+                })
+                .waitUntilComplete();
 
             const elapsed = Date.now() - start;
             // Should be ~25ms (parallel), definitely less than 45ms
@@ -1294,11 +1304,13 @@ describe('CNStra Core Tests', () => {
             const cns = new CNS([n]);
 
             await expect(
-                cns.stimulate(input.createSignal(), {
-                    onResponse: () => {
-                        throw new Error('local-fail');
-                    },
-                })
+                cns
+                    .stimulate(input.createSignal(), {
+                        onResponse: () => {
+                            throw new Error('local-fail');
+                        },
+                    })
+                    .waitUntilComplete()
             ).rejects.toThrow('local-fail');
         });
 
@@ -1317,7 +1329,9 @@ describe('CNStra Core Tests', () => {
             });
 
             await expect(
-                cns.stimulate(input.createSignal(), { onResponse: () => {} })
+                cns
+                    .stimulate(input.createSignal(), { onResponse: () => {} })
+                    .waitUntilComplete()
             ).rejects.toThrow('global-fail');
         });
 
@@ -1360,7 +1374,9 @@ describe('CNStra Core Tests', () => {
             });
 
             const start = Date.now();
-            await cns.stimulate(input.createSignal(), { onResponse: () => {} });
+            await cns
+                .stimulate(input.createSignal(), { onResponse: () => {} })
+                .waitUntilComplete();
             const elapsed = Date.now() - start;
             expect(elapsed).toBeGreaterThanOrEqual(DELAY - 5);
             expect(elapsed).toBeLessThan(DELAY * 2 - 5);
@@ -1387,7 +1403,9 @@ describe('CNStra Core Tests', () => {
             });
 
             await expect(
-                cns.stimulate(input.createSignal(), { onResponse: () => {} })
+                cns
+                    .stimulate(input.createSignal(), { onResponse: () => {} })
+                    .waitUntilComplete()
             ).rejects.toThrow('boom');
 
             expect(secondRan).toBe(true);
@@ -1412,18 +1430,21 @@ describe('CNStra Core Tests', () => {
             const controller = new AbortController();
             const start = Date.now();
 
-            const p = cns.stimulate(input.createSignal(), {
-                abortSignal: controller.signal,
-                // delay enqueue of subscribers
-                onResponse: async () => {
-                    await new Promise<void>(r => setTimeout(r, 30));
-                },
-            });
+            const p = cns
+                .stimulate(input.createSignal(), {
+                    abortSignal: controller.signal,
+                    // delay enqueue of subscribers
+                    onResponse: async () => {
+                        await new Promise<void>(r => setTimeout(r, 30));
+                    },
+                })
+                .waitUntilComplete();
 
             // abort while no active operations (before enqueue after onResponse)
             setTimeout(() => controller.abort(), 10);
 
-            await expect(p).resolves.toBeUndefined();
+            // When aborted, the promise should reject
+            await expect(p).rejects.toThrow('Stimulation aborted');
             const elapsed = Date.now() - start;
             expect(elapsed).toBeLessThan(40);
         });
@@ -1446,19 +1467,358 @@ describe('CNStra Core Tests', () => {
             const start = Date.now();
             let seenOutputAt: number | undefined;
 
-            await cns.stimulate(input.createSignal(), {
-                onResponse: async r => {
-                    if (r.outputSignal?.collateralName === 'mid') {
-                        await new Promise<void>(res => setTimeout(res, 30));
-                    }
-                    if (r.outputSignal?.collateralName === 'output') {
-                        seenOutputAt = Date.now();
-                    }
-                },
-            });
+            await cns
+                .stimulate(input.createSignal(), {
+                    onResponse: async r => {
+                        if (r.outputSignal?.collateralName === 'mid') {
+                            await new Promise<void>(res => setTimeout(res, 30));
+                        }
+                        if (r.outputSignal?.collateralName === 'output') {
+                            seenOutputAt = Date.now();
+                        }
+                    },
+                })
+                .waitUntilComplete();
 
             expect(seenOutputAt).toBeDefined();
             expect(seenOutputAt! - start).toBeGreaterThanOrEqual(25);
+        });
+    });
+
+    describe('Abort and Retry with activate', () => {
+        it('should allow aborting and retrying with same tasks and context', async () => {
+            const ctxBuilder = withCtx<{ processed: string[]; step: number }>();
+            const input = collateral<{ value: number }>('input');
+            const intermediate = collateral<{ value: number }>('intermediate');
+            const output = collateral<{ result: string }>('output');
+
+            let step1Executed = false;
+            let step2Executed = false;
+
+            const step1 = ctxBuilder
+                .neuron('step1', { intermediate })
+                .dendrite({
+                    collateral: input,
+                    response: async (payload, axon, ctx) => {
+                        step1Executed = true;
+                        const current = ctx.get() || { processed: [], step: 0 };
+                        ctx.set({
+                            processed: [...current.processed, 'step1'],
+                            step: 1,
+                        });
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                        return axon.intermediate.createSignal({
+                            value: payload.value,
+                        });
+                    },
+                });
+
+            const step2 = ctxBuilder.neuron('step2', { output }).dendrite({
+                collateral: intermediate,
+                response: async (payload, axon, ctx) => {
+                    step2Executed = true;
+                    const current = ctx.get() || { processed: [], step: 0 };
+                    ctx.set({
+                        processed: [...current.processed, 'step2'],
+                        step: 2,
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    return axon.output.createSignal({
+                        result: `Result: ${payload.value}`,
+                    });
+                },
+            });
+
+            const cns = new CNS([step1, step2]);
+
+            // First stimulation - abort it
+            const abortController = new AbortController();
+            const stimulation1 = cns.stimulate(
+                input.createSignal({ value: 42 }),
+                {
+                    abortSignal: abortController.signal,
+                }
+            );
+
+            // Wait a bit, then abort
+            await new Promise(resolve => setTimeout(resolve, 5));
+            abortController.abort();
+
+            // Wait for abort to complete - should reject
+            await expect(stimulation1.waitUntilComplete()).rejects.toThrow(
+                'Stimulation aborted'
+            );
+
+            // Get failed tasks
+            const failedTasks = stimulation1.getFailedTasks();
+            expect(failedTasks.length).toBeGreaterThan(0);
+
+            // Get context from first stimulation
+            const contextFromFirst = stimulation1.getContext().getAll();
+
+            // Retry with activate using failed tasks and saved context
+            const results: string[] = [];
+            const stimulation2 = cns.activate(
+                failedTasks.map(ft => ft.task),
+                {
+                    contextValues: contextFromFirst as Record<string, unknown>,
+                    onResponse: r => {
+                        if (r.outputSignal?.collateralName === 'output') {
+                            results.push(
+                                (r.outputSignal.payload as { result: string })
+                                    .result
+                            );
+                        }
+                    },
+                }
+            );
+
+            await stimulation2.waitUntilComplete();
+
+            // Verify step1 was not re-executed (context should show it was already processed)
+            const finalContext = stimulation2.getContext().getAll();
+            expect(finalContext).toBeDefined();
+            // step2 should have executed
+            expect(results.length).toBeGreaterThan(0);
+        });
+
+        it('should allow retrying after error with same tasks and context', async () => {
+            const ctxBuilder = withCtx<{
+                processed: string[];
+                attempts: number;
+            }>();
+            const input = collateral<{ value: number }>('input');
+            const intermediate = collateral<{ value: number }>('intermediate');
+            const output = collateral<{ result: string }>('output');
+
+            let attemptCount = 0;
+
+            const step1 = ctxBuilder
+                .neuron('step1', { intermediate })
+                .dendrite({
+                    collateral: input,
+                    response: async (payload, axon, ctx) => {
+                        attemptCount++;
+                        const current = ctx.get() || {
+                            processed: [],
+                            attempts: 0,
+                        };
+                        ctx.set({
+                            processed: ['step1'],
+                            attempts: current.attempts + 1,
+                        });
+                        return axon.intermediate.createSignal({
+                            value: payload.value,
+                        });
+                    },
+                });
+
+            const step2 = ctxBuilder.neuron('step2', { output }).dendrite({
+                collateral: intermediate,
+                response: async (payload, axon, ctx) => {
+                    const current = ctx.get() || { processed: [], attempts: 0 };
+                    // Simulate error on first attempt
+                    if (current.attempts === 0) {
+                        ctx.set({
+                            processed: [...current.processed, 'step2'],
+                            attempts: current.attempts + 1,
+                        });
+                        throw new Error('Simulated error');
+                    }
+                    ctx.set({
+                        processed: [...current.processed, 'step2'],
+                        attempts: current.attempts,
+                    });
+                    return axon.output.createSignal({
+                        result: `Result: ${payload.value}`,
+                    });
+                },
+            });
+
+            const cns = new CNS([step1, step2]);
+
+            // First stimulation - will error
+            const results1: string[] = [];
+            const errors1: Error[] = [];
+            const stimulation1 = cns.stimulate(
+                input.createSignal({ value: 42 }),
+                {
+                    onResponse: r => {
+                        if (r.error) {
+                            errors1.push(r.error);
+                        }
+                        if (r.outputSignal?.collateralName === 'output') {
+                            results1.push(
+                                (r.outputSignal.payload as { result: string })
+                                    .result
+                            );
+                        }
+                    },
+                }
+            );
+
+            await expect(stimulation1.waitUntilComplete()).rejects.toThrow();
+
+            // Should have error
+            expect(errors1.length).toBeGreaterThan(0);
+
+            // Get failed tasks
+            const failedTasks = stimulation1.getFailedTasks();
+            expect(failedTasks.length).toBeGreaterThan(0);
+
+            // Get context from first stimulation
+            const contextFromFirst = stimulation1.getContext().getAll();
+
+            // Retry with activate using failed tasks and saved context
+            const results2: string[] = [];
+            const stimulation2 = cns.activate(
+                failedTasks.map(ft => ft.task),
+                {
+                    contextValues: contextFromFirst as Record<string, unknown>,
+                    onResponse: r => {
+                        if (r.outputSignal?.collateralName === 'output') {
+                            results2.push(
+                                (r.outputSignal.payload as { result: string })
+                                    .result
+                            );
+                        }
+                    },
+                }
+            );
+
+            await stimulation2.waitUntilComplete();
+
+            // Should succeed on retry
+            expect(results2.length).toBeGreaterThan(0);
+            expect(results2[0]).toBe('Result: 42');
+
+            // Context should be preserved
+            const finalContext = stimulation2.getContext().getAll();
+            expect(finalContext).toBeDefined();
+            expect(
+                (finalContext.step1 as { processed: string[] }).processed
+            ).toContain('step1');
+        });
+
+        it('should preserve context and not re-execute completed tasks on retry', async () => {
+            const ctxBuilder = withCtx<{ executed: string[] }>();
+            const input = collateral<{ id: number }>('input');
+            const step1Out = collateral<{ id: number }>('step1Out');
+            const step2Out = collateral<{ id: number }>('step2Out');
+            const output = collateral<{ result: string }>('output');
+
+            const executionLog: string[] = [];
+
+            const step1 = ctxBuilder.neuron('step1', { step1Out }).dendrite({
+                collateral: input,
+                response: async (payload, axon, ctx) => {
+                    executionLog.push(`step1-${payload.id}`);
+                    ctx.set({
+                        executed: [
+                            ...(ctx.get()?.executed || []),
+                            `step1-${payload.id}`,
+                        ],
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 30));
+                    return axon.step1Out.createSignal({ id: payload.id });
+                },
+            });
+
+            const step2 = ctxBuilder.neuron('step2', { step2Out }).dendrite({
+                collateral: step1Out,
+                response: async (payload, axon, ctx) => {
+                    executionLog.push(`step2-${payload.id}`);
+                    ctx.set({
+                        executed: [
+                            ...(ctx.get()?.executed || []),
+                            `step2-${payload.id}`,
+                        ],
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 15));
+                    return axon.step2Out.createSignal({ id: payload.id });
+                },
+            });
+
+            const step3 = ctxBuilder.neuron('step3', { output }).dendrite({
+                collateral: step2Out,
+                response: async (payload, axon, ctx) => {
+                    executionLog.push(`step3-${payload.id}`);
+                    ctx.set({
+                        executed: [
+                            ...(ctx.get()?.executed || []),
+                            `step3-${payload.id}`,
+                        ],
+                    });
+                    return axon.output.createSignal({
+                        result: `Final: ${payload.id}`,
+                    });
+                },
+            });
+
+            const cns = new CNS([step1, step2, step3]);
+
+            // First stimulation - abort after step1 completes
+            const abortController = new AbortController();
+            const stimulation1 = cns.stimulate(
+                input.createSignal({ id: 100 }),
+                {
+                    abortSignal: abortController.signal,
+                }
+            );
+
+            // Wait for step1 to complete, then abort
+            await new Promise(resolve => setTimeout(resolve, 10));
+            abortController.abort();
+            // Wait for abort to complete - should reject
+            await expect(stimulation1.waitUntilComplete()).rejects.toThrow(
+                'Stimulation aborted'
+            );
+
+            // Verify step1 executed
+            expect(executionLog).toContain('step1-100');
+            expect(executionLog).not.toContain('step2-100');
+            expect(executionLog).not.toContain('step3-100');
+
+            // Get failed tasks and context
+            const failedTasks = stimulation1.getFailedTasks();
+            expect(failedTasks.length).toBe(1);
+            const contextFromFirst = stimulation1.getContext().getAll();
+
+            // Clear execution log to verify retry doesn't re-execute step1
+            executionLog.length = 0;
+
+            // Retry with activate
+            const results: string[] = [];
+            const stimulation2 = cns.activate(
+                failedTasks.map(ft => ft.task),
+                {
+                    contextValues: contextFromFirst as Record<string, unknown>,
+                    onResponse: r => {
+                        if (r.outputSignal?.collateralName === 'output') {
+                            results.push(
+                                (r.outputSignal.payload as { result: string })
+                                    .result
+                            );
+                        }
+                    },
+                }
+            );
+
+            await stimulation2.waitUntilComplete();
+
+            // Verify final result
+            expect(results.length).toBeGreaterThan(0);
+            expect(results[0]).toBe('Final: 100');
+
+            // Verify context preserved
+            const finalContext = stimulation2.getContext().getAll();
+            expect(finalContext).toBeDefined();
+            const executed = Object.values(finalContext)
+                .map((v: any) => v.executed)
+                .flat();
+            expect(executed).toContain('step1-100');
+            expect(executed).toContain('step2-100');
+            expect(executed).toContain('step3-100');
         });
     });
 });

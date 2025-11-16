@@ -81,10 +81,11 @@ const userService = neuron('user-service', {
 const cns = new CNS([userService]);
 
 // Stimulate the system
-await cns.stimulate(userCreated.createSignal({
+const stimulation = cns.stimulate(userCreated.createSignal({
   id: '123',
   name: 'John Doe'
 }));
+await stimulation.waitUntilComplete();
 ```
 
 ## 📚 API Reference
@@ -206,20 +207,22 @@ cns.stimulate(signal | signal[], options?)
 - `signal`: A signal or array of signals created by `collateral.createSignal(payload)`
 - `options`: Optional stimulation configuration
 
-**Returns:** `Promise<void>` that resolves when stimulation completes
+**Returns:** `CNSStimulation` instance. Use `stimulation.waitUntilComplete()` to await completion.
 
 **Example:**
 ```typescript
 // Single signal
-await cns.stimulate(
+const stimulation = cns.stimulate(
   userCreated.createSignal({ id: '123', name: 'John' })
 );
+await stimulation.waitUntilComplete();
 
 // Multiple signals at once
-await cns.stimulate([
+const stimulation = cns.stimulate([
   userCreated.createSignal({ id: '123', name: 'John' }),
   userCreated.createSignal({ id: '456', name: 'Jane' })
 ]);
+await stimulation.waitUntilComplete();
 ```
 
 ## ⚙️ Stimulation Options
@@ -228,16 +231,17 @@ await cns.stimulate([
 Prevents infinite loops by limiting signal traversal depth.
 
 ```typescript
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   maxNeuronHops: 50 // Stop after 50 neuron hops
 });
+await stimulation.waitUntilComplete();
 ```
 
 ### `onResponse?: (response) => void`
 Real-time callback for monitoring signal flow and completion.
 
 ```typescript
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   onResponse: (response) => {
     console.log(`Signal: ${response.outputSignal?.collateral.id}`);
     console.log(`Hops: ${response.hops}`);
@@ -251,13 +255,17 @@ await cns.stimulate(signal, {
     }
   }
 });
+await stimulation.waitUntilComplete();
 ```
 
 **Response Object:**
-- `outputSignal` — The signal being processed (if any)
-- `hops` — Number of neuron hops taken so far
+- `inputSignal` — The input signal being ingested (if any)
+- `outputSignal` — The output signal being processed (if any)
+- `contextValue` — The context value for this stimulation
 - `queueLength` — Remaining signals in processing queue (0 = complete)
+- `stimulation` — Reference to the CNSStimulation instance
 - `error` — Any error that occurred during processing
+- `hops` — Number of neuron hops taken so far (only present if maxNeuronHops is set)
 - `stimulationId` — Unique identifier for this stimulation
 
 ### `abortSignal?: AbortSignal`
@@ -266,12 +274,13 @@ Gracefully stop stimulation using AbortController.
 ```typescript
 const controller = new AbortController();
 
-cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   abortSignal: controller.signal
 });
 
 // Cancel after 5 seconds
 setTimeout(() => controller.abort(), 5000);
+await stimulation.waitUntilComplete();
 ```
 Inside dendrites, read it via `ctx.abortSignal`.
 
@@ -279,27 +288,30 @@ Inside dendrites, read it via `ctx.abortSignal`.
 Custom identifier for this stimulation cascade. Auto-generated if not provided.
 
 ```typescript
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   stimulationId: 'user-action-' + Date.now()
 });
+await stimulation.waitUntilComplete();
 ```
 
 ### `allowName?: (collateralName: string) => boolean`
 Filter which collateral names can be processed.
 
 ```typescript
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   allowName: (name) => name.startsWith('user:') // Only process user-related signals
 });
+await stimulation.waitUntilComplete();
 ```
 
 ### `concurrency?: number` (default: unlimited)
 Limit concurrent operations to prevent resource exhaustion.
 
 ```typescript
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   concurrency: 10 // Max 10 operations at once
 });
+await stimulation.waitUntilComplete();
 ```
 
 #### Per‑neuron global concurrency
@@ -314,18 +326,20 @@ const worker = neuron('worker', { out })
 Provide existing context store for recovery/retry scenarios.
 
 ```typescript
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   ctx: savedContextStore // Restore previous state
 });
+await stimulation.waitUntilComplete();
 ```
 
 ### `createContextStore?: () => ICNSStimulationContextStore`
 Factory for custom context store implementations.
 
 ```typescript
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   createContextStore: () => new CustomContextStore()
 });
+await stimulation.waitUntilComplete();
 ```
 
 ## 🔄 Signal Flow Patterns
@@ -353,7 +367,8 @@ const step2 = neuron('step2', { output }).dendrite({
 
 const cns = new CNS([step1, step2]);
 
-await cns.stimulate(input.createSignal({ value: 5 }));
+const stimulation = cns.stimulate(input.createSignal({ value: 5 }));
+await stimulation.waitUntilComplete();
 // Flows: input(5) → middle(10) → output("Final: 10")
 ```
 
@@ -381,8 +396,10 @@ const counter = withCtx<{ total: number }>()
 
 const cns = new CNS([counter]);
 
-await cns.stimulate(input.createSignal({ increment: 5 })); // count: 5
-await cns.stimulate(input.createSignal({ increment: 3 })); // count: 8 (separate context)
+const stimulation1 = cns.stimulate(input.createSignal({ increment: 5 }));
+await stimulation1.waitUntilComplete(); // count: 5
+const stimulation2 = cns.stimulate(input.createSignal({ increment: 3 }));
+await stimulation2.waitUntilComplete(); // count: 8 (separate context)
 ```
 
 ### Multiple Signals (Fan-out Pattern)
@@ -428,9 +445,10 @@ const inventoryService = neuron('inventory-service', {}).dendrite({
 const cns = new CNS([orderProcessor, inventoryService /* ... */]);
 
 // Single order triggers multiple parallel operations
-await cns.stimulate(
+const stimulation = cns.stimulate(
   orderPlaced.createSignal({ orderId: 'ORD-001', items: ['A', 'B', 'C'] })
 );
+await stimulation.waitUntilComplete();
 // Flows: orderPlaced → [inventory(A), inventory(B), inventory(C), email, audit]
 ```
 
@@ -459,10 +477,11 @@ const validator = neuron('validator', { success, error, audit }).dendrite({
 **Starting with Multiple Signals:**
 ```typescript
 // Process multiple orders in parallel
-await cns.stimulate([
+const stimulation = cns.stimulate([
   orderPlaced.createSignal({ orderId: 'ORD-001', items: ['X'] }),
   orderPlaced.createSignal({ orderId: 'ORD-002', items: ['Y', 'Z'] })
 ]);
+await stimulation.waitUntilComplete();
 ```
 
 See [Multiple Signals Recipe](https://cnstra.org/docs/recipes/multiple-signals) for more patterns and best practices.
@@ -550,7 +569,7 @@ const cns = new CNS([eventStore, stateManager]);
 Errors are delivered immediately via `onResponse` callbacks:
 
 ```typescript
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   onResponse: (response) => {
     if (response.error) {
       console.error(`Error in neuron processing:`, response.error);
@@ -566,26 +585,29 @@ await cns.stimulate(signal, {
     }
   }
 });
+await stimulation.waitUntilComplete();
 ```
 
 **Error Recovery with Context:**
 ```typescript
 let savedContext: ICNSStimulationContextStore | undefined;
 
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   onResponse: (response) => {
     if (response.error) {
       // Save context for retry
-      savedContext = response.contextStore;
+      savedContext = response.stimulation.getContext();
     }
   }
 });
+await stimulation.waitUntilComplete();
 
 // Retry with preserved context
 if (savedContext) {
-  await cns.stimulate(retrySignal, {
+  const retryStimulation = cns.stimulate(retrySignal, {
     ctx: savedContext
   });
+  await retryStimulation.waitUntilComplete();
 }
 ```
 
@@ -605,9 +627,10 @@ class RedisContextStore implements ICNSStimulationContextStore {
   }
 }
 
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   createContextStore: () => new RedisContextStore(redisClient, 'session-123')
 });
+await stimulation.waitUntilComplete();
 ```
 
 ### CNS Configuration

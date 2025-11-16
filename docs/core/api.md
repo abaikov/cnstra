@@ -88,18 +88,19 @@ const unsubscribe = cns.addResponseListener(r => { /* ... */ });
 ```
 
 ### `cns.stimulate(signal, options?)`
-Run a stimulation.
+Run a stimulation. Returns a `CNSStimulation` instance. Use `stimulation.waitUntilComplete()` to await completion.
 
 ```ts
-await cns.stimulate(userCreated.createSignal({ id: '123', name: 'John' }));
+const stimulation = cns.stimulate(userCreated.createSignal({ id: '123', name: 'John' }));
+await stimulation.waitUntilComplete();
 ```
 
 #### Single entry point
-`stimulate(...)` is the only entry point that begins execution. Nothing runs until you explicitly stimulate a signal. This is the “inverted” part of IERG: you start the run and each dendrite returns the explicit continuation.
+`stimulate(...)` is the only entry point that begins execution. Nothing runs until you explicitly stimulate a signal. This is the "inverted" part of IERG: you start the run and each dendrite returns the explicit continuation.
 
 #### Stimulation options
 ```ts
-await cns.stimulate(signal, {
+const stimulation = cns.stimulate(signal, {
   onResponse: (r) => { /* per-stimulation hook */ },
   abortSignal,                 // Abort the whole run cooperatively
   concurrency: 4,              // Per-stimulation parallelism
@@ -109,6 +110,7 @@ await cns.stimulate(signal, {
   ctx,                         // Pre-supplied context store
   createContextStore: () => myStore(), // Custom context store factory
 });
+await stimulation.waitUntilComplete();
 ```
 
 #### Response shape (for listeners)
@@ -118,10 +120,12 @@ Both `onResponse` and global listeners receive the same object:
 {
   inputSignal?: TCNSSignal;    // when a signal is ingested
   outputSignal?: TCNSSignal;   // when a dendrite returns a continuation
-  ctx: ICNSStimulationContextStore;
+  contextValue: TCNSStimulationSerializedContextValue; // the context value
   queueLength: number;         // current work queue size
+  stimulation: CNSStimulation; // reference to the stimulation instance
   error?: Error;               // when a dendrite throws
   hops?: number;               // present if maxNeuronHops is set
+  stimulationId?: string;     // unique identifier for this stimulation
 }
 ```
 
@@ -147,6 +151,6 @@ off();
 
 Notes
 - Local `onResponse` (per stimulation) runs as well as global listeners; both can be `async`.
-- All listeners run in parallel per response; errors from any listener reject the `stimulate(...)` Promise.
+- All listeners run in parallel per response; errors from any listener reject the `stimulation.waitUntilComplete()` Promise.
 - If all listeners are synchronous, no extra async deferrals are introduced.
 - Use `allowName`/`maxNeuronHops` to constrain traversal if needed.
