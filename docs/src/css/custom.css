@@ -58,6 +58,7 @@ html[data-theme='dark'] {
 body {
   font-family: var(--ifm-font-family-base);
   font-smooth: never;
+
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -103,49 +104,4 @@ html[data-theme='dark'] .heroTitleNeutral { color: #ffffff; }
   0%, 100% { text-shadow: 0 0 3px var(--infection-red); }
   33% { text-shadow: 0 0 5px var(--infection-green); }
   66% { text-shadow: 0 0 4px var(--infection-purple); }
-}
-
-/* Font switcher positioning */
-.font-switcher-container {
-  position: fixed;
-  top: 3.75rem;
-  right: 1rem;
-  z-index: 1000;
-}
-
-@media (max-width: 996px) {
-  .font-switcher-container {
-    top: 0.75rem;
-    right: 0.75rem;
-  }
-  
-  /* Hide when mobile sidebar is open */
-  .navbar-sidebar--show ~ .font-switcher-container {
-    display: none;
-  }
-}
-
-/* Simple font mode */
-html.font-simple {
-  --ifm-font-family-base: var(--ifm-font-family-simple);
-  --ifm-font-family-monospace: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
-}
-
-html.font-simple body {
-  font-smooth: auto;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-html.font-simple .markdown,
-html.font-simple .navbar,
-html.font-simple .footer,
-html.font-simple .menu,
-html.font-simple .pagination,
-html.font-simple .tabs,
-html.font-simple .table,
-html.font-simple .tabs__item,
-html.font-simple .navbar__title,
-html.font-simple .menu__link {
-  font-family: var(--ifm-font-family-base);
 }
