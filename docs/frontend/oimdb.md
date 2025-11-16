@@ -488,7 +488,7 @@ await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTit
 - **Memory**: Efficient key-based subscriptions, no global listeners
 - **Schedulers**: Configurable timing for optimal batching:
   - **Microtask**: ~1-5ms delay, ideal for UI updates
-  - **Immediate**: <1ms, fastest execution  
+  - **Immediate**: &lt;1ms, fastest execution  
   - **Timeout**: Custom delay for batching strategies
   - **AnimationFrame**: 16ms, synced with 60fps rendering
 

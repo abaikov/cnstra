@@ -7,7 +7,7 @@ slug: /integrations/bullmq
 
 Use BullMQ to schedule work and feed signals into CNStra. BullMQ provides process-wide concurrency control, rate limiting, and retry mechanisms that complement CNStra's instance-level concurrency.
 
-For more information on why external queue systems are recommended for production, see [Performance: External Queue Systems](/docs/advanced/performance#use-external-queue-systems-to-control-memory-load).
+For more information on why external queue systems are recommended for production, see [Performance: External Queue Systems](/docs/advanced/performance).
 
 ## Basic Integration
 
