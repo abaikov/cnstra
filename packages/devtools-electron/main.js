@@ -256,7 +256,7 @@ async function createManagerWindow() {
   });
   await win.loadFile(path.join(__dirname, 'manager.html'));
   
-  // Открываем DevTools для Manager окна только в режиме разработки
+  // Open DevTools for Manager window only in development mode
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: 'detach' });
   }

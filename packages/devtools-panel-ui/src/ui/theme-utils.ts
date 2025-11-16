@@ -1,8 +1,8 @@
 /**
- * Утилиты для работы с темой "Гниющая плоть"
+ * Utilities for working with the "Decay" theme
  */
 
-// Типы для цветовых схем
+// Color scheme types
 export type DecayColor =
     | 'flesh-dark'
     | 'flesh-medium'
@@ -38,13 +38,13 @@ export type DecayBgColor =
     | 'bg-panel'
     | 'bg-card';
 
-// Функции для получения CSS переменных
+// Functions for getting CSS variables
 export const getDecayColor = (color: DecayColor): string => `var(--${color})`;
 export const getTextColor = (color: DecayTextColor): string =>
     `var(--${color})`;
 export const getBgColor = (color: DecayBgColor): string => `var(--${color})`;
 
-// Функции для создания стилей с темой
+// Functions for creating styles with theme
 export const createDecayStyle = (styles: Record<string, string | number>) => {
     return Object.entries(styles).reduce((acc, [key, value]) => {
         if (typeof value === 'string' && value.startsWith('decay-')) {
@@ -63,7 +63,7 @@ export const createDecayStyle = (styles: Record<string, string | number>) => {
     }, {} as Record<string, string | number>);
 };
 
-// Константы для пиксельных иконок
+// Constants for pixel icons
 export const DECAY_ICONS = {
     skull: '💀',
     zombie: '🧟',
@@ -139,7 +139,7 @@ export const DECAY_ICONS = {
     snail: '🐌',
 } as const;
 
-// Функции для анимаций
+// Animation functions
 export const createFlickerAnimation = (duration = '2s') => ({
     animation: `flicker ${duration} infinite`,
 });
@@ -156,7 +156,7 @@ export const createGlitchAnimation = (duration = '2s') => ({
     animation: `glitch ${duration} infinite`,
 });
 
-// Функции для создания теней
+// Functions for creating shadows
 export const createDecayShadow = (
     type: 'dark' | 'blood' | 'infection' | 'bone' = 'dark'
 ) => {
@@ -181,7 +181,7 @@ export const createGlowEffect = (
     return `0 0 ${intensities[intensity]} var(--${color})`;
 };
 
-// Функции для создания градиентов гниения
+// Functions for creating decay gradients
 export const createDecayGradient = (
     direction = '90deg',
     colors: DecayColor[]
@@ -190,7 +190,7 @@ export const createDecayGradient = (
     return `linear-gradient(${direction}, ${colorVars})`;
 };
 
-// Готовые стили для компонентов
+// Ready-to-use component styles
 export const DECAY_COMPONENT_STYLES = {
     button: {
         background: 'var(--flesh-medium)',
@@ -233,7 +233,7 @@ export const DECAY_COMPONENT_STYLES = {
     },
 } as const;
 
-// Функция для применения пиксельного рендеринга
+// Function for applying pixel-perfect rendering
 export const applyPixelPerfect = () => ({
     imageRendering: 'pixelated' as const,
     WebkitFontSmoothing: 'none' as const,
@@ -241,7 +241,7 @@ export const applyPixelPerfect = () => ({
     fontSmooth: 'never' as const,
 });
 
-// Функция для создания пиксельной сетки (опционально)
+// Function for creating pixel grid (optional)
 export const createPixelGrid = (size = 1) => ({
     backgroundImage: `
     linear-gradient(rgba(163, 157, 150, 0.1) ${size}px, transparent ${size}px),
