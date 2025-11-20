@@ -113,12 +113,13 @@ Context growth significantly impacts memory usage:
    return axon.process.createSignal({ document: fullDocumentObject });
    ```
 
-3. **Store only IDs and counters in context**, not full objects:
+3. **Context stores per-neuron per-stimulation metadata only** (retry attempts, debounce state), not business data:
    ```ts
-   // ✅ Good: ~50 bytes
-   ctx.set({ userId: '123', attempt: 2 });
+   // ✅ Good: Context stores metadata (~50 bytes)
+   ctx.set({ attempt: 2, startTime: Date.now() });
    
-   // ❌ Bad: ~5-10 KB per stimulation
+   // ❌ Bad: Don't store business data in context
+   // Business data should flow through signal payloads
    ctx.set({ user: fullUserObject, history: lotsOfData });
    ```
 
@@ -185,39 +186,36 @@ Context growth significantly impacts memory usage:
    - Survives process restarts
    - Better observability and retry mechanisms
    
-   See [Integrations](/docs/integrations/bullmq) for examples.
+   See [Integrations](/docs/integrations/message-brokers) for examples.
 
-10. **Clean up contexts as quickly as possible**:
+10. **Context is per-neuron per-stimulation and automatically cleaned up**:
     
-    Contexts hold memory for the entire duration of a stimulation. Clean them up immediately after use:
+    Each neuron in each stimulation has its own context instance. Contexts hold memory for the entire duration of a stimulation and are automatically cleaned up when the stimulation completes. **Use context for metadata only**, not business data:
     
     ```ts
-    const processor = withCtx<{ processed: string[] }>()
+          // Context stores per-neuron per-stimulation metadata (processing stats)
+    const processor = withCtx<{ processedCount: number; startTime: number }>()
       .neuron('processor', { next })
       .dendrite({
         collateral: input,
         response: async (payload, axon, ctx) => {
-          const state = ctx.get() ?? { processed: [] };
+          // Context stores per-neuron per-stimulation metadata
+          const metadata = ctx.get() ?? { processedCount: 0, startTime: Date.now() };
+          ctx.set({ ...metadata, processedCount: metadata.processedCount + 1 });
           
-          // Process batch
+          // Business data flows through payloads
           const batch = await fetchBatch(payload.batchId);
           const results = await processBatch(batch);
           
-          // Update context
-          ctx.set({ processed: [...state.processed, ...results] });
-          
-          // ✅ Clean up immediately after processing
-          // If this is the last batch, clear context
-          if (payload.isLastBatch) {
-            ctx.delete('processed'); // Explicit cleanup
-          }
-          
-          return axon.next.createSignal({ batchId: payload.nextBatchId });
+          return axon.next.createSignal({ 
+            batchId: payload.nextBatchId,
+            results // Business data in payload
+          });
         }
       });
     ```
     
-    **Best practice**: Delete context keys as soon as they're no longer needed, don't wait for stimulation completion.
+    **Best practice**: Context is automatically cleaned up when stimulation completes. Store only metadata in context, pass business data through signal payloads.
 
 11. **Use batch processing with recursive self-calls** (instead of fan-out):
     
@@ -230,16 +228,16 @@ Context growth significantly impacts memory usage:
     );
     ```
     
-    **✅ Good**: Process in batches with recursive self-calls:
+    **✅ Good**: Process in batches with recursive self-calls. **Pass offset through payload**, not context:
     ```ts
     const BATCH_SIZE = 20;
     
-    const batchProcessor = withCtx<{ offset: number }>()
-      .neuron('batch-processor', { processBatch, nextBatch })
+    const batchProcessor = neuron('batch-processor', { processBatch, nextBatch })
       .dendrite({
         collateral: processBatch,
-        response: async (payload, axon, ctx) => {
-          const offset = ctx.get()?.offset ?? 0;
+        response: async (payload, axon) => {
+          // Offset comes from payload, not context
+          const offset = payload.offset ?? 0;
           
           // Fetch only one batch from DB
           const batch = await db.fetchBatch(offset, BATCH_SIZE);
@@ -247,16 +245,15 @@ Context growth significantly impacts memory usage:
           // Process this batch (small memory footprint)
           await processItems(batch);
           
-          // If more items exist, recursively call self with next offset
+          // If more items exist, recursively call self with next offset in payload
           if (batch.length === BATCH_SIZE) {
-            ctx.set({ offset: offset + BATCH_SIZE });
-            // Recursive self-call - only one task in queue at a time
+            // Recursive self-call - pass offset through payload
             return axon.nextBatch.createSignal({ 
               offset: offset + BATCH_SIZE 
             });
           }
           
-          // Done - cleanup context
+          // Done
           ctx.delete('offset');
           return undefined;
         }

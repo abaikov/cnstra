@@ -5,7 +5,7 @@ sidebar_label: Retries
 slug: /recipes/retry
 ---
 
-Implement retries by looping within the same neuron, storing attempt count in context, and backing off between tries. This preserves signal ownership and keeps orchestration local.
+Implement retries by looping within the same neuron. **Use context for attempt tracking** (per-neuron per-stimulation metadata), while business data flows through payloads.
 
 ```ts
 import { withCtx, collateral } from '@cnstra/core';
@@ -22,6 +22,7 @@ export const fetchWithRetry = withCtx<{ attempt?: number }>()
   .dendrite({
     collateral: tryFetch,
     response: async (payload, axon, ctx) => {
+      // Context stores per-neuron per-stimulation metadata (retry attempts)
       const attempt = (ctx.get()?.attempt ?? 0) + 1;
       ctx.set({ attempt });
 
@@ -34,6 +35,7 @@ export const fetchWithRetry = withCtx<{ attempt?: number }>()
         if (attempt < 3) {
           await sleep(2 ** (attempt - 1) * 250); // backoff: 250ms, 500ms, ...
           // self-loop: re-emit our own input collateral
+          // Business data (url) flows through payload
           return axon.tryFetch.createSignal({ url: payload.url });
         }
         return axon.failed.createSignal({ ok: false, error });
@@ -44,5 +46,6 @@ export const fetchWithRetry = withCtx<{ attempt?: number }>()
 
 Notes
 - Self-loop uses the neuron's own input collateral (`retry:tryFetch`), complying with ownership.
-- Attempt count is stored in `ctx`; backoff grows per attempt.
+- **Context stores per-neuron per-stimulation metadata** (attempt count) - each neuron in each stimulation has its own context
+- **Business data (url) flows through payloads** - not stored in context
 - Prefer queue-native retries (e.g., BullMQ, SQS) in production for visibility; use local retries for transient client/network work.

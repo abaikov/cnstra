@@ -9,7 +9,7 @@ keywords: [introduction, getting started, state machine basics, orchestration tu
 
 Central Nervous System (CNS) for apps.
 
-Think of your application as an organism. Instead of a global event bus, you have a central nervous system that runs deterministic, typed reactions across a graph of neurons. This makes flows explicit, testable, and fast.
+Think of your application as an organism. Instead of a traditional event bus, you have a central nervous system that runs deterministic, typed reactions across a graph of neurons with ownership guarantees. This makes flows explicit, testable, and fast.
 
 CNStra (Central Nervous System Orchestrator) is an IERG (Inverted Explicit Reactive Graph): you explicitly start a run; each neuron explicitly returns the next step; nothing happens in the background unless you ask for it.
 

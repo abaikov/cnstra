@@ -25,6 +25,8 @@ Event-based approaches offer decoupling through message passing, but they introd
 - **Constant service information exchange**: Events require continuous metadata exchange for orchestration, adding overhead and complexity
 - **Unpredictable results**: With multiple listeners and async event propagation, outcomes become non-deterministic
 - **Tracking operation completion**: It's unclear how to reliably track when complex multi-step operations finish, leading to race conditions and incomplete workflows
+- **No ownership guarantees**: Anyone can emit any event, making it hard to reason about data flow
+- **Implicit graph structure**: Subscriptions are scattered across codebase, making it hard to analyze the overall flow
 
 ### Flow Engines: Scaling Without Dependency Inversion
 
@@ -72,29 +74,56 @@ IERG addresses all of these limitations by combining explicit orchestration, str
 - Single entry point: `cns.stimulate(...)` starts every run
 - Cross‑cutting hooks: use global `addResponseListener(...)` or per‑run `onResponse` to implement logging/metrics/tracing without polluting domain neurons
 
-**Not an event bus**
+**More like a distributed command pattern than an event bus**
+
+While CNStra shares similarities with event-driven systems (signals propagate through a graph), it's conceptually closer to a distributed command pattern: signals are commands that must be handled by specific neurons (ownership), not just notifications broadcast to whoever listens. This provides architectural guarantees that typical event buses don't:
+
+**Ownership & Type Safety:**
 - No global "emit". A neuron may only emit collaterals declared in its own axon (signal ownership)
+- TypeScript enforces ownership at compile time - you cannot emit someone else's collateral
 - You don't need unique event IDs to ensure "the event is mine" — you bind to exact collaterals, not stringly-named topics floating around
+
+**Explicit Data Flow:**
+- Data flows explicitly through signal payloads - no hidden state or closures
+- Each step receives data from the previous step's signal payload
+- Type-safe: payload types are checked at compile time
+
+**Explicit Graph Structure:**
+- Signals follow an explicit neuron graph, not broadcast to whoever "happens to listen"
+- The graph is a first-class data structure (array of neurons) that can be analyzed (SCC, cycles, deadlocks)
+- No "who subscribed where?" scavenger hunts; flows are local and type-checked
+
+**Isolated Execution:**
+- Each `cns.stimulate()` creates an isolated execution context
+- Parallel requests are automatically isolated from each other
+- You can track completion: `await stimulation.waitUntilComplete()`
+- You can cancel execution: `abortSignal` cancels entire stimulation
+
+**Deterministic Execution:**
 - No race for who hears what; the next step is whatever you return
+- Order is determined by graph structure, not subscription timing
+- Same input → same path through the graph
 
 ## Example
 
 ```ts
-import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 const start = collateral<{ q: string }>('search:start');
 const fetched = collateral<{ q: string; items: any[] }>('search:fetched');
 
-const controller = withCtx<{ q?: string }>()
-  .neuron('controller', { fetched })
+const controller = neuron('controller', { fetched })
   .dendrite({
     collateral: start,
-    response: async (payload, axon, ctx) => {
-      ctx.set({ q: payload.q });
+    response: async (payload, axon) => {
+      // Business data (q) flows through payloads, not context
       const items = await api.search(payload.q);
       return axon.fetched.createSignal({ q: payload.q, items });
     },
   });
+```
+
+**Note**: Context is for per-neuron per-stimulation metadata (retry attempts, debounce state), not for passing business data. Business data flows through signal payloads.
 
 const render = neuron('render', {}).dendrite({
   collateral: fetched,

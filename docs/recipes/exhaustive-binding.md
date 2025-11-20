@@ -225,7 +225,7 @@ const metricsCollector = neuron('metrics', {})
 
 4. **Leverage type inference**: Don't manually annotate payload types; let TypeScript infer them from the axon.
 
-5. **Combine with context**: Use `withCtx()` if you need to maintain state across multiple bind handlers in the same stimulation.
+5. **Context for per-neuron per-stimulation metadata**: Use `withCtx()` if you need to store per-neuron per-stimulation metadata (retry attempts, debounce state) across multiple bind handlers. **Business data should flow through signal payloads**, not context.
 
 ## Comparison with Manual Dendrites
 

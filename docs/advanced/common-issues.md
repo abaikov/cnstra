@@ -133,7 +133,7 @@ const worker = new Worker('jobs', async (job) => {
 });
 ```
 
-See [Integrations](/docs/integrations/bullmq) for more details.
+See [Integrations](/docs/integrations/message-brokers) for more details. For best practices on context usage, see [Best Practices](/docs/advanced/best-practices).
 
 ## Memory Issues
 
@@ -147,19 +147,18 @@ If your signal payloads are large and queues grow, memory usage can spike. See [
 
 Context data persists for the entire duration of a stimulation. If stimulations run for a long time or context grows large, memory usage increases.
 
-**Solution**: Clean up context keys as soon as they're no longer needed:
+**Solution**: Context is automatically cleaned up when stimulation completes. **Store only metadata in context**, not business data. Business data should flow through signal payloads:
 
 ```ts
 .dendrite({
   collateral: process,
   response: async (payload, axon, ctx) => {
-    const data = ctx.get();
-    // Use data...
+    // Context stores per-neuron per-stimulation metadata (not business data)
+    const metadata = ctx.get();
+    // Use metadata...
     
-    // Clean up immediately after use
-    ctx.delete('largeData');
-    
-    return axon.next.createSignal({});
+    // Business data flows through payloads
+    return axon.next.createSignal({ result: payload.data });
   }
 });
 ```

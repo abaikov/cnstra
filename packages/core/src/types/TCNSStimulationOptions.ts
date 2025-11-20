@@ -1,5 +1,6 @@
 import { TCNSStimulationResponse } from './TCNSStimulationResponse';
 import { TCNSStimulationSerializedContextValue } from './TCNSStimulationSerializedContextValue';
+import { ICNSStimulationContextStore } from '../interfaces/ICNSStimulationContextStore';
 
 import { TCNSNeuron } from './TCNSNeuron';
 import { TCNSDendrite } from './TCNSDendrite';
@@ -40,5 +41,6 @@ export type TCNSStimulationOptions<
     abortSignal?: AbortSignal;
     stimulationId?: string;
     contextValues?: TCNSStimulationSerializedContextValue;
+    ctx?: ICNSStimulationContextStore;
     concurrency?: number;
 };

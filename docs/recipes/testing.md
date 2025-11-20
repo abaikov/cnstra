@@ -300,7 +300,9 @@ const ctxNeuron = withCtx<{ sessionId: string }>()
   .dendrite({
     collateral: collateral<{ action: string }>('ctx:input'),
     response: (payload, axon, ctx) => {
+      // Context stores per-neuron per-stimulation metadata (session tracking)
       const sessionId = ctx.get()?.sessionId || 'default';
+      // Business data flows through payloads
       return axon.output.createSignal({
         result: `${payload.action} (session: ${sessionId})`,
       });

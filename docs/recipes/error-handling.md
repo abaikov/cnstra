@@ -59,7 +59,7 @@ if (savedContext) {
 
 ## Retry with backoff (self-loop)
 
-Use a self-looping neuron with context to track attempts and implement exponential backoff:
+Use a self-looping neuron with context to track **per-neuron per-stimulation retry attempts** (metadata), while business data flows through payloads:
 
 ```ts
 import { withCtx, collateral } from '@cnstra/core';
@@ -73,17 +73,20 @@ const taskRunner = withCtx<{ attempt: number }>()
   .dendrite({
     collateral: tryTask,
     response: async (payload, axon, ctx) => {
+      // Context stores per-neuron per-stimulation metadata (retry attempts)
       const prev = ctx.get() ?? { attempt: 0 };
       const attempt = prev.attempt + 1;
       ctx.set({ attempt });
 
       try {
+        // Business data (taskId) comes from payload
         await performTask(payload.taskId);
         return axon.completed.createSignal({ taskId: payload.taskId });
       } catch (err) {
         if (attempt < 5) {
           const backoff = Math.pow(2, attempt) * 100; // exponential backoff
           await new Promise(resolve => setTimeout(resolve, backoff));
+          // Business data flows through payload, not context
           return axon.tryTask.createSignal(payload); // self-loop retry
         }
         return axon.failed.createSignal({ taskId: payload.taskId, reason: String(err) });
@@ -91,6 +94,8 @@ const taskRunner = withCtx<{ attempt: number }>()
     },
   });
 ```
+
+**Key point**: Context stores **per-neuron per-stimulation metadata** (attempt count), while **business data** (taskId) flows through signal payloads.
 
 ## Tips
 

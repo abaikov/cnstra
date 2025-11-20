@@ -5,35 +5,33 @@ sidebar_label: Self-loops
 slug: /recipes/self-loop-cycles
 ---
 
-Use self-loops to model cycles/iterations inside a single neuron while keeping ownership and state in context.
+Use self-loops to model cycles/iterations inside a single neuron. **Pass data through signal payloads**, not context. Context is for per-neuron per-stimulation metadata only.
 
 Why self-loops
 - Deterministic: one place owns the loop logic, no hidden cross-neuron chatter
-- Local state: `ctx` carries counters/cursors/accumulators
+- Data flows through payloads: each iteration passes state in the signal
 - Ownership: the neuron emits only its own input collateral to continue
 
 Counter example (iterate until max)
 
 ```ts
-import { withCtx, collateral } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 
-const step = collateral<{ amount: number }>('counter:step');
+const step = collateral<{ amount: number; total?: number; attempt?: number }>('counter:step');
 const done = collateral<{ total: number }>('counter:done');
 
-export const counter = withCtx<{ total: number; attempt: number }>()
-  .neuron('counter', { step, done })
+export const counter = neuron('counter', { step, done })
   .dendrite({
     collateral: step,
-    response: (payload, axon, ctx) => {
-      const prev = ctx.get() ?? { total: 0, attempt: 0 };
-      const next = { total: prev.total + payload.amount, attempt: prev.attempt + 1 };
-      ctx.set(next);
+    response: (payload, axon) => {
+      const total = (payload.total || 0) + payload.amount;
+      const attempt = (payload.attempt || 0) + 1;
 
-      if (next.attempt < 5) {
-        // self-loop: continue the cycle
-        return axon.step.createSignal({ amount: payload.amount });
+      if (attempt < 5) {
+        // self-loop: pass state through payload
+        return axon.step.createSignal({ amount: payload.amount, total, attempt });
       }
-      return axon.done.createSignal({ total: next.total });
+      return axon.done.createSignal({ total });
     },
   });
 ```
@@ -41,9 +39,9 @@ export const counter = withCtx<{ total: number; attempt: number }>()
 Pagination example (loop until no next page)
 
 ```ts
-import { withCtx, collateral } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 
-const tryPage = collateral<{ cursor?: string }>('pager:try');
+const tryPage = collateral<{ cursor?: string; items?: unknown[] }>('pager:try');
 const finished = collateral<{ items: unknown[] }>('pager:finished');
 
 async function fetchPage(cursor?: string): Promise<{ items: unknown[]; next?: string }> {
@@ -51,26 +49,27 @@ async function fetchPage(cursor?: string): Promise<{ items: unknown[]; next?: st
   return { items: [{ id: cursor ?? '0' }], next: cursor ? undefined : '1' };
 }
 
-export const pager = withCtx<{ cursor?: string; items: unknown[] }>()
-  .neuron('pager', { tryPage, finished })
+export const pager = neuron('pager', { tryPage, finished })
   .dendrite({
     collateral: tryPage,
     response: async (payload, axon, ctx) => {
       if (ctx.abortSignal?.aborted) return; // cooperative cancel
 
-      const { items, next } = await fetchPage(payload.cursor ?? ctx.get()?.cursor);
-      const prev = ctx.get() ?? { items: [] as unknown[], cursor: undefined as string | undefined };
-      ctx.set({ items: [...prev.items, ...items], cursor: next });
+      // Use payload cursor, not context
+      const { items, next } = await fetchPage(payload.cursor);
+      const accumulatedItems = [...(payload.items || []), ...items];
 
       if (next) {
-        return axon.tryPage.createSignal({ cursor: next }); // self-loop until no next
+        // self-loop: pass accumulated data through payload
+        return axon.tryPage.createSignal({ cursor: next, items: accumulatedItems });
       }
-      return axon.finished.createSignal({ items: ctx.get()!.items });
+      return axon.finished.createSignal({ items: accumulatedItems });
     },
   });
 ```
 
 Tips
-- Store only what you need in `ctx` (counters, cursors, accumulators)
+- **Pass data through signal payloads**, not context
+- Context is for per-neuron per-stimulation metadata (retry attempts, debounce state)
 - Check `ctx.abortSignal` between iterations
 - For retries, prefer a separate self-loop neuron with backoff per attempt

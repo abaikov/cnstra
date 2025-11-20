@@ -73,9 +73,11 @@ export class CNSStimulation<
             TNeuronName
         >
     ) {
-        this.ctx = new CNSStimulationContextStore(
-            new Map(Object.entries(options?.contextValues ?? {}))
-        );
+        this.ctx =
+            options?.ctx ??
+            new CNSStimulationContextStore(
+                new Map(Object.entries(options?.contextValues ?? {}))
+            );
         this.id = options?.stimulationId || Math.random().toString(36).slice(2);
         this.queue = new CNSNeuronActivationPump(
             neuronActivationTask =>

@@ -15,6 +15,14 @@ const userEvent = collateral<{ userId: string }>('user:event');
 const simpleEvent = collateral('simple:event');
 ```
 
+### `collateral.createSignal(payload?)`
+Create a signal from a collateral. Payload is optional for collaterals without payload type.
+
+```ts
+const signal = userEvent.createSignal({ userId: '123' });
+const emptySignal = simpleEvent.createSignal(); // no payload
+```
+
 ### `neuron(id: string, axon: Axon)`
 Create a neuron with the given axon.
 
@@ -51,7 +59,9 @@ Add a dendrite bound to a collateral.
 myNeuron.dendrite({
   collateral: inputCollateral,
   response: async (payload, axon, ctx) => {
+    // ctx: per-neuron per-stimulation context (metadata storage)
     if (ctx.abortSignal?.aborted) return;
+    // Business data flows through payloads, not context
     return axon.output.createSignal(result);
   }
 });
@@ -61,9 +71,15 @@ myNeuron.dendrite({
 Exhaustive bind to every collateral of another neuron's axon (compile-time safety).
 
 ```ts
-withCtx().neuron('order-mailer', {})
+// Context is for per-neuron per-stimulation metadata, not business data
+withCtx<{ attempt: number }>().neuron('order-mailer', {})
   .bind(order, {
-    created: (payload) => { /* ... */ },
+    created: (payload, axon, ctx) => { 
+      // Context stores per-neuron per-stimulation metadata
+      const attempt = (ctx.get()?.attempt || 0) + 1;
+      ctx.set({ attempt });
+      // Business data flows through payloads
+    },
     updated: (payload) => { /* ... */ },
     cancelled: (payload) => { /* ... */ },
   });
@@ -80,8 +96,27 @@ const worker = neuron('worker', { out })
 
 This limits how many concurrent executions of this neuron's dendrites can run at the same time, even across different `stimulate()` calls. Useful for rate-limiting external APIs or heavy I/O operations.
 
+### `neuron.setMaxDuration(ms: number | undefined)`
+Set maximum execution duration for this neuron's dendrites. If exceeded, the dendrite execution will be aborted.
+
+```ts
+const worker = neuron('worker', { out })
+  .setMaxDuration(5000) // 5 seconds max
+  .dendrite({ collateral: task, response: async (p, axon) => { /* ... */ } });
+```
+
 ### `CNS`
 Main orchestrator. `new CNS(neurons, options?)`
+
+**Constructor options:**
+```ts
+const cns = new CNS(neurons, {
+  autoCleanupContexts: false // Auto-cleanup unused contexts (performance warning: O(V²) cost)
+});
+```
+
+**Properties:**
+- `cns.network` — Access to network graph analysis (SCC, subscribers, etc.)
 
 ```ts
 const unsubscribe = cns.addResponseListener(r => { /* ... */ });
@@ -95,8 +130,19 @@ const stimulation = cns.stimulate(userCreated.createSignal({ id: '123', name: 'J
 await stimulation.waitUntilComplete();
 ```
 
+### `cns.activate(tasks, options?)`
+Start a stimulation with activation tasks directly. Useful for advanced scenarios where you need fine-grained control over task execution.
+
+```ts
+const tasks: TCNSNeuronActivationTask[] = [
+  { stimulationId: 'run-1', neuronId: 'worker', dendriteCollateralName: 'task', input: signal }
+];
+const stimulation = cns.activate(tasks, { concurrency: 4 });
+await stimulation.waitUntilComplete();
+```
+
 #### Single entry point
-`stimulate(...)` is the only entry point that begins execution. Nothing runs until you explicitly stimulate a signal. This is the "inverted" part of IERG: you start the run and each dendrite returns the explicit continuation.
+`stimulate(...)` and `activate(...)` are the entry points that begin execution. Nothing runs until you explicitly stimulate a signal or activate tasks. This is the "inverted" part of IERG: you start the run and each dendrite returns the explicit continuation.
 
 #### Stimulation options
 ```ts
@@ -108,7 +154,7 @@ const stimulation = cns.stimulate(signal, {
   allowName: (neuronName) => true, // Filter allowed neurons by name
   stimulationId: 'run-123',    // Optional id for tracing
   ctx,                         // Pre-supplied context store
-  createContextStore: () => myStore(), // Custom context store factory
+  contextValues: { 'neuron-id': { attempt: 0 } }, // Pre-populate context values
 });
 await stimulation.waitUntilComplete();
 ```
@@ -120,7 +166,7 @@ Both `onResponse` and global listeners receive the same object:
 {
   inputSignal?: TCNSSignal;    // when a signal is ingested
   outputSignal?: TCNSSignal;   // when a dendrite returns a continuation
-  contextValue: TCNSStimulationSerializedContextValue; // the context value
+  contextValue: TCNSStimulationSerializedContextValue; // per-neuron per-stimulation metadata (not business data)
   queueLength: number;         // current work queue size
   stimulation: CNSStimulation; // reference to the stimulation instance
   error?: Error;               // when a dendrite throws
@@ -147,6 +193,56 @@ const off = cns.addResponseListener((r) => {
 
 // later
 off();
+```
+
+### `CNSStimulation` methods
+
+#### `stimulation.waitUntilComplete()`
+Wait for the stimulation to complete. Returns a Promise that resolves when all tasks are done or rejects on error.
+
+```ts
+await stimulation.waitUntilComplete();
+```
+
+#### `stimulation.getContext()`
+Get the context store for this stimulation. Useful for saving/restoring stimulation state.
+
+```ts
+const ctx = stimulation.getContext();
+// Save for retry
+const savedCtx = ctx;
+```
+
+#### `stimulation.getFailedTasks()`
+Get all tasks that failed or were aborted.
+
+```ts
+const failures = stimulation.getFailedTasks();
+failures.forEach(f => console.error(f.error));
+```
+
+### `cns.network` — Network Graph Analysis
+
+Access network analysis utilities:
+
+```ts
+// Get subscribers for a collateral
+const subscribers = cns.network.getSubscribers('user:created');
+
+// Get neuron by name
+const neuron = cns.network.getNeuronByName('user-service');
+
+// Get collateral by name
+const collateral = cns.network.getCollateralByName('user:created');
+
+// Get all neurons
+const neurons = cns.network.getNeurons();
+
+// Get all collaterals
+const collaterals = cns.network.getCollaterals();
+
+// Get strongly connected components
+const sccs = cns.network.stronglyConnectedComponents;
 ```
 
 Notes
