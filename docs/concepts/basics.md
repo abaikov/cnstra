@@ -14,7 +14,6 @@ Stimulation lives in a single process to guarantee stable execution without unne
 - **Deterministic execution**: All neurons within a stimulation run in the same execution context, eliminating cross-process synchronization complexity
 - **Performance**: No serialization/deserialization overhead for signal passing between neurons
 - **Reliability**: Single-process execution reduces failure modes and makes error handling straightforward
-- **Simplicity**: You don't need to manage distributed state or handle network partitions within a single stimulation
 
 ### Multi-Process Architecture
 

@@ -3,17 +3,14 @@ id: concepts-intro
 title: Introduction to CNStra - Type-Safe Orchestration Library
 sidebar_label: Introduction
 slug: /concepts/intro
-description: CNStra is a zero-dependency state machine and orchestration library for JavaScript/TypeScript. Learn about IERG (Inverted Explicit Reactive Graph), deterministic workflows, and SOLID/SRP principles for React and backend applications.
-keywords: [introduction, getting started, state machine basics, orchestration tutorial, IERG, reactive graph, deterministic state machine, neuron model, signal flow, type-safe orchestration, JavaScript state management, TypeScript orchestration]
+description: CNStra is a zero-dependency state machine and orchestration library for JavaScript/TypeScript. Learn about CNS (Central Neural Network of your app), deterministic workflows, and SOLID/SRP principles for React and backend applications.
+keywords: [introduction, getting started, state machine basics, orchestration tutorial, CNS, Central Neural Network, reactive graph, deterministic state machine, neuron model, signal flow, type-safe orchestration, JavaScript state management, TypeScript orchestration]
 ---
 
 Central Nervous System (CNS) for apps.
 
 Think of your application as an organism. Instead of a traditional event bus, you have a central nervous system that runs deterministic, typed reactions across a graph of neurons with ownership guarantees. This makes flows explicit, testable, and fast.
 
-CNStra (Central Nervous System Orchestrator) is an IERG (Inverted Explicit Reactive Graph): you explicitly start a run; each neuron explicitly returns the next step; nothing happens in the background unless you ask for it.
-
-Name: CNS + "tra" (orchestrator) → CNStra.
 
 Analogy: biology ↔ application
 - CNS (central nervous system) ↔ `CNS` orchestrator instance running the graph
@@ -27,7 +24,7 @@ Analogy: biology ↔ application
 - Queues (conduction control) ↔ ordered/batched/parallel execution with backpressure
 
 Key properties
-- Deterministic: same input → same path; hop‑bounded; no hidden listeners
+- Deterministic: same input + same context → same path; hop‑bounded; no hidden listeners
 - SRP by construction: actors are visible; responsibilities are local and explicit
 - Ownership: a neuron emits only its axon’s collaterals; others bind via dendrites
 
@@ -36,6 +33,6 @@ Short vs long flows
 - Long‑lived (many stimulations): continue on external events (queue/webhook/cron) by re‑stimulating with correlation data
 
 Where to go next
-- Concepts: [IERG](/docs/concepts/ierg)
+- Concepts: [CNS - Central Neural Network of your app](/docs/concepts/cns)
 - Frontend: [CNStra & OIMDB](/docs/frontend/oimdb)
 - Core: [Quick Start](/docs/core/quick-start), [API](/docs/core/api)

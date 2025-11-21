@@ -142,7 +142,7 @@ await stimulation.waitUntilComplete();
 ```
 
 #### Single entry point
-`stimulate(...)` and `activate(...)` are the entry points that begin execution. Nothing runs until you explicitly stimulate a signal or activate tasks. This is the "inverted" part of IERG: you start the run and each dendrite returns the explicit continuation.
+`stimulate(...)` and `activate(...)` are the entry points that begin execution. Nothing runs until you explicitly stimulate a signal or activate tasks. This is the "inverted" part of CNS: you start the run and each dendrite returns the explicit continuation.
 
 #### Stimulation options
 ```ts

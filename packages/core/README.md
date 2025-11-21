@@ -8,7 +8,7 @@
 
 **CNStra (Central Nervous System Orchestrator)** models your app as a **typed neuron graph**. You explicitly start a run with `cns.stimulate(...)`; CNStra then performs a **deterministic, hop-bounded traversal** from **collateral → dendrite → returned signal**, step by step.
 
-**Zero dependencies** • **No pub/sub** • **IERG approach** (Inverted Explicit Reactive Graph)
+**Zero dependencies** • **No pub/sub** • **CNS approach** (Central Neural Network of your app)
 
 👉 **[Read the full documentation →](https://cnstra.org/)**
 
@@ -54,7 +54,7 @@ await stimulation.waitUntilComplete();
 
 - **[Quick Start Guide](https://cnstra.org/docs/core/quick-start)** — Get up and running in minutes
 - **[API Reference](https://cnstra.org/docs/core/api)** — Complete API documentation
-- **[Concepts](https://cnstra.org/docs/core/concepts)** — Neurons, collaterals, signals, and the IERG model
+- **[Concepts](https://cnstra.org/docs/core/concepts)** — Neurons, collaterals, signals, and the CNS model (Central Neural Network of your app)
 - **[Recipes](https://cnstra.org/docs/recipes)** — Common patterns and use cases
 - **[Advanced Topics](https://cnstra.org/docs/advanced)** — Performance, context stores, integrations
 

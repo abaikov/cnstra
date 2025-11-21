@@ -49,7 +49,7 @@ await stimulation.waitUntilComplete();
 
 ## Next Steps
 
-- Understand the architecture: [IERG](/docs/concepts/ierg)
+- Understand the architecture: [CNS - Central Neural Network of your app](/docs/concepts/cns)
 - Explore API: [Core API](/docs/core/api)
 - Use in React: [React Patterns](/docs/frontend/react-patterns)
  - Debugging: [DevTools](/docs/devtools/overview)
