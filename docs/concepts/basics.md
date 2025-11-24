@@ -3,7 +3,7 @@ id: basics
 title: Basics - Core Design Principles
 sidebar_label: Basics
 slug: /concepts/basics
-description: Learn the fundamental design principles of CNStra: single-process stimulation execution, command pattern architecture with built-in dependency injection, and the separation of concerns between data mutations and reads.
+description: "Learn the fundamental design principles of CNStra: single-process stimulation execution, command pattern architecture with built-in dependency injection, and the separation of concerns between data mutations and reads."
 keywords: [basics, fundamentals, design principles, single process, command pattern, dependency injection, data mutations, data reads, domain neurons, architecture basics, CNStra principles]
 ---
 

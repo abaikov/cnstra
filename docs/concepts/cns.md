@@ -95,7 +95,7 @@ CNS gives you a way to **model complex business flows as an explicit, type‑saf
 
 To go deeper:
 
-- **Concepts**: start with the high‑level `Basics` of CNStra to understand the core design decisions behind the runtime: [Basics](/concepts/basics).
-- **API**: see how neurons, collaterals, signals, and stimulations are defined in code: [API Reference](/core/api).
-- **Recipes**: explore concrete flow patterns built on CNS—for example, cycles via self‑loops: [Self‑loops and cycles](/recipes/self-loop-cycles).
+- **Concepts**: start with the high‑level `Basics` of CNStra to understand the core design decisions behind the runtime: [Basics](/docs/concepts/basics).
+- **API**: see how neurons, collaterals, signals, and stimulations are defined in code: [API Reference](/docs/core/api).
+- **Recipes**: explore concrete flow patterns built on CNS—for example, cycles via self‑loops: [Self‑loops and cycles](/docs/recipes/self-loop-cycles).
 
