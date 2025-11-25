@@ -33,6 +33,6 @@ Short vs long flows
 - Long‑lived (many stimulations): continue on external events (queue/webhook/cron) by re‑stimulating with correlation data
 
 Where to go next
-- Concepts: [CNStra Overview](/docs/concepts/overview)
+- Concepts: [CNStra Overview](/docs/concepts/cnstra)
 - Frontend: [CNStra & OIMDB](/docs/frontend/oimdb)
 - Core: [Quick Start](/docs/core/quick-start), [API](/docs/core/api)
