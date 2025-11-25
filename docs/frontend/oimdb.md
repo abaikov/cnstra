@@ -401,7 +401,7 @@ function AuthorWithPosts({ authorId }: { authorId: string }) {
 Goal: on UI click, create a deck first (to obtain `deckId`), then create a card that needs that `deckId`. We orchestrate this with a controlling neuron; OIMDB persists models; the event queue flushes once after the run.
 
 ```ts
-import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
   OIMEventQueue,
   OIMEventQueueSchedulerFactory,
@@ -427,14 +427,14 @@ const controllerCreateCard = collateral<{ deckId: string; cardId: string; title:
 const deckCreatedForCard = collateral<{ deckId: string; title: string; cardTitle: string }>('deck:createdForCard');
 
 // Services (mocked)
-const deckService = { create: async (title: string) => 'deck-' + Math.random().toString(36).slice(2) };
-const id = () => 'card-' + Math.random().toString(36).slice(2);
+const generateDeckId = (title: string) => 'deck-' + Math.random().toString(36).slice(2);
+const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
 
 // Deck neuron: listens controller:deck:createForCard, emits deck:createdForCard, upserts OIMDB
 export const deckNeuron = neuron('deck', { deckCreatedForCard }).dendrite({
   collateral: controllerCreateDeckForCard,
   response: async (payload, axon) => {
-    const deckId = await deckService.create(payload.title);
+    const deckId = generateDeckId();
     decks.collection.upsertOne({ id: deckId, title: payload.title });
     return axon.deckCreatedForCard.createSignal({ deckId, title: payload.title, cardTitle: payload.cardTitle });
   },
@@ -444,8 +444,11 @@ export const deckNeuron = neuron('deck', { deckCreatedForCard }).dendrite({
 export const cardNeuron = neuron('card', {}).dendrite({
   collateral: controllerCreateCard,
   response: async (payload) => {
-    cards.collection.upsertOne({ id: payload.cardId, deckId: payload.deckId, title: payload.title });
-    return undefined;
+    const cardId = generateCardId();
+    cards.collection.upsertOne({ id: cardId, deckId: payload.deckId, title: payload.title });
+    return {
+      card
+    };
   },
 });
 
@@ -465,13 +468,71 @@ export const controller = neuron('controller', { controllerCreateDeckForCard, co
   .dendrite({
     collateral: deckCreatedForCard,
     response: (payload, axon) => {
-      // cardTitle comes from payload, not context
-      return axon.controllerCreateCard.createSignal({ deckId: payload.deckId, cardId: id(), title: payload.cardTitle });
+      return axon.controllerCreateCard.createSignal({ deckId: payload.deckId, title: payload.cardTitle });
     },
   });
 
 // CNS
 const cns = new CNS([controller, deckNeuron, cardNeuron]);
+
+// UI click starts the run; OIMDB event queue flushes once after both upserts
+await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTitle: 'First task' }));
+```
+
+### Simplified Example: Direct Neuron Communication (No Controller)
+
+For simpler flows, you can skip the controller and have neurons communicate directly:
+
+```ts
+import { CNS, collateral, neuron } from '@cnstra/core';
+import {
+  OIMEventQueue,
+  OIMEventQueueSchedulerFactory,
+  OIMRICollection,
+  OIMReactiveIndexManualSetBased,
+} from '@oimdb/core';
+
+// OIMDB setup
+const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
+export const decks = new OIMRICollection(dbEventQueue, {
+  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
+  collectionOpts: { selectPk: (d: { id: string }) => d.id },
+});
+export const cards = new OIMRICollection(dbEventQueue, {
+  indexes: { byDeck: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
+  collectionOpts: { selectPk: (c: { id: string }) => c.id },
+});
+
+// Collaterals
+const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>('ui:createCardClick');
+const deckCreatedForCard = collateral<{ deckId: string; cardTitle: string }>('deck:createdForCard');
+
+// Services (mocked)
+const generateDeckId = (title: string) => 'deck-' + Math.random().toString(36).slice(2);
+const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
+
+// Deck neuron: listens to UI click, creates deck, emits deckCreatedForCard
+export const deckNeuron = neuron('deck', { deckCreatedForCard }).dendrite({
+  collateral: uiCreateCardClick,
+  response: async (payload, axon) => {
+    const deckId = generateDeckId(payload.deckTitle);
+    decks.collection.upsertOne({ id: deckId, title: payload.deckTitle });
+    return axon.deckCreatedForCard.createSignal({ deckId, cardTitle: payload.cardTitle });
+  },
+});
+
+// Card neuron: listens to deckCreatedForCard, creates card
+export const cardNeuron = neuron('card', {}).dendrite({
+  collateral: deckCreatedForCard,
+  response: async (payload) => {
+    const cardId = generateCardId();
+    cards.collection.upsertOne({ id: cardId, deckId: payload.deckId, title: payload.cardTitle });
+    return undefined;
+  },
+});
+
+// CNS (no controller needed)
+const cns = new CNS([deckNeuron, cardNeuron]);
 
 // UI click starts the run; OIMDB event queue flushes once after both upserts
 await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTitle: 'First task' }));

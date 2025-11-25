@@ -167,7 +167,7 @@ const config: Config = {
                         },
                         {
                             label: 'Concepts',
-                            to: '/docs/concepts/cns',
+                            to: '/docs/concepts/overview',
                         },
                         {
                             label: 'Recipes',

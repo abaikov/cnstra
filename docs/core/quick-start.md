@@ -49,7 +49,7 @@ await stimulation.waitUntilComplete();
 
 ## Next Steps
 
-- Understand the architecture: [CNS - Central Neural Network of your app](/docs/concepts/cns)
+- Understand the architecture: [CNStra Overview](/docs/concepts/overview)
 - Explore API: [Core API](/docs/core/api)
 - Use in React: [React Patterns](/docs/frontend/react-patterns)
  - Debugging: [DevTools](/docs/devtools/overview)
