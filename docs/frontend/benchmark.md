@@ -57,6 +57,15 @@ Tests batch operations on multiple entities, evaluating performance when updatin
 | **Redux Toolkit** | 6.0 | 3.1 | 5.1 |
 | **Effector** | 3.4 | 6.5 | 4.4 |
 
+### Code Complexity (Lines of Code) - Lower is Better
+
+| Library | LOC |
+|--------|-----|
+| **Zustand** | 380 |
+| **Cnstra + OIMDB** | 394 |
+| **Redux Toolkit** | 531 |
+| **Effector** | 560 |
+
 ## Key Findings
 
 ### Performance Winners by Scenario

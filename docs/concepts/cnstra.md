@@ -13,81 +13,60 @@ keywords: [CNStra, orchestration, flows, MVC, Redux, state management, explicit 
 
 ## 1. MVC — Clean on Paper, Chaotic in Reality
 
-Modern apps are no longer CRUD. They are **workflows**: multi‑step sequences that must remain consistent across UI, onboarding, background sync, imports, batch jobs, and automation.
+Modern apps are no longer CRUD.
 
-But classic patterns treat flows as second‑class citizens.
+They are **workflows**: multi‑step sequences that must remain consistent across UI, onboarding, background sync, imports, batch jobs, and automation.
 
-Let's start with a simple example: **Deck + Card**.
+But classic patterns treat flows as second‑class citizens. 
 
-On paper, MVC looks clean:
+For example, on paper, MVC looks clean:
 
 * Controllers call model methods,
-
 * Models update data,
-
 * Views rerender.
 
-But the moment you introduce even a tiny multi-step operation, the cracks show immediately.
+But the moment you create your first multi-step operation, the problems jump out at you.
 
 Flow: **"Create a deck, then create a card inside it."**
 
 ### Controller
 
 ```js
-
 function onCreateCardClick(req) {
-
   const deck = Deck.create({ title: req.deckTitle });
-
   const card = Card.create({ deckId: deck.id, title: req.cardTitle });
-
 }
-
 ```
 
 ### Models
 
 ```js
-
 class Deck {
-
   static create(data) {
-
     return db.insert("decks", data);
-
   }
-
 }
 
 class Card {
-
   static create(data) {
-
     return db.insert("cards", data);
-
   }
-
 }
-
 ```
 
 That's it. Neither model has any idea:
 
 * **why** it was created,
-
 * **who** initiated the sequence,
-
 * **what other operations** the flow includes,
-
 * **which parent flow** it belongs to.
 
 There is **no flow identity**, no **graph**, no **traceability**.
 
 And when business later says:
 
-* "We need the same operation during onboarding,"
-
-* "And during import,"
+* "We need the same operation during onboarding"
+* "And during import"
 
 —you now have **multiple scattered controller copies** of the same flow. Nothing ensures they stay consistent.
 
@@ -95,89 +74,59 @@ And when business later says:
 
 ---
 
-## 2. REDUX — Events Become Explicit, but Flows Remain Invisible
+## 2. REDUX — MVC Problem Solved... Or Is It?
 
-Redux fixes one thing: **state transitions become explicit events**.
+Anyone who has dealt with a similar task of creating a deck with a card has probably come to roughly the following solution:
 
-But the flow itself? Still invisible.
-
-To express the Deck + Card flow, developers eventually invent a familiar workaround: flow‑scoped actions.
-
-### Flow-scoped Redux actions
+### Redux Toolkit reducers
 
 ```js
+import { createSlice, createEntityAdapter } from '@reduxjs/toolkit';
 
-const onboardingDeckCreated = (deckId, title) => ({
+const deckAdapter = createEntityAdapter();
+const cardAdapter = createEntityAdapter();
 
-  type: "onboarding/deckCreated",
-
-  payload: { deckId, title },
-
+const deckSlice = createSlice({
+  name: 'deck',
+  initialState: deckAdapter.getInitialState(),
+  reducers: {
+    cardWithDeckCreated: (state, action) => {
+      deckAdapter.addOne(state, action.payload.deck);
+    },
+  },
 });
 
-const onboardingCardCreated = (cardId, deckId, title) => ({
-
-  type: "onboarding/cardCreated",
-
-  payload: { cardId, deckId, title },
-
+const cardSlice = createSlice({
+  name: 'card',
+  initialState: cardAdapter.getInitialState(),
+  reducers: {
+    cardWithDeckCreated: (state, action) => {
+      cardAdapter.addOne(state, action.payload.card);
+    },
+  },
 });
-
 ```
 
 ### Flow thunk
 
 ```js
-
-export const createCardWithDeckForOnboarding =
-
+export const createCardWithDeck =
   (deckTitle, cardTitle) => (dispatch) => {
+    const deck = { id: nanoid(), title: deckTitle };
+    const card = { id: nanoid(), deckId: deck.id, title: cardTitle };
 
-    const deckId = nanoid();
-
-    const cardId = nanoid();
-
-    batch(() => {
-
-      dispatch(onboardingDeckCreated(deckId, deckTitle));
-
-      dispatch(onboardingCardCreated(cardId, deckId, cardTitle));
-
+    dispatch({
+      type: 'cardWithDeckCreated',
+      payload: { deck, card },
     });
-
   };
-
 ```
 
-A quick `grep("onboarding/")` shows where the flow originates.
+In essence, you've recreated MVC: models (reducers) have no idea about the flow context, and the controller (thunk) just calls them sequentially.
 
-But here comes the real problem.
+Redux solves the problem of independent model updates well (not like in our example, of course, but when you don't need a flow).
 
-### The Forgotten Subflow Problem
-
-Business says:
-
-* "Reuse the same logic during import."
-
-Your options both suck:
-
-**Option 1 — Copy-paste with new prefixes** → Guaranteed drift.
-
-**Option 2 — Generic events** → You lose flow identity entirely.
-
-In both cases:
-
-* no graph,
-
-* no parent/child structure,
-
-* no traceability,
-
-* multiple dispatches per conceptual step.
-
-Redux models **state**, not **orchestration**.
-
-Flow correctness is still your problem.
+But flows? Still invisible.
 
 ---
 
@@ -190,31 +139,23 @@ All fantastic tools — but they solve **reactivity**, not **flows**.
 Architecturally, they are **Reactive MVC**:
 
 * atoms/stores/signals = **Model**,
-
 * components = **View**,
-
 * async helpers = **ad-hoc controllers**.
 
 And exactly like MVC:
 
 * state units have no idea what flows they participate in,
-
 * controllers become an unstructured soup of async logic,
-
 * multi-step operations are just naked functions.
 
 ```ts
-
 createDeckAndCard();
-
 ```
 
 Then onboarding calls it, import calls it, test suite calls it, background sync calls it.
 
-Nothing describes a flow.
-
-Nothing guarantees consistency.
-
+Nothing describes a flow. 
+Nothing guarantees consistency. 
 Nothing warns you that you forgot to wire a subflow to a new parent.
 
 **Reactive state ≠ orchestration.**
@@ -229,356 +170,104 @@ CNStra introduces something missing everywhere else:
 
 ### **Flows become real, typed orchestration nodes — not just functions.**
 
-A flow in CNStra is a first-class entity with:
-
-* explicit identity,
-
-* explicit parent/child chains,
-
-* deterministic run context,
-
-* compiler-verified wiring,
-
-* fully visible runtime traces.
-
 Let's revisit Deck + Card and see how the same flow can be triggered:
 
-* from a **UI button**, and
-
-* from an **onboarding flow**,
+* from a **UI button** (createCardWithDeckButtonClicked), and
+* from an **onboarding flow** (userEntersApp),
 
 while keeping everything explicit.
 
----
-
-### Step 1 — Collaterals: UI, onboarding, and domain events
-
 ```ts
+import { CNS, collateral, neuron, withCtx, TCNSSignal } from '../src/index';
 
-import { CNS, collateral, neuron } from '@cnstra/core';
-
-import {
-
-  OIMEventQueue,
-
-  OIMEventQueueSchedulerFactory,
-
-  OIMRICollection,
-
-  OIMReactiveIndexManualSetBased,
-
-} from '@oimdb/core';
-
-// OIMDB SETUP (simplified)
-
-const dbEventQueue = new OIMEventQueue({
-
-  scheduler: OIMEventQueueSchedulerFactory.createMicrotask(),
-
-});
-
-export const decks = new OIMRICollection(dbEventQueue, {
-
-  indexes: {
-
-    byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue),
-
-  },
-
-  collectionOpts: { selectPk: (d: { id: string }) => d.id },
-
-});
-
-export const cards = new OIMRICollection(dbEventQueue, {
-
-  indexes: {
-
-    byDeck: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue),
-
-  },
-
-  collectionOpts: { selectPk: (c: { id: string }) => c.id },
-
-});
-
-// UI collaterals
-
-const ui = {
-
-  createCardClicked: collateral<{
-
-    deckTitle: string;
-
-    cardTitle: string;
-
-  }>('ui:create-card-clicked'),
-
+const uiAxon = {
+    userEntersApp: collateral<{
+        userId: string;
+        deckTitle: string;
+        cardTitle: string;
+    }>('ui:user-enters-app'),
+    createCardWithDeckButtonClicked: collateral<{
+        deckTitle: string;
+        cardTitle: string;
+    }>('ui:create-card-with-deck-button-clicked'),
 };
 
-// Onboarding collaterals
-
-const onboarding = {
-
-  userEntersApp: collateral<{ userId: string }>(
-
-    'onboarding:user-enters-app'
-
-  ),
-
-  createCardWithDeck: collateral<{
-
-    deckTitle: string;
-
-    cardTitle: string;
-
-  }>('onboarding:create-card-with-deck'),
-
+const deckAxon = {
+    createdAtUserEntersApp: collateral<{
+        deckId: string;
+        cardTitle: string;
+        userId: string;
+    }>('ui:user-enters-app:deck:created'),
+    createdAtCreateCardWithDeckButtonClicked: collateral<{
+        deckId: string;
+        cardTitle: string;
+    }>('ui:create-card-with-deck-button-clicked:deck:created'),
 };
 
-// Domain events
-
-const deckEvents = {
-
-  created: collateral<{
-
-    deckId: string;
-
-    deckTitle: string;
-
-    cardTitle: string;
-
-  }>('deck:created'),
-
-};
-
-```
-
-Each collateral has a **named, typed identity**.
-
-Jump to any collateral in your IDE — you see **all usage sites**.
-
-Your editor becomes an orchestration graph browser.
-
----
-
-### Step 2 — Onboarding neuron forwards into its own subflow
-
-```ts
-
-export const onboardingNeuron = neuron('onboarding', {
-
-  createCardWithDeck: onboarding.createCardWithDeck,
-
-}).dendrite({
-
-  collateral: onboarding.userEntersApp,
-
-  response: (payload, axon) => {
-
-    const deckTitle = 'Welcome';
-
-    const cardTitle = 'Start here';
-
-    return axon.createCardWithDeck.createSignal({
-
-      deckTitle,
-
-      cardTitle,
-
+const deck = neuron('deck', deckAxon)
+    .dendrite({
+        collateral: uiAxon.userEntersApp,
+        response: (payload, axon) => {
+            const deckId = 'deck-' + Math.random().toString(36).slice(2);
+            return axon.createdAtUserEntersApp.createSignal({
+                deckId,
+                cardTitle: payload.cardTitle,
+                userId: payload.userId,
+            });
+        },
+    })
+    .dendrite({
+        collateral: uiAxon.createCardWithDeckButtonClicked,
+        response: (payload, axon) => {
+            const deckId = 'deck-' + Math.random().toString(36).slice(2);
+            return axon.createdAtCreateCardWithDeckButtonClicked.createSignal({
+                deckId,
+                cardTitle: payload.cardTitle,
+            });
+        },
     });
 
-  },
-
-});
-
-```
-
-A neuron can only emit signals declared on **its own axon**.
-
-This prevents accidental emissions and guarantees explicit wiring.
-
----
-
-### Step 3 — Deck neuron listens to BOTH UI and onboarding
-
-Even if two flows share logic, they stay **structurally distinct**.
-
-This is something MVC/Redux/Signals simply cannot offer.
-
-```ts
-
-const deckFlow = {
-
-  fromUi: ui.createCardClicked,
-
-  fromOnboarding: onboarding.createCardWithDeck,
-
-};
-
-```
-
-Shared logic:
-
-```ts
-
-function handleCreateDeckAndEmitEvent(payload, axon) {
-
-  const deckId = 'deck-' + Math.random().toString(36).slice(2);
-
-  decks.collection.upsertOne({ id: deckId, title: payload.deckTitle });
-
-  return axon.created.createSignal({
-
-    deckId,
-
-    deckTitle: payload.deckTitle,
-
-    cardTitle: payload.cardTitle,
-
-  });
-
-}
-
-```
-
-Deck neuron:
-
-```ts
-
-export const deckNeuron = neuron('deck', {
-
-  created: deckEvents.created,
-
-}).bind(deckFlow, {
-
-  fromUi: (payload, axon) => handleCreateDeckAndEmitEvent(payload, axon),
-
-  fromOnboarding: (payload, axon) => handleCreateDeckAndEmitEvent(payload, axon),
-
-});
-
-```
-
-Your IDE instantly exposes:
-
-* UI → deck creation
-
-* onboarding → deck creation
-
-* any future flows → also explicit
-
----
-
-### Step 4 — Card neuron reacts to deck domain event
-
-```ts
-
-export const cardNeuron = neuron('card', {}).dendrite({
-
-  collateral: deckEvents.created,
-
-  response: (payload) => {
-
-    const cardId = 'card-' + Math.random().toString(36).slice(2);
-
-    cards.collection.upsertOne({
-
-      id: cardId,
-
-      deckId: payload.deckId,
-
-      title: payload.cardTitle,
-
+const card = neuron('card', {})
+    .dendrite({
+        collateral: deckAxon.createdAtCreateCardWithDeckButtonClicked,
+        response: payload => {
+            console.log('card title', payload.cardTitle);
+            // create a card
+        },
+    })
+    .dendrite({
+        collateral: deckAxon.createdAtUserEntersApp,
+        response: payload => {
+            console.log('card title', payload.cardTitle);
+            // create a card
+        },
     });
 
-  },
+const cns = new CNS([deck, card]);
 
-});
-
-```
-
----
-
-### Step 5 — Wire CNS and trigger both flows
-
-```ts
-
-const cns = new CNS([
-
-  deckNeuron,
-
-  cardNeuron,
-
-  onboardingNeuron,
-
-]);
-
-// UI button flow
-
-await cns.stimulate(
-
-  ui.createCardClicked.createSignal({
-
-    deckTitle: 'Inbox',
-
-    cardTitle: 'First task',
-
-  })
-
+cns.stimulate(
+    uiAxon.userEntersApp.createSignal({
+        userId: 'user-123',
+        deckTitle: 'Deck 1',
+        cardTitle: 'Card 1',
+    })
 );
 
-// Onboarding flow
-
-await cns.stimulate(
-
-  onboarding.userEntersApp.createSignal({ userId: 'user-123' })
-
+cns.stimulate(
+    uiAxon.createCardWithDeckButtonClicked.createSignal({
+        deckTitle: 'Deck 1',
+        cardTitle: 'Card 1',
+    })
 );
-
 ```
 
-Both flows produce the **same deterministic orchestration**, but each carries its **own flow identity**.
+- Each collateral has a **named, typed identity**.
+- A neuron can only emit signals declared on **its own axon**.
+- This prevents accidental emissions and guarantees explicit wiring.
+- Even if two flows share logic, they stay **structurally distinct**.
+- Both flows produce the **same deterministic orchestration**, but each carries its **own flow identity**.
 
-This is impossible to achieve in MVC/Redux/Signals.
-
----
-
-## 4.1 The Orchestration Graph (Conceptual View)
-
-```
-UI "Create card" button
-
-  └─ ui:create-card-clicked
-
-       └─ deckNeuron
-
-            └─ deck:created
-
-                 └─ cardNeuron
-
-onboarding:user-enters-app
-
-  └─ onboardingNeuron
-
-        └─ onboarding:create-card-with-deck
-
-              └─ deckNeuron
-
-                   └─ deck:created
-
-                        └─ cardNeuron
-
-```
-
-CNStra turns your IDE into a **flow explorer**:
-
-* Jump to `ui.createCardClicked` → see all listeners.
-
-* Jump to `onboarding.createCardWithDeck` → see emitters & subscribers.
-
-* Jump to `deckEvents.created` → see every downstream consumer.
-
-This is what orchestration visibility looks like.
+This is impossible to achieve in MVC/Redux/Signals with the same compile-time guarantees without building your own CNStra on top.
 
 ---
 
@@ -593,37 +282,24 @@ CNStra eliminates this entire class of bugs.
 ### `neuron.bind(axon, handlers)` enforces EXHAUSTIVENESS
 
 ```ts
-
 const order = {
-
   created:   collateral<...>('order:created'),
-
   updated:   collateral<...>('order:updated'),
-
   cancelled: collateral<...>('order:cancelled'),
-
 };
 
 const orderMailer = neuron('order-mailer', {})
-
   .bind(order, {
-
     created:   (p) => sendCreated(p),
-
     updated:   (p) => sendUpdated(p),
-
     cancelled: (p) => sendCancelled(p),
-
   });
-
 ```
 
 Then the domain evolves:
 
 ```ts
-
 order.refunded = collateral<...>('order:refunded');
-
 ```
 
 ### What happens?
@@ -671,7 +347,6 @@ Second simplest codebase (394 LOC) while being the fastest — no trade-offs bet
 Most architectures:
 
 * expose state updates,
-
 * but keep flows **implicit**.
 
 That's why orchestration rots.
@@ -679,13 +354,9 @@ That's why orchestration rots.
 CNStra flips the model:
 
 * state becomes explicit (via OIMDB),
-
 * flows become explicit (via collaterals),
-
 * parent/child chains are tracked automatically,
-
 * compile-time safety eliminates missing handlers,
-
 * performance rivals handcrafted atomic stores.
 
 This is not Flux 3.0 or "better Redux".
@@ -697,22 +368,15 @@ This is not Flux 3.0 or "better Redux".
 Frontend or backend — same primitives, same guarantees:
 
 * workflows,
-
 * pipelines,
-
 * background jobs,
-
 * domain events,
-
 * distributed flows.
 
 If you want a deep-dive into:
 
-* multi-neuron workflows,
-
-* concurrency gates & backpressure,
-
-* distributed orchestration,
-
-* real production pipelines,
+* [Introduction](/docs/concepts/intro)
+* [Quick Start](/docs/core/quick-start)
+* [Basics](/docs/concepts/basics)
+* [Best Practices](/docs/advanced/best-practices)
 

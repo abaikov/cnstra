@@ -8,8 +8,9 @@
 }
 
 :root {
-  --ifm-font-family-base: 'Px437_IBM_Conv', 'Courier New', monospace;
-  --ifm-font-family-monospace: 'Px437_IBM_Conv', 'Monaco', monospace;
+  --ifm-font-family-base: 'Geist Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', monospace;
+  --ifm-font-family-monospace: 'Geist Mono', 'Monaco', monospace;
+  --ifm-font-family-heading: 'Px437_IBM_Conv', 'Courier New', monospace;
   --ifm-font-family-simple: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   /* Decay theme colors */
   --bg-primary: #0a0908;
@@ -57,13 +58,37 @@ html[data-theme='dark'] {
 
 body {
   font-family: var(--ifm-font-family-base);
-  font-smooth: never;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
+h1, h2, h3, h4, h5, h6,
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6,
+.hero__title,
+.hero__subtitle,
+.navbar__title,
+.navbar__item,
+.navbar__link,
+.pagination-nav__link {
+  font-family: var(--ifm-font-family-heading);
+  font-smooth: never;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
 }
 
-.markdown, .navbar, .footer, .menu, .pagination, .tabs, .table, .tabs__item, .navbar__title, .menu__link {
+.button,
+.button--primary,
+.button--secondary,
+.button--outline,
+.button--link,
+a.button {
+  font-family: var(--ifm-font-family-heading) !important;
+  font-smooth: never;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.markdown, .footer, .pagination, .tabs, .table, .tabs__item, .menu__link, .pagination-nav__label {
   font-family: var(--ifm-font-family-base);
 }
 
@@ -105,3 +130,4 @@ html[data-theme='dark'] .heroTitleNeutral { color: #ffffff; }
   33% { text-shadow: 0 0 5px var(--infection-green); }
   66% { text-shadow: 0 0 4px var(--infection-purple); }
 }
+

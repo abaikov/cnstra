@@ -1,6 +1,9 @@
 import { CNSCollateral } from '../CNSCollateral';
 import { TCNSAxon } from '../types/TCNSAxon';
 import { TCNSDendrite } from '../types/TCNSDendrite';
+import { TCNSLocalContextValueStore } from '../types/TCNSLocalContextValueStore';
+import { TNCNeuronResponseReturn } from '../types/TCNSNeuronResponseReturn';
+import { ICNS } from '../interfaces/ICNS';
 
 export const collateral = <TPayload = undefined, TName extends string = string>(
     name: TName
@@ -19,6 +22,20 @@ type NameOf<TAxon, K extends keyof TAxon> = TAxon[K] extends CNSCollateral<
 >
     ? N
     : never;
+
+// Helper type to extract payload union from an array of collaterals
+// Uses distributive conditional type to properly extract union, not intersection
+// Works with both arrays and tuples
+type CollateralPayloadUnion<
+    TCollaterals extends readonly CNSCollateral<any, any>[]
+> = {
+    [K in keyof TCollaterals]: TCollaterals[K] extends CNSCollateral<
+        any,
+        infer P
+    >
+        ? P
+        : never;
+}[number];
 
 type InterNeuronAPI<
     TContextValue,
@@ -88,25 +105,120 @@ type InterNeuronAPI<
         TReceiverAxonCollateralPayload,
         TAxonType
     >;
-    dendrite: <
-        TSenderExactCollateralName extends string,
-        TSenderExactAxonCollateralPayload
-    >(
-        s: TCNSDendrite<
+    dendrite: {
+        // Overload for single collateral
+        <
+            TSenderExactCollateralName extends string,
+            TSenderExactAxonCollateralPayload
+        >(
+            s:
+                | TCNSDendrite<
+                      TContextValue,
+                      TSenderExactCollateralName,
+                      TSenderExactAxonCollateralPayload,
+                      TReceiverCollateralName,
+                      TReceiverAxonCollateralPayload,
+                      TAxonType
+                  >
+                | {
+                      collateral: CNSCollateral<
+                          TSenderExactCollateralName,
+                          TSenderExactAxonCollateralPayload
+                      >;
+                      response: (
+                          payload: TSenderExactAxonCollateralPayload,
+                          axon: TAxonType,
+                          ctx: TCNSLocalContextValueStore<TContextValue> & {
+                              abortSignal?: AbortSignal;
+                              cns?: ICNS<any, any, any>;
+                              stimulationId?: string;
+                          }
+                      ) => TNCNeuronResponseReturn<
+                          TReceiverCollateralName,
+                          TReceiverAxonCollateralPayload
+                      >;
+                  }
+        ): InterNeuronAPI<
             TContextValue,
-            TSenderExactCollateralName,
-            TSenderExactAxonCollateralPayload,
+            TNameType,
             TReceiverCollateralName,
             TReceiverAxonCollateralPayload,
             TAxonType
-        >
-    ) => InterNeuronAPI<
-        TContextValue,
-        TNameType,
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload,
-        TAxonType
-    >;
+        >;
+        // Overload for array/tuple of collaterals with automatic union inference
+        // Using variadic tuple types to automatically preserve individual collateral types
+        // This overload works with tuple literals (automatically inferred)
+        <
+            TCollaterals extends readonly [
+                CNSCollateral<string, any>,
+                ...CNSCollateral<string, any>[]
+            ]
+        >(s: {
+            collateral: TCollaterals;
+            response: (
+                payload: CollateralPayloadUnion<TCollaterals>,
+                axon: TAxonType,
+                ctx: TCNSLocalContextValueStore<TContextValue> & {
+                    abortSignal?: AbortSignal;
+                    cns?: ICNS<any, any, any>;
+                    stimulationId?: string;
+                }
+            ) => TNCNeuronResponseReturn<
+                TReceiverCollateralName,
+                TReceiverAxonCollateralPayload
+            >;
+        }): InterNeuronAPI<
+            TContextValue,
+            TNameType,
+            TReceiverCollateralName,
+            TReceiverAxonCollateralPayload,
+            TAxonType
+        >;
+        // Overload for regular arrays (fallback)
+        <TCollaterals extends readonly CNSCollateral<string, any>[]>(s: {
+            collateral: TCollaterals;
+            response: (
+                payload: CollateralPayloadUnion<TCollaterals>,
+                axon: TAxonType,
+                ctx: TCNSLocalContextValueStore<TContextValue> & {
+                    abortSignal?: AbortSignal;
+                    cns?: ICNS<any, any, any>;
+                    stimulationId?: string;
+                }
+            ) => TNCNeuronResponseReturn<
+                TReceiverCollateralName,
+                TReceiverAxonCollateralPayload
+            >;
+        }): InterNeuronAPI<
+            TContextValue,
+            TNameType,
+            TReceiverCollateralName,
+            TReceiverAxonCollateralPayload,
+            TAxonType
+        >;
+        // Overload for explicit union type (Type1 | Type2 | Type3) - more explicit and flexible
+        <TPayloadUnion>(s: {
+            collateral: CNSCollateral<string, any>[];
+            response: (
+                payload: TPayloadUnion,
+                axon: TAxonType,
+                ctx: TCNSLocalContextValueStore<TContextValue> & {
+                    abortSignal?: AbortSignal;
+                    cns?: ICNS<any, any, any>;
+                    stimulationId?: string;
+                }
+            ) => TNCNeuronResponseReturn<
+                TReceiverCollateralName,
+                TReceiverAxonCollateralPayload
+            >;
+        }): InterNeuronAPI<
+            TContextValue,
+            TNameType,
+            TReceiverCollateralName,
+            TReceiverAxonCollateralPayload,
+            TAxonType
+        >;
+    };
 };
 
 // Concrete builder
@@ -130,7 +242,11 @@ export const neuron = <
     TNameType,
     TReceiverCollateralName,
     TReceiverAxonCollateralPayload,
-    TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload>
+    TCNSAxon<
+        TReceiverCollateralName,
+        TReceiverAxonCollateralPayload,
+        TProvidedAxon
+    >
 > => {
     const dendrites: TCNSDendrite<
         TContextValue,
@@ -138,7 +254,11 @@ export const neuron = <
         unknown,
         TReceiverCollateralName,
         TReceiverAxonCollateralPayload,
-        TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload>
+        TCNSAxon<
+            TReceiverCollateralName,
+            TReceiverAxonCollateralPayload,
+            TProvidedAxon
+        >
     >[] = [];
 
     const api: InterNeuronAPI<
@@ -146,7 +266,11 @@ export const neuron = <
         TNameType,
         TReceiverCollateralName,
         TReceiverAxonCollateralPayload,
-        TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload>
+        TCNSAxon<
+            TReceiverCollateralName,
+            TReceiverAxonCollateralPayload,
+            TProvidedAxon
+        >
     > = {
         setConcurrency: (n: number | undefined) => {
             api.concurrency = n;
@@ -183,45 +307,53 @@ export const neuron = <
             TNameType,
             TReceiverCollateralName,
             TReceiverAxonCollateralPayload,
-            TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload>
+            TCNSAxon<
+                TReceiverCollateralName,
+                TReceiverAxonCollateralPayload,
+                TProvidedAxon
+            >
         >['bind'],
         axon: axon as unknown as TCNSAxon<
             TReceiverCollateralName,
-            TReceiverAxonCollateralPayload
+            TReceiverAxonCollateralPayload,
+            TProvidedAxon
         >,
         name,
         concurrency: undefined,
         maxDuration: undefined,
         dendrites,
-        dendrite<
-            TSenderExactCollateralName extends string,
-            TSenderExactAxonCollateralPayload
-        >(
-            s: TCNSDendrite<
-                TContextValue,
-                TSenderExactCollateralName,
-                TSenderExactAxonCollateralPayload,
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload,
-                TCNSAxon<
-                    TReceiverCollateralName,
-                    TReceiverAxonCollateralPayload
-                >
-            >
-        ) {
-            dendrites.push(
-                s as TCNSDendrite<
-                    TContextValue,
-                    string,
-                    unknown,
-                    TReceiverCollateralName,
-                    TReceiverAxonCollateralPayload,
-                    TCNSAxon<
+        dendrite(s: any) {
+            // Check if it's a shorthand format with multiple collaterals
+            if (
+                'collateral' in s &&
+                'response' in s &&
+                Array.isArray(s.collateral)
+            ) {
+                // Shorthand format with multiple collaterals - create one dendrite per collateral
+                for (const collateral of s.collateral) {
+                    dendrites.push({
+                        collateral,
+                        response: s.response,
+                    } as TCNSDendrite<TContextValue, string, unknown, TReceiverCollateralName, TReceiverAxonCollateralPayload, TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload, TProvidedAxon>>);
+                }
+            } else {
+                // Either full dendrite object or shorthand with single collateral
+                // Both have the same structure, so we handle them the same way
+                dendrites.push(
+                    s as TCNSDendrite<
+                        TContextValue,
+                        string,
+                        unknown,
                         TReceiverCollateralName,
-                        TReceiverAxonCollateralPayload
+                        TReceiverAxonCollateralPayload,
+                        TCNSAxon<
+                            TReceiverCollateralName,
+                            TReceiverAxonCollateralPayload,
+                            TProvidedAxon
+                        >
                     >
-                >
-            );
+                );
+            }
             return api; // keep full API for chaining
         },
     };

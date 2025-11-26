@@ -1,5 +1,85 @@
 import { CNS, collateral, neuron, withCtx, TCNSSignal } from '../src/index';
 
+const uiAxon = {
+    userEntersApp: collateral<{
+        userId: string;
+        deckTitle: string;
+        cardTitle: string;
+    }>('ui:user-enters-app'),
+    createCardWithDeckButtonClicked: collateral<{
+        deckTitle: string;
+        cardTitle: string;
+    }>('ui:create-card-with-deck-button-clicked'),
+};
+
+const deckAxon = {
+    createdAtUserEntersApp: collateral<{
+        deckId: string;
+        cardTitle: string;
+        userId: string;
+    }>('ui:user-enters-app:deck:created'),
+    createdAtCreateCardWithDeckButtonClicked: collateral<{
+        deckId: string;
+        cardTitle: string;
+    }>('ui:create-card-with-deck-button-clicked:deck:created'),
+};
+
+const deck = neuron('deck', deckAxon)
+    .dendrite({
+        collateral: uiAxon.userEntersApp,
+        response: (payload, axon) => {
+            const deckId = 'deck-' + Math.random().toString(36).slice(2);
+            return axon.createdAtUserEntersApp.createSignal({
+                deckId,
+                cardTitle: payload.cardTitle,
+                userId: payload.userId,
+            });
+        },
+    })
+    .dendrite({
+        collateral: uiAxon.createCardWithDeckButtonClicked,
+        response: (payload, axon) => {
+            const deckId = 'deck-' + Math.random().toString(36).slice(2);
+            return axon.createdAtCreateCardWithDeckButtonClicked.createSignal({
+                deckId,
+                cardTitle: payload.cardTitle,
+            });
+        },
+    });
+
+const card = neuron('card', {})
+    .dendrite({
+        collateral: deckAxon.createdAtCreateCardWithDeckButtonClicked,
+        response: payload => {
+            console.log('card title', payload.cardTitle);
+            // create a card
+        },
+    })
+    .dendrite({
+        collateral: deckAxon.createdAtUserEntersApp,
+        response: payload => {
+            console.log('card title', payload.cardTitle);
+            // create a card
+        },
+    });
+
+const cns = new CNS([deck, card]);
+
+cns.stimulate(
+    uiAxon.userEntersApp.createSignal({
+        userId: 'user-123',
+        deckTitle: 'Deck 1',
+        cardTitle: 'Card 1',
+    })
+);
+
+cns.stimulate(
+    uiAxon.createCardWithDeckButtonClicked.createSignal({
+        deckTitle: 'Deck 1',
+        cardTitle: 'Card 1',
+    })
+);
+
 describe('CNStra Core Tests', () => {
     describe('Factory Functions', () => {
         describe('collateral', () => {
@@ -80,6 +160,87 @@ describe('CNStra Core Tests', () => {
                 expect(testNeuron.dendrites[1].collateral.name).toBe('input2');
             });
 
+            it('should support mixing single and multiple collateral dendrites', () => {
+                const input1 = collateral<{ data1: string }>('input1');
+                const input2 = collateral<{ data: string }>('input2');
+                const input3 = collateral<{ data: string }>('input3');
+                const output = collateral<{ result: string }>('output');
+
+                const testNeuron = neuron('test-neuron', { output })
+                    .dendrite({
+                        collateral: [input1],
+                        response: async (payload, axon) => {
+                            return axon.output.createSignal({
+                                result: `Single: ${payload.data1}`,
+                            });
+                        },
+                    })
+                    .dendrite({
+                        collateral: [input2, input3],
+                        response: async (payload, axon) => {
+                            return axon.output.createSignal({
+                                result: `Multiple: ${payload.data}`,
+                            });
+                        },
+                    });
+
+                expect(testNeuron.dendrites).toHaveLength(3);
+                expect(testNeuron.dendrites[0].collateral.name).toBe('input1');
+                expect(testNeuron.dendrites[1].collateral.name).toBe('input2');
+                expect(testNeuron.dendrites[2].collateral.name).toBe('input3');
+            });
+
+            it('should support collaterals with different payload types and infer union type', () => {
+                const userCreated = collateral<{
+                    userId: string;
+                    name: string;
+                }>('user-created');
+                const userUpdated = collateral<{
+                    userId: string;
+                    email: string;
+                }>('user-updated');
+                const userDeleted = collateral<{ userId: string }>(
+                    'user-deleted'
+                );
+                const output = collateral<{ result: string }>('output');
+
+                const testNeuron = neuron('test-neuron', { output }).dendrite({
+                    collateral: [userCreated, userUpdated, userDeleted],
+                    response: async (payload, axon) => {
+                        const userId = payload.userId;
+
+                        // Type narrowing should work
+                        if ('name' in payload) {
+                            // payload is { userId: string; name: string }
+                            return axon.output.createSignal({
+                                result: `Created: ${payload.name}`,
+                            });
+                        } else if ('email' in payload) {
+                            // payload is { userId: string; email: string }
+                            return axon.output.createSignal({
+                                result: `Updated: ${payload.email}`,
+                            });
+                        } else {
+                            // payload is { userId: string }
+                            return axon.output.createSignal({
+                                result: `Deleted: ${userId}`,
+                            });
+                        }
+                    },
+                });
+
+                expect(testNeuron.dendrites).toHaveLength(3);
+                expect(testNeuron.dendrites[0].collateral.name).toBe(
+                    'user-created'
+                );
+                expect(testNeuron.dendrites[1].collateral.name).toBe(
+                    'user-updated'
+                );
+                expect(testNeuron.dendrites[2].collateral.name).toBe(
+                    'user-deleted'
+                );
+            });
+
             it('should handle multiple axon outputs', () => {
                 const output1 = collateral<{ result1: string }>('output1');
                 const output2 = collateral<{ result2: string }>('output2');
@@ -88,6 +249,110 @@ describe('CNStra Core Tests', () => {
 
                 expect(testNeuron.axon.output1).toBeDefined();
                 expect(testNeuron.axon.output2).toBeDefined();
+            });
+
+            it('should create signals with different payload types for different output collaterals', async () => {
+                const input1 = collateral<{
+                    userId: string;
+                    deckTitle: string;
+                    cardTitle: string;
+                }>('input1');
+                const input2 = collateral<{
+                    deckTitle: string;
+                    cardTitle: string;
+                }>('input2');
+                const output1 = collateral<{
+                    deckId: string;
+                    cardTitle: string;
+                    userId: string;
+                }>('output1');
+                const output2 = collateral<{
+                    deckId: string;
+                    cardTitle: string;
+                }>('output2');
+
+                const testNeuron = neuron('test-neuron', {
+                    output1,
+                    output2,
+                })
+                    .dendrite({
+                        collateral: input1,
+                        response: async (payload, axon) => {
+                            return axon.output1.createSignal({
+                                deckId: 'deck-123',
+                                cardTitle: payload.cardTitle,
+                                userId: payload.userId,
+                            });
+                        },
+                    })
+                    .dendrite({
+                        collateral: input2,
+                        response: async (payload, axon) => {
+                            return axon.output2.createSignal({
+                                deckId: 'deck-789',
+                                cardTitle: payload.cardTitle,
+                            });
+                        },
+                    });
+
+                expect(testNeuron.dendrites).toHaveLength(2);
+
+                const dendrite1 = testNeuron.dendrites[0];
+                const dendrite2 = testNeuron.dendrites[1];
+
+                // Test first dendrite - returns output1 signal with userId
+                const signal1 = await dendrite1.response(
+                    {
+                        userId: 'user-456',
+                        deckTitle: 'Deck 1',
+                        cardTitle: 'Card 1',
+                    },
+                    testNeuron.axon,
+                    {
+                        get: () => undefined,
+                        set: () => {},
+                        delete: () => {},
+                    }
+                );
+
+                expect(signal1).toEqual({
+                    collateralName: 'output1',
+                    payload: {
+                        deckId: 'deck-123',
+                        cardTitle: 'Card 1',
+                        userId: 'user-456',
+                    },
+                });
+
+                // Test second dendrite - returns output2 signal without userId
+                const signal2 = await dendrite2.response(
+                    {
+                        deckTitle: 'Deck 2',
+                        cardTitle: 'Card 2',
+                    },
+                    testNeuron.axon,
+                    {
+                        get: () => undefined,
+                        set: () => {},
+                        delete: () => {},
+                    }
+                );
+
+                expect(signal2).toEqual({
+                    collateralName: 'output2',
+                    payload: {
+                        deckId: 'deck-789',
+                        cardTitle: 'Card 2',
+                    },
+                });
+
+                // Verify that signals have correct types (TypeScript will check this)
+                if (signal1 && 'payload' in signal1) {
+                    expect(signal1.payload).toHaveProperty('userId');
+                }
+                if (signal2 && 'payload' in signal2) {
+                    expect(signal2.payload).not.toHaveProperty('userId');
+                }
             });
         });
 
