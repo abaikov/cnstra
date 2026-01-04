@@ -27,6 +27,7 @@ export type TCNSDendrite<
             abortSignal?: AbortSignal;
             cns?: ICNS<any, any, any>;
             stimulationId?: string;
+            stimulation?: any;
         }
     ) => TNCNeuronResponseReturn<
         TReceiverCollateralName,

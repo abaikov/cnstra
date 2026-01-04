@@ -1,32 +1,18 @@
 import { TCNSStimulationResponse } from './TCNSStimulationResponse';
 import { TCNSStimulationSerializedContextValue } from './TCNSStimulationSerializedContextValue';
 import { ICNSStimulationContextStore } from '../interfaces/ICNSStimulationContextStore';
-
-import { TCNSNeuron } from './TCNSNeuron';
-import { TCNSDendrite } from './TCNSDendrite';
+import { TCNSModality } from './TCNSModality';
+import { TCNSAfferentPath } from './TCNSAfferentPath';
 
 export type TCNSStimulationOptions<
     TCollateralName extends string,
     TInputPayload,
     TOutputPayload,
     TNeuronName extends string = string,
-    TNeuron extends TCNSNeuron<
-        any,
-        TNeuronName,
-        TCollateralName,
-        any,
-        any,
-        any,
-        any
-    > = TCNSNeuron<any, TNeuronName, TCollateralName, any, any, any, any>,
-    TDendrite extends TCNSDendrite<any, any, any, any, any, any> = TCNSDendrite<
-        any,
-        any,
-        any,
-        any,
-        any,
-        any
-    >
+    TModalityName extends string = string,
+    TAfferentPathName extends string = string,
+    TParentAfferentPathName extends string = string,
+    TStimulationContext extends Object = {}
 > = {
     maxNeuronHops?: number;
     allowName?: (t: string) => boolean;
@@ -43,4 +29,11 @@ export type TCNSStimulationOptions<
     contextValues?: TCNSStimulationSerializedContextValue;
     ctx?: ICNSStimulationContextStore;
     concurrency?: number;
+    modality?: TCNSModality<
+        TModalityName,
+        TAfferentPathName,
+        TParentAfferentPathName
+    >;
+    afferentPath?: TCNSAfferentPath<TAfferentPathName, TParentAfferentPathName>;
+    stimulationContext?: TStimulationContext;
 };

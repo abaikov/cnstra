@@ -36,8 +36,6 @@ export interface StimulationResponse {
     inputPayload?: unknown;
     /** Output payload produced by the neuron */
     outputPayload?: unknown;
-    /** Response payload (may be same as outputPayload, kept for compatibility) */
-    responsePayload?: unknown;
     /** Error message if processing failed */
     error?: string;
     /** Processing duration in milliseconds */

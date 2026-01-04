@@ -196,7 +196,6 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                                 contexts: response.contexts,
                                 inputPayload: response.inputPayload,
                                 outputPayload: response.outputPayload,
-                                responsePayload: response.responsePayload,
                                 error: response.error,
                                 duration: response.duration,
                                 cnsId: response.cnsId,

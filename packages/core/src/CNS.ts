@@ -132,7 +132,9 @@ export class CNS<
 
     public stimulate<
         TInputPayload extends TOutputPayload,
-        TOutputPayload = TInputPayload
+        TOutputPayload = TInputPayload,
+        TModalityName extends string = string,
+        TAfferentPathName extends string = string
     >(
         signalOrSignals:
             | TCNSSignal<TCollateralName, TInputPayload>
@@ -142,8 +144,8 @@ export class CNS<
             TInputPayload,
             TOutputPayload,
             TNeuronName,
-            TNeuron,
-            TDendrite
+            TModalityName,
+            TAfferentPathName
         >
     ): CNSStimulation<
         TCollateralName,
@@ -172,15 +174,20 @@ export class CNS<
     /**
      * Start a stimulation with activation tasks directly
      */
-    public activate<TInputPayload, TOutputPayload>(
+    public activate<
+        TInputPayload,
+        TOutputPayload,
+        TModalityName extends string = string,
+        TAfferentPathName extends string = string
+    >(
         tasks: TCNSNeuronActivationTask<TCollateralName, TNeuronName>[],
         options?: TCNSStimulationOptions<
             TCollateralName,
             TInputPayload,
             TOutputPayload,
             TNeuronName,
-            TNeuron,
-            TDendrite
+            TModalityName,
+            TAfferentPathName
         >
     ): CNSStimulation<
         TCollateralName,

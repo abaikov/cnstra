@@ -3,12 +3,17 @@ import { TCNSStimulationSerializedContextValue } from './TCNSStimulationSerializ
 import { CNSStimulation } from '../CNSStimulation';
 import { TCNSNeuron } from './TCNSNeuron';
 import { TCNSDendrite } from './TCNSDendrite';
+import { TCNSModality } from './TCNSModality';
+import { TCNSAfferentPath } from './TCNSAfferentPath';
 
 export type TCNSStimulationResponse<
     TCollateralName extends string,
     TInputPayload,
     TOutputPayload,
-    TNeuronName extends string = string
+    TNeuronName extends string = string,
+    TModalityName extends string = string,
+    TAfferentPathName extends string = string,
+    TParentAfferentPathName extends string = string
 > = {
     stimulationId?: string;
     inputSignal?: TCNSSignal<TCollateralName, TInputPayload>;
@@ -18,6 +23,12 @@ export type TCNSStimulationResponse<
     > & {
         payload?: unknown;
     };
+    modality?: TCNSModality<
+        TModalityName,
+        TAfferentPathName,
+        TParentAfferentPathName
+    >;
+    afferentPath?: TCNSAfferentPath<TAfferentPathName, TParentAfferentPathName>;
     contextValue: TCNSStimulationSerializedContextValue;
     // Current queue length
     queueLength: number;

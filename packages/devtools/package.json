@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Developer tools for CNStra",
   "keywords": ["devtools", "cnstra"],
   "type": "module",
@@ -25,10 +25,10 @@
     "dist"
   ],
   "peerDependencies": {
-    "@cnstra/core": "1.8.2"
+    "@cnstra/core": "1.9.0"
   },
   "dependencies": {
-    "@cnstra/devtools-dto": "1.0.0"
+    "@cnstra/devtools-dto": "1.0.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",

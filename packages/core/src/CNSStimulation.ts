@@ -33,6 +33,7 @@ export class CNSStimulation<
         TCollateralName,
         TNeuronName
     >;
+
     private readonly nueronVisitMap?: Map<TNeuronName, number>;
     private readonly instanceNeuronQueue: CNSInstanceNeuronQueue<TNeuron>;
     private scheduledCount = 0;
@@ -59,7 +60,7 @@ export class CNSStimulation<
     public readonly id: string;
 
     constructor(
-        private readonly cns: CNS<
+        public readonly cns: CNS<
             TCollateralName,
             TNeuronName,
             TNeuron,
@@ -365,7 +366,8 @@ export class CNSStimulation<
                             TDendrite
                         >,
                         stimulationId: this.id,
-                    }
+                        stimulation: this,
+                    } as any
                 );
             } catch (error) {
                 // Sync error occurred

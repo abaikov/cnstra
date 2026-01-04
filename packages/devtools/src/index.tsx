@@ -118,7 +118,6 @@ export class CNSDevTools {
                 inputPayload: (safeInputPayload ?? undefined) as any,
                 outputPayload: (safeOutputPayload ?? undefined) as any,
                 contexts: (safeContexts as any) || undefined,
-                responsePayload: (safeOutputPayload ?? undefined) as any,
                 error: (response.error as any) || undefined,
                 duration: (response as any).duration || undefined,
                 hopIndex: (response as any).hopIndex,

@@ -420,10 +420,7 @@ const renderResponse = (
                     </div>
                 </div>
             )}
-            {(item.responsePayload ||
-                item.inputPayload ||
-                item.outputPayload ||
-                item.contexts) && (
+            {(item.inputPayload || item.outputPayload || item.contexts) && (
                 <div
                     style={{
                         marginTop: 'var(--spacing-sm)',
@@ -455,7 +452,6 @@ const renderResponse = (
                             data={{
                                 inputPayload: item.inputPayload,
                                 outputPayload: item.outputPayload,
-                                responsePayload: item.responsePayload,
                                 contexts: item.contexts,
                                 snapshot: (item as any).snapshot,
                             }}

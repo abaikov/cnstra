@@ -9,7 +9,6 @@ interface ResponseDataViewerProps {
     data: {
         inputPayload?: unknown;
         outputPayload?: unknown;
-        responsePayload?: unknown;
         contexts?: Record<string, unknown>;
         snapshot?: unknown;
     };
@@ -47,12 +46,11 @@ export const ResponseDataViewer: React.FC<ResponseDataViewerProps> = ({
     const hasData =
         data.inputPayload !== undefined ||
         data.outputPayload !== undefined ||
-        data.responsePayload !== undefined ||
         data.contexts !== undefined ||
         data.snapshot !== undefined;
 
-    // Use outputPayload or responsePayload for output signal
-    const outputPayload = data.outputPayload ?? data.responsePayload;
+    // Use outputPayload for output signal
+    const outputPayload = data.outputPayload;
 
     if (!hasData) {
         return (

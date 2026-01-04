@@ -1276,7 +1276,6 @@ describe('CNSDevToolsServer - Comprehensive Endpoint Tests', () => {
                         outputCollateralName: 'test-output',
                         inputPayload: { test: 'data' },
                         outputPayload: { result: 'ok' },
-                        responsePayload: { result: 'ok' },
                     },
                 ],
             };
@@ -1374,7 +1373,6 @@ describe('CNSDevToolsServer - Comprehensive Endpoint Tests', () => {
                         ...mockResponse,
                         contexts: undefined,
                         payload: undefined,
-                        responsePayload: undefined,
                     },
                 ],
                 createdAt: expect.any(Number),

@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CNStra DevTools server (WebSocket only for now)",
   "keywords": ["cnstra", "devtools", "server", "websocket"],
   "type": "module",

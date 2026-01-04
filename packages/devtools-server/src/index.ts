@@ -665,9 +665,6 @@ export class CNSDevToolsServer {
                         contexts: CNSDevToolsServer.sanitizeValue(
                             (r as any).contexts
                         ),
-                        responsePayload: CNSDevToolsServer.sanitizeValue(
-                            (r as any).responsePayload
-                        ),
                     })
                 );
                 const snapshot = {

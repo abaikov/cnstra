@@ -1,4 +1,12 @@
-import { CNS, collateral, neuron, withCtx, TCNSSignal } from '../src/index';
+import {
+    CNS,
+    collateral,
+    neuron,
+    withCtx,
+    TCNSSignal,
+    afferentPath,
+    modality,
+} from '../src/index';
 
 const uiAxon = {
     userEntersApp: collateral<{
@@ -396,6 +404,870 @@ describe('CNStra Core Tests', () => {
 
                 expect(testNeuron.dendrites).toHaveLength(1);
                 expect(testNeuron.dendrites[0].collateral.name).toBe('input');
+            });
+        });
+
+        describe('afferentPath', () => {
+            it('should create afferent path with name only', () => {
+                const path = afferentPath('primary');
+                expect(path.name).toBe('primary');
+                expect(path.parentAfferentPathName).toBeUndefined();
+                expect(path).not.toHaveProperty('parentAfferentPathName');
+            });
+
+            it('should create afferent path with name and parent', () => {
+                const path = afferentPath('secondary', 'primary');
+                expect(path.name).toBe('secondary');
+                expect(path.parentAfferentPathName).toBe('primary');
+            });
+
+            it('should not include parentAfferentPathName when undefined', () => {
+                const path = afferentPath('root');
+                expect(path).toEqual({ name: 'root' });
+                expect('parentAfferentPathName' in path).toBe(false);
+            });
+
+            it('should preserve types for path name and parent', () => {
+                const path = afferentPath('tertiary', 'secondary');
+                const _test: typeof path = {
+                    name: 'tertiary',
+                    parentAfferentPathName: 'secondary',
+                };
+                expect(_test.name).toBe('tertiary');
+                expect(_test.parentAfferentPathName).toBe('secondary');
+            });
+
+            it('should handle empty string names', () => {
+                const path = afferentPath('');
+                expect(path.name).toBe('');
+                expect(path.parentAfferentPathName).toBeUndefined();
+            });
+
+            it('should handle empty string parent name', () => {
+                const path = afferentPath('child', '');
+                expect(path.name).toBe('child');
+                expect(path.parentAfferentPathName).toBe('');
+            });
+        });
+
+        describe('modality', () => {
+            it('should create modality with name and afferent paths', () => {
+                const visualModality = modality('visual', {
+                    primary: afferentPath('primary'),
+                    secondary: afferentPath('secondary', 'primary'),
+                });
+
+                expect(visualModality.name).toBe('visual');
+                expect(visualModality.afferentPaths).toBeDefined();
+                expect(visualModality.afferentPaths.primary.name).toBe(
+                    'primary'
+                );
+                expect(visualModality.afferentPaths.secondary.name).toBe(
+                    'secondary'
+                );
+                expect(
+                    visualModality.afferentPaths.secondary
+                        .parentAfferentPathName
+                ).toBe('primary');
+            });
+
+            it('should create modality with single afferent path', () => {
+                const simpleModality = modality('simple', {
+                    main: afferentPath('main'),
+                });
+
+                expect(simpleModality.name).toBe('simple');
+                expect(simpleModality.afferentPaths.main.name).toBe('main');
+                expect(
+                    simpleModality.afferentPaths.main.parentAfferentPathName
+                ).toBeUndefined();
+            });
+
+            it('should create modality with empty afferent paths object', () => {
+                const emptyModality = modality('empty', {});
+
+                expect(emptyModality.name).toBe('empty');
+                expect(emptyModality.afferentPaths).toBeDefined();
+                expect(Object.keys(emptyModality.afferentPaths)).toHaveLength(
+                    0
+                );
+            });
+
+            it('should create modality with multiple hierarchical paths', () => {
+                const complexModality = modality('complex', {
+                    root: afferentPath('root'),
+                    level1: afferentPath('level1', 'root'),
+                    level2a: afferentPath('level2a', 'level1'),
+                    level2b: afferentPath('level2b', 'level1'),
+                    level3: afferentPath('level3', 'level2a'),
+                });
+
+                expect(complexModality.name).toBe('complex');
+                expect(Object.keys(complexModality.afferentPaths)).toHaveLength(
+                    5
+                );
+                expect(complexModality.afferentPaths.root.name).toBe('root');
+                expect(complexModality.afferentPaths.level1.name).toBe(
+                    'level1'
+                );
+                expect(
+                    complexModality.afferentPaths.level1.parentAfferentPathName
+                ).toBe('root');
+                expect(complexModality.afferentPaths.level2a.name).toBe(
+                    'level2a'
+                );
+                expect(
+                    complexModality.afferentPaths.level2a.parentAfferentPathName
+                ).toBe('level1');
+                expect(complexModality.afferentPaths.level2b.name).toBe(
+                    'level2b'
+                );
+                expect(
+                    complexModality.afferentPaths.level2b.parentAfferentPathName
+                ).toBe('level1');
+                expect(complexModality.afferentPaths.level3.name).toBe(
+                    'level3'
+                );
+                expect(
+                    complexModality.afferentPaths.level3.parentAfferentPathName
+                ).toBe('level2a');
+            });
+
+            it('should preserve all path properties correctly', () => {
+                const testModality = modality('test', {
+                    path1: afferentPath('path1'),
+                    path2: afferentPath('path2', 'path1'),
+                    path3: afferentPath('path3', 'path2'),
+                });
+
+                expect(testModality.afferentPaths.path1).toEqual({
+                    name: 'path1',
+                });
+                expect(testModality.afferentPaths.path2).toEqual({
+                    name: 'path2',
+                    parentAfferentPathName: 'path1',
+                });
+                expect(testModality.afferentPaths.path3).toEqual({
+                    name: 'path3',
+                    parentAfferentPathName: 'path2',
+                });
+            });
+
+            it('should preserve type information for modality paths', () => {
+                const typedModality = modality('typed', {
+                    first: afferentPath('first'),
+                    second: afferentPath('second', 'first'),
+                });
+
+                // Type check: should be able to access paths by their keys
+                const _test1: typeof typedModality.afferentPaths.first = {
+                    name: 'first',
+                };
+                const _test2: typeof typedModality.afferentPaths.second = {
+                    name: 'second',
+                    parentAfferentPathName: 'first',
+                };
+
+                expect(_test1.name).toBe('first');
+                expect(_test2.name).toBe('second');
+                expect(_test2.parentAfferentPathName).toBe('first');
+            });
+
+            it('should work with as const for literal types', () => {
+                const literalModality = modality('literal', {
+                    alpha: afferentPath('alpha'),
+                    beta: afferentPath('beta', 'alpha'),
+                } as const);
+
+                expect(literalModality.name).toBe('literal');
+                expect(literalModality.afferentPaths.alpha.name).toBe('alpha');
+                expect(literalModality.afferentPaths.beta.name).toBe('beta');
+            });
+
+            it('should maintain correct structure with all paths having parents', () => {
+                const allWithParents = modality('allParents', {
+                    root: afferentPath('root', 'base'),
+                    child: afferentPath('child', 'root'),
+                });
+
+                expect(
+                    allWithParents.afferentPaths.root.parentAfferentPathName
+                ).toBe('base');
+                expect(
+                    allWithParents.afferentPaths.child.parentAfferentPathName
+                ).toBe('root');
+            });
+        });
+
+        describe('modalityDendrite', () => {
+            it('should route to correct afferent path handler', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                    onboarding: afferentPath('onboarding'),
+                });
+
+                const createCardNeuron = neuron('create-card', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modality: cardModality,
+                    afferentPaths: {
+                        uiButton: (payload, axon) => {
+                            return {
+                                id: `real-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                        onboarding: (payload, axon) => {
+                            return {
+                                id: `tutorial-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                    },
+                    output: (card, axon) => {
+                        return axon.output.createSignal({
+                            cardId: card.id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createCardNeuron]);
+
+                const responses: Array<{ cardId: string }> = [];
+                await cns.stimulate(input.createSignal({ source: 'test' }), {
+                    modality: cardModality,
+                    afferentPath: cardModality.afferentPaths.uiButton,
+                    onResponse: response => {
+                        if (
+                            response.outputSignal?.payload &&
+                            response.inputSignal &&
+                            response.outputSignal.collateralName === 'output'
+                        ) {
+                            responses.push(
+                                response.outputSignal.payload as {
+                                    cardId: string;
+                                }
+                            );
+                        }
+                    },
+                });
+
+                expect(responses).toHaveLength(1);
+                expect(responses[0].cardId).toBe('real-test');
+            });
+
+            it('should use default handler when afferent path not found', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                    onboarding: afferentPath('onboarding'),
+                });
+
+                const createCardNeuron = neuron('create-card', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modality: cardModality,
+                    afferentPaths: {
+                        uiButton: (payload, axon) => {
+                            return {
+                                id: `real-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                    },
+                    default: (payload, axon) => {
+                        return {
+                            id: `default-${
+                                (payload as { source: string }).source
+                            }`,
+                        };
+                    },
+                    output: (card, axon) => {
+                        return axon.output.createSignal({
+                            cardId: card.id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createCardNeuron]);
+
+                const responses: Array<{ cardId: string }> = [];
+                await cns.stimulate(input.createSignal({ source: 'test' }), {
+                    modality: cardModality,
+                    afferentPath: cardModality.afferentPaths.onboarding,
+                    onResponse: response => {
+                        if (
+                            response.outputSignal?.payload &&
+                            response.inputSignal &&
+                            response.outputSignal.collateralName === 'output'
+                        ) {
+                            responses.push(
+                                response.outputSignal.payload as {
+                                    cardId: string;
+                                }
+                            );
+                        }
+                    },
+                });
+
+                expect(responses).toHaveLength(1);
+                expect(responses[0].cardId).toBe('default-test');
+            });
+
+            it('should throw error when no handler matches and no default', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                    onboarding: afferentPath('onboarding'),
+                });
+
+                const createCardNeuron = neuron('create-card', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modality: cardModality,
+                    afferentPaths: {
+                        uiButton: (payload, axon) => {
+                            return {
+                                id: `real-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                    },
+                    output: (card, axon) => {
+                        return axon.output.createSignal({
+                            cardId: card.id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createCardNeuron]);
+
+                const stimulation = cns.stimulate(
+                    input.createSignal({ source: 'test' }),
+                    {
+                        modality: cardModality,
+                        afferentPath: cardModality.afferentPaths.onboarding,
+                    }
+                );
+
+                await expect(stimulation.waitUntilComplete()).rejects.toThrow();
+
+                const failedTasks = stimulation.getFailedTasks();
+                expect(failedTasks).toHaveLength(1);
+                expect(failedTasks[0].error.message).toBe(
+                    'modalityDendrite: No handler found for afferent path "onboarding" in modality "createCard" and no default handler provided'
+                );
+            });
+
+            it('should throw error when modality does not match and no default', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                });
+
+                const otherModality = modality('otherModality', {
+                    path1: afferentPath('path1'),
+                });
+
+                const createCardNeuron = neuron('create-card', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modality: cardModality,
+                    afferentPaths: {
+                        uiButton: (payload, axon) => {
+                            return {
+                                id: `real-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                    },
+                    output: (card, axon) => {
+                        return axon.output.createSignal({
+                            cardId: card.id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createCardNeuron]);
+
+                const stimulation = cns.stimulate(
+                    input.createSignal({ source: 'test' }),
+                    {
+                        modality: otherModality,
+                        afferentPath: otherModality.afferentPaths.path1,
+                    }
+                );
+
+                await expect(stimulation.waitUntilComplete()).rejects.toThrow();
+
+                const failedTasks = stimulation.getFailedTasks();
+                expect(failedTasks).toHaveLength(1);
+                expect(failedTasks[0].error.message).toBe(
+                    'modalityDendrite: No handler found for modality "otherModality" and no default handler provided'
+                );
+            });
+
+            it('should use default when modality does not match', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                });
+
+                const otherModality = modality('otherModality', {
+                    path1: afferentPath('path1'),
+                });
+
+                const createCardNeuron = neuron('create-card', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modality: cardModality,
+                    afferentPaths: {
+                        uiButton: (payload, axon) => {
+                            return {
+                                id: `real-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                    },
+                    default: (payload, axon) => {
+                        return {
+                            id: `default-${
+                                (payload as { source: string }).source
+                            }`,
+                        };
+                    },
+                    output: (card, axon) => {
+                        return axon.output.createSignal({
+                            cardId: card.id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createCardNeuron]);
+
+                const responses: Array<{ cardId: string }> = [];
+                await cns.stimulate(input.createSignal({ source: 'test' }), {
+                    modality: otherModality,
+                    afferentPath: otherModality.afferentPaths.path1,
+                    onResponse: response => {
+                        if (
+                            response.outputSignal?.payload &&
+                            response.inputSignal &&
+                            response.outputSignal.collateralName === 'output'
+                        ) {
+                            responses.push(
+                                response.outputSignal.payload as {
+                                    cardId: string;
+                                }
+                            );
+                        }
+                    },
+                });
+
+                expect(responses).toHaveLength(1);
+                expect(responses[0].cardId).toBe('default-test');
+            });
+
+            it('should handle async handlers', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                });
+
+                const createCardNeuron = neuron('create-card', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modality: cardModality,
+                    afferentPaths: {
+                        uiButton: async (payload, axon) => {
+                            await new Promise(resolve =>
+                                setTimeout(resolve, 10)
+                            );
+                            return {
+                                id: `async-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                    },
+                    output: (card, axon) => {
+                        return axon.output.createSignal({
+                            cardId: card.id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createCardNeuron]);
+
+                const responses: Array<{ cardId: string }> = [];
+                const stimulation = cns.stimulate(
+                    input.createSignal({ source: 'test' }),
+                    {
+                        modality: cardModality,
+                        afferentPath: cardModality.afferentPaths.uiButton,
+                        onResponse: response => {
+                            if (
+                                response.outputSignal?.payload &&
+                                response.inputSignal &&
+                                response.outputSignal.collateralName ===
+                                    'output'
+                            ) {
+                                responses.push(
+                                    response.outputSignal.payload as {
+                                        cardId: string;
+                                    }
+                                );
+                            }
+                        },
+                    }
+                );
+
+                await stimulation.waitUntilComplete();
+
+                expect(responses).toHaveLength(1);
+                expect(responses[0].cardId).toBe('async-test');
+            });
+
+            it('should use default when no modality in stimulation', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                });
+
+                const createCardNeuron = neuron('create-card', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modality: cardModality,
+                    afferentPaths: {
+                        uiButton: (payload, axon) => {
+                            return {
+                                id: `real-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                    },
+                    default: (payload, axon) => {
+                        return {
+                            id: `default-${
+                                (payload as { source: string }).source
+                            }`,
+                        };
+                    },
+                    output: (card, axon) => {
+                        return axon.output.createSignal({
+                            cardId: card.id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createCardNeuron]);
+
+                const responses: Array<{ cardId: string }> = [];
+                await cns.stimulate(input.createSignal({ source: 'test' }), {
+                    onResponse: response => {
+                        if (
+                            response.outputSignal?.payload &&
+                            response.inputSignal &&
+                            response.outputSignal.collateralName === 'output'
+                        ) {
+                            responses.push(
+                                response.outputSignal.payload as {
+                                    cardId: string;
+                                }
+                            );
+                        }
+                    },
+                });
+
+                expect(responses).toHaveLength(1);
+                expect(responses[0].cardId).toBe('default-test');
+            });
+
+            it('should throw error when no modality in stimulation and no default', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                });
+
+                const createCardNeuron = neuron('create-card', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modality: cardModality,
+                    afferentPaths: {
+                        uiButton: (payload, axon) => {
+                            return {
+                                id: `real-${
+                                    (payload as { source: string }).source
+                                }`,
+                            };
+                        },
+                    },
+                    output: (card, axon) => {
+                        return axon.output.createSignal({
+                            cardId: card.id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createCardNeuron]);
+
+                const stimulation = cns.stimulate(
+                    input.createSignal({ source: 'test' }),
+                    {}
+                );
+
+                await expect(stimulation.waitUntilComplete()).rejects.toThrow();
+
+                const failedTasks = stimulation.getFailedTasks();
+                expect(failedTasks).toHaveLength(1);
+                expect(failedTasks[0].error.message).toBe(
+                    'modalityDendrite: No handler found for modality "unknown" and no default handler provided'
+                );
+            });
+        });
+
+        describe('multiple modalities', () => {
+            it('should support multiple modalities in one dendrite', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                    onboarding: afferentPath('onboarding'),
+                });
+
+                const deckModality = modality('createDeck', {
+                    fromUI: afferentPath('fromUI'),
+                    fromAPI: afferentPath('fromAPI'),
+                });
+
+                const createNeuron = neuron('create', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modalities: [
+                        {
+                            modality: cardModality,
+                            afferentPaths: {
+                                uiButton: (payload, axon) => {
+                                    return {
+                                        id: `card-ui-${
+                                            (payload as { source: string })
+                                                .source
+                                        }`,
+                                    };
+                                },
+                                onboarding: (payload, axon) => {
+                                    return {
+                                        id: `card-onboarding-${
+                                            (payload as { source: string })
+                                                .source
+                                        }`,
+                                    };
+                                },
+                            },
+                        },
+                        {
+                            modality: deckModality,
+                            afferentPaths: {
+                                fromUI: (payload, axon) => {
+                                    return {
+                                        id: `deck-ui-${
+                                            (payload as { source: string })
+                                                .source
+                                        }`,
+                                    };
+                                },
+                                fromAPI: (payload, axon) => {
+                                    return {
+                                        id: `deck-api-${
+                                            (payload as { source: string })
+                                                .source
+                                        }`,
+                                    };
+                                },
+                            },
+                        },
+                    ],
+                    output: (result, axon) => {
+                        return axon.output.createSignal({
+                            cardId: (result as { id: string }).id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createNeuron]);
+
+                // Test card modality
+                const cardResponses: Array<{ cardId: string }> = [];
+                const cardStimulation = cns.stimulate(
+                    input.createSignal({ source: 'test' }),
+                    {
+                        modality: cardModality,
+                        afferentPath: cardModality.afferentPaths.uiButton,
+                        onResponse: response => {
+                            if (
+                                response.outputSignal?.payload &&
+                                response.inputSignal &&
+                                response.outputSignal.collateralName ===
+                                    'output'
+                            ) {
+                                cardResponses.push(
+                                    response.outputSignal.payload as {
+                                        cardId: string;
+                                    }
+                                );
+                            }
+                        },
+                    }
+                );
+
+                await cardStimulation.waitUntilComplete();
+
+                expect(cardResponses).toHaveLength(1);
+                expect(cardResponses[0].cardId).toBe('card-ui-test');
+
+                // Test deck modality
+                const deckResponses: Array<{ cardId: string }> = [];
+                const deckStimulation = cns.stimulate(
+                    input.createSignal({ source: 'api-test' }),
+                    {
+                        modality: deckModality,
+                        afferentPath: deckModality.afferentPaths.fromAPI,
+                        onResponse: response => {
+                            if (
+                                response.outputSignal?.payload &&
+                                response.inputSignal &&
+                                response.outputSignal.collateralName ===
+                                    'output'
+                            ) {
+                                deckResponses.push(
+                                    response.outputSignal.payload as {
+                                        cardId: string;
+                                    }
+                                );
+                            }
+                        },
+                    }
+                );
+
+                await deckStimulation.waitUntilComplete();
+
+                expect(deckResponses).toHaveLength(1);
+                expect(deckResponses[0].cardId).toBe('deck-api-api-test');
+            });
+
+            it('should use modality-specific default handler', async () => {
+                const input = collateral<{ source: string }>('input');
+                const output = collateral<{ cardId: string }>('output');
+
+                const cardModality = modality('createCard', {
+                    uiButton: afferentPath('uiButton'),
+                });
+
+                const deckModality = modality('createDeck', {
+                    fromUI: afferentPath('fromUI'),
+                });
+
+                const createNeuron = neuron('create', {
+                    output,
+                }).modalityDendrite({
+                    collateral: input,
+                    modalities: [
+                        {
+                            modality: cardModality,
+                            afferentPaths: {
+                                uiButton: (payload, axon) => {
+                                    return {
+                                        id: `card-${
+                                            (payload as { source: string })
+                                                .source
+                                        }`,
+                                    };
+                                },
+                            },
+                            default: (payload, axon) => {
+                                return {
+                                    id: `card-default-${
+                                        (payload as { source: string }).source
+                                    }`,
+                                };
+                            },
+                        },
+                        {
+                            modality: deckModality,
+                            default: (payload, axon) => {
+                                return {
+                                    id: `deck-default-${
+                                        (payload as { source: string }).source
+                                    }`,
+                                };
+                            },
+                        },
+                    ],
+                    output: (result, axon) => {
+                        return axon.output.createSignal({
+                            cardId: (result as { id: string }).id,
+                        });
+                    },
+                });
+
+                const cns = new CNS([createNeuron]);
+
+                // Test card modality with unknown path - should use card default
+                const responses: Array<{ cardId: string }> = [];
+                await cns.stimulate(input.createSignal({ source: 'test' }), {
+                    modality: cardModality,
+                    afferentPath: { name: 'unknown' } as any,
+                    onResponse: response => {
+                        if (
+                            response.outputSignal?.payload &&
+                            response.inputSignal &&
+                            response.outputSignal.collateralName === 'output'
+                        ) {
+                            responses.push(
+                                response.outputSignal.payload as {
+                                    cardId: string;
+                                }
+                            );
+                        }
+                    },
+                });
+
+                expect(responses).toHaveLength(1);
+                expect(responses[0].cardId).toBe('card-default-test');
             });
         });
 

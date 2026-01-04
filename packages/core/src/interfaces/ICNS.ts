@@ -49,7 +49,9 @@ export interface ICNS<
 
     stimulate<
         TInputPayload extends TOutputPayload,
-        TOutputPayload = TInputPayload
+        TOutputPayload = TInputPayload,
+        TModalityName extends string = string,
+        TAfferentPathName extends string = string
     >(
         signalOrSignals:
             | TCNSSignal<TCollateralName, TInputPayload>
@@ -59,8 +61,8 @@ export interface ICNS<
             TInputPayload,
             TOutputPayload,
             TNeuronName,
-            TNeuron,
-            TDendrite
+            TModalityName,
+            TAfferentPathName
         >
     ): CNSStimulation<
         TCollateralName,

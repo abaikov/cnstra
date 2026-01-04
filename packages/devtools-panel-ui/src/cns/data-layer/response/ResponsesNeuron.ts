@@ -132,7 +132,6 @@ export const responsesNeuron = neuron('responses-neuron', appModelAxon).bind(
                         (r.contexts as Record<string, unknown>) || undefined,
                     inputPayload: r.inputPayload,
                     outputPayload: r.outputPayload,
-                    responsePayload: r.responsePayload || r.outputPayload,
                     error: r.error,
                     duration: r.duration,
                 });

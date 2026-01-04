@@ -183,7 +183,6 @@ describe('WebSocket → CNS → OIMDB Integration', () => {
                     outputCollateralName: 'result',
                     inputPayload: { task: 'process-data' },
                     outputPayload: { result: 'success' },
-                    responsePayload: { result: 'success' },
                     duration: 150,
                 },
                 {
@@ -195,7 +194,6 @@ describe('WebSocket → CNS → OIMDB Integration', () => {
                     outputCollateralName: 'result',
                     inputPayload: { task: 'validate' },
                     outputPayload: { result: 'valid' },
-                    responsePayload: { result: 'valid' },
                     duration: 50,
                     error: undefined,
                 },
@@ -208,7 +206,6 @@ describe('WebSocket → CNS → OIMDB Integration', () => {
                     outputCollateralName: 'result',
                     inputPayload: { task: 'fail' },
                     outputPayload: null,
-                    responsePayload: null,
                     duration: 25,
                     error: 'Processing failed',
                 },
@@ -410,7 +407,6 @@ describe('WebSocket → CNS → OIMDB Integration', () => {
                 outputCollateralName: 'work',
                 inputPayload: { i },
                 outputPayload: { result: i },
-                responsePayload: { result: i },
             })) as NeuronResponseMessage[],
         };
 

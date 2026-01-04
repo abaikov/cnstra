@@ -513,7 +513,6 @@ describe('DevTools Message Protocol', () => {
             // 4. Payloads (what data was transformed?)
             expect(respMsg.inputPayload).toBeDefined();
             expect(respMsg.outputPayload).toBeDefined();
-            expect(respMsg.responsePayload).toBeDefined();
 
             // 5. Can we build stimulation from this response?
             // inputCollateralName + stimulationId = enough to identify stimulation

@@ -70,7 +70,7 @@ listenersByCollateral.forEach((listeners, collateralName) => {
 
 #### `StimulationResponse`
 - Represents a neuron's response to receiving a stimulation
-- Contains: `responseId`, `stimulationId`, `neuronId`, `appId`, `timestamp`, `responsePayload`, `error`, `duration`
+- Contains: `responseId`, `stimulationId`, `neuronId`, `appId`, `timestamp`, `error`, `duration`
 - Use for: Performance monitoring, error tracking
 
 ### Message Types

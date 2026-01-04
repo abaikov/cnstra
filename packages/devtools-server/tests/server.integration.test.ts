@@ -246,7 +246,6 @@ describe('CNSDevToolsServer - Modern Protocol', () => {
                 outputCollateralName: 'work-done',
                 inputPayload: { jobId: i, task: `task-${i}` },
                 outputPayload: { result: `completed-${i}` },
-                responsePayload: { result: `completed-${i}` },
                 duration: 50 + i * 5,
             })),
         } as any);
@@ -345,7 +344,6 @@ describe('CNSDevToolsServer - Modern Protocol', () => {
                     outputCollateralName: 'event-a',
                     inputPayload: {},
                     outputPayload: {},
-                    responsePayload: {},
                 },
             ],
         } as any);
@@ -363,7 +361,6 @@ describe('CNSDevToolsServer - Modern Protocol', () => {
                     outputCollateralName: 'event-b',
                     inputPayload: {},
                     outputPayload: {},
-                    responsePayload: {},
                 },
             ],
         } as any);
@@ -428,7 +425,6 @@ describe('CNSDevToolsServer - Modern Protocol', () => {
                 outputCollateralName: 'result',
                 inputPayload: { n: i },
                 outputPayload: { result: i * 2 },
-                responsePayload: { result: i * 2 },
             })),
         } as any);
 
