@@ -18,8 +18,8 @@ const stimulation = cns.stimulate(signal, {
   onResponse: async (response) => {
     if (response.error) {
       await errorsRepo.store({
-        id: response.stimulationId,
-        signal: response.outputSignal?.collateralName || response.inputSignal?.collateralName,
+        signal:
+          response.outputSignal?.collateral || response.inputSignal?.collateral,
         error: String(response.error),
       });
       
@@ -64,12 +64,12 @@ Use a self-looping neuron with context to track **per-neuron per-stimulation ret
 ```ts
 import { withCtx, collateral } from '@cnstra/core';
 
-const tryTask = collateral<{ taskId: string }>('task:try');
-const completed = collateral<{ taskId: string }>('task:completed');
-const failed = collateral<{ taskId: string; reason: string }>('task:failed');
+const tryTask = collateral<{ taskId: string }>();
+const completed = collateral<{ taskId: string }>();
+const failed = collateral<{ taskId: string; reason: string }>();
 
 const taskRunner = withCtx<{ attempt: number }>()
-  .neuron('task-runner', { tryTask, completed, failed })
+  .neuron({ tryTask, completed, failed })
   .dendrite({
     collateral: tryTask,
     response: async (payload, axon, ctx) => {
@@ -114,9 +114,9 @@ Global listeners registered via `addResponseListener` run for every stimulation 
 - Idempotency: design `onResponse` persistence to be idempotent (e.g., upserts, unique keys) so retries are safe.
 - Retry policy: prefer bounded retries with exponential backoff; use context to track attempts; avoid hot loops.
 - Partial failure: emit explicit failure signals from dendrites when business errors occur; reserve thrown errors for exceptional cases.
-- Observability: tag `stimulationId` and collateral names in logs/metrics; capture queueLength to identify bottlenecks.
+- Observability: tag your own run/correlation id (if you have one) and collaterals in logs/metrics; capture queueLength to identify bottlenecks.
 - Isolation: keep `onResponse` lightweight; move heavy processing to dedicated neurons/signals when possible.
 - Concurrency: if persisting from `onResponse`, consider batching or a queue to smooth spikes in traffic.
-- Ordering: if ordering matters, include sequence numbers in payloads or serialize writes per `stimulationId`.
+- Ordering: if ordering matters, include sequence numbers in payloads or serialize writes per run/correlation id you provide.
 - Durability: when persisting context for retries, write before emitting downstream effects; verify on restart.
 

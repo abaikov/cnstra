@@ -1,19 +1,13 @@
 import { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
 
-export class CNSNeuronActivationPump<
-    TCollateralName extends string,
-    TNeuronName extends string
-> {
-    private items: TCNSNeuronActivationTask<TCollateralName, TNeuronName>[] =
-        [];
+export class CNSNeuronActivationPump<TNeuron extends object> {
+    private items: TCNSNeuronActivationTask<TNeuron>[] = [];
     private head = 0;
     private tail = 0;
     private size = 0;
     private capacity = 16;
     protected activeOperations = 0;
-    private activeTasks = new Set<
-        TCNSNeuronActivationTask<TCollateralName, TNeuronName>
-    >();
+    private activeTasks = new Set<TCNSNeuronActivationTask<TNeuron>>();
 
     // NEW: prevent re-entrant pump; defer extra runs
     private pumping = false;
@@ -21,10 +15,7 @@ export class CNSNeuronActivationPump<
 
     constructor(
         private readonly processor: (
-            neuronActivationTask: TCNSNeuronActivationTask<
-                TCollateralName,
-                TNeuronName
-            >
+            neuronActivationTask: TCNSNeuronActivationTask<TNeuron>
         ) => (() => void) | Promise<() => void>,
         protected readonly concurrency?: number,
         protected readonly abortSignal?: AbortSignal,
@@ -58,7 +49,7 @@ export class CNSNeuronActivationPump<
     }
 
     private dequeue():
-        | TCNSNeuronActivationTask<TCollateralName, TNeuronName>
+        | TCNSNeuronActivationTask<TNeuron>
         | undefined {
         if (this.size === 0) return undefined;
 
@@ -71,10 +62,7 @@ export class CNSNeuronActivationPump<
     }
 
     private enqueueItem(
-        neuronActivationTask: TCNSNeuronActivationTask<
-            TCollateralName,
-            TNeuronName
-        >
+        neuronActivationTask: TCNSNeuronActivationTask<TNeuron>
     ): void {
         if (this.size === this.capacity) {
             this.resize();
@@ -146,10 +134,7 @@ export class CNSNeuronActivationPump<
     }
 
     enqueue(
-        neuronActivationTask: TCNSNeuronActivationTask<
-            TCollateralName,
-            TNeuronName
-        >
+        neuronActivationTask: TCNSNeuronActivationTask<TNeuron>
     ) {
         this.enqueueItem(neuronActivationTask);
         // Start pumping only if not already pumping; avoid re-entrant pump
@@ -165,12 +150,8 @@ export class CNSNeuronActivationPump<
         return this.activeOperations;
     }
 
-    public getQueuedTasks(): TCNSNeuronActivationTask<
-        TCollateralName,
-        TNeuronName
-    >[] {
-        const result: TCNSNeuronActivationTask<TCollateralName, TNeuronName>[] =
-            [];
+    public getQueuedTasks(): TCNSNeuronActivationTask<TNeuron>[] {
+        const result: TCNSNeuronActivationTask<TNeuron>[] = [];
         let index = this.head;
         for (let i = 0; i < this.size; i++) {
             result.push(this.items[index]);
@@ -179,10 +160,7 @@ export class CNSNeuronActivationPump<
         return result;
     }
 
-    public getActiveTasks(): TCNSNeuronActivationTask<
-        TCollateralName,
-        TNeuronName
-    >[] {
+    public getActiveTasks(): TCNSNeuronActivationTask<TNeuron>[] {
         return Array.from(this.activeTasks);
     }
 }

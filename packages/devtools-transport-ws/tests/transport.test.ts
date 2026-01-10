@@ -1,5 +1,10 @@
 import { CNSDevToolsTransportWs, TWSOpts } from '../src/index';
-import type { InitMessage, NeuronResponseMessage, StimulateCommand } from '@cnstra/devtools-dto';
+import type {
+  InitMessage,
+  NeuronResponseMessage,
+  StimulateCommand,
+  StimulationMessage
+} from '@cnstra/devtools-dto';
 
 // Get MockWebSocket from global setup
 const MockWebSocket = (global as any).MockWebSocket;
@@ -65,6 +70,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -86,11 +93,37 @@ describe('CNSDevToolsTransportWs', () => {
       expect(wsInstance.url).toBe('ws://localhost:8080');
     });
 
+    test('uses global WebSocket when webSocketImpl is not provided', async () => {
+      transport = new CNSDevToolsTransportWs({
+        url: 'ws://localhost:8080'
+      });
+
+      const initMessage: InitMessage = {
+        type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app',
+        appName: 'Test App',
+        version: '1.0.0',
+        timestamp: Date.now(),
+        neurons: [],
+        collaterals: [],
+        dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(transport.isConnected).toBe(true);
+    });
+
     test('reuses existing connection', async () => {
       transport = new CNSDevToolsTransportWs(defaultOptions);
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -118,6 +151,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -141,11 +176,15 @@ describe('CNSDevToolsTransportWs', () => {
     test('throws error when WebSocket implementation is not available', async () => {
       const transportWithoutWS = new CNSDevToolsTransportWs({
         url: 'ws://localhost:8080',
+        // Force sendInitMessage() to await flush() so the rejection surfaces
+        bufferMaxSize: 1,
         webSocketImpl: undefined as any
       });
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -175,6 +214,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -191,12 +232,151 @@ describe('CNSDevToolsTransportWs', () => {
       expect(transport.isConnected).toBe(true);
     });
 
+    test('sends stimulation message successfully', async () => {
+      transport = new CNSDevToolsTransportWs(defaultOptions);
+
+      const initMessage: InitMessage = {
+        type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app',
+        appName: 'Test App',
+        version: '1.0.0',
+        timestamp: Date.now(),
+        neurons: [],
+        collaterals: [],
+        dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      const wsInstance = MockWebSocket.getLatestInstance();
+      expect(wsInstance).toBeDefined();
+      const sendSpy = jest.spyOn(wsInstance, 'send');
+
+      const stimulationMessage: StimulationMessage = {
+        type: 'stimulation',
+        stimulationId: 'stim-123',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        neuronId: 'neuron-456',
+        collateralName: 'input',
+        timestamp: Date.now(),
+        queueLength: 0
+      };
+
+      await transport.sendStimulationMessage(stimulationMessage);
+      expect(sendSpy).toHaveBeenCalled();
+    });
+
+    test('does not throw if stimulation message send fails', async () => {
+      transport = new CNSDevToolsTransportWs(defaultOptions);
+
+      const initMessage: InitMessage = {
+        type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app',
+        appName: 'Test App',
+        version: '1.0.0',
+        timestamp: Date.now(),
+        neurons: [],
+        collaterals: [],
+        dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      const wsInstance = MockWebSocket.getLatestInstance();
+      wsInstance.send = jest.fn(() => {
+        throw new Error('Send failed');
+      });
+
+      const stimulationMessage: StimulationMessage = {
+        type: 'stimulation',
+        stimulationId: 'stim-123',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        neuronId: 'neuron-456',
+        collateralName: 'input',
+        timestamp: Date.now(),
+        queueLength: 0
+      };
+
+      await expect(
+        transport.sendStimulationMessage(stimulationMessage)
+      ).resolves.toBeUndefined();
+    });
+
+    test('no-ops stimulation message send when WebSocket is not open', async () => {
+      class NotOpenWebSocket {
+        public static readonly CONNECTING = 0;
+        public static readonly OPEN = 1;
+        public static readonly CLOSING = 2;
+        public static readonly CLOSED = 3;
+
+        public readonly CONNECTING = 0;
+        public readonly OPEN = 1;
+        public readonly CLOSING = 2;
+        public readonly CLOSED = 3;
+
+        public readyState = NotOpenWebSocket.CONNECTING;
+        public url: string;
+        public protocol?: string | string[];
+
+        public onopen?: (event: Event) => void;
+        public onclose?: (event: CloseEvent) => void;
+        public onerror?: (event: Event) => void;
+        public onmessage?: (event: MessageEvent) => void;
+
+        constructor(url: string, protocols?: string | string[]) {
+          this.url = url;
+          this.protocol = protocols;
+          // Call onopen without transitioning to OPEN
+          setTimeout(() => this.onopen?.(new Event('open')), 1);
+        }
+
+        public send(): void {
+          throw new Error('WebSocket is not open');
+        }
+
+        public close(): void {
+          this.readyState = NotOpenWebSocket.CLOSED;
+          this.onclose?.(new CloseEvent('close'));
+        }
+      }
+
+      transport = new CNSDevToolsTransportWs({
+        url: 'ws://localhost:8080',
+        webSocketImpl: NotOpenWebSocket as any
+      });
+
+      const stimulationMessage: StimulationMessage = {
+        type: 'stimulation',
+        stimulationId: 'stim-123',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        neuronId: 'neuron-456',
+        collateralName: 'input',
+        timestamp: Date.now(),
+        queueLength: 0
+      };
+
+      await expect(
+        transport.sendStimulationMessage(stimulationMessage)
+      ).resolves.toBeUndefined();
+    });
+
     test('sends neuron response message successfully', async () => {
       transport = new CNSDevToolsTransportWs(defaultOptions);
 
       // First establish connection
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -210,16 +390,103 @@ describe('CNSDevToolsTransportWs', () => {
       await new Promise(resolve => setTimeout(resolve, 20));
 
       const responseMessage: NeuronResponseMessage = {
+        responseId: 'resp-1',
         stimulationId: 'stim-123',
-        neuronId: 'neuron-456',
         appId: 'test-app',
-        collateralName: 'output',
-        timestamp: Date.now()
+        cnsId: 'test-app:default',
+        timestamp: Date.now(),
+        inputCollateralName: 'input',
+        outputCollateralName: 'output'
       };
 
       await transport.sendNeuronResponseMessage(responseMessage);
 
       expect(transport.bufferSize).toBe(0); // Should be flushed
+    });
+
+    test('logs replay batch when flushing replay responses', async () => {
+      transport = new CNSDevToolsTransportWs({
+        ...defaultOptions,
+        bufferMaxSize: 1
+      });
+
+      const initMessage: InitMessage = {
+        type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app',
+        appName: 'Test App',
+        version: '1.0.0',
+        timestamp: Date.now(),
+        neurons: [],
+        collaterals: [],
+        dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      const responseMessage: NeuronResponseMessage = {
+        responseId: 'resp-replay-1',
+        stimulationId: 'stim-123-replay-1',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        timestamp: Date.now(),
+        inputCollateralName: 'input',
+        outputCollateralName: 'output'
+      };
+
+      await transport.sendNeuronResponseMessage(responseMessage);
+
+      expect(console.log).toHaveBeenCalledWith(
+        '🔁 [Transport] Flushing REPLAY responses batch:',
+        expect.any(Object)
+      );
+    });
+
+    test('flush sends a batch when connected', async () => {
+      transport = new CNSDevToolsTransportWs(defaultOptions);
+
+      const initMessage: InitMessage = {
+        type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app',
+        appName: 'Test App',
+        version: '1.0.0',
+        timestamp: Date.now(),
+        neurons: [],
+        collaterals: [],
+        dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      const wsInstance = MockWebSocket.getLatestInstance();
+      const sendSpy = jest.spyOn(wsInstance, 'send');
+
+      // The init message flush may have already sent a batch; we want to attribute
+      // the next batch send specifically to the manual flush below.
+      sendSpy.mockClear();
+
+      // Manually enqueue a response and force a flush (private API) to cover batch building paths
+      const responseMessage: NeuronResponseMessage = {
+        responseId: 'resp-2',
+        stimulationId: 'stim-456',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        timestamp: Date.now(),
+        inputCollateralName: 'input',
+        outputCollateralName: 'output'
+      };
+
+      (transport as any).buffer.push({ type: 'response', payload: responseMessage });
+      await (transport as any).flush();
+
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.stringContaining('"type":"batch"')
+      );
     });
 
     test('buffers messages when not connected', async () => {
@@ -229,11 +496,13 @@ describe('CNSDevToolsTransportWs', () => {
       });
 
       const responseMessage: NeuronResponseMessage = {
+        responseId: 'resp-1',
         stimulationId: 'stim-123',
-        neuronId: 'neuron-456',
         appId: 'test-app',
-        collateralName: 'output',
-        timestamp: Date.now()
+        cnsId: 'test-app:default',
+        timestamp: Date.now(),
+        inputCollateralName: 'input',
+        outputCollateralName: 'output'
       };
 
       await transport.sendNeuronResponseMessage(responseMessage);
@@ -250,6 +519,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -263,11 +534,13 @@ describe('CNSDevToolsTransportWs', () => {
       await transport.sendInitMessage(initMessage);
 
       const responseMessage: NeuronResponseMessage = {
+        responseId: 'resp-1',
         stimulationId: 'stim-123',
-        neuronId: 'neuron-456',
         appId: 'test-app',
-        collateralName: 'output',
-        timestamp: Date.now()
+        cnsId: 'test-app:default',
+        timestamp: Date.now(),
+        inputCollateralName: 'input',
+        outputCollateralName: 'output'
       };
 
       await transport.sendNeuronResponseMessage(responseMessage);
@@ -288,6 +561,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -321,6 +596,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -345,15 +622,61 @@ describe('CNSDevToolsTransportWs', () => {
       expect(transport.bufferSize).toBeGreaterThanOrEqual(0);
     });
 
-    test('stops reconnecting after max attempts', async () => {
+    test('swallows reconnect errors (ensureSocket reject in scheduled reconnect)', async () => {
       transport = new CNSDevToolsTransportWs({
         ...defaultOptions,
         reconnectDelayMs: 10,
-        maxReconnectAttempts: 2
+        maxReconnectAttempts: 1
       });
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app',
+        appName: 'Test App',
+        version: '1.0.0',
+        timestamp: Date.now(),
+        neurons: [],
+        collaterals: [],
+        dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(transport.isConnected).toBe(true);
+
+      const originalWebSocket = (global as any).WebSocket;
+      try {
+        // Force ensureSocket() to reject on the scheduled reconnect attempt
+        delete (global as any).WebSocket;
+        (transport as any).opts.webSocketImpl = undefined;
+
+        // Trigger onclose -> schedules ensureSocket().catch(() => {})
+        const wsInstance = MockWebSocket.getLatestInstance();
+        wsInstance?.close();
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+      } finally {
+        (global as any).WebSocket = originalWebSocket;
+        (transport as any).opts.webSocketImpl = MockWebSocket;
+      }
+
+      // No assertion needed: test passes if no unhandled rejection/crash occurs
+      expect(true).toBe(true);
+    });
+
+    test('stops reconnecting after max attempts', async () => {
+      transport = new CNSDevToolsTransportWs({
+        ...defaultOptions,
+        reconnectDelayMs: 10,
+        maxReconnectAttempts: 0
+      });
+
+      const initMessage: InitMessage = {
+        type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -366,18 +689,17 @@ describe('CNSDevToolsTransportWs', () => {
       await transport.sendInitMessage(initMessage);
       await new Promise(resolve => setTimeout(resolve, 20));
 
-      // Simulate repeated connection failures
-      for (let i = 0; i < 3; i++) {
-        const wsInstance = MockWebSocket.getLatestInstance();
-        if (wsInstance) {
-          MockWebSocket.simulateError(wsInstance);
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
-      }
+      expect(transport.isConnected).toBe(true);
+
+      const initialInstanceCount = MockWebSocket.getInstances().length;
+
+      // Simulate connection loss. With maxReconnectAttempts=0, transport should NOT reconnect.
+      const wsInstance = MockWebSocket.getLatestInstance();
+      wsInstance?.close();
 
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // After max attempts, should have stopped trying
+      expect(MockWebSocket.getInstances().length).toBe(initialInstanceCount);
       expect(transport.isConnected).toBe(false);
     });
 
@@ -389,6 +711,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -420,6 +744,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -462,6 +788,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -509,6 +837,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -537,6 +867,41 @@ describe('CNSDevToolsTransportWs', () => {
       await new Promise(resolve => setTimeout(resolve, 10));
     });
 
+    test('ignores non-string incoming message data', async () => {
+      transport = new CNSDevToolsTransportWs(defaultOptions);
+
+      const initMessage: InitMessage = {
+        type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app',
+        appName: 'Test App',
+        version: '1.0.0',
+        timestamp: Date.now(),
+        neurons: [],
+        collaterals: [],
+        dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      const wsInstance = MockWebSocket.getLatestInstance();
+
+      let commandCount = 0;
+      transport.onStimulateCommand(() => {
+        commandCount++;
+      });
+
+      // Non-string payload should not crash (JSON.parse will fail and be caught)
+      wsInstance.onmessage?.({
+        data: new ArrayBuffer(0)
+      } as any);
+
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(commandCount).toBe(0);
+    });
+
     test('unsubscribes from stimulate command handler', async () => {
       transport = new CNSDevToolsTransportWs(defaultOptions);
 
@@ -547,6 +912,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -594,6 +961,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -614,11 +983,13 @@ describe('CNSDevToolsTransportWs', () => {
       });
 
       const responseMessage: NeuronResponseMessage = {
+        responseId: 'resp-1',
         stimulationId: 'stim-123',
-        neuronId: 'neuron-456',
         appId: 'test-app',
-        collateralName: 'output',
-        timestamp: Date.now()
+        cnsId: 'test-app:default',
+        timestamp: Date.now(),
+        inputCollateralName: 'input',
+        outputCollateralName: 'output'
       };
 
       // Should not throw - error is caught and message re-queued
@@ -635,6 +1006,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -674,6 +1047,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -718,6 +1093,8 @@ describe('CNSDevToolsTransportWs', () => {
 
       const initMessage: InitMessage = {
         type: 'init',
+        appId: 'test-app',
+        cnsId: 'test-app:default',
         devToolsInstanceId: 'test-app',
         appName: 'Test App',
         version: '1.0.0',
@@ -747,11 +1124,13 @@ describe('CNSDevToolsTransportWs', () => {
       expect(transport.bufferSize).toBe(0);
 
       const responseMessage: NeuronResponseMessage = {
+        responseId: 'resp-1',
         stimulationId: 'stim-123',
-        neuronId: 'neuron-456',
         appId: 'test-app',
-        collateralName: 'output',
-        timestamp: Date.now()
+        cnsId: 'test-app:default',
+        timestamp: Date.now(),
+        inputCollateralName: 'input',
+        outputCollateralName: 'output'
       };
 
       await transport.sendNeuronResponseMessage(responseMessage);

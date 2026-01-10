@@ -11,14 +11,14 @@ Implement retries by looping within the same neuron. **Use context for attempt t
 import { withCtx, collateral } from '@cnstra/core';
 
 // Collaterals owned by the retry neuron
-const tryFetch = collateral<{ url: string }>('retry:tryFetch');
-const completed = collateral<{ ok: true; data: unknown }>('retry:completed');
-const failed = collateral<{ ok: false; error: unknown }>('retry:failed');
+const tryFetch = collateral<{ url: string }>();
+const completed = collateral<{ ok: true; data: unknown }>();
+const failed = collateral<{ ok: false; error: unknown }>();
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export const fetchWithRetry = withCtx<{ attempt?: number }>()
-  .neuron('fetch-with-retry', { tryFetch, completed, failed })
+  .neuron({ tryFetch, completed, failed })
   .dendrite({
     collateral: tryFetch,
     response: async (payload, axon, ctx) => {

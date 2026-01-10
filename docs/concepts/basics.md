@@ -80,10 +80,14 @@ This separation provides the best of both worlds:
 
 ```ts
 // Domain neuron: owns mutations for Order model
-const orderDomain = neuron('order:domain', {
-  created: collateral<{ id: string; items: Item[] }>('order:created'),
-  updated: collateral<{ id: string; changes: Partial<Order> }>('order:updated'),
-  cancelled: collateral<{ id: string; reason: string }>('order:cancelled'),
+const orderCreated = collateral<{ id: string; items: Item[] }>();
+const orderUpdated = collateral<{ id: string; changes: Partial<Order> }>();
+const orderCancelled = collateral<{ id: string; reason: string }>();
+
+const orderDomain = neuron({
+  created: orderCreated,
+  updated: orderUpdated,
+  cancelled: orderCancelled,
 })
   .dendrite({
     collateral: createOrder,

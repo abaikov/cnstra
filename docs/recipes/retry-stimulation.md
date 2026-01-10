@@ -17,12 +17,12 @@ This pattern ensures that:
 ```ts
 import { CNS, collateral, neuron } from '@cnstra/core';
 
-const input = collateral<{ id: number }>('input');
-const step1Out = collateral<{ id: number }>('step1Out');
-const step2Out = collateral<{ id: number }>('step2Out');
-const output = collateral<{ result: string }>('output');
+const input = collateral<{ id: number }>();
+const step1Out = collateral<{ id: number }>();
+const step2Out = collateral<{ id: number }>();
+const output = collateral<{ result: string }>();
 
-const step1 = neuron('step1', { step1Out }).dendrite({
+const step1 = neuron({ step1Out }).dendrite({
   collateral: input,
   response: async (payload, axon) => {
     await processStep1(payload);
@@ -30,7 +30,7 @@ const step1 = neuron('step1', { step1Out }).dendrite({
   },
 });
 
-const step2 = neuron('step2', { step2Out }).dendrite({
+const step2 = neuron({ step2Out }).dendrite({
   collateral: step1Out,
   response: async (payload, axon) => {
     await processStep2(payload);
@@ -38,7 +38,7 @@ const step2 = neuron('step2', { step2Out }).dendrite({
   },
 });
 
-const step3 = neuron('step3', { output }).dendrite({
+const step3 = neuron({ output }).dendrite({
   collateral: step2Out,
   response: async (payload, axon) => {
     return axon.output.createSignal({ result: `Final: ${payload.id}` });
@@ -49,9 +49,8 @@ const cns = new CNS([step1, step2, step3]);
 
 // First attempt
 let savedFailedTasks: Array<{
-  stimulationId: string;
-  neuronId: string;
-  dendriteCollateralName: string;
+  neuron: object;
+  dendriteCollateral: object;
 }> | undefined;
 
 const stimulation = cns.stimulate(input.createSignal({ id: 100 }));
@@ -79,9 +78,9 @@ If you need to preserve state across retries, pass it through signal payloads:
 
 ```ts
 // Include state in payload
-const input = collateral<{ id: number; executed?: string[] }>('input');
+const input = collateral<{ id: number; executed?: string[] }>();
 
-const step1 = neuron('step1', { step1Out }).dendrite({
+const step1 = neuron({ step1Out }).dendrite({
   collateral: input,
   response: async (payload, axon) => {
     const executed = payload.executed || [];

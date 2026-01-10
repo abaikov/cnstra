@@ -1,46 +1,22 @@
 import { TCNSSignal } from './TCNSSignal';
-import { TCNSStimulationSerializedContextValue } from './TCNSStimulationSerializedContextValue';
 import { CNSStimulation } from '../CNSStimulation';
-import { TCNSNeuron } from './TCNSNeuron';
-import { TCNSDendrite } from './TCNSDendrite';
 import { TCNSModality } from './TCNSModality';
 import { TCNSAfferentPath } from './TCNSAfferentPath';
+import { CNSCollateral } from '../CNSCollateral';
 
 export type TCNSStimulationResponse<
-    TCollateralName extends string,
-    TInputPayload,
-    TOutputPayload,
-    TNeuronName extends string = string,
-    TModalityName extends string = string,
-    TAfferentPathName extends string = string,
-    TParentAfferentPathName extends string = string
+    TInputCollateral extends CNSCollateral<unknown> = CNSCollateral<unknown>,
+    TOutputCollateral extends CNSCollateral<unknown> = CNSCollateral<unknown>
 > = {
-    stimulationId?: string;
-    inputSignal?: TCNSSignal<TCollateralName, TInputPayload>;
-    outputSignal?: Omit<
-        TCNSSignal<TCollateralName, TOutputPayload>,
-        'payload'
-    > & {
-        payload?: unknown;
-    };
-    modality?: TCNSModality<
-        TModalityName,
-        TAfferentPathName,
-        TParentAfferentPathName
-    >;
-    afferentPath?: TCNSAfferentPath<TAfferentPathName, TParentAfferentPathName>;
-    contextValue: TCNSStimulationSerializedContextValue;
+    inputSignal?: TCNSSignal<TInputCollateral>;
+    outputSignal?: TCNSSignal<TOutputCollateral>;
+    modality?: TCNSModality;
+    afferentPath?: TCNSAfferentPath;
+    contextValue: Map<object, unknown>;
     // Current queue length
     queueLength: number;
     // Reference to the stimulation instance for lazy access to activation tasks
-    stimulation: CNSStimulation<
-        TCollateralName,
-        TNeuronName,
-        TCNSNeuron<any, TNeuronName, TCollateralName, any, any, any, any>,
-        TCNSDendrite<any, any, any, any, any, any>,
-        TInputPayload,
-        TOutputPayload
-    >;
+    stimulation: CNSStimulation<any, any>;
 
     error?: Error;
     // hops passed only if maxHops is set

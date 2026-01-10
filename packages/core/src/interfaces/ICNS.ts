@@ -6,70 +6,30 @@ import type { TCNSSignal } from '../types/TCNSSignal';
 import type { TCNSStimulationResponse } from '../types/TCNSStimulationResponse';
 import type { CNSNetwork } from '../CNSNetwork';
 import type { CNSStimulation } from '../CNSStimulation';
+import type { CNSCollateral } from '../CNSCollateral';
 
 export interface ICNS<
-    TCollateralName extends string,
-    TNeuronName extends string,
-    TNeuron extends TCNSNeuron<
-        any,
-        TNeuronName,
-        TCollateralName,
-        any,
-        any,
-        any,
-        any
-    >,
-    TDendrite extends TCNSDendrite<any, any, any, any, any, any> = TCNSDendrite<
-        any,
-        any,
-        any,
-        any,
-        any,
-        any
-    >
+    TNeuron extends TCNSNeuron<any, any>,
+    TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
 > {
     options?: TCNSOptions;
 
-    network: CNSNetwork<TCollateralName, TNeuronName, TNeuron, TDendrite>;
+    network: CNSNetwork<TNeuron, TDendrite>;
 
     /**
      * Add a global response listener applied to all stimulations.
      * Returns an unsubscribe function.
      */
-    addResponseListener<TInputPayload, TOutputPayload>(
+    addResponseListener(
         listener: (
-            response: TCNSStimulationResponse<
-                TCollateralName,
-                TInputPayload,
-                TOutputPayload,
-                TNeuronName
-            >
+            response: TCNSStimulationResponse
         ) => void
     ): () => void;
 
-    stimulate<
-        TInputPayload extends TOutputPayload,
-        TOutputPayload = TInputPayload,
-        TModalityName extends string = string,
-        TAfferentPathName extends string = string
-    >(
+    stimulate(
         signalOrSignals:
-            | TCNSSignal<TCollateralName, TInputPayload>
-            | TCNSSignal<TCollateralName, TInputPayload>[],
-        options?: TCNSStimulationOptions<
-            TCollateralName,
-            TInputPayload,
-            TOutputPayload,
-            TNeuronName,
-            TModalityName,
-            TAfferentPathName
-        >
-    ): CNSStimulation<
-        TCollateralName,
-        TNeuronName,
-        TNeuron,
-        TDendrite,
-        TInputPayload,
-        TOutputPayload
-    >;
+            | TCNSSignal<CNSCollateral<unknown>>
+            | TCNSSignal<CNSCollateral<unknown>>[],
+        options?: TCNSStimulationOptions<TCNSStimulationResponse>
+    ): CNSStimulation<TNeuron, TDendrite>;
 }

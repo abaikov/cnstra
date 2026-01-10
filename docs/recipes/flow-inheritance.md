@@ -3,11 +3,13 @@ id: flow-inheritance
 title: Flow Inheritance with Modalities and Afferent Paths
 sidebar_label: Flow Inheritance
 slug: /recipes/flow-inheritance
-description: Learn how to use modalities and afferent paths to track and inherit flow context through your CNStra network. Perfect for tracing signal origins and understanding hierarchical data flow.
-keywords: [modality, afferent path, flow inheritance, signal tracing, hierarchical flow, flow context, signal origin tracking]
+description: Learn how to use modalities and afferent paths in CNStra to track signal flow hierarchy, eliminate code duplication, and route signals by context. Complete guide with examples for TypeScript state management and reactive programming patterns.
+keywords: [modality, afferent path, flow inheritance, signal tracing, hierarchical flow, flow context, signal origin tracking, modalityDendrite, CNStra patterns, TypeScript state management, reactive programming, signal routing, flow tracking, code reuse, path families, neural network patterns, event flow, signal processing hierarchy]
 ---
 
 Modalities and afferent paths allow you to track the hierarchy of signal flow through your CNStra network. This is a powerful tool for understanding signal origins and the context of their processing.
+
+![Two Brains - Neural network pattern for flow inheritance in CNStra](/img/two_brains.png)
 
 ## Core Concepts
 
@@ -15,64 +17,23 @@ Modalities and afferent paths allow you to track the hierarchy of signal flow th
 
 **Afferent Path** — the path a signal takes through the system. Paths can have parent paths, creating a hierarchy.
 
+**modalityDendrite** — a factory helper that automatically routes signals to different handlers based on the modality and afferent path specified during stimulation. This eliminates the need for manual path checking in response handlers.
+
 ## Biological Foundation
 
-The concepts of modalities and afferent paths in CNStra are directly inspired by how the brain processes sensory information. Understanding the biological basis helps clarify why these abstractions are powerful.
+These abstractions mirror two ideas from neuroscience:
 
-### Sensory Modalities in the Brain
+- **Modalities**: families of related signal sources (vision, hearing, touch…)
+- **Afferent paths**: hierarchical “routes” a signal takes through processing layers
 
-In neuroscience, a **sensory modality** refers to a type of sensory information, such as:
-- **Visual** (sight) — processed through the retina → optic nerve → visual cortex
-- **Auditory** (hearing) — processed through the cochlea → auditory nerve → auditory cortex
-- **Somatosensory** (touch) — processed through skin receptors → spinal cord → somatosensory cortex
-- **Olfactory** (smell) — processed through olfactory receptors → olfactory bulb → olfactory cortex
-- **Gustatory** (taste) — processed through taste buds → cranial nerves → gustatory cortex
+In neuroscience, a **sensory modality** refers to a type of sensory information, such as visual, auditory, somatosensory, olfactory, and gustatory.
 
-Each modality has its own dedicated pathways and cortical areas, but they can also interact and influence each other (multimodal integration).
+**Afferent pathways** (ascending pathways) carry sensory information from the periphery toward the central nervous system. These pathways are hierarchical (relay levels) and can do parallel processing, convergence, and divergence.
 
-### Afferent Pathways
-
-**Afferent pathways** (also called ascending pathways) carry sensory information from the periphery toward the central nervous system. These pathways are hierarchical:
-
-1. **Primary afferent neurons** — receive input from sensory receptors (e.g., photoreceptors in the eye, mechanoreceptors in the skin)
-2. **Secondary neurons** — relay stations in the spinal cord or brainstem (e.g., dorsal horn, cochlear nucleus)
-3. **Tertiary neurons** — project to thalamic nuclei (e.g., lateral geniculate nucleus for vision, medial geniculate nucleus for hearing)
-4. **Quaternary neurons** — project from thalamus to primary sensory cortices
-
-Each level processes and transforms the information before passing it to the next level, creating a hierarchical processing stream.
-
-### Hierarchical Processing
-
-The brain processes information hierarchically within each modality:
-
-**Visual System Example:**
+Very rough visual example:
 ```
-Retina (photoreceptors)
-  └── Lateral Geniculate Nucleus (LGN)
-      └── Primary Visual Cortex (V1)
-          └── Secondary Visual Cortex (V2)
-              ├── Ventral Stream (what pathway)
-              │   └── Inferior Temporal Cortex
-              └── Dorsal Stream (where pathway)
-                  └── Posterior Parietal Cortex
+Retina → LGN → V1 → V2 → (streams)
 ```
-
-**Somatosensory System Example:**
-```
-Skin receptors
-  └── Spinal cord (dorsal horn)
-      └── Brainstem nuclei
-          └── Thalamus (ventral posterior nucleus)
-              └── Primary Somatosensory Cortex (S1)
-                  └── Secondary Somatosensory Cortex (S2)
-```
-
-### Parallel Processing and Convergence
-
-Multiple afferent pathways can converge on the same target, and a single pathway can branch to multiple targets. This allows:
-- **Parallel processing** — different aspects of the same stimulus processed simultaneously
-- **Convergence** — integration of information from multiple sources
-- **Divergence** — distribution of information to multiple processing areas
 
 ### Why This Matters for CNStra
 
@@ -89,7 +50,7 @@ Without modalities and afferent paths, you'd need to duplicate the entire flow:
 
 ```ts
 // ❌ Without modalities - duplicated flows
-const deckFromClick = neuron('deck-from-click', deckAxon)
+const deckFromClick = neuron(deckAxon)
   .dendrite({
     collateral: uiAxon.createCardWithDeckButtonClicked,
     response: (payload, axon) => {
@@ -97,7 +58,7 @@ const deckFromClick = neuron('deck-from-click', deckAxon)
     },
   });
 
-const deckFromOnboarding = neuron('deck-from-onboarding', deckAxon)
+const deckFromOnboarding = neuron(deckAxon)
   .dendrite({
     collateral: onboardingAxon.started,
     response: (payload, axon) => {
@@ -116,354 +77,339 @@ With modalities and afferent paths, you create **path families** that allow:
 2. **Unique responses per path** — you can still customize behavior based on the afferent path
 3. **Clear visibility** — you can see all external triggers a neuron responds to
 
+Minimal shape:
+
 ```ts
-// ✅ With modalities - shared flow with path awareness
-const userInteractionModality = modality('user-interaction', {
-  click: afferentPath('click'),
-  onboarding: afferentPath('onboarding'),
-  deck: afferentPath('deck', 'click'), // or 'onboarding'
-  card: afferentPath('card', 'deck'),
+const click = afferentPath();
+const clickDeck = afferentPath(click);
+const userInteractionModality = modality({ click, clickDeck });
+
+neuron(deckAxon).modalityDendrite({
+  collateral: uiAxon.createCardWithDeckButtonClicked,
+  modality: userInteractionModality,
+  afferentPaths: new Map([[clickDeck, handler]]),
+  output: (result, axon) => axon.createdAtCreateCardWithDeckButtonClicked.createSignal(result),
+});
+```
+
+```ts
+// ✅ With modalities - shared flow with path awareness using modalityDendrite
+import { collateral, neuron, afferentPath, modality } from '@cnstra/core';
+
+// Define collaterals
+const uiAxon = {
+  createCardWithDeckButtonClicked: collateral<{
+    deckTitle: string;
+    cardTitle: string;
+  }>(),
+};
+
+const onboardingAxon = {
+  started: collateral<{
+    deckTitle: string;
+    cardTitle: string;
+  }>(),
+};
+
+const deckAxon = {
+  createdAtCreateCardWithDeckButtonClicked: collateral<{
+    deckId: string;
+    cardTitle: string;
+  }>(),
+};
+
+// Create afferent paths as objects (no names - identity-based)
+const click = afferentPath();
+const onboarding = afferentPath();
+const clickDeck = afferentPath(click);
+const onboardingDeck = afferentPath(onboarding);
+
+const userInteractionModality = modality({
+  click,
+  onboarding,
+  clickDeck,
+  onboardingDeck,
 });
 
-const deck = neuron('deck', deckAxon)
-  .dendrite({
+// Shared deck creation logic
+function createDeck(payload: { deckTitle: string; cardTitle: string }) {
+  return 'deck-' + Math.random().toString(36).slice(2);
+}
+
+function trackOnboardingProgress(event: string) {
+  console.log(`Onboarding: ${event}`);
+}
+
+const deck = neuron(deckAxon)
+  .modalityDendrite({
     collateral: uiAxon.createCardWithDeckButtonClicked,
-    response: (payload, axon, ctx) => {
-      // Shared deck creation logic
-      const deckId = createDeck(payload);
-      
-      // Can still customize based on path if needed
-      if (ctx.stimulation?.afferentPath?.name === 'onboarding') {
+    modality: userInteractionModality,
+    afferentPaths: new Map([
+      [clickDeck, (payload, axon) => {
+        const deckId = createDeck(payload);
+        return {
+          deckId,
+          cardTitle: payload.cardTitle,
+        };
+      }],
+      [onboardingDeck, (payload, axon) => {
+        const deckId = createDeck(payload);
         // Special handling for onboarding path
         trackOnboardingProgress('deck-created');
-      }
-      
-      return axon.createdAtCreateCardWithDeckButtonClicked.createSignal({
+        return {
+          deckId,
+          cardTitle: payload.cardTitle,
+        };
+      }],
+    ]),
+    default: (payload, axon) => {
+      // Fallback for other paths
+      const deckId = createDeck(payload);
+      return {
         deckId,
         cardTitle: payload.cardTitle,
-      });
+      };
+    },
+    output: (result, axon) => {
+      return axon.createdAtCreateCardWithDeckButtonClicked.createSignal(result);
     },
   })
-  .dendrite({
+  .modalityDendrite({
     collateral: onboardingAxon.started,
-    response: (payload, axon) => {
-      // Same shared logic, different trigger
-      return deck.dendrites[0].response(payload, axon, ctx);
+    modality: userInteractionModality,
+    afferentPaths: new Map([
+      [onboardingDeck, (payload, axon) => {
+        // Convert onboarding payload to deck creation format
+        const deckId = createDeck({
+          deckTitle: payload.deckTitle,
+          cardTitle: payload.cardTitle,
+        });
+        trackOnboardingProgress('deck-created');
+        return {
+          deckId,
+          cardTitle: payload.cardTitle,
+        };
+      }],
+    ]),
+    output: (result, axon) => {
+      return axon.createdAtCreateCardWithDeckButtonClicked.createSignal(result);
     },
   });
 ```
 
 #### Benefits
 
-- **No code duplication** — shared reactions across different triggers
-- **Path-specific customization** — unique reactions when needed via `response.afferentPath`
+- **No code duplication** — shared reactions across different triggers using `modalityDendrite`
+- **Path-specific customization** — unique reactions per afferent path via Map-based routing
 - **Better system understanding** — in each neuron, you can see all external sources it responds to
 - **Clearer architecture** — path families document the ways your system can be stimulated
+- **Type-safe routing** — handlers are matched by object reference, ensuring correct path selection
+
+![Eye Wired - Visual system hierarchy example for afferent paths](/img/eye_wired.png)
 
 This biological inspiration makes CNStra's abstractions not just intuitive, but practically powerful for modeling real-world software systems where multiple entry points lead to shared processing flows.
 
-## Example: Cards and Decks
+## Creating Modalities and Afferent Paths
 
-Let's consider an example of a learning application with cards and decks. We have a hierarchy: user enters app → deck is created → card is created.
+CNStra provides factory functions to create modalities and afferent paths. These are identity-based objects (not named strings), which means they are compared by object reference, not by name.
+
+### Creating Afferent Paths
+
+Use the `afferentPath()` function to create an afferent path. You can optionally specify a parent path to create a hierarchy:
 
 ```ts
-import { CNS, collateral, neuron, afferentPath, modality } from '@cnstra/core';
+import { afferentPath } from '@cnstra/core';
 
-// Define collaterals
-const uiAxon = {
-  userEntersApp: collateral<{
-    userId: string;
-    deckTitle: string;
-    cardTitle: string;
-  }>('ui:user-enters-app'),
-  createCardWithDeckButtonClicked: collateral<{
-    deckTitle: string;
-    cardTitle: string;
-  }>('ui:create-card-with-deck-button-clicked'),
-};
+// Create a root path (no parent)
+const root = afferentPath();
 
-const deckAxon = {
-  createdAtUserEntersApp: collateral<{
-    deckId: string;
-    cardTitle: string;
-    userId: string;
-  }>('ui:user-enters-app:deck:created'),
-  createdAtCreateCardWithDeckButtonClicked: collateral<{
-    deckId: string;
-    cardTitle: string;
-  }>('ui:create-card-with-deck-button-clicked:deck:created'),
-};
+// Create a child path
+const child = afferentPath(root);
 
-// Create a modality to track the flow
-const userInteractionModality = modality('user-interaction', {
-  ui: afferentPath('ui'),
-  deck: afferentPath('deck', 'ui'),
-  card: afferentPath('card', 'deck'),
+// Create a grandchild path
+const grandchild = afferentPath(child);
+```
+
+This creates a hierarchy:
+```
+root
+  └── child
+      └── grandchild
+```
+
+### Creating Modalities
+
+Use the `modality()` function to group related afferent paths together. Pass an object where keys are meaningful names (for your own reference) and values are the afferent path objects:
+
+```ts
+import { afferentPath, modality } from '@cnstra/core';
+
+// Create afferent paths
+const ui = afferentPath();
+const deck = afferentPath(ui);
+const card = afferentPath(deck);
+
+// Create a modality grouping these paths
+const userInteractionModality = modality({
+  ui,
+  deck,
+  card,
+});
+```
+
+The keys in the modality object (`ui`, `deck`, `card`) are for your convenience when debugging or logging. At runtime, paths are compared by object reference, not by these keys.
+
+```ts
+import { afferentPath, modality } from '@cnstra/core';
+
+// Step 1: Create afferent paths with hierarchy
+const click = afferentPath();
+const onboarding = afferentPath();
+const clickDeck = afferentPath(click);
+const onboardingDeck = afferentPath(onboarding);
+const clickCard = afferentPath(clickDeck);
+const onboardingCard = afferentPath(onboardingDeck);
+
+// Step 2: Group them into a modality
+const userInteractionModality = modality({
+  click,
+  onboarding,
+  clickDeck,
+  onboardingDeck,
+  clickCard,
+  onboardingCard,
 });
 
-// Neuron for creating a deck
-const deck = neuron('deck', deckAxon)
-  .dendrite({
-    collateral: uiAxon.userEntersApp,
-    response: (payload, axon) => {
-      const deckId = 'deck-' + Math.random().toString(36).slice(2);
-      return axon.createdAtUserEntersApp.createSignal({
-        deckId,
-        cardTitle: payload.cardTitle,
-        userId: payload.userId,
-      });
-    },
-  })
-  .dendrite({
-    collateral: uiAxon.createCardWithDeckButtonClicked,
-    response: (payload, axon) => {
-      const deckId = 'deck-' + Math.random().toString(36).slice(2);
-      return axon.createdAtCreateCardWithDeckButtonClicked.createSignal({
-        deckId,
-        cardTitle: payload.cardTitle,
-      });
-    },
-  });
-
-// Neuron for creating a card
-const card = neuron('card', {})
-  .dendrite({
-    collateral: deckAxon.createdAtCreateCardWithDeckButtonClicked,
-    response: payload => {
-      console.log('card title', payload.cardTitle);
-      // create a card
-    },
-  })
-  .dendrite({
-    collateral: deckAxon.createdAtUserEntersApp,
-    response: payload => {
-      console.log('card title', payload.cardTitle);
-      // create a card
-    },
-  });
-
-const cns = new CNS([deck, card]);
+// The modality now contains all paths, accessible by key:
+console.log(userInteractionModality.afferentPaths.click === click); // true
+console.log(userInteractionModality.afferentPaths.clickDeck === clickDeck); // true
 ```
+
+### Important Notes
+
+1. **Identity-based**: Afferent paths are compared by object reference (`path1 === path2`), not by name
+2. **Parent relationships**: When creating a path with a parent, the parent-child relationship is stored in `path.parentAfferentPath`
+3. **Modality keys**: The keys in the modality object are for your convenience only; they don't affect runtime behavior
+4. **No names at runtime**: Paths don't have string names at runtime - use the modality's keys for debugging/logging
 
 ## Using Modalities in Stimulation
 
 When starting a stimulation, you can specify a modality and initial afferent path in the options. These values are available in each response through `onResponse`:
 
 ```ts
-// Start stimulation with modality and initial path
-const stimulation = cns.stimulate(
-  uiAxon.userEntersApp.createSignal({
-    userId: 'user-123',
-    deckTitle: 'Deck 1',
-    cardTitle: 'Card 1',
-  }),
-  {
-    modality: userInteractionModality,
-    afferentPath: userInteractionModality.afferentPaths.ui,
-    onResponse: (response) => {
-      // Modality and path are available in each response
-      if (response.modality) {
-        console.log('Modality:', response.modality.name);
-      }
-      if (response.afferentPath) {
-        console.log('Afferent Path:', response.afferentPath.name);
-        if (response.afferentPath.parentAfferentPathName) {
-          console.log('Parent Path:', response.afferentPath.parentAfferentPathName);
-        }
-      }
-      
-      // You can track which neuron processed the signal
-      if (response.outputSignal) {
-        console.log('Neuron:', response.outputSignal.neuronName);
-        console.log('Collateral:', response.outputSignal.collateralName);
-      }
+await cns.stimulate(signal, {
+  modality: userInteractionModality,
+  afferentPath: userInteractionModality.afferentPaths.clickDeck,
+  onResponse: response => {
+    const { modality, afferentPath } = response.stimulation.options ?? {};
+    console.log('modality match:', modality === userInteractionModality);
+    console.log('afferentPath:', afferentPath);
+  },
+}).waitUntilComplete();
+```
+
+## Using modalityDendrite Helper
+
+The `modalityDendrite` helper is the recommended way to handle modality-based routing. It automatically selects the correct handler based on the modality and afferent path specified during stimulation.
+
+### Basic Usage
+
+```ts
+const click = afferentPath();
+const onboarding = afferentPath();
+const userModality = modality({
+  click,
+  onboarding,
+});
+
+const createNeuron = neuron({ output: collateral<{ id: string }>() })
+  .modalityDendrite({
+    collateral: input,
+    modality: userModality,
+    afferentPaths: new Map([
+      [click, (payload, axon) => {
+        return { id: `click-${payload.source}` };
+      }],
+      [onboarding, (payload, axon) => {
+        return { id: `onboarding-${payload.source}` };
+      }],
+    ]),
+    output: (result, axon) => {
+      return axon.output.createSignal(result);
     },
-  }
-);
-
-await stimulation.waitUntilComplete();
+  });
 ```
 
-## Hierarchical Path Structure
+### Using Default Handlers
 
-Afferent paths can form a hierarchy through parent relationships:
+You can provide default handlers at different levels:
 
 ```ts
-const complexModality = modality('complex-flow', {
-  // Root path
-  root: afferentPath('root'),
-  
-  // First level paths
-  level1: afferentPath('level1', 'root'),
-  
-  // Second level paths
-  level2a: afferentPath('level2a', 'level1'),
-  level2b: afferentPath('level2b', 'level1'),
-  
-  // Third level path
-  level3: afferentPath('level3', 'level2a'),
+const click = afferentPath();
+const onboarding = afferentPath();
+const unknown = afferentPath();
+const userModality = modality({
+  click,
+  onboarding,
+  unknown,
+});
+
+const createNeuron = neuron({ output: collateral<{ id: string }>() })
+  .modalityDendrite({
+    collateral: input,
+    modality: userModality,
+    afferentPaths: new Map([
+      [click, (payload, axon) => {
+        return { id: `click-${payload.source}` };
+      }],
+      // onboarding path not specified - will use modality default
+    ]),
+    default: (payload, axon) => {
+      // Handler for paths in this modality that don't have specific handlers
+      return { id: `default-${payload.source}` };
+    },
+    output: (result, axon) => {
+      return axon.output.createSignal(result);
+    },
+  });
+
+// When stimulating with unknown path, default handler is used
+await cns.stimulate(input.createSignal({ source: 'test' }), {
+  modality: userModality,
+  afferentPath: unknown, // Uses default handler
 });
 ```
 
-This structure allows tracking complex processing hierarchies:
+### Multiple Modalities
 
-```
-root
-  └── level1
-      ├── level2a
-      │   └── level3
-      └── level2b
-```
-
-## Tracking Flow in Responses
-
-The modality and afferent path specified in stimulation options are available through response types. You can use them to track the flow:
+A single `modalityDendrite` can handle multiple modalities:
 
 ```ts
-// Save modality and path for use in handlers
-const currentModality = userInteractionModality;
-const currentPath = userInteractionModality.afferentPaths.ui;
+const uiModality = modality({ interaction: afferentPath() });
+const apiModality = modality({ request: afferentPath() });
 
-await cns.stimulate(signal, {
-  modality: currentModality,
-  afferentPath: currentPath,
-  onResponse: (response) => {
-    // Modality and path are available through stimulation options
-    // response.modality and response.afferentPath contain values from options
-    
-    if (response.modality && response.afferentPath) {
-      // Build full path from root
-      const fullPath = buildPathHierarchy(
-        response.afferentPath,
-        response.modality
-      );
-      console.log('Signal path:', fullPath);
-      // Output: "Signal path: ui -> deck -> card"
-    }
-  },
-});
-
-function buildPathHierarchy(
-  path: typeof userInteractionModality.afferentPaths.ui,
-  modality: typeof userInteractionModality
-): string {
-  const parts: string[] = [path.name];
-  let current = path;
-  
-  while (current.parentAfferentPathName) {
-    const parent = modality.afferentPaths[
-      current.parentAfferentPathName as keyof typeof modality.afferentPaths
-    ];
-    if (parent) {
-      parts.unshift(parent.name);
-      current = parent;
-    } else {
-      break;
-    }
-  }
-  
-  return parts.join(' -> ');
-}
-```
-
-## Practical Applications
-
-### 1. Logging and Debugging
-
-Modalities and paths help understand where a signal came from:
-
-```ts
-await cns.stimulate(signal, {
-  modality: userInteractionModality,
-  afferentPath: userInteractionModality.afferentPaths.ui,
-  onResponse: (response) => {
-    const path = response.afferentPath?.name || 'unknown';
-    const neuron = response.outputSignal?.neuronName || 'unknown';
-    console.log(`[${path}] ${neuron} processed signal`);
-  },
-});
-```
-
-### 2. Analytics and Monitoring
-
-Track which paths are most active:
-
-```ts
-const pathStats = new Map<string, number>();
-
-await cns.stimulate(signal, {
-  modality: userInteractionModality,
-  afferentPath: userInteractionModality.afferentPaths.ui,
-  onResponse: (response) => {
-    if (response.afferentPath) {
-      const path = response.afferentPath.name;
-      pathStats.set(path, (pathStats.get(path) || 0) + 1);
-    }
-  },
-});
-
-// Analyze statistics
-console.log('Path statistics:', Object.fromEntries(pathStats));
-```
-
-### 3. Conditional Processing via onResponse
-
-Use paths to make decisions in response handlers:
-
-```ts
-await cns.stimulate(signal, {
-  modality: userInteractionModality,
-  afferentPath: userInteractionModality.afferentPaths.ui,
-  onResponse: (response) => {
-    const path = response.afferentPath;
-    
-    if (path?.name === 'deck' && response.outputSignal) {
-      // Special processing for signals from deck
-      console.log('Deck signal processed:', response.outputSignal.payload);
-    }
-    
-    if (path?.name === 'card') {
-      // Processing for signals from card
-      console.log('Card signal processed');
-    }
-  },
-});
-```
-
-## Multiple Modalities
-
-You can use different modalities for different types of flows:
-
-```ts
-const uiModality = modality('ui', {
-  interaction: afferentPath('interaction'),
-  navigation: afferentPath('navigation'),
-});
-
-const apiModality = modality('api', {
-  request: afferentPath('request'),
-  response: afferentPath('response', 'request'),
-});
-
-// Use the appropriate modality for each type of stimulation
-await cns.stimulate(uiSignal, {
-  modality: uiModality,
-  afferentPath: uiModality.afferentPaths.interaction,
-});
-
-await cns.stimulate(apiSignal, {
-  modality: apiModality,
-  afferentPath: apiModality.afferentPaths.request,
-});
+neuron({ output })
+  .modalityDendrite({
+    collateral: input,
+    modalities: [
+      { modality: uiModality, afferentPaths: new Map([[uiModality.afferentPaths.interaction, onUI]]) },
+      { modality: apiModality, afferentPaths: new Map([[apiModality.afferentPaths.request, onAPI]]) },
+    ],
+    default: onDefault,
+    output: (result, axon) => axon.output.createSignal(result),
+  });
 ```
 
 ## Best Practices
 
-1. **Use meaningful names**: Modality and path names should reflect their purpose
+1. **Use meaningful variable names**: Variable names for afferent paths should reflect their purpose (e.g., `const uiPath = afferentPath()`)
 2. **Create hierarchies logically**: Parent paths should represent a higher level of abstraction
 3. **Group related paths**: Combine related paths into a single modality
 4. **Use for debugging**: Modalities are especially useful when debugging complex flows
 5. **Don't overcomplicate**: Don't create overly deep hierarchies without need
+6. **Use object references**: Always compare afferent paths by object reference (`path === card`), not by name
+
+![Skulls Connected - Network connections representing flow inheritance patterns](/img/skulls_connected.png)
 
 ## Conclusion
 
@@ -475,6 +421,7 @@ Modalities and afferent paths provide a powerful mechanism for tracking and unde
 - Documenting system architecture
 
 Use them to create more transparent and understandable signal processing systems.
+
 
 
 

@@ -47,12 +47,12 @@ import { withCtx, collateral } from '@cnstra/core';
 
 // Context stores per-neuron per-stimulation metadata (execution tracking), not business data
 const ctxBuilder = withCtx<{ executed: string[] }>();
-const input = collateral<{ id: number }>('input');
-const step1Out = collateral<{ id: number }>('step1Out');
-const step2Out = collateral<{ id: number }>('step2Out');
-const output = collateral<{ result: string }>('output');
+const input = collateral<{ id: number }>();
+const step1Out = collateral<{ id: number }>();
+const step2Out = collateral<{ id: number }>();
+const output = collateral<{ result: string }>();
 
-const step1 = ctxBuilder.neuron('step1', { step1Out }).dendrite({
+const step1 = ctxBuilder.neuron({ step1Out }).dendrite({
   collateral: input,
   response: async (payload, axon, ctx) => {
     // Context stores stimulation metadata (execution tracking)
@@ -65,7 +65,7 @@ const step1 = ctxBuilder.neuron('step1', { step1Out }).dendrite({
   },
 });
 
-const step2 = ctxBuilder.neuron('step2', { step2Out }).dendrite({
+const step2 = ctxBuilder.neuron({ step2Out }).dendrite({
   collateral: step1Out,
   response: async (payload, axon, ctx) => {
     // Context stores stimulation metadata
@@ -77,7 +77,7 @@ const step2 = ctxBuilder.neuron('step2', { step2Out }).dendrite({
   },
 });
 
-const step3 = ctxBuilder.neuron('step3', { output }).dendrite({
+const step3 = ctxBuilder.neuron({ output }).dendrite({
   collateral: step2Out,
   response: async (payload, axon, ctx) => {
     // Context stores stimulation metadata
@@ -95,12 +95,13 @@ const queue = new Queue('workflows', { connection: redis });
 const queueEvents = new QueueEvents('workflows', { connection: redis });
 
 type SavedProgress = {
-  context: Record<string, unknown>;
+  // NOTE: CNStra runtime uses object-identity for neurons/collaterals and stores
+  // context as Map<object, unknown>. For cross-process retries, persist your own
+  // stable ids/names and reconstruct tasks+context via your persistence layer.
   failedTasks: Array<{
     task: {
-      stimulationId: string;
-      neuronId: string;
-      dendriteCollateralName: string;
+      neuron: object;
+      dendriteCollateral: object;
     };
     error: {
       message: string;
@@ -125,14 +126,13 @@ const worker = new Worker(
       typeof savedProgress === 'object' &&
       job.attemptsMade > 0
     ) {
-      const contextValues = savedProgress.context;
       const failedTasksToRetry = savedProgress.failedTasks.map(ft => ft.task);
 
       // Resume from failed tasks with preserved context
       const stimulation = cns.activate(failedTasksToRetry, {
-        contextValues: contextValues as Record<string, unknown>,
+        ctx: savedProgress.ctx,
         onResponse: r => {
-          if (r.outputSignal?.collateralName === 'output') {
+          if (r.outputSignal?.collateral === output) {
             results.push(
               (r.outputSignal.payload as { result: string }).result
             );
@@ -160,7 +160,6 @@ const worker = new Worker(
     } catch (error: any) {
       // Save progress for retry
       const progress: SavedProgress = {
-        context: stimulation.getContext().getAll(),
         failedTasks: stimulation.getFailedTasks().map(ft => ({
           task: ft.task,
           error: {
@@ -214,17 +213,17 @@ import { Queue, Worker, Job } from 'bullmq';
 import { CNS, neuron, withCtx, collateral } from '@cnstra/core';
 
 // Serializable data for the queue
-const processRequest = collateral<{ userId: string; blobId: string }>('processRequest');
-const processResult = collateral<{ userId: string; success: boolean }>('processResult');
+const processRequest = collateral<{ userId: string; blobId: string }>();
+const processResult = collateral<{ userId: string; success: boolean }>();
 
 // Non-serializable data (only within the process)
-const blobData = collateral<{ userId: string; blob: Blob }>('blobData');
-const blobProcessed = collateral<{ userId: string; success: boolean }>('blobProcessed');
+const blobData = collateral<{ userId: string; blob: Blob }>();
+const blobProcessed = collateral<{ userId: string; success: boolean }>();
 
 // Transaction neuron: creates inner stimulation with blob
 const ctxBuilder = withCtx<{ innerStimulation?: Promise<void> }>();
 
-const transactionNeuron = ctxBuilder.neuron('transaction', { processResult }).dendrite({
+const transactionNeuron = ctxBuilder.neuron({ processResult }).dendrite({
   collateral: processRequest,
   response: async (payload, axon, ctx) => {
     // Get blob from storage (non-serializable)
@@ -260,7 +259,7 @@ const transactionNeuron = ctxBuilder.neuron('transaction', { processResult }).de
 });
 
 // Neuron for processing blob (runs only within the process)
-const blobProcessor = neuron('blobProcessor', { blobProcessed }).dendrite({
+const blobProcessor = neuron({ blobProcessed }).dendrite({
   collateral: blobData,
   response: async (payload, axon) => {
     // Process blob (non-serializable object)

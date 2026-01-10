@@ -105,7 +105,7 @@ const sharedLimiter = new RateLimiter({
   interval: 'second'
 });
 
-const workerNeuron = neuron('worker', {})
+const workerNeuron = neuron({})
   .dendrite({
     collateral: task,
     response: async (payload, axon) => {
@@ -225,7 +225,7 @@ If external APIs are slow and you have high concurrency, you might exhaust conne
 **Solution**: Set appropriate per-neuron concurrency limits:
 
 ```ts
-const apiNeuron = neuron('api', {})
+const apiNeuron = neuron({})
   .setConcurrency(10)  // Limit concurrent API calls
   .dendrite({
     collateral: request,

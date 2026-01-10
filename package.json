@@ -4,7 +4,8 @@
   "description": "Monorepo for CNStra packages",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "docs"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
@@ -14,6 +15,11 @@
     "build:devtools-panel-ui": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-panel-ui",
     "build:example": "npm run build --workspace=@cnstra/example-app",
     "dev": "npm run dev --workspaces",
+    "dev:docs": "npm run start --workspace=cnstra-docs",
+    "dev:core": "npm run build --workspace=@cnstra/core && npm run examples --workspace=@cnstra/core",
+    "dev:devtools-panel-ui": "npm run dev --workspace=@cnstra/devtools-panel-ui",
+    "dev:devtools-electron": "npm run dev --workspace=@cnstra/devtools-electron",
+    "dev:example": "npm run dev --workspace=@cnstra/example-app",
     "test": "npm run test --workspaces",
     "test:types": "npm run test:types --workspaces",
     "clean": "npm run clean --workspaces && rm -rf node_modules",

@@ -31,12 +31,12 @@ import { CNS, collateral, neuron } from '@cnstra/core';
 
 // Shared collaterals (contracts)
 const user = {
-  fetchRequest: collateral<{ userId: string }>('user:fetch-request'),
-  fetched: collateral<{ userId: string; name: string }>('user:fetched'),
+  fetchRequest: collateral<{ userId: string }>(),
+  fetched: collateral<{ userId: string; name: string }>(),
 };
 
 // Real DB neuron (in production)
-export const dbUserNeuron = neuron('db-user', { fetched: user.fetched })
+export const dbUserNeuron = neuron({ fetched: user.fetched })
   .dendrite({
     collateral: user.fetchRequest,
     response: async (payload) => {
@@ -49,7 +49,7 @@ export const dbUserNeuron = neuron('db-user', { fetched: user.fetched })
   });
 
 // Mock neuron for tests
-export const mockDbUserNeuron = neuron('mock-db-user', { fetched: user.fetched })
+export const mockDbUserNeuron = neuron({ fetched: user.fetched })
   .dendrite({
     collateral: user.fetchRequest,
     response: async (payload) => {
@@ -62,8 +62,8 @@ export const mockDbUserNeuron = neuron('mock-db-user', { fetched: user.fetched }
   });
 
 // Business logic we're testing
-export const userProcessor = neuron('user-processor', {
-  processed: collateral<{ userId: string; greeting: string }>('user:processed'),
+export const userProcessor = neuron({
+  processed: collateral<{ userId: string; greeting: string }>(),
 })
   .dendrite({
     collateral: user.fetched,
@@ -94,9 +94,7 @@ describe('User Processor', () => {
     await stimulation.waitUntilComplete();
     
     // Verify processor received data and processed it
-    const processed = responses.find(
-      r => r.outputSignal?.collateralName === 'user:processed'
-    );
+    const processed = responses.find(r => r.outputSignal?.collateral === user.processed);
     expect(processed?.outputSignal?.payload).toEqual({
       userId: '123',
       greeting: 'Hello, Mock User 123!',
@@ -114,10 +112,10 @@ Mocks can be made flexible to test different scenarios:
 function createMockDbUserNeuron(
   behavior: 'success' | 'not-found' | 'error'
 ) {
-  return neuron('mock-db-user', {
+  return neuron({
     fetched: user.fetched,
-    notFound: collateral<{ userId: string }>('user:not-found'),
-    error: collateral<{ userId: string; error: string }>('user:error'),
+    notFound: collateral<{ userId: string }>(),
+    error: collateral<{ userId: string; error: string }>(),
   })
     .dendrite({
       collateral: user.fetchRequest,
@@ -184,9 +182,7 @@ describe('Testing downstream neurons in isolation', () => {
     });
     
     // Verify processing result
-    const processed = responses.find(
-      r => r.outputSignal?.collateralName === 'user:processed'
-    );
+    const processed = responses.find(r => r.outputSignal?.collateral === user.processed);
     expect(processed?.outputSignal?.payload.greeting).toBe('Hello, Test User!');
   });
 });
@@ -198,8 +194,8 @@ You can replace only some neurons, leaving others real:
 
 ```ts
 // Real business logic
-const orderProcessor = neuron('order-processor', {
-  orderCreated: collateral<{ orderId: string }>('order:created'),
+const orderProcessor = neuron({
+  orderCreated: collateral<{ orderId: string }>(),
 })
   .dendrite({
     collateral: user.fetched,
@@ -236,11 +232,11 @@ describe('Order flow with mocked DB', () => {
 
 ```ts
 // In production: neuron reads from DB
-export const dbReadNeuron = neuron('db-read', {
-  dataFetched: collateral<{ id: string; data: unknown }>('db:data-fetched'),
+export const dbReadNeuron = neuron({
+  dataFetched: collateral<{ id: string; data: unknown }>(),
 })
   .dendrite({
-    collateral: collateral<{ id: string }>('db:read-request'),
+    collateral: collateral<{ id: string }>(),
     response: async (payload, axon) => {
       const data = await database.findById(payload.id);
       return axon.dataFetched.createSignal({ id: payload.id, data });
@@ -248,11 +244,11 @@ export const dbReadNeuron = neuron('db-read', {
   });
 
 // In tests: mock neuron returns test data
-export const mockDbReadNeuron = neuron('mock-db-read', {
-  dataFetched: collateral<{ id: string; data: unknown }>('db:data-fetched'),
+export const mockDbReadNeuron = neuron({
+  dataFetched: collateral<{ id: string; data: unknown }>(),
 })
   .dendrite({
-    collateral: collateral<{ id: string }>('db:read-request'),
+    collateral: collateral<{ id: string }>(),
     response: async (payload, axon) => {
       // Return predefined test data
       const testData = {
@@ -267,11 +263,11 @@ export const mockDbReadNeuron = neuron('mock-db-read', {
   });
 
 // Business logic works the same with real and mock neurons
-const businessLogic = neuron('business', {
-  result: collateral<{ processed: unknown }>('business:result'),
+const businessLogic = neuron({
+  result: collateral<{ processed: unknown }>(),
 })
   .dendrite({
-    collateral: collateral<{ id: string; data: unknown }>('db:data-fetched'),
+    collateral: collateral<{ id: string; data: unknown }>(),
     response: (payload, axon) => {
       // Processes data regardless of source
       return axon.result.createSignal({
@@ -294,11 +290,11 @@ If neurons use context, it can also be mocked:
 import { withCtx } from '@cnstra/core';
 
 const ctxNeuron = withCtx<{ sessionId: string }>()
-  .neuron('ctx-neuron', {
-    output: collateral<{ result: string }>('ctx:output'),
+  .neuron({
+    output: collateral<{ result: string }>(),
   })
   .dendrite({
-    collateral: collateral<{ action: string }>('ctx:input'),
+    collateral: collateral<{ action: string }>(),
     response: (payload, axon, ctx) => {
       // Context stores per-neuron per-stimulation metadata (session tracking)
       const sessionId = ctx.get()?.sessionId || 'default';
@@ -315,7 +311,7 @@ describe('Context-aware neuron', () => {
     
     const responses: unknown[] = [];
     await cns.stimulate(
-      collateral<{ action: string }>('ctx:input').createSignal({ action: 'test' }),
+      collateral<{ action: string }>().createSignal({ action: 'test' }),
       {
         ctx: {
           get: () => ({ sessionId: 'test-session-123' }),
@@ -341,7 +337,7 @@ For integration tests, you can use real neurons but with a test DB:
 // Real neuron, but with test DB
 const testDb = createTestDatabase(); // in-memory or test DB
 
-const testDbNeuron = neuron('test-db', {
+const testDbNeuron = neuron({
   fetched: user.fetched,
 })
   .dendrite({
@@ -394,13 +390,13 @@ import { CNS, collateral, neuron } from '@cnstra/core';
 
 // Contracts
 const user = {
-  fetchRequest: collateral<{ userId: string }>('user:fetch-request'),
-  fetched: collateral<{ userId: string; name: string }>('user:fetched'),
+  fetchRequest: collateral<{ userId: string }>(),
+  fetched: collateral<{ userId: string; name: string }>(),
 };
 
 // Mock DB neuron
 const createMockDb = (users: Record<string, { name: string }>) =>
-  neuron('mock-db', { fetched: user.fetched })
+  neuron({ fetched: user.fetched })
     .dendrite({
       collateral: user.fetchRequest,
       response: async (payload, axon) => {
@@ -416,8 +412,8 @@ const createMockDb = (users: Record<string, { name: string }>) =>
     });
 
 // Business logic
-const processor = neuron('processor', {
-  processed: collateral<{ greeting: string }>('processor:processed'),
+const processor = neuron({
+  processed: collateral<{ greeting: string }>(),
 })
   .dendrite({
     collateral: user.fetched,
@@ -440,9 +436,7 @@ describe('Full test suite', () => {
       { onResponse: (r) => results.push(r) }
     );
     
-    const processed = results.find(
-      r => r.outputSignal?.collateralName === 'processor:processed'
-    );
+    const processed = results.find(r => r.outputSignal?.collateral === processorAxon.processed);
     expect(processed?.outputSignal?.payload.greeting).toBe('Hello, Alice!');
   });
 

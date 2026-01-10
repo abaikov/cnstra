@@ -1,16 +1,11 @@
 import { TCNSAxon } from './TCNSAxon';
 import { TCNSDendrite } from './TCNSDendrite';
+import { CNSCollateral } from '../CNSCollateral';
 
 export type TCNSNeuron<
     TContextValue,
-    TName extends string,
-    TCollateralName extends string,
-    TCollateralPayload,
-    TSenderCollateralName extends string,
-    TSenderCollateralPayload,
-    TAxonType extends TCNSAxon<TCollateralName, TCollateralPayload>
+    TAxonType extends TCNSAxon = TCNSAxon
 > = {
-    name: TName;
     axon: TAxonType;
     /** Optional per-neuron concurrency limit. If undefined or <= 0, no limit is applied. */
     concurrency?: number;
@@ -18,10 +13,7 @@ export type TCNSNeuron<
     maxDuration?: number;
     dendrites: TCNSDendrite<
         TContextValue,
-        TSenderCollateralName,
-        TSenderCollateralPayload,
-        TCollateralName,
-        TCollateralPayload,
+        CNSCollateral<unknown>,
         TAxonType
     >[];
 };

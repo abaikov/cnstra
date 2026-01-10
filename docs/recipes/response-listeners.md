@@ -24,10 +24,10 @@ await cns.stimulate(start.createSignal({ id: '123' }), {
       return;
     }
     if (r.inputSignal) {
-      console.log('IN', r.inputSignal.collateralName);
+      console.log('IN', r.inputSignal.collateral);
     }
     if (r.outputSignal) {
-      console.log('OUT', r.outputSignal.collateralName);
+      console.log('OUT', r.outputSignal.collateral);
     }
   },
 });
@@ -43,7 +43,7 @@ const off = cns.addResponseListener((r) => {
     return;
   }
   if (r.outputSignal) {
-    tracer.add('emit', r.outputSignal.collateralName);
+    tracer.add('emit', r.outputSignal.collateral);
   }
 });
 
@@ -59,5 +59,5 @@ off();
 
 ## Tips
 - Keep listeners lightweight; heavy work should be offloaded (e.g., buffer and batch).
-- Exceptions thrown in listeners are swallowed to avoid breaking the run.
-- Combine with `allowName`/`maxNeuronHops` in `stimulate` options to constrain traversal during debugging. `maxNeuronHops` is disabled by default.
+- Exceptions thrown in listeners will reject `stimulation.waitUntilComplete()` once all active tasks finish.
+- Combine with `maxNeuronHops` in `stimulate` options to constrain traversal during debugging. `maxNeuronHops` is disabled by default.

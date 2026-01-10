@@ -17,10 +17,10 @@ Counter example (iterate until max)
 ```ts
 import { collateral, neuron } from '@cnstra/core';
 
-const step = collateral<{ amount: number; total?: number; attempt?: number }>('counter:step');
-const done = collateral<{ total: number }>('counter:done');
+const step = collateral<{ amount: number; total?: number; attempt?: number }>();
+const done = collateral<{ total: number }>();
 
-export const counter = neuron('counter', { step, done })
+export const counter = neuron({ step, done })
   .dendrite({
     collateral: step,
     response: (payload, axon) => {
@@ -41,15 +41,15 @@ Pagination example (loop until no next page)
 ```ts
 import { collateral, neuron } from '@cnstra/core';
 
-const tryPage = collateral<{ cursor?: string; items?: unknown[] }>('pager:try');
-const finished = collateral<{ items: unknown[] }>('pager:finished');
+const tryPage = collateral<{ cursor?: string; items?: unknown[] }>();
+const finished = collateral<{ items: unknown[] }>();
 
 async function fetchPage(cursor?: string): Promise<{ items: unknown[]; next?: string }> {
   // replace with real API call
   return { items: [{ id: cursor ?? '0' }], next: cursor ? undefined : '1' };
 }
 
-export const pager = neuron('pager', { tryPage, finished })
+export const pager = neuron({ tryPage, finished })
   .dendrite({
     collateral: tryPage,
     response: async (payload, axon, ctx) => {

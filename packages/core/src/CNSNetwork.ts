@@ -4,21 +4,19 @@ import { TCNSDendrite } from './types/TCNSDendrite';
 import { CNSCollateral } from './CNSCollateral';
 
 export class CNSNetwork<
-    TCollateralName extends string,
-    TNeuronName extends string,
-    TNeuron extends TCNSNeuron<any, TNeuronName, any, any, any, any, any>,
-    TDendrite extends TCNSDendrite<any, any, any, any, any, any>
+    TNeuron extends TCNSNeuron<any, any>,
+    TDendrite extends TCNSDendrite<any, any, any>
 > {
     /**
      * Strongly Connected Components of the neuron graph.
-     * Each component is a set of neuron IDs that can reach each other.
+     * Each component is a set of neuron objects that can reach each other.
      */
-    public stronglyConnectedComponents: Set<string>[] = [];
+    public stronglyConnectedComponents: Set<TNeuron>[] = [];
 
     /**
-     * Quick lookup: neuron ID -> SCC index for fast reachability checks.
+     * Quick lookup: neuron -> SCC index for fast reachability checks.
      */
-    private neuronToSCC = new Map<string, number>();
+    private neuronToSCC = new Map<TNeuron, number>();
 
     /**
      * DAG of SCCs: SCC index -> set of SCC indices that can reach this SCC
@@ -31,22 +29,18 @@ export class CNSNetwork<
     private sccAncestors: Map<number, Set<number>> = new Map();
 
     /**
-     * Fast lookup: collateralName -> list of (neuron, dendrite) subscribers.
+     * Fast lookup: collateral -> list of (neuron, dendrite) subscribers.
      * Built once at construction time.
      */
     private subIndex = new Map<
-        TCollateralName,
+        CNSCollateral<unknown>,
         TCNSSubscriber<TNeuron, TDendrite>[]
     >();
 
-    private neuronIndex = new Map<TNeuronName, TNeuron>();
-    private dendriteIndex = new Map<TCollateralName, TDendrite>();
-    private collateralIndex = new Map<
-        TCollateralName,
-        CNSCollateral<TCollateralName, unknown>
-    >();
+    private dendriteIndex = new Map<CNSCollateral<unknown>, TDendrite>();
+    private collateralIndex = new Set<CNSCollateral<unknown>>();
 
-    private parentNeuronByCollateralName = new Map<TCollateralName, TNeuron>();
+    private parentNeuronByCollateral = new Map<CNSCollateral<unknown>, TNeuron>();
 
     constructor(private readonly neurons: TNeuron[]) {
         this.validateUniqueIdentifiers();
@@ -56,65 +50,46 @@ export class CNSNetwork<
 
     /**
      * Validate uniqueness constraints:
-     * - neuron names are unique and non-empty
-     * - axon collateral types are globally unique (single owner)
-     * - the same collateral instance cannot be owned by multiple neurons
+     * - (legacy) collateral instances used to be single-owner; in object-identity routing
+     *   a collateral can be emitted by multiple neurons (fan-in), so we no longer
+     *   enforce single ownership here.
      * Throws aggregated error if violations are found.
      */
     private validateUniqueIdentifiers(): void {
-        const errors: string[] = [];
-        const seenNeuronNames = new Set<string>();
-
-        for (const neuron of this.neurons) {
-            const name = (neuron?.name as unknown as string) ?? '';
-            if (!name || typeof name !== 'string' || name.trim().length === 0) {
-                errors.push(`Neuron has empty or invalid name: "${name}"`);
-            } else if (seenNeuronNames.has(name)) {
-                errors.push(`Duplicate neuron name: "${name}"`);
-            } else {
-                seenNeuronNames.add(name);
-            }
-        }
-
-        if (errors.length > 0) {
-            throw new Error(
-                `[CNS] Topology uniqueness validation failed:\n - ` +
-                    errors.join(`\n - `)
-            );
-        }
+        // Intentionally no-op.
     }
 
     /**
      * Build the neuron graph where neurons are connected if one can stimulate the other.
      */
-    private buildNeuronGraph(): Map<string, Set<string>> {
-        const graph = new Map<string, Set<string>>();
-        const neuronIds = this.neurons.map(n => n.name);
+    private buildNeuronGraph(): Map<TNeuron, Set<TNeuron>> {
+        const graph = new Map<TNeuron, Set<TNeuron>>();
 
         // Initialize graph
-        for (const neuronId of neuronIds) {
-            graph.set(neuronId, new Set());
+        for (const neuron of this.neurons) {
+            graph.set(neuron, new Set());
         }
 
         // Build edges: neuron -> neurons it can reach via its axons
         for (const neuron of this.neurons) {
-            const reachableNeurons = new Set<string>();
+            const reachableNeurons = new Set<TNeuron>();
 
             // Check what collaterals this neuron can emit
             for (const axonKey in neuron.axon) {
                 const collateral = neuron.axon[axonKey];
-                const collateralName = collateral.name as TCollateralName;
 
                 // Find which neurons listen to this collateral
-                const subscribers = this.subIndex.get(collateralName);
+                const subscribers = this.subIndex.get(
+                    collateral as CNSCollateral<unknown>
+                );
                 if (subscribers) {
                     for (const { neuron: targetNeuron } of subscribers) {
-                        reachableNeurons.add(targetNeuron.name);
+                        reachableNeurons.add(targetNeuron);
                     }
                 }
             }
 
-            graph.set(neuron.name, reachableNeurons);
+            graph.set(neuron, reachableNeurons);
         }
 
         return graph;
@@ -125,55 +100,54 @@ export class CNSNetwork<
      */
     private buildSCC(): void {
         const graph = this.buildNeuronGraph();
-        const neuronIds = this.neurons.map(n => n.name);
 
         // Tarjan's algorithm for SCC
-        const index = new Map<string, number>();
-        const lowlink = new Map<string, number>();
-        const onStack = new Set<string>();
-        const stack: string[] = [];
-        const components: Set<string>[] = [];
+        const index = new Map<TNeuron, number>();
+        const lowlink = new Map<TNeuron, number>();
+        const onStack = new Set<TNeuron>();
+        const stack: TNeuron[] = [];
+        const components: Set<TNeuron>[] = [];
         let currentIndex = 0;
 
-        const strongConnect = (neuronId: string) => {
-            index.set(neuronId, currentIndex);
-            lowlink.set(neuronId, currentIndex);
+        const strongConnect = (neuron: TNeuron) => {
+            index.set(neuron, currentIndex);
+            lowlink.set(neuron, currentIndex);
             currentIndex++;
-            stack.push(neuronId);
-            onStack.add(neuronId);
+            stack.push(neuron);
+            onStack.add(neuron);
 
-            const neighbors = graph.get(neuronId) || new Set();
+            const neighbors = graph.get(neuron) || new Set();
             for (const neighbor of Array.from(neighbors)) {
                 if (!index.has(neighbor)) {
                     strongConnect(neighbor);
                     lowlink.set(
-                        neuronId,
-                        Math.min(lowlink.get(neuronId)!, lowlink.get(neighbor)!)
+                        neuron,
+                        Math.min(lowlink.get(neuron)!, lowlink.get(neighbor)!)
                     );
                 } else if (onStack.has(neighbor)) {
                     lowlink.set(
-                        neuronId,
-                        Math.min(lowlink.get(neuronId)!, index.get(neighbor)!)
+                        neuron,
+                        Math.min(lowlink.get(neuron)!, index.get(neighbor)!)
                     );
                 }
             }
 
-            if (lowlink.get(neuronId) === index.get(neuronId)) {
-                const component = new Set<string>();
-                let w: string;
+            if (lowlink.get(neuron) === index.get(neuron)) {
+                const component = new Set<TNeuron>();
+                let w: TNeuron;
                 do {
                     w = stack.pop()!;
                     onStack.delete(w);
                     component.add(w);
-                } while (w !== neuronId);
+                } while (w !== neuron);
                 components.push(component);
             }
         };
 
         // Run Tarjan's algorithm on all unvisited neurons
-        for (const neuronId of neuronIds) {
-            if (!index.has(neuronId)) {
-                strongConnect(neuronId);
+        for (const neuron of this.neurons) {
+            if (!index.has(neuron)) {
+                strongConnect(neuron);
             }
         }
 
@@ -196,7 +170,7 @@ export class CNSNetwork<
     /**
      * Build DAG between SCCs based on the original neuron graph
      */
-    private buildSCCDAG(neuronGraph: Map<string, Set<string>>): void {
+    private buildSCCDAG(neuronGraph: Map<TNeuron, Set<TNeuron>>): void {
         this.sccDag.clear();
 
         // Initialize DAG
@@ -208,11 +182,11 @@ export class CNSNetwork<
         for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
             const scc = this.stronglyConnectedComponents[i];
 
-            for (const neuronId of Array.from(scc)) {
-                const neighbors = neuronGraph.get(neuronId) || new Set();
+            for (const neuron of Array.from(scc)) {
+                const neighbors = neuronGraph.get(neuron) || new Set();
 
-                for (const neighborId of Array.from(neighbors)) {
-                    const neighborSccIndex = this.neuronToSCC.get(neighborId);
+                for (const neighbor of Array.from(neighbors)) {
+                    const neighborSccIndex = this.neuronToSCC.get(neighbor);
                     if (
                         neighborSccIndex !== undefined &&
                         neighborSccIndex !== i
@@ -299,8 +273,8 @@ export class CNSNetwork<
      * Returns true if the neuron is in a strongly connected component with more than one member,
      * or if it's in a single-member SCC that can reach itself.
      */
-    public getSCCSetByNeuronName(neuronName: string) {
-        const sccIndex = this.neuronToSCC.get(neuronName);
+    public getSCCSetByNeuron(neuron: TNeuron) {
+        const sccIndex = this.neuronToSCC.get(neuron);
 
         if (sccIndex === undefined) return;
 
@@ -308,10 +282,10 @@ export class CNSNetwork<
     }
 
     /**
-     * Get the SCC index for a given neuron ID
+     * Get the SCC index for a given neuron
      */
-    public getSccIndexByNeuronName(neuronName: string): number | undefined {
-        return this.neuronToSCC.get(neuronName);
+    public getSccIndexByNeuron(neuron: TNeuron): number | undefined {
+        return this.neuronToSCC.get(neuron);
     }
 
     /**
@@ -319,10 +293,10 @@ export class CNSNetwork<
      * This is the core logic for safe context cleanup.
      */
     public canNeuronBeGuaranteedDone(
-        neuronName: string,
+        neuron: TNeuron,
         activeSccCounts: Map<number, number>
     ): boolean {
-        const sccIndex = this.neuronToSCC.get(neuronName);
+        const sccIndex = this.neuronToSCC.get(neuron);
         if (sccIndex === undefined) return true; // Neuron not in graph
 
         // Check if this SCC is still active
@@ -351,11 +325,12 @@ export class CNSNetwork<
 
     private buildIndexes() {
         this.subIndex.clear();
-        this.parentNeuronByCollateralName.clear();
+        this.parentNeuronByCollateral.clear();
+        this.dendriteIndex.clear();
+        this.collateralIndex.clear();
         for (const neuron of this.neurons) {
-            this.neuronIndex.set(neuron.name, neuron);
             for (const dendrite of neuron.dendrites) {
-                const key = dendrite.collateral.name as TCollateralName;
+                const key = dendrite.collateral as CNSCollateral<unknown>;
                 const arr = this.subIndex.get(key) ?? [];
                 arr.push({ neuron, dendrite: dendrite as TDendrite });
                 this.subIndex.set(
@@ -365,22 +340,17 @@ export class CNSNetwork<
                 this.dendriteIndex.set(key, dendrite as TDendrite);
             }
             Object.values(neuron.axon).forEach(collateral => {
-                this.parentNeuronByCollateralName.set(
-                    (collateral as CNSCollateral<TCollateralName, unknown>)
-                        .name,
+                this.parentNeuronByCollateral.set(
+                    collateral as CNSCollateral<unknown>,
                     neuron
                 );
-                this.collateralIndex.set(
-                    (collateral as CNSCollateral<TCollateralName, unknown>)
-                        .name,
-                    collateral as CNSCollateral<TCollateralName, unknown>
-                );
+                this.collateralIndex.add(collateral as CNSCollateral<unknown>);
             });
         }
     }
 
-    public getParentNeuronByCollateralName(collateralName: TCollateralName) {
-        return this.parentNeuronByCollateralName.get(collateralName);
+    public getParentNeuronByCollateral(collateral: CNSCollateral<unknown>) {
+        return this.parentNeuronByCollateral.get(collateral);
     }
 
     public getDendrites() {
@@ -391,25 +361,9 @@ export class CNSNetwork<
         return Array.from(this.collateralIndex.values());
     }
 
-    public getNeurons() {
-        return Array.from(this.neuronIndex.values());
-    }
-
-    public getCollateralByName<TName extends string = string>(
-        collateralName: TName
-    ) {
-        return this.collateralIndex.get(
-            collateralName as unknown as TCollateralName
-        ) as unknown as CNSCollateral<TName, unknown> | undefined;
-    }
-
-    public getNeuronByName<TName extends string = string>(neuronName: TName) {
-        return this.neuronIndex.get(neuronName as unknown as TNeuronName);
-    }
-
     public getSubscribers(
-        collateralName: TCollateralName
+        collateral: CNSCollateral<unknown>
     ): TCNSSubscriber<TNeuron, TDendrite>[] {
-        return this.subIndex.get(collateralName) ?? [];
+        return this.subIndex.get(collateral) ?? [];
     }
 }

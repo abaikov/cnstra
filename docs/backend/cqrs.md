@@ -18,11 +18,11 @@ import { CNS, neuron, collateral } from '@cnstra/core';
 // Note: In real CQRS, aggregates would be stored in a database, not context
 // Context here is only for per-neuron per-stimulation metadata
 
-const createUserCommand = collateral<{ name: string; email: string }>('createUserCommand');
-const userCreated = collateral<{ id: string; name: string; email: string; createdAt: number }>('userCreated');
+const createUserCommand = collateral<{ name: string; email: string }>();
+const userCreated = collateral<{ id: string; name: string; email: string; createdAt: number }>();
 
 // Command handlers (write side)
-const userCommandHandler = neuron('userCommandHandler', { userCreated }).dendrite({
+const userCommandHandler = neuron({ userCreated }).dendrite({
   collateral: createUserCommand,
   response: async (payload, axon) => {
     // Execute command and create aggregate
@@ -41,10 +41,10 @@ const userCommandHandler = neuron('userCommandHandler', { userCreated }).dendrit
 });
 
 // Query side: Read operations (would typically read from a separate read model/store)
-const getUserQuery = collateral<{ id: string }>('getUserQuery');
-const userQueryResult = collateral<{ id: string; name: string; email: string; createdAt: number }>('userQueryResult');
+const getUserQuery = collateral<{ id: string }>();
+const userQueryResult = collateral<{ id: string; name: string; email: string; createdAt: number }>();
 
-const userQueryHandler = neuron('userQueryHandler', { userQueryResult }).dendrite({
+const userQueryHandler = neuron({ userQueryResult }).dendrite({
   collateral: getUserQuery,
   response: async (payload, axon) => {
     // In real CQRS, this would read from a read model/database
@@ -78,10 +78,10 @@ In canonical CQRS, read models are updated asynchronously by separate projection
 
 ```typescript
 // Command side: Write operations
-const createUserCommand = collateral<{ name: string; email: string }>('createUserCommand');
-const userCreated = collateral<{ id: string; name: string; email: string; createdAt: number }>('userCreated');
+const createUserCommand = collateral<{ name: string; email: string }>();
+const userCreated = collateral<{ id: string; name: string; email: string; createdAt: number }>();
 
-const userCommandHandler = neuron('userCommandHandler', { userCreated }).dendrite({
+const userCommandHandler = neuron({ userCreated }).dendrite({
   collateral: createUserCommand,
   response: async (payload, axon) => {
     // Write to command/write database (source of truth)
@@ -104,9 +104,9 @@ const userCommandHandler = neuron('userCommandHandler', { userCreated }).dendrit
 });
 
 // Read model projection: Updates read model from events
-const readModelUpdated = collateral<{ userId: string }>('readModelUpdated');
+const readModelUpdated = collateral<{ userId: string }>();
 
-const readModelProjection = neuron('readModelProjection', { readModelUpdated }).dendrite({
+const readModelProjection = neuron({ readModelUpdated }).dendrite({
   collateral: userCreated,
   response: async (payload, axon) => {
     // Update read model (separate database/store) from event
@@ -134,7 +134,7 @@ const stimulation = cns.stimulate(createUserCommand.createSignal({
 }), {
   onResponse: async (response) => {
     // After read model update is complete, read from read model
-    if (response.outputSignal?.collateralName === 'readModelUpdated') {
+    if (response.outputSignal?.collateral === readModelUpdated) {
       const userId = response.outputSignal.payload.userId;
       
       // Read from read model (different database/store)

@@ -2,22 +2,14 @@ import { TCNSSubscriber } from './TCNSSubscriber';
 import { TCNSSignal } from './TCNSSignal';
 import { TCNSNeuron } from './TCNSNeuron';
 import { TCNSDendrite } from './TCNSDendrite';
+import { CNSCollateral } from '../CNSCollateral';
 
 export type TCNSStimulationQueueItem<
-    TCollateralName extends string,
-    TNeuronName extends string,
-    TNeuron extends TCNSNeuron<
-        any,
-        TNeuronName,
-        TCollateralName,
-        any,
-        any,
-        any,
-        any
-    >,
-    TDendrite extends TCNSDendrite<any, any, any, any, any, any>
+    TNeuron extends TCNSNeuron<any, any>,
+    TDendrite extends TCNSDendrite<any, any, any>,
+    TInputCollateral extends CNSCollateral<unknown> = CNSCollateral<unknown>
 > = {
-    neuronId: TNeuronName;
+    neuron: TNeuron;
     subscriber: TCNSSubscriber<TNeuron, TDendrite>;
-    inputSignal?: TCNSSignal<TCollateralName, any>;
+    inputSignal?: TCNSSignal<TInputCollateral>;
 };

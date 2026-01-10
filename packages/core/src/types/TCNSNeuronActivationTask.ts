@@ -1,12 +1,12 @@
+import { CNSCollateral } from '../CNSCollateral';
 import { TCNSSignal } from './TCNSSignal';
 
 export type TCNSNeuronActivationTask<
-    TCollateralName extends string = string,
-    TNeuronName extends string = string
+    TNeuron extends object = object,
+    TCollateral extends CNSCollateral<unknown> = CNSCollateral<unknown>
 > = {
-    stimulationId: string;
-    neuronId: TNeuronName;
-    dendriteCollateralName: TCollateralName;
-    input?: TCNSSignal<TCollateralName, any>;
+    neuron: TNeuron;
+    dendriteCollateral: TCollateral;
+    input?: TCNSSignal<TCollateral>;
 };
 

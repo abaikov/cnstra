@@ -1,8 +1,8 @@
 export class CNSInstanceNeuronQueue<
-    TNeuron extends { name: string; concurrency?: number }
+    TNeuron extends { concurrency?: number }
 > {
     private readonly gates = new Map<
-        string,
+        TNeuron,
         { limit: number; active: number; waiters: (() => void)[] }
     >();
 
@@ -15,10 +15,10 @@ export class CNSInstanceNeuronQueue<
             return fn();
         }
 
-        let gate = this.gates.get(neuron.name);
+        let gate = this.gates.get(neuron);
         if (!gate) {
             gate = { limit, active: 0, waiters: [] };
-            this.gates.set(neuron.name, gate);
+            this.gates.set(neuron, gate);
         } else {
             gate.limit = limit;
         }
@@ -28,7 +28,7 @@ export class CNSInstanceNeuronQueue<
                 try {
                     cb();
                 } finally {
-                    const g = this.gates.get(neuron.name)!;
+                    const g = this.gates.get(neuron)!;
                     g.active = Math.max(0, g.active - 1);
                     if (g.waiters.length > 0) {
                         const next = g.waiters.shift()!;
@@ -49,7 +49,7 @@ export class CNSInstanceNeuronQueue<
 
         return new Promise<() => void>(resolve => {
             const starter = () => {
-                const g = this.gates.get(neuron.name)!;
+                const g = this.gates.get(neuron)!;
                 g.active++;
                 const ret = fn();
                 if (ret && typeof (ret as any).then === 'function') {

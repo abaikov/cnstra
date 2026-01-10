@@ -22,11 +22,9 @@ import { CNSCollateral } from '../CNSCollateral';
  *   payload types.
  */
 export type TCNSAxon<
-    TCollateralName extends string,
-    TInputPayload = unknown,
-    TCollaterals extends Record<string, CNSCollateral<any, any>> = Record<
-        TCollateralName,
-        CNSCollateral<TCollateralName, TInputPayload>
+    TCollaterals extends Record<string, CNSCollateral<unknown>> = Record<
+        string,
+        CNSCollateral<unknown>
     >
 > = {
     [K in keyof TCollaterals]: TCollaterals[K];

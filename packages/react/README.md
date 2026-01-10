@@ -21,22 +21,26 @@ import { CNS, neuron, collateral } from '@cnstra/core';
 
 // Create your CNS instance
 const cns = new CNS([
-  neuron('counter', {
-    increment: collateral('increment'),
-    decrement: collateral('decrement')
-  }).dendrite({
-    collateral: collateral('increment'),
+  (() => {
+    const increment = collateral();
+    const decrement = collateral();
+    return neuron({
+      increment,
+      decrement
+    }).dendrite({
+      collateral: increment,
     response: (payload, axon) => {
       // Handle increment logic here
       return axon.increment.createSignal();
     }
   }).dendrite({
-    collateral: collateral('decrement'),
+    collateral: decrement,
     response: (payload, axon) => {
       // Handle decrement logic here
       return axon.decrement.createSignal();
     }
   })
+  })()
 ]);
 
 function App() {
@@ -56,13 +60,17 @@ import { collateral } from '@cnstra/core';
 
 function Counter() {
   const cns = useCNS();
-  
+
+  // Keep collaterals in module scope or component state; don't re-create them per call.
+  const increment = collateral();
+  const decrement = collateral();
+
   const handleIncrement = () => {
-    cns.stimulate(collateral('increment').createSignal());
+    cns.stimulate(increment.createSignal());
   };
-  
+
   const handleDecrement = () => {
-    cns.stimulate(collateral('decrement').createSignal());
+    cns.stimulate(decrement.createSignal());
   };
   
   return (

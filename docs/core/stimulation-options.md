@@ -8,11 +8,11 @@ slug: /core/stimulation-options
 - `maxNeuronHops?: number` — limit traversal depth
 - `onResponse?: (response) => void | Promise<void>` — tap into flow and completion (async supported)
 - `abortSignal?: AbortSignal` — graceful cancel
-- `stimulationId?: string` — custom id
-- `allowName?: (collateralName: string) => boolean` — filter collaterals
 - `concurrency?: number` — per-run concurrency limit
-- `ctx?: ICNSStimulationContextStore` — reuse context
-- `createContextStore?: () => ICNSStimulationContextStore` — custom store
+- `ctx?: ICNSStimulationContextStore` — reuse context store (in‑process)
+- `modality?: TCNSModality` — optional modality routing for `modalityDendrite`
+- `afferentPath?: TCNSAfferentPath` — optional afferent path selection for `modalityDendrite`
+- `stimulationContext?: object` — optional user-defined bag for listeners/handlers
 
 ```ts
 const controller = new AbortController();
@@ -37,7 +37,7 @@ await stimulation.waitUntilComplete();
 const stimulation = cns.stimulate(signal, {
   onResponse: async (r) => {
     if (r.outputSignal) {
-      await repo.save(r.stimulationId, r.outputSignal);
+      await repo.save(r.outputSignal);
     }
   }
 });

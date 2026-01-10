@@ -14,11 +14,11 @@ A neuron can return an array of signals instead of a single signal:
 ```ts
 import { CNS, collateral, neuron } from '@cnstra/core';
 
-const input = collateral<{ value: number }>('input');
-const output1 = collateral<{ result: string }>('output1');
-const output2 = collateral<{ result: string }>('output2');
+const input = collateral<{ value: number }>();
+const output1 = collateral<{ result: string }>();
+const output2 = collateral<{ result: string }>();
 
-const splitter = neuron('splitter', { output1, output2 }).dendrite({
+const splitter = neuron({ output1, output2 }).dendrite({
   collateral: input,
   response: (payload, axon) => {
     // Return an array of signals
@@ -37,12 +37,12 @@ const splitter = neuron('splitter', { output1, output2 }).dendrite({
 Split a single input into multiple parallel processing paths:
 
 ```ts
-const processPayment = collateral<{ orderId: string }>('processPayment');
-const updateInventory = collateral<{ orderId: string }>('updateInventory');
-const notifyUser = collateral<{ orderId: string }>('notifyUser');
-const logTransaction = collateral<{ orderId: string }>('logTransaction');
+const processPayment = collateral<{ orderId: string }>();
+const updateInventory = collateral<{ orderId: string }>();
+const notifyUser = collateral<{ orderId: string }>();
+const logTransaction = collateral<{ orderId: string }>();
 
-const orderProcessor = neuron('orderProcessor', {
+const orderProcessor = neuron({
   updateInventory,
   notifyUser,
   logTransaction,
@@ -64,10 +64,10 @@ const orderProcessor = neuron('orderProcessor', {
 Generate a variable number of signals based on input:
 
 ```ts
-const batchInput = collateral<{ items: string[] }>('batchInput');
-const itemOutput = collateral<{ item: string; index: number }>('itemOutput');
+const batchInput = collateral<{ items: string[] }>();
+const itemOutput = collateral<{ item: string; index: number }>();
 
-const batchProcessor = neuron('batchProcessor', { itemOutput }).dendrite({
+const batchProcessor = neuron({ itemOutput }).dendrite({
   collateral: batchInput,
   response: (payload, axon) => {
     // Create a signal for each item
@@ -83,12 +83,12 @@ const batchProcessor = neuron('batchProcessor', { itemOutput }).dendrite({
 Return different numbers of signals based on conditions:
 
 ```ts
-const validation = collateral<{ data: any }>('validation');
-const success = collateral<{ validated: any }>('success');
-const error = collateral<{ error: string }>('error');
-const audit = collateral<{ action: string }>('audit');
+const validation = collateral<{ data: any }>();
+const success = collateral<{ validated: any }>();
+const error = collateral<{ error: string }>();
+const audit = collateral<{ action: string }>();
 
-const validator = neuron('validator', { success, error, audit }).dendrite({
+const validator = neuron({ success, error, audit }).dendrite({
   collateral: validation,
   response: (payload, axon) => {
     const signals = [];
@@ -112,10 +112,10 @@ const validator = neuron('validator', { success, error, audit }).dendrite({
 Arrays of signals work seamlessly with async functions:
 
 ```ts
-const dataFetch = collateral<{ ids: string[] }>('dataFetch');
-const dataReady = collateral<{ id: string; data: any }>('dataReady');
+const dataFetch = collateral<{ ids: string[] }>();
+const dataReady = collateral<{ id: string; data: any }>();
 
-const fetcher = neuron('fetcher', { dataReady }).dendrite({
+const fetcher = neuron({ dataReady }).dendrite({
   collateral: dataFetch,
   response: async (payload, axon) => {
     // Fetch all data asynchronously
@@ -136,7 +136,7 @@ const fetcher = neuron('fetcher', { dataReady }).dendrite({
 Returning an empty array is valid and will not propagate any signals:
 
 ```ts
-const filter = neuron('filter', { output }).dendrite({
+const filter = neuron({ output }).dendrite({
   collateral: input,
   response: (payload, axon) => {
     if (!shouldProcess(payload)) {

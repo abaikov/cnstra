@@ -31,10 +31,10 @@ npm i -D @cnstra/devtools @cnstra/devtools-server @cnstra/devtools-transport-ws
 ```ts
 import { CNS, collateral, neuron } from '@cnstra/core';
 
-const userCreated = collateral<{ id: string; name: string }>('user:created');
-const userRegistered = collateral<{ userId: string; status: string }>('user:registered');
+const userCreated = collateral<{ id: string; name: string }>();
+const userRegistered = collateral<{ userId: string; status: string }>();
 
-const userService = neuron('user-service', { userRegistered }).dendrite({
+const userService = neuron({ userRegistered }).dendrite({
   collateral: userCreated,
   response: (payload, axon) => {
     console.log(`Processing user: ${payload.name}`);

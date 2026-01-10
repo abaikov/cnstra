@@ -13,6 +13,7 @@ export type { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
 export type { TCNSModality } from './types/TCNSModality';
 export type { TCNSAfferentPath } from './types/TCNSAfferentPath';
 export type { TCNSNeuronActivationTaskFailure } from './types/TCNSNeuronActivationTaskFailure';
+export type { TCNSNeuronPersistOptions, TCNSCollateralPersistOptions, TCNSStimulationPersistOptions } from './types/TCNSPersist';
 
 // Factory
 export {

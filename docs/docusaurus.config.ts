@@ -128,13 +128,8 @@ const config: Config = {
                     position: 'left',
                 },
                 {
-                    to: '/docs/frontend/oimdb',
-                    label: 'Frontend',
-                    position: 'left',
-                },
-                {
-                    to: '/docs/backend/overview',
-                    label: 'Backend',
+                    to: '/docs/core/overview',
+                    label: 'Overview',
                     position: 'left',
                 },
                 {

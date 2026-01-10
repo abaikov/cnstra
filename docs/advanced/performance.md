@@ -31,7 +31,7 @@ Each active `CNSStimulation` instance has a fixed overhead for internal data str
 
 - **Active tasks in queue**: ~100-150 bytes per task (metadata only)
   - **⚠️ Important**: Each task stores the full input signal with payload
-  - Task structure: `{ stimulationId, neuronId, dendriteCollateralName, input: { collateralName, payload } }`
+- Task structure: `{ neuron, dendriteCollateral, input: { collateral, payload } }`
   - Typical stimulation has 5-10 tasks simultaneously: ~500-1500 bytes (metadata) + **payload size**
 
 - **Context data**: ~100-200 bytes (for minimal context with 2-3 simple values)
@@ -43,7 +43,7 @@ Each active `CNSStimulation` instance has a fixed overhead for internal data str
 **Critical**: The activation queue stores complete signal payloads in memory. Queue size directly multiplies payload memory usage.
 
 **Per-task memory breakdown:**
-- Task metadata (IDs, names): ~100-150 bytes
+- Task metadata (object references): ~100-150 bytes
 - **Signal payload**: variable, can be **any size** (from 0 bytes to MBs)
 
 **Queue memory = (task metadata × queue length) + (payload size × queue length)**
@@ -195,7 +195,7 @@ Context growth significantly impacts memory usage:
     ```ts
           // Context stores per-neuron per-stimulation metadata (processing stats)
     const processor = withCtx<{ processedCount: number; startTime: number }>()
-      .neuron('processor', { next })
+      .neuron({ next })
       .dendrite({
         collateral: input,
         response: async (payload, axon, ctx) => {
@@ -232,7 +232,7 @@ Context growth significantly impacts memory usage:
     ```ts
     const BATCH_SIZE = 20;
     
-    const batchProcessor = neuron('batch-processor', { processBatch, nextBatch })
+    const batchProcessor = neuron({ processBatch, nextBatch })
       .dendrite({
         collateral: processBatch,
         response: async (payload, axon) => {
@@ -375,7 +375,7 @@ Or integrate with your APM/tracing tool (e.g., OpenTelemetry):
 ```ts
 const stimulation = cns.stimulate(signal, {
   onResponse: (r) => {
-    span.addEvent('neuron', { collateral: r.outputSignal?.collateralName });
+    span.addEvent('neuron', { collateral: r.outputSignal?.collateral });
     if (r.error) span.recordException(r.error);
   }
 });

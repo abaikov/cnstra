@@ -9,35 +9,17 @@ import { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
 import { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
 import { CNSNetwork } from './CNSNetwork';
 import { ICNS } from './interfaces/ICNS';
+import { CNSCollateral } from './CNSCollateral';
 
 export class CNS<
-    TCollateralName extends string,
-    TNeuronName extends string,
-    TNeuron extends TCNSNeuron<any, TNeuronName, any, any, any, any, any>,
-    TDendrite extends TCNSDendrite<any, any, any, any, any, any>
-> implements
-        Omit<
-            ICNS<TCollateralName, TNeuronName, TNeuron, TDendrite>,
-            'stimulate'
-        >
+    TNeuron extends TCNSNeuron<any, any>,
+    TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
+> implements ICNS<TNeuron, TDendrite>
 {
     /**
      * Network graph analysis and strongly connected components.
      */
-    public readonly network: CNSNetwork<
-        TCollateralName,
-        TNeuronName,
-        TNeuron,
-        TDendrite
-    >;
-
-    /**
-     * Global per-neuron concurrency gates shared across all stimulations.
-     */
-    private readonly neuronGates = new Map<
-        TNeuronName,
-        { limit: number; active: number; waiters: (() => void)[] }
-    >();
+    public readonly network: CNSNetwork<TNeuron, TDendrite>;
 
     /**
      * Global task queue used by stimulation to schedule per-neuron gated work.
@@ -60,15 +42,8 @@ export class CNS<
         this.network = new CNSNetwork(this.neurons);
     }
 
-    public addResponseListener<TInputPayload, TOutputPayload>(
-        listener: (
-            response: TCNSStimulationResponse<
-                TCollateralName,
-                TInputPayload,
-                TOutputPayload,
-                TNeuronName
-            >
-        ) => void | Promise<void>
+    public addResponseListener(
+        listener: (response: TCNSStimulationResponse) => void | Promise<void>
     ): () => void {
         this.globalResponseListeners.push(listener);
         let active = true;
@@ -130,43 +105,21 @@ export class CNS<
         };
     }
 
-    public stimulate<
-        TInputPayload extends TOutputPayload,
-        TOutputPayload = TInputPayload,
-        TModalityName extends string = string,
-        TAfferentPathName extends string = string
-    >(
+    public stimulate(
         signalOrSignals:
-            | TCNSSignal<TCollateralName, TInputPayload>
-            | TCNSSignal<TCollateralName, TInputPayload>[],
-        options?: TCNSStimulationOptions<
-            TCollateralName,
-            TInputPayload,
-            TOutputPayload,
-            TNeuronName,
-            TModalityName,
-            TAfferentPathName
-        >
-    ): CNSStimulation<
-        TCollateralName,
-        TNeuronName,
-        TNeuron,
-        TDendrite,
-        TInputPayload,
-        TOutputPayload
-    > {
+            | TCNSSignal<CNSCollateral<unknown>>
+            | TCNSSignal<CNSCollateral<unknown>>[],
+        options?: TCNSStimulationOptions<TCNSStimulationResponse>
+    ): CNSStimulation<TNeuron, TDendrite> {
         const wrapped = this.wrapOnResponse(options?.onResponse);
-        const stimulation = new CNSStimulation<
-            TCollateralName,
-            TNeuronName,
-            TNeuron,
-            TDendrite,
-            TInputPayload,
-            TOutputPayload
-        >(this, this.instanceNeuronQueue, {
-            ...options,
-            onResponse: wrapped,
-        });
+        const stimulation = new CNSStimulation<TNeuron, TDendrite>(
+            this,
+            this.instanceNeuronQueue,
+            {
+                ...options,
+                onResponse: wrapped,
+            }
+        );
         stimulation.responseToSignal(signalOrSignals);
         return stimulation;
     }
@@ -174,41 +127,19 @@ export class CNS<
     /**
      * Start a stimulation with activation tasks directly
      */
-    public activate<
-        TInputPayload,
-        TOutputPayload,
-        TModalityName extends string = string,
-        TAfferentPathName extends string = string
-    >(
-        tasks: TCNSNeuronActivationTask<TCollateralName, TNeuronName>[],
-        options?: TCNSStimulationOptions<
-            TCollateralName,
-            TInputPayload,
-            TOutputPayload,
-            TNeuronName,
-            TModalityName,
-            TAfferentPathName
-        >
-    ): CNSStimulation<
-        TCollateralName,
-        TNeuronName,
-        TNeuron,
-        TDendrite,
-        TInputPayload,
-        TOutputPayload
-    > {
+    public activate(
+        tasks: TCNSNeuronActivationTask<TNeuron>[],
+        options?: TCNSStimulationOptions<TCNSStimulationResponse>
+    ): CNSStimulation<TNeuron, TDendrite> {
         const wrapped = this.wrapOnResponse(options?.onResponse);
-        const stimulation = new CNSStimulation<
-            TCollateralName,
-            TNeuronName,
-            TNeuron,
-            TDendrite,
-            TInputPayload,
-            TOutputPayload
-        >(this, this.instanceNeuronQueue, {
-            ...options,
-            onResponse: wrapped,
-        });
+        const stimulation = new CNSStimulation<TNeuron, TDendrite>(
+            this,
+            this.instanceNeuronQueue,
+            {
+                ...options,
+                onResponse: wrapped,
+            }
+        );
         stimulation.enqueueTasks(tasks);
         return stimulation;
     }

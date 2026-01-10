@@ -18,16 +18,16 @@ import { CNS, collateral, neuron } from '@cnstra/core';
 
 // Domain collaterals
 const order = {
-  created: collateral<{ id: string }>('order:created'),
-  reserved: collateral<{ id: string }>('order:reserved'),
-  charged: collateral<{ id: string }>('order:charged'),
-  confirmed: collateral<{ id: string }>('order:confirmed'),
-  failed: collateral<{ id: string; reason?: string }>('order:failed'),
-  compensated: collateral<{ id: string }>('order:compensated'),
+  created: collateral<{ id: string }>(),
+  reserved: collateral<{ id: string }>(),
+  charged: collateral<{ id: string }>(),
+  confirmed: collateral<{ id: string }>(),
+  failed: collateral<{ id: string; reason?: string }>(),
+  compensated: collateral<{ id: string }>(),
 };
 
 // Reserve inventory → emits reserved/failed (owned by reservation)
-export const reservation = neuron('reservation', {
+export const reservation = neuron({
   reserved: order.reserved,
   failed: order.failed,
 }).dendrite({
@@ -41,7 +41,7 @@ export const reservation = neuron('reservation', {
 });
 
 // Charge payment → emits charged/failed; also compensates on failure (releases stock)
-export const payment = neuron('payment', {
+export const payment = neuron({
   charged: order.charged,
   failed: order.failed,
   compensated: order.compensated,
@@ -64,7 +64,7 @@ export const payment = neuron('payment', {
   });
 
 // Confirm order → emits confirmed
-export const confirmation = neuron('confirmation', {
+export const confirmation = neuron({
   confirmed: order.confirmed,
 }).dendrite({
   collateral: order.charged,
@@ -81,10 +81,10 @@ Long‑lived saga (multiple stimulations over time)
 - Use a small bridge neuron to map external events into domain collaterals (ownership preserved).
 
 ```ts
-const paymentReceivedExternal = collateral<{ id: string }>('ext:payment-received');
+const paymentReceivedExternal = collateral<{ id: string }>();
 
 // Bridge: converts external event into domain "charged" (owned by this bridge)
-export const paymentBridge = neuron('payment-bridge', { charged: order.charged })
+export const paymentBridge = neuron({ charged: order.charged })
   .dendrite({
     collateral: paymentReceivedExternal,
     response: (p, axon) => axon.charged.createSignal({ id: p.id }),

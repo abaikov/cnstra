@@ -7,12 +7,12 @@ description: Complete CNStra API reference. Learn neuron, collateral, signal, de
 keywords: [API reference, API documentation, neuron API, signal API, collateral API, dendrite API, axon API, context API, stimulation API, TypeScript API, type-safe API, function reference, method reference, interface reference]
 ---
 
-### `collateral<T>(id: string)`
+### `collateral<T>()`
 Create a typed output channel.
 
 ```ts
-const userEvent = collateral<{ userId: string }>('user:event');
-const simpleEvent = collateral('simple:event');
+const userEvent = collateral<{ userId: string }>();
+const simpleEvent = collateral();
 ```
 
 ### `collateral.createSignal(payload?)`
@@ -23,17 +23,17 @@ const signal = userEvent.createSignal({ userId: '123' });
 const emptySignal = simpleEvent.createSignal(); // no payload
 ```
 
-### `neuron(id: string, axon: Axon)`
-Create a neuron with the given axon.
+### `neuron(axon: Axon)`
+Create a neuron with the given axon (neuron identity is the object itself).
 
 ```ts
-const myNeuron = neuron('my-neuron', { output: myCollateral });
+const myNeuron = neuron({ output: myCollateral });
 ```
 
 ### Signal ownership
 
 ::::warning Signal ownership
-A neuron may emit only collaterals declared in its own axon. It must not emit another neuron's collaterals. Cross-neuron orchestration is done by having a controller own request collaterals and letting each domain neuron emit its own responses.
+Recommended: a neuron should emit only collaterals declared in its own axon. Cross-neuron orchestration is typically done by having a controller own request collaterals and letting each domain neuron emit its own responses.
 ::::
 
 Incorrect (emits someone else's collateral):
@@ -46,8 +46,8 @@ return otherAxon.some.createSignal(result);
 Correct (controller-owned request, domain emits its own):
 
 ```ts
-const controller = neuron('controller', { requestA });
-const serviceA = neuron('serviceA', { doneA })
+const controller = neuron({ requestA });
+const serviceA = neuron({ doneA })
   .dendrite({ collateral: requestA, response: (_, axon) => axon.doneA.createSignal(...) });
 // controller emits requestA; serviceA emits doneA
 ```
@@ -72,7 +72,7 @@ Exhaustive bind to every collateral of another neuron's axon (compile-time safet
 
 ```ts
 // Context is for per-neuron per-stimulation metadata, not business data
-withCtx<{ attempt: number }>().neuron('order-mailer', {})
+withCtx<{ attempt: number }>().neuron({})
   .bind(order, {
     created: (payload, axon, ctx) => { 
       // Context stores per-neuron per-stimulation metadata
@@ -89,7 +89,7 @@ withCtx<{ attempt: number }>().neuron('order-mailer', {})
 Set per-neuron global concurrency limit (shared across all parallel stimulations).
 
 ```ts
-const worker = neuron('worker', { out })
+const worker = neuron({ out })
   .setConcurrency(2) // max 2 parallel executions across all runs
   .dendrite({ collateral: task, response: async (p, axon) => { /* ... */ } });
 ```
@@ -100,7 +100,7 @@ This limits how many concurrent executions of this neuron's dendrites can run at
 Set maximum execution duration for this neuron's dendrites. If exceeded, the dendrite execution will be aborted.
 
 ```ts
-const worker = neuron('worker', { out })
+const worker = neuron({ out })
   .setMaxDuration(5000) // 5 seconds max
   .dendrite({ collateral: task, response: async (p, axon) => { /* ... */ } });
 ```
@@ -135,7 +135,7 @@ Start a stimulation with activation tasks directly. Useful for advanced scenario
 
 ```ts
 const tasks: TCNSNeuronActivationTask[] = [
-  { stimulationId: 'run-1', neuronId: 'worker', dendriteCollateralName: 'task', input: signal }
+  { neuron: worker, dendriteCollateral: task, input: signal }
 ];
 const stimulation = cns.activate(tasks, { concurrency: 4 });
 await stimulation.waitUntilComplete();
@@ -151,10 +151,9 @@ const stimulation = cns.stimulate(signal, {
   abortSignal,                 // Abort the whole run cooperatively
   concurrency: 4,              // Per-stimulation parallelism
   maxNeuronHops:  undefined,   // Disabled by default; set to cap traversal length
-  allowName: (neuronName) => true, // Filter allowed neurons by name
-  stimulationId: 'run-123',    // Optional id for tracing
-  ctx,                         // Pre-supplied context store
-  contextValues: { 'neuron-id': { attempt: 0 } }, // Pre-populate context values
+  ctx,                         // Optional: reuse an existing context store (in‑process)
+  modality,                    // Optional: modality selection for modalityDendrite
+  afferentPath,                // Optional: afferent path selection for modalityDendrite
 });
 await stimulation.waitUntilComplete();
 ```
@@ -166,12 +165,11 @@ Both `onResponse` and global listeners receive the same object:
 {
   inputSignal?: TCNSSignal;    // when a signal is ingested
   outputSignal?: TCNSSignal;   // when a dendrite returns a continuation
-  contextValue: TCNSStimulationSerializedContextValue; // per-neuron per-stimulation metadata (not business data)
+  contextValue: Map<object, unknown>; // per-neuron per-stimulation metadata (not business data)
   queueLength: number;         // current work queue size
   stimulation: CNSStimulation; // reference to the stimulation instance
   error?: Error;               // when a dendrite throws
   hops?: number;               // present if maxNeuronHops is set
-  stimulationId?: string;     // unique identifier for this stimulation
 }
 ```
 
@@ -185,9 +183,9 @@ const off = cns.addResponseListener((r) => {
     return;
   }
   if (r.outputSignal) {
-    trace.log('out', r.outputSignal.collateralName);
+    trace.log('out', r.outputSignal.collateral);
   } else if (r.inputSignal) {
-    trace.log('in', r.inputSignal.collateralName);
+    trace.log('in', r.inputSignal.collateral);
   }
 });
 
@@ -227,16 +225,7 @@ Access network analysis utilities:
 
 ```ts
 // Get subscribers for a collateral
-const subscribers = cns.network.getSubscribers('user:created');
-
-// Get neuron by name
-const neuron = cns.network.getNeuronByName('user-service');
-
-// Get collateral by name
-const collateral = cns.network.getCollateralByName('user:created');
-
-// Get all neurons
-const neurons = cns.network.getNeurons();
+const subscribers = cns.network.getSubscribers(userEvent);
 
 // Get all collaterals
 const collaterals = cns.network.getCollaterals();
@@ -249,4 +238,4 @@ Notes
 - Local `onResponse` (per stimulation) runs as well as global listeners; both can be `async`.
 - All listeners run in parallel per response; errors from any listener reject the `stimulation.waitUntilComplete()` Promise.
 - If all listeners are synchronous, no extra async deferrals are introduced.
-- Use `allowName`/`maxNeuronHops` to constrain traversal if needed.
+- Use `maxNeuronHops` to constrain traversal if needed.

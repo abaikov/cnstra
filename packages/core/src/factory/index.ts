@@ -7,160 +7,63 @@ import { ICNS } from '../interfaces/ICNS';
 import { TCNSModality } from '../types/TCNSModality';
 import { TCNSAfferentPath } from '../types/TCNSAfferentPath';
 import { TCNSStimulationOptions } from '../types/TCNSStimulationOptions';
-import { TCNSSignal } from '../types/TCNSSignal';
 
-export const collateral = <TPayload = undefined, TName extends string = string>(
-    name: TName
-) => new CNSCollateral<TName, TPayload>(name);
-
-// Helper types to extract collateral Name/Payload for a given key from a heterogenous axon-like object
-type PayloadOf<TAxon, K extends keyof TAxon> = TAxon[K] extends CNSCollateral<
-    any,
-    infer P
->
-    ? P
-    : never;
-type NameOf<TAxon, K extends keyof TAxon> = TAxon[K] extends CNSCollateral<
-    infer N,
-    any
->
-    ? N
-    : never;
+export const collateral = <TPayload = undefined>() =>
+    new CNSCollateral<TPayload>();
 
 // Helper type to extract payload union from an array of collaterals
 // Uses distributive conditional type to properly extract union, not intersection
 // Works with both arrays and tuples
 type CollateralPayloadUnion<
-    TCollaterals extends readonly CNSCollateral<any, any>[]
+    TCollaterals extends readonly CNSCollateral<unknown>[]
 > = {
-    [K in keyof TCollaterals]: TCollaterals[K] extends CNSCollateral<
-        any,
-        infer P
-    >
+    [K in keyof TCollaterals]: TCollaterals[K] extends CNSCollateral<infer P>
         ? P
         : never;
 }[number];
 
-type InterNeuronAPI<
-    TContextValue,
-    TNameType extends string,
-    TReceiverCollateralName extends string,
-    TReceiverAxonCollateralPayload,
-    TAxonType extends TCNSAxon<
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload
-    >
-> = {
-    name: TNameType;
+type InterNeuronAPI<TContextValue, TAxonType extends TCNSAxon = TCNSAxon> = {
     axon: TAxonType;
     concurrency?: number;
     maxDuration?: number;
-    dendrites: TCNSDendrite<
-        TContextValue,
-        string,
-        unknown,
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload,
-        TAxonType
-    >[];
+    dendrites: TCNSDendrite<TContextValue, CNSCollateral<unknown>, TAxonType>[];
     setConcurrency: (
         n: number | undefined
-    ) => InterNeuronAPI<
-        TContextValue,
-        TNameType,
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload,
-        TAxonType
-    >;
+    ) => InterNeuronAPI<TContextValue, TAxonType>;
     setMaxDuration: (
         ms: number | undefined
-    ) => InterNeuronAPI<
-        TContextValue,
-        TNameType,
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload,
-        TAxonType
-    >;
-    bind: <TFollowAxon extends Record<string, CNSCollateral<any, any>>>(
+    ) => InterNeuronAPI<TContextValue, TAxonType>;
+    bind: <TFollowAxon extends Record<string, CNSCollateral<unknown>>>(
         axon: TFollowAxon,
         dendrites: {
             [K in keyof TFollowAxon]:
+                | TCNSDendrite<TContextValue, TFollowAxon[K], TAxonType>
                 | TCNSDendrite<
                       TContextValue,
-                      NameOf<TFollowAxon, K> & string,
-                      PayloadOf<TFollowAxon, K>,
-                      TReceiverCollateralName,
-                      TReceiverAxonCollateralPayload,
-                      TAxonType
-                  >
-                | TCNSDendrite<
-                      TContextValue,
-                      NameOf<TFollowAxon, K> & string,
-                      PayloadOf<TFollowAxon, K>,
-                      TReceiverCollateralName,
-                      TReceiverAxonCollateralPayload,
+                      TFollowAxon[K],
                       TAxonType
                   >['response'];
         }
-    ) => InterNeuronAPI<
-        TContextValue,
-        TNameType,
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload,
-        TAxonType
-    >;
+    ) => InterNeuronAPI<TContextValue, TAxonType>;
     dendrite: {
-        // Overload for single collateral - type inferred from collateral value
-        <TSenderCollateral extends CNSCollateral<string, any>>(s: {
+        <TSenderCollateral extends CNSCollateral<unknown>>(s: {
             collateral: TSenderCollateral;
             response: (
-                payload: TSenderCollateral extends CNSCollateral<any, infer P>
+                payload: TSenderCollateral extends CNSCollateral<infer P>
                     ? P
                     : never,
                 axon: TAxonType,
                 ctx: TCNSLocalContextValueStore<TContextValue> & {
                     abortSignal?: AbortSignal;
-                    cns?: ICNS<any, any, any>;
-                    stimulationId?: string;
+                    cns?: ICNS<any, any>;
+                    stimulation?: any;
                 }
-            ) => TNCNeuronResponseReturn<
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload
-            >;
-        }): InterNeuronAPI<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TAxonType
-        >;
-        // Overload for TCNSDendrite type
-        <
-            TSenderExactCollateralName extends string,
-            TSenderExactAxonCollateralPayload
-        >(
-            s: TCNSDendrite<
-                TContextValue,
-                TSenderExactCollateralName,
-                TSenderExactAxonCollateralPayload,
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload,
-                TAxonType
-            >
-        ): InterNeuronAPI<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TAxonType
-        >;
-        // Overload for array/tuple of collaterals with automatic union inference
-        // Using variadic tuple types to automatically preserve individual collateral types
-        // This overload works with tuple literals (automatically inferred)
+            ) => TNCNeuronResponseReturn<TAxonType>;
+        }): InterNeuronAPI<TContextValue, TAxonType>;
         <
             TCollaterals extends readonly [
-                CNSCollateral<string, any>,
-                ...CNSCollateral<string, any>[]
+                CNSCollateral<unknown>,
+                ...CNSCollateral<unknown>[]
             ]
         >(s: {
             collateral: TCollaterals;
@@ -169,105 +72,53 @@ type InterNeuronAPI<
                 axon: TAxonType,
                 ctx: TCNSLocalContextValueStore<TContextValue> & {
                     abortSignal?: AbortSignal;
-                    cns?: ICNS<any, any, any>;
-                    stimulationId?: string;
+                    cns?: ICNS<any, any>;
+                    stimulation?: any;
                 }
-            ) => TNCNeuronResponseReturn<
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload
-            >;
-        }): InterNeuronAPI<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TAxonType
-        >;
-        // Overload for regular arrays (fallback)
-        <TCollaterals extends readonly CNSCollateral<string, any>[]>(s: {
-            collateral: TCollaterals;
-            response: (
-                payload: CollateralPayloadUnion<TCollaterals>,
-                axon: TAxonType,
-                ctx: TCNSLocalContextValueStore<TContextValue> & {
-                    abortSignal?: AbortSignal;
-                    cns?: ICNS<any, any, any>;
-                    stimulationId?: string;
-                }
-            ) => TNCNeuronResponseReturn<
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload
-            >;
-        }): InterNeuronAPI<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TAxonType
-        >;
-        // Overload for explicit union type (Type1 | Type2 | Type3) - more explicit and flexible
+            ) => TNCNeuronResponseReturn<TAxonType>;
+        }): InterNeuronAPI<TContextValue, TAxonType>;
         <TPayloadUnion>(s: {
-            collateral: CNSCollateral<string, any>[];
+            collateral: CNSCollateral<unknown>[];
             response: (
                 payload: TPayloadUnion,
                 axon: TAxonType,
                 ctx: TCNSLocalContextValueStore<TContextValue> & {
                     abortSignal?: AbortSignal;
-                    cns?: ICNS<any, any, any>;
-                    stimulationId?: string;
+                    cns?: ICNS<any, any>;
+                    stimulation?: any;
                 }
-            ) => TNCNeuronResponseReturn<
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload
-            >;
-        }): InterNeuronAPI<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TAxonType
-        >;
+            ) => TNCNeuronResponseReturn<TAxonType>;
+        }): InterNeuronAPI<TContextValue, TAxonType>;
+        (
+            s: TCNSDendrite<TContextValue, CNSCollateral<unknown>, TAxonType>
+        ): InterNeuronAPI<TContextValue, TAxonType>;
     };
     modalityDendrite: {
-        // Overload for single modality
-        <
-            TSenderCollateral extends CNSCollateral<string, any>,
-            TModalityName extends string,
-            TAfferentPathName extends string,
-            TParentAfferentPathName extends string,
-            TResult,
-            TSenderPayload = TSenderCollateral extends CNSCollateral<
-                any,
-                infer P
-            >
-                ? P
-                : never
-        >(s: {
+        <TSenderCollateral extends CNSCollateral<unknown>, TResult>(s: {
             collateral: TSenderCollateral;
-            modality: TCNSModality<
-                TModalityName,
-                TAfferentPathName,
-                TParentAfferentPathName
-            >;
-            afferentPaths?: {
-                [P in TAfferentPathName]?: (
-                    payload: TSenderPayload,
+            modality: TCNSModality;
+            afferentPaths?: Map<
+                TCNSAfferentPath,
+                (
+                    payload: TSenderCollateral extends CNSCollateral<infer P>
+                        ? P
+                        : never,
                     axon: TAxonType,
                     ctx: TCNSLocalContextValueStore<TContextValue> & {
                         abortSignal?: AbortSignal;
-                        cns?: ICNS<any, any, any>;
-                        stimulationId?: string;
+                        cns?: ICNS<any, any>;
                         stimulation?: any;
                     }
-                ) => TResult | Promise<TResult>;
-            };
+                ) => TResult | Promise<TResult>
+            >;
             default?: (
-                payload: TSenderPayload,
+                payload: TSenderCollateral extends CNSCollateral<infer P>
+                    ? P
+                    : never,
                 axon: TAxonType,
                 ctx: TCNSLocalContextValueStore<TContextValue> & {
                     abortSignal?: AbortSignal;
-                    cns?: ICNS<any, any, any>;
-                    stimulationId?: string;
+                    cns?: ICNS<any, any>;
                     stimulation?: any;
                 }
             ) => TResult | Promise<TResult>;
@@ -276,65 +127,51 @@ type InterNeuronAPI<
                 axon: TAxonType,
                 ctx: TCNSLocalContextValueStore<TContextValue> & {
                     abortSignal?: AbortSignal;
-                    cns?: ICNS<any, any, any>;
-                    stimulationId?: string;
+                    cns?: ICNS<any, any>;
                     stimulation?: any;
                 }
-            ) => TNCNeuronResponseReturn<
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload
-            >;
-        }): InterNeuronAPI<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TAxonType
-        >;
-        // Overload for multiple modalities
-        <
-            TSenderCollateral extends CNSCollateral<string, any>,
-            TResult,
-            TSenderPayload = TSenderCollateral extends CNSCollateral<
-                any,
-                infer P
-            >
-                ? P
-                : never
-        >(s: {
+            ) => TNCNeuronResponseReturn<TAxonType>;
+        }): InterNeuronAPI<TContextValue, TAxonType>;
+        <TSenderCollateral extends CNSCollateral<unknown>, TResult>(s: {
             collateral: TSenderCollateral;
             modalities: Array<{
-                modality: TCNSModality<string, string, string>;
-                afferentPaths?: {
-                    [key: string]: (
-                        payload: TSenderPayload,
+                modality: TCNSModality;
+                afferentPaths?: Map<
+                    TCNSAfferentPath,
+                    (
+                        payload: TSenderCollateral extends CNSCollateral<
+                            infer P
+                        >
+                            ? P
+                            : never,
                         axon: TAxonType,
                         ctx: TCNSLocalContextValueStore<TContextValue> & {
                             abortSignal?: AbortSignal;
-                            cns?: ICNS<any, any, any>;
-                            stimulationId?: string;
+                            cns?: ICNS<any, any>;
                             stimulation?: any;
                         }
-                    ) => TResult | Promise<TResult>;
-                };
+                    ) => TResult | Promise<TResult>
+                >;
                 default?: (
-                    payload: TSenderPayload,
+                    payload: TSenderCollateral extends CNSCollateral<infer P>
+                        ? P
+                        : never,
                     axon: TAxonType,
                     ctx: TCNSLocalContextValueStore<TContextValue> & {
                         abortSignal?: AbortSignal;
-                        cns?: ICNS<any, any, any>;
-                        stimulationId?: string;
+                        cns?: ICNS<any, any>;
                         stimulation?: any;
                     }
                 ) => TResult | Promise<TResult>;
             }>;
             default?: (
-                payload: TSenderPayload,
+                payload: TSenderCollateral extends CNSCollateral<infer P>
+                    ? P
+                    : never,
                 axon: TAxonType,
                 ctx: TCNSLocalContextValueStore<TContextValue> & {
                     abortSignal?: AbortSignal;
-                    cns?: ICNS<any, any, any>;
-                    stimulationId?: string;
+                    cns?: ICNS<any, any>;
                     stimulation?: any;
                 }
             ) => TResult | Promise<TResult>;
@@ -343,21 +180,11 @@ type InterNeuronAPI<
                 axon: TAxonType,
                 ctx: TCNSLocalContextValueStore<TContextValue> & {
                     abortSignal?: AbortSignal;
-                    cns?: ICNS<any, any, any>;
-                    stimulationId?: string;
+                    cns?: ICNS<any, any>;
                     stimulation?: any;
                 }
-            ) => TNCNeuronResponseReturn<
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload
-            >;
-        }): InterNeuronAPI<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TAxonType
-        >;
+            ) => TNCNeuronResponseReturn<TAxonType>;
+        }): InterNeuronAPI<TContextValue, TAxonType>;
     };
 };
 
@@ -372,54 +199,17 @@ type ExtractResultFromOutput<T> = T extends (
 // Concrete builder
 export const neuron = <
     TContextValue,
-    TNameType extends string,
-    TProvidedAxon extends Record<string, CNSCollateral<any, any>>,
-    TReceiverCollateralName extends keyof TProvidedAxon &
-        string = keyof TProvidedAxon & string,
-    TReceiverAxonCollateralPayload = TProvidedAxon[keyof TProvidedAxon] extends CNSCollateral<
-        any,
-        infer P
-    >
-        ? P
-        : never
+    TProvidedAxon extends Record<string, CNSCollateral<unknown>>
 >(
-    name: TNameType,
     axon: TProvidedAxon
-): InterNeuronAPI<
-    TContextValue,
-    TNameType,
-    TReceiverCollateralName,
-    TReceiverAxonCollateralPayload,
-    TCNSAxon<
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload,
-        TProvidedAxon
-    >
-> => {
+): InterNeuronAPI<TContextValue, TCNSAxon<TProvidedAxon>> => {
     const dendrites: TCNSDendrite<
         TContextValue,
-        string,
-        unknown,
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload,
-        TCNSAxon<
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TProvidedAxon
-        >
+        CNSCollateral<unknown>,
+        TCNSAxon<TProvidedAxon>
     >[] = [];
 
-    const api: InterNeuronAPI<
-        TContextValue,
-        TNameType,
-        TReceiverCollateralName,
-        TReceiverAxonCollateralPayload,
-        TCNSAxon<
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TProvidedAxon
-        >
-    > = {
+    const api: InterNeuronAPI<TContextValue, TCNSAxon<TProvidedAxon>> = {
         setConcurrency: (n: number | undefined) => {
             api.concurrency = n;
             return api;
@@ -441,32 +231,14 @@ export const neuron = <
                 dendrites.push(
                     dendrite as TCNSDendrite<
                         TContextValue,
-                        string,
-                        unknown,
-                        any,
-                        any,
-                        any
+                        CNSCollateral<unknown>,
+                        TCNSAxon<TProvidedAxon>
                     >
                 );
             }
             return api;
-        }) as InterNeuronAPI<
-            TContextValue,
-            TNameType,
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TCNSAxon<
-                TReceiverCollateralName,
-                TReceiverAxonCollateralPayload,
-                TProvidedAxon
-            >
-        >['bind'],
-        axon: axon as unknown as TCNSAxon<
-            TReceiverCollateralName,
-            TReceiverAxonCollateralPayload,
-            TProvidedAxon
-        >,
-        name,
+        }) as InterNeuronAPI<TContextValue, TCNSAxon<TProvidedAxon>>['bind'],
+        axon: axon as unknown as TCNSAxon<TProvidedAxon>,
         concurrency: undefined,
         maxDuration: undefined,
         dendrites,
@@ -482,7 +254,7 @@ export const neuron = <
                     dendrites.push({
                         collateral,
                         response: s.response,
-                    } as TCNSDendrite<TContextValue, string, unknown, TReceiverCollateralName, TReceiverAxonCollateralPayload, TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload, TProvidedAxon>>);
+                    } as TCNSDendrite<TContextValue, CNSCollateral<unknown>, TCNSAxon<TProvidedAxon>>);
                 }
             } else {
                 // Either full dendrite object or shorthand with single collateral
@@ -490,15 +262,8 @@ export const neuron = <
                 dendrites.push(
                     s as TCNSDendrite<
                         TContextValue,
-                        string,
-                        unknown,
-                        TReceiverCollateralName,
-                        TReceiverAxonCollateralPayload,
-                        TCNSAxon<
-                            TReceiverCollateralName,
-                            TReceiverAxonCollateralPayload,
-                            TProvidedAxon
-                        >
+                        CNSCollateral<unknown>,
+                        TCNSAxon<TProvidedAxon>
                     >
                 );
             }
@@ -517,8 +282,8 @@ export const neuron = <
 
             // Normalize to array format for unified processing
             const modalityConfigs: Array<{
-                modality: TCNSModality<string, string, string>;
-                afferentPaths?: Record<string, any>;
+                modality: TCNSModality;
+                afferentPaths?: Map<TCNSAfferentPath, any>;
                 default?: any;
             }> = multipleModalities
                 ? multipleModalities
@@ -535,14 +300,7 @@ export const neuron = <
             const response = (payload: any, axon: any, ctx: any) => {
                 const stimulation = ctx.stimulation as
                     | {
-                          options?: TCNSStimulationOptions<
-                              string,
-                              unknown,
-                              unknown,
-                              string,
-                              string,
-                              string
-                          >;
+                          options?: TCNSStimulationOptions<any>;
                       }
                     | undefined;
 
@@ -550,10 +308,8 @@ export const neuron = <
 
                 const runGlobalDefault = () => {
                     if (!globalDefaultHandler) {
-                        const modalityName =
-                            stimOptions?.modality?.name || 'unknown';
                         throw new Error(
-                            `modalityDendrite: No handler found for modality "${modalityName}" and no default handler provided`
+                            `modalityDendrite: No handler found for modality and no default handler provided`
                         );
                     }
 
@@ -570,30 +326,29 @@ export const neuron = <
                     return runGlobalDefault();
                 }
 
-                // Find matching modality config
+                // Find matching modality config by object reference
                 const matchingConfig = modalityConfigs.find(
-                    config =>
-                        config.modality.name === stimOptions.modality?.name
+                    config => config.modality === stimOptions.modality
                 );
 
                 if (!matchingConfig) {
                     return runGlobalDefault();
                 }
 
-                const pathName = stimOptions.afferentPath?.name as
-                    | string
-                    | undefined;
+                const stimAfferentPath = stimOptions.afferentPath;
 
-                const handler = pathName
-                    ? matchingConfig.afferentPaths?.[pathName]
-                    : undefined;
+                // Find handler by afferent path object reference
+                const handler =
+                    stimAfferentPath && matchingConfig.afferentPaths
+                        ? matchingConfig.afferentPaths.get(stimAfferentPath)
+                        : undefined;
 
                 const effectiveHandler =
                     handler ?? matchingConfig.default ?? globalDefaultHandler;
 
                 if (!effectiveHandler) {
                     throw new Error(
-                        `modalityDendrite: No handler found for afferent path "${pathName}" in modality "${matchingConfig.modality.name}" and no default handler provided`
+                        `modalityDendrite: No handler found for afferent path in modality and no default handler provided`
                     );
                 }
 
@@ -638,7 +393,7 @@ export const neuron = <
             dendrites.push({
                 collateral,
                 response,
-            } as TCNSDendrite<TContextValue, string, unknown, TReceiverCollateralName, TReceiverAxonCollateralPayload, TCNSAxon<TReceiverCollateralName, TReceiverAxonCollateralPayload, TProvidedAxon>>);
+            } as TCNSDendrite<TContextValue, CNSCollateral<unknown>, TCNSAxon<TProvidedAxon>>);
 
             return api;
         },
@@ -648,57 +403,27 @@ export const neuron = <
 };
 
 export const withCtx = <TContextValue>() => ({
-    neuron: <
-        TNameType extends string,
-        TProvidedAxon extends Record<string, CNSCollateral<any, any>>
-    >(
-        name: TNameType,
+    neuron: <TProvidedAxon extends Record<string, CNSCollateral<unknown>>>(
         axon: TProvidedAxon
     ) => {
-        return neuron<TContextValue, TNameType, TProvidedAxon>(name, axon);
+        return neuron<TContextValue, TProvidedAxon>(axon);
     },
 });
 
-// Helper type to extract all possible parent afferent path names from afferent paths
-type ExtractParentAfferentPathNames<
-    TAfferentPaths extends Record<string, TCNSAfferentPath<string, string>>
-> = {
-    [K in keyof TAfferentPaths]: TAfferentPaths[K]['parentAfferentPathName'];
-}[keyof TAfferentPaths] &
-    (keyof TAfferentPaths & string);
-
-export const afferentPath = <
-    TName extends string,
-    TParentAfferentPathName extends string = string
->(
-    name: TName,
-    parentAfferentPathName?: TParentAfferentPathName
-): TCNSAfferentPath<TName, TParentAfferentPathName> => {
+export const afferentPath = (
+    parentAfferentPath?: TCNSAfferentPath
+): TCNSAfferentPath => {
     return {
-        name,
-        ...(parentAfferentPathName !== undefined && {
-            parentAfferentPathName,
+        ...(parentAfferentPath !== undefined && {
+            parentAfferentPath,
         }),
     };
 };
 
-export const modality = <
-    TName extends string,
-    TAfferentPaths extends Record<string, TCNSAfferentPath<string, string>>
->(
-    name: TName,
-    afferentPaths: TAfferentPaths
-): TCNSModality<
-    TName,
-    keyof TAfferentPaths & string,
-    ExtractParentAfferentPathNames<TAfferentPaths>
-> => {
+export const modality = (
+    afferentPaths: Record<string | number, TCNSAfferentPath>
+): TCNSModality => {
     return {
-        name,
-        afferentPaths: afferentPaths as unknown as TCNSModality<
-            TName,
-            keyof TAfferentPaths & string,
-            ExtractParentAfferentPathNames<TAfferentPaths>
-        >['afferentPaths'],
+        afferentPaths,
     };
 };

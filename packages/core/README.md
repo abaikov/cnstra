@@ -22,11 +22,11 @@ npm install @cnstra/core
 import { CNS, collateral, neuron } from '@cnstra/core';
 
 // Define collaterals (communication channels)
-const userCreated = collateral<{ id: string; name: string }>('user:created');
-const userRegistered = collateral<{ userId: string; status: string }>('user:registered');
+const userCreated = collateral<{ id: string; name: string }>();
+const userRegistered = collateral<{ userId: string; status: string }>();
 
 // Create a neuron
-const userService = neuron('user-service', {
+const userService = neuron({
   userRegistered
 })
 .dendrite({

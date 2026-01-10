@@ -29,6 +29,10 @@
   "exclude": [
     "node_modules",
     "dist",
+    "packages/**/dist",
+    "packages/**/coverage",
+    "docs/build",
+    "docs/node_modules",
     "**/*.test.ts",
     "**/*.test.js"
   ]

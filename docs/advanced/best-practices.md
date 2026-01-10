@@ -25,7 +25,7 @@ This guide covers best practices for building robust, maintainable CNStra applic
 
 ```ts
 const processor = withCtx<{ attempt: number; startTime: number }>()
-  .neuron('processor', { output })
+  .neuron({ output })
   .dendrite({
     collateral: input,
     response: async (payload, axon, ctx) => {
@@ -46,7 +46,7 @@ const processor = withCtx<{ attempt: number; startTime: number }>()
 
 ```ts
 const processor = withCtx<{ users: User[]; orders: Order[] }>()
-  .neuron('processor', { output })
+  .neuron({ output })
   .dendrite({
     collateral: input,
     response: async (payload, axon, ctx) => {
@@ -77,12 +77,12 @@ const processor = withCtx<{ users: User[]; orders: Order[] }>()
 **✅ Good**: Separate collaterals for different outcomes
 
 ```ts
-const userCreated = collateral<{ userId: string }>('user:created');
+const userCreated = collateral<{ userId: string }>();
 const userUpdated = collateral<{ userId: string; changes: Record<string, unknown> }>('user:updated');
-const userDeleted = collateral<{ userId: string }>('user:deleted');
-const userError = collateral<{ userId: string; error: string }>('user:error');
+const userDeleted = collateral<{ userId: string }>();
+const userError = collateral<{ userId: string; error: string }>();
 
-const userHandler = neuron('userHandler', { userCreated, userUpdated, userDeleted, userError })
+const userHandler = neuron({ userCreated, userUpdated, userDeleted, userError })
   .dendrite({
     collateral: createUser,
     response: async (payload, axon) => {
@@ -99,9 +99,9 @@ const userHandler = neuron('userHandler', { userCreated, userUpdated, userDelete
 **❌ Bad**: Reusing collaterals for different purposes
 
 ```ts
-const userEvent = collateral<{ type: 'created' | 'updated' | 'deleted'; userId: string }>('user:event');
+const userEvent = collateral<{ type: 'created' | 'updated' | 'deleted'; userId: string }>();
 
-const userHandler = neuron('userHandler', { userEvent })
+const userHandler = neuron({ userEvent })
   .dendrite({
     collateral: createUser,
     response: async (payload, axon) => {
@@ -129,7 +129,7 @@ const userHandler = neuron('userHandler', { userEvent })
 **✅ Good**: Idempotent operations
 
 ```ts
-const processPayment = neuron('processPayment', { paymentProcessed })
+const processPayment = neuron({ paymentProcessed })
   .dendrite({
     collateral: paymentRequest,
     response: async (payload, axon) => {
@@ -165,7 +165,7 @@ const processPayment = neuron('processPayment', { paymentProcessed })
 **❌ Bad**: Non-idempotent operations
 
 ```ts
-const processPayment = neuron('processPayment', { paymentProcessed })
+const processPayment = neuron({ paymentProcessed })
   .dendrite({
     collateral: paymentRequest,
     response: async (payload, axon) => {
@@ -195,17 +195,17 @@ import { Queue, Worker, Job } from 'bullmq';
 import { CNS, neuron, withCtx, collateral } from '@cnstra/core';
 
 // Serializable data for the queue
-const processRequest = collateral<{ userId: string; blobId: string }>('processRequest');
-const processResult = collateral<{ userId: string; success: boolean }>('processResult');
+const processRequest = collateral<{ userId: string; blobId: string }>();
+const processResult = collateral<{ userId: string; success: boolean }>();
 
 // Non-serializable data (only within the process)
-const blobData = collateral<{ userId: string; blob: Blob }>('blobData');
-const blobProcessed = collateral<{ userId: string; success: boolean }>('blobProcessed');
+const blobData = collateral<{ userId: string; blob: Blob }>();
+const blobProcessed = collateral<{ userId: string; success: boolean }>();
 
 // Transaction neuron: creates inner stimulation with blob
 const ctxBuilder = withCtx<{ innerStimulation?: Promise<void> }>();
 
-const transactionNeuron = ctxBuilder.neuron('transaction', { processResult }).dendrite({
+const transactionNeuron = ctxBuilder.neuron({ processResult }).dendrite({
   collateral: processRequest,
   response: async (payload, axon, ctx) => {
     // Get blob from storage (non-serializable)
@@ -237,7 +237,7 @@ const transactionNeuron = ctxBuilder.neuron('transaction', { processResult }).de
 });
 
 // Neuron for processing blob (runs only within the process)
-const blobProcessor = neuron('blobProcessor', { blobProcessed }).dendrite({
+const blobProcessor = neuron({ blobProcessed }).dendrite({
   collateral: blobData,
   response: async (payload, axon, ctx) => {
     // Process blob (non-serializable object)
@@ -279,7 +279,7 @@ await queue.add('process', {
 ```
 
 **Key points:**
-- **Pass entire context store**: Use `ctx: ctx` (the store instance), not `contextValues: ctx.get()` (just values)
+- **Pass entire context store**: Use `ctx: ctx` (the store instance)
 - **Shared context**: Inner stimulation updates the same context store as parent
 - **Behaves as one stimulation**: For retries with persistence, both stimulations share the same context
 - **Non-serializable data stays in process**: Blobs and handles never leave the process memory
@@ -307,21 +307,15 @@ await queue.add('process', {
 
 ```ts
 // User interaction signal
-const createDeckWithCardButtonClick = collateral<{ userId: string; deckName: string }>(
-  'create-deck-with-card-button-click'
-);
+const createDeckWithCardButtonClick = collateral<{ userId: string; deckName: string }>();
 
 // Deck neuron response
-const createDeckWithCardButtonClickDeckCreated = collateral<{ deckId: string; userId: string }>(
-  'create-deck-with-card-button-click:deck:deck-created'
-);
+const createDeckWithCardButtonClickDeckCreated = collateral<{ deckId: string; userId: string }>();
 
 // Card neuron response
-const createDeckWithCardButtonClickCardCreated = collateral<{ cardId: string; deckId: string }>(
-  'create-deck-with-card-button-click:deck:card-created'
-);
+const createDeckWithCardButtonClickCardCreated = collateral<{ cardId: string; deckId: string }>();
 
-const deckNeuron = neuron('deckNeuron', { createDeckWithCardButtonClickDeckCreated })
+const deckNeuron = neuron({ createDeckWithCardButtonClickDeckCreated })
   .dendrite({
     collateral: createDeckWithCardButtonClick,
     response: async (payload, axon) => {
@@ -333,7 +327,7 @@ const deckNeuron = neuron('deckNeuron', { createDeckWithCardButtonClickDeckCreat
     },
   });
 
-const cardNeuron = neuron('cardNeuron', { createDeckWithCardButtonClickCardCreated })
+const cardNeuron = neuron({ createDeckWithCardButtonClickCardCreated })
   .dendrite({
     collateral: createDeckWithCardButtonClickDeckCreated,
     response: async (payload, axon) => {
@@ -355,11 +349,11 @@ const cardNeuron = neuron('cardNeuron', { createDeckWithCardButtonClickCardCreat
 
 ```ts
 // ❌ Generic signal reused for multiple interactions
-const buttonClick = collateral<{ action: string; userId: string }>('button-click');
-const entityCreated = collateral<{ type: string; id: string }>('entity-created');
+const buttonClick = collateral<{ action: string; userId: string }>();
+const entityCreated = collateral<{ type: string; id: string }>();
 
 // Hard to trace which button click caused which creation
-const handler = neuron('handler', { entityCreated })
+const handler = neuron({ entityCreated })
   .dendrite({
     collateral: buttonClick,
     response: async (payload, axon) => {

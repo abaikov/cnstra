@@ -1,10 +1,9 @@
 import { TCNSNeuronActivationTask } from './TCNSNeuronActivationTask';
 
 export type TCNSNeuronActivationTaskFailure<
-    TCollateralName extends string = string,
-    TNeuronName extends string = string
+    TNeuron extends object = object
 > = {
-    task: TCNSNeuronActivationTask<TCollateralName, TNeuronName>;
+    task: TCNSNeuronActivationTask<TNeuron>;
     error: Error;
     aborted: boolean;
 };

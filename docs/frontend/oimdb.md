@@ -298,10 +298,10 @@ export const users = new OIMRICollection(dbEventQueue, {
 });
 
 // Define UI/update collateral
-const userUpdated = collateral<{ id: string; name: string }>('user:updated');
+const userUpdated = collateral<{ id: string; name: string }>();
 
 // Controlling neuron updates models and returns nothing (end of branch)
-export const usersNeuron = neuron('users', {}).dendrite({
+export const usersNeuron = neuron({}).dendrite({
   collateral: userUpdated,
   response: (payload) => {
     users.collection.upsertOne({ id: payload.id, name: payload.name });
@@ -346,23 +346,23 @@ export const posts = new OIMRICollection(dbEventQueue, {
 const userAndPostUpdated = collateral<{
   user: { id: string; name: string };
   post: { id: string; title: string; authorId: string };
-}>('user+post:updated');
+}>();
 
 // Controller-owned single update signal
 const controllerUpdated = collateral<{
   user: { id: string; name: string };
   post: { id: string; title: string; authorId: string };
-}>('controller:updated');
+}>();
 
 // Controller receives inbound and emits one outbound
-export const controller = neuron('controller', { controllerUpdated })
+export const controller = neuron({ controllerUpdated })
   .dendrite({
     collateral: userAndPostUpdated,
     response: (payload, axon) => axon.controllerUpdated.createSignal(payload),
   });
 
 // Domain neurons update their own collections
-export const userModel = neuron('user-model', {}).dendrite({
+export const userModel = neuron({}).dendrite({
   collateral: controllerUpdated,
   response: (p) => {
     users.collection.upsertOne(p.user);
@@ -370,7 +370,7 @@ export const userModel = neuron('user-model', {}).dendrite({
   },
 });
 
-export const postModel = neuron('post-model', {}).dendrite({
+export const postModel = neuron({}).dendrite({
   collateral: controllerUpdated,
   response: (p) => {
     posts.collection.upsertOne(p.post);
@@ -421,17 +421,17 @@ export const cards = new OIMRICollection(dbEventQueue, {
 });
 
 // Collaterals
-const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>('ui:createCardClick');
-const controllerCreateDeckForCard = collateral<{ title: string; cardTitle: string }>('controller:deck:createForCard');
-const controllerCreateCard = collateral<{ deckId: string; cardId: string; title: string }>('controller:card:create');
-const deckCreatedForCard = collateral<{ deckId: string; title: string; cardTitle: string }>('deck:createdForCard');
+const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>();
+const controllerCreateDeckForCard = collateral<{ title: string; cardTitle: string }>();
+const controllerCreateCard = collateral<{ deckId: string; cardId: string; title: string }>();
+const deckCreatedForCard = collateral<{ deckId: string; title: string; cardTitle: string }>();
 
 // Services (mocked)
 const generateDeckId = (title: string) => 'deck-' + Math.random().toString(36).slice(2);
 const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
 
 // Deck neuron: listens controller:deck:createForCard, emits deck:createdForCard, upserts OIMDB
-export const deckNeuron = neuron('deck', { deckCreatedForCard }).dendrite({
+export const deckNeuron = neuron({ deckCreatedForCard }).dendrite({
   collateral: controllerCreateDeckForCard,
   response: async (payload, axon) => {
     const deckId = generateDeckId();
@@ -441,7 +441,7 @@ export const deckNeuron = neuron('deck', { deckCreatedForCard }).dendrite({
 });
 
 // Card neuron: listens controller:card:create, upserts OIMDB
-export const cardNeuron = neuron('card', {}).dendrite({
+export const cardNeuron = neuron({}).dendrite({
   collateral: controllerCreateCard,
   response: async (payload) => {
     const cardId = generateCardId();
@@ -454,7 +454,7 @@ export const cardNeuron = neuron('card', {}).dendrite({
 
 // Controller neuron: emits only its own collaterals (controller:*)
 // Pass cardTitle through signal payloads, not context
-export const controller = neuron('controller', { controllerCreateDeckForCard, controllerCreateCard })
+export const controller = neuron({ controllerCreateDeckForCard, controllerCreateCard })
   .dendrite({
     collateral: uiCreateCardClick,
     response: (payload, axon) => {
@@ -504,15 +504,15 @@ export const cards = new OIMRICollection(dbEventQueue, {
 });
 
 // Collaterals
-const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>('ui:createCardClick');
-const deckCreatedForCard = collateral<{ deckId: string; cardTitle: string }>('deck:createdForCard');
+const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>();
+const deckCreatedForCard = collateral<{ deckId: string; cardTitle: string }>();
 
 // Services (mocked)
 const generateDeckId = (title: string) => 'deck-' + Math.random().toString(36).slice(2);
 const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
 
 // Deck neuron: listens to UI click, creates deck, emits deckCreatedForCard
-export const deckNeuron = neuron('deck', { deckCreatedForCard }).dendrite({
+export const deckNeuron = neuron({ deckCreatedForCard }).dendrite({
   collateral: uiCreateCardClick,
   response: async (payload, axon) => {
     const deckId = generateDeckId(payload.deckTitle);
@@ -522,7 +522,7 @@ export const deckNeuron = neuron('deck', { deckCreatedForCard }).dendrite({
 });
 
 // Card neuron: listens to deckCreatedForCard, creates card
-export const cardNeuron = neuron('card', {}).dendrite({
+export const cardNeuron = neuron({}).dendrite({
   collateral: deckCreatedForCard,
   response: async (payload) => {
     const cardId = generateCardId();

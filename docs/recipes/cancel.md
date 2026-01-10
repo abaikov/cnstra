@@ -27,7 +27,7 @@ Notes:
 Example: cooperative cancel inside a neuron
 
 ```ts
-const work = neuron('work', {}).dendrite({
+const work = neuron({}).dendrite({
   collateral: someInput,
   response: async (payload, axon, ctx) => {
     if (ctx.abortSignal?.aborted) return; // bail before starting

@@ -8,6 +8,9 @@ Data Transfer Objects (DTOs) for the CNStra DevTools protocol.
 
 The CNStra DevTools uses a normalized data model where neural network relationships are represented through separate entities rather than embedded relationships.
 
+> Note: `@cnstra/core` runtime routing is identity-based (signals carry a collateral *object reference*, neurons/collaterals do not have built-in names/ids).  
+> DevTools DTOs are the **persistence/debug layer** and therefore use stable string ids/names such as `collateralName`, `neuronId`, and `stimulationId`.
+
 ### Core Entities
 
 #### `Neuron`

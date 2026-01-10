@@ -1,6 +1,6 @@
 import { TCNSSignal } from '../types/TCNSSignal';
+import { CNSCollateral } from '../CNSCollateral';
 
-export interface ICNSCollateral<TName extends string, TPayload> {
-    name: TName;
-    createSignal(payload: TPayload): TCNSSignal<TName, TPayload>;
+export interface ICNSCollateral<TPayload> {
+    createSignal(payload: TPayload): TCNSSignal<CNSCollateral<TPayload>>;
 }

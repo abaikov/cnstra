@@ -1,7 +1,12 @@
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
-import { CNS } from '@cnstra/core';
-import { withCtx, collateral } from '@cnstra/core';
+import {
+    CNS,
+    CNSStimulationContextStore,
+    withCtx,
+    collateral,
+    type TCNSNeuronActivationTask,
+} from '@cnstra/core';
 
 describe('BullMQ Integration Tests', () => {
     let redis: Redis;
@@ -36,14 +41,14 @@ describe('BullMQ Integration Tests', () => {
 
     it('should preserve context and not re-execute completed tasks on retry (BullMQ)', async () => {
         const ctxBuilder = withCtx<{ executed: string[] }>();
-        const input = collateral<{ id: number }>('input');
-        const step1Out = collateral<{ id: number }>('step1Out');
-        const step2Out = collateral<{ id: number }>('step2Out');
-        const output = collateral<{ result: string }>('output');
+        const input = collateral<{ id: number }>();
+        const step1Out = collateral<{ id: number }>();
+        const step2Out = collateral<{ id: number }>();
+        const output = collateral<{ result: string }>();
 
         const executionLog: string[] = [];
 
-        const step1 = ctxBuilder.neuron('step1', { step1Out }).dendrite({
+        const step1 = ctxBuilder.neuron({ step1Out }).dendrite({
             collateral: input,
             response: async (payload, axon, ctx) => {
                 executionLog.push(`step1-${payload.id}`);
@@ -58,7 +63,7 @@ describe('BullMQ Integration Tests', () => {
             },
         });
 
-        const step2 = ctxBuilder.neuron('step2', { step2Out }).dendrite({
+        const step2 = ctxBuilder.neuron({ step2Out }).dendrite({
             collateral: step1Out,
             response: async (payload, axon, ctx) => {
                 executionLog.push(`step2-${payload.id}`);
@@ -73,7 +78,7 @@ describe('BullMQ Integration Tests', () => {
             },
         });
 
-        const step3 = ctxBuilder.neuron('step3', { output }).dendrite({
+        const step3 = ctxBuilder.neuron({ output }).dendrite({
             collateral: step2Out,
             response: async (payload, axon, ctx) => {
                 executionLog.push(`step3-${payload.id}`);
@@ -91,18 +96,98 @@ describe('BullMQ Integration Tests', () => {
 
         const cns = new CNS([step1, step2, step3]);
 
+        // Persist/restore for BullMQ progress payloads (JSON only)
+        type TestNeuron = typeof step1 | typeof step2 | typeof step3;
+        type PersistedSignal = { collateralId: string; payload?: unknown };
+        type PersistedTask = {
+            neuronId: string;
+            dendriteCollateralId: string;
+            input?: PersistedSignal;
+        };
+
+        const neuronId = new Map<TestNeuron, string>([
+            [step1, 'step1'],
+            [step2, 'step2'],
+            [step3, 'step3'],
+        ]);
+        const neuronById = new Map<string, TestNeuron>(
+            Array.from(neuronId.entries()).map(([n, id]) => [id, n])
+        );
+
+        type TestCollateral = typeof input | typeof step1Out | typeof step2Out | typeof output;
+
+        const collateralId = new Map<TestCollateral, string>([
+            [input, 'input'],
+            [step1Out, 'step1Out'],
+            [step2Out, 'step2Out'],
+            [output, 'output'],
+        ]);
+        const collateralById = new Map<string, TestCollateral>(
+            Array.from(collateralId.entries()).map(([c, id]) => [id, c])
+        );
+
+        const persistTask = (task: TCNSNeuronActivationTask<TestNeuron>): PersistedTask => {
+            const nId = neuronId.get(task.neuron);
+            if (!nId) throw new Error('Unknown neuron in task');
+
+            const dId = collateralId.get(task.dendriteCollateral);
+            if (!dId) throw new Error('Unknown dendriteCollateral in task');
+
+            const inSignal = task.input;
+            const persistedInput =
+                inSignal !== undefined
+                    ? (() => {
+                          const cId = collateralId.get(inSignal.collateral);
+                          if (!cId) throw new Error('Unknown input collateral in task');
+                          return { collateralId: cId, payload: inSignal.payload } satisfies PersistedSignal;
+                      })()
+                    : undefined;
+
+            return { neuronId: nId, dendriteCollateralId: dId, input: persistedInput };
+        };
+
+        const restoreTask = (t: PersistedTask): TCNSNeuronActivationTask<TestNeuron> => {
+            const neuron = neuronById.get(t.neuronId);
+            if (!neuron) throw new Error(`Unknown neuronId "${t.neuronId}"`);
+
+            const dendriteCollateral = collateralById.get(t.dendriteCollateralId);
+            if (!dendriteCollateral) {
+                throw new Error(`Unknown dendriteCollateralId "${t.dendriteCollateralId}"`);
+            }
+
+            const inputSignal =
+                t.input !== undefined
+                    ? (() => {
+                          const c = collateralById.get(t.input.collateralId);
+                          if (!c) throw new Error(`Unknown collateralId "${t.input.collateralId}"`);
+                          return { collateral: c, payload: t.input.payload };
+                      })()
+                    : undefined;
+
+            return {
+                neuron,
+                dendriteCollateral,
+                input: inputSignal,
+            };
+        };
+
         // BullMQ infra
         const queueName = `test-queue-${Date.now()}`;
         queue = new Queue(queueName, { connection: redis });
         queueEvents = new QueueEvents(queueName, { connection: redis });
 
         type SavedProgress = {
-            context: Record<string, unknown>;
+            // JSON-friendly representation of Map<object, unknown>
+            // We persist it as [neuronId, value] pairs.
+            context: Array<[string, unknown]>;
             failedTasks: Array<{
                 task: {
-                    stimulationId: string;
                     neuronId: string;
-                    dendriteCollateralName: string;
+                    dendriteCollateralId: string;
+                    input?: {
+                        collateralId: string;
+                        payload?: unknown;
+                    };
                 };
                 error: {
                     message: string;
@@ -115,8 +200,20 @@ describe('BullMQ Integration Tests', () => {
 
         worker = new Worker(
             queueName,
-            async (job: Job<{ signal: any }, { results: string[] }>) => {
-                const { signal } = job.data;
+            async (job: Job<{ signal: PersistedSignal }, { results: string[] }>) => {
+                const persistedSignal = job.data.signal;
+                const startCollateral = collateralById.get(
+                    persistedSignal.collateralId
+                );
+                if (!startCollateral) {
+                    throw new Error(
+                        `Unknown start collateralId "${persistedSignal.collateralId}"`
+                    );
+                }
+                const signal = {
+                    collateral: startCollateral,
+                    payload: persistedSignal.payload,
+                };
                 const results: string[] = [];
 
                 const savedProgress = job.progress as
@@ -129,15 +226,21 @@ describe('BullMQ Integration Tests', () => {
                     typeof savedProgress === 'object' &&
                     job.attemptsMade > 0
                 ) {
-                    const contextValues = savedProgress.context;
-                    const failedTasksToRetry = savedProgress.failedTasks.map(
-                        ft => ft.task
+                    const ctxMap = new Map<object, unknown>();
+                    for (const [nId, value] of savedProgress.context) {
+                        const n = neuronById.get(nId);
+                        if (n) ctxMap.set(n, value);
+                    }
+                    const ctxStore = new CNSStimulationContextStore(ctxMap);
+
+                    const failedTasksToRetry = savedProgress.failedTasks.map(ft =>
+                        restoreTask(ft.task)
                     );
 
                     const stimulation = cns.activate(failedTasksToRetry, {
-                        contextValues: contextValues as Record<string, unknown>,
+                        ctx: ctxStore,
                         onResponse: r => {
-                            if (r.outputSignal?.collateralName === 'output') {
+                            if (r.outputSignal?.collateral === output) {
                                 results.push(
                                     (
                                         r.outputSignal.payload as {
@@ -165,10 +268,16 @@ describe('BullMQ Integration Tests', () => {
                     await stimulation.waitUntilComplete();
                     return { results };
                 } catch (error: any) {
+                    const ctxEntries: Array<[string, unknown]> = [];
+                    for (const [key, value] of stimulation.getContext().getAll().entries()) {
+                        const nId = neuronId.get(key as TestNeuron);
+                        if (nId) ctxEntries.push([nId, value]);
+                    }
+
                     const progress: SavedProgress = {
-                        context: stimulation.getContext().getAll(),
+                        context: ctxEntries,
                         failedTasks: stimulation.getFailedTasks().map(ft => ({
-                            task: ft.task,
+                            task: persistTask(ft.task as TCNSNeuronActivationTask<TestNeuron>),
                             error: {
                                 message: ft.error.message,
                                 name: ft.error.name,
@@ -189,7 +298,10 @@ describe('BullMQ Integration Tests', () => {
         const job = await queue.add(
             'stimulation-job',
             {
-                signal: input.createSignal({ id: 100 }),
+                signal: {
+                    collateralId: collateralId.get(input)!,
+                    payload: { id: 100 },
+                },
             },
             {
                 attempts: 2,

@@ -1,4 +1,6 @@
-export type TCNSSignal<TCollateralName extends string, TPayload> = {
-    collateralName: TCollateralName;
-    payload?: TPayload;
+import { CNSCollateral } from '../CNSCollateral';
+
+export type TCNSSignal<TCollateral extends CNSCollateral<unknown>> = {
+    collateral: TCollateral;
+    payload?: TCollateral extends CNSCollateral<infer P> ? P : never;
 };

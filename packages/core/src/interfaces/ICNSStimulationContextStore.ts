@@ -1,9 +1,7 @@
-import { TCNSStimulationSerializedContextValue } from '../types/TCNSStimulationSerializedContextValue';
-
 export interface ICNSStimulationContextStore {
-    get: (key: string) => unknown;
-    set: (key: string, value: unknown) => void;
-    getAll: () => TCNSStimulationSerializedContextValue; // Get all context values for recovery
-    setAll: (values: TCNSStimulationSerializedContextValue) => void; // Set all context values for recovery
-    delete: (key: string) => void;
+    get: (key: object) => unknown;
+    set: (key: object, value: unknown) => void;
+    getAll: () => Map<object, unknown>; // Snapshot for reuse in-process (no serialization)
+    setAll: (values: Map<object, unknown>) => void; // Restore snapshot in-process
+    delete: (key: object) => void;
 }
