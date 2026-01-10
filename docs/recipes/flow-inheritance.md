@@ -7,7 +7,9 @@ description: Learn how to use modalities and afferent paths in CNStra to track s
 keywords: [modality, afferent path, flow inheritance, signal tracing, hierarchical flow, flow context, signal origin tracking, modalityDendrite, CNStra patterns, TypeScript state management, reactive programming, signal routing, flow tracking, code reuse, path families, neural network patterns, event flow, signal processing hierarchy]
 ---
 
-Modalities and afferent paths allow you to track the hierarchy of signal flow through your CNStra network. This is a powerful tool for understanding signal origins and the context of their processing.
+Modalities and afferent paths are not just for debugging: they are a **flow inheritance mechanism**.
+
+You select a modality + afferent path **once** when starting a stimulation, and that context is available to every neuron response in the flow via `response.stimulation.options` / `ctx.stimulation.options`. This lets you reuse the same flow but override **one step** (or a few steps) for a specific scenario (onboarding, automation, retry, admin mode, etc.) without copying the whole pipeline.
 
 ![Two Brains - Neural network pattern for flow inheritance in CNStra](/img/two_brains.png)
 
@@ -200,14 +202,88 @@ const deck = neuron(deckAxon)
 #### Benefits
 
 - **No code duplication** — shared reactions across different triggers using `modalityDendrite`
-- **Path-specific customization** — unique reactions per afferent path via Map-based routing
-- **Better system understanding** — in each neuron, you can see all external sources it responds to
-- **Clearer architecture** — path families document the ways your system can be stimulated
+- **True flow inheritance** — one stimulation context propagates through the whole flow; each step can switch behavior based on the same selected path
+- **Scenario overrides** — override one step for “onboarding” (or any scenario) without rewriting the entire flow
+- **Clear architecture** — path families document the supported scenarios/entrypoints
 - **Type-safe routing** — handlers are matched by object reference, ensuring correct path selection
 
 ![Eye Wired - Visual system hierarchy example for afferent paths](/img/eye_wired.png)
 
 This biological inspiration makes CNStra's abstractions not just intuitive, but practically powerful for modeling real-world software systems where multiple entry points lead to shared processing flows.
+
+## Flow Inheritance: Override One Step (Without Duplicating the Flow)
+
+The key idea: **every response sees the same selected afferent path** (from the stimulation options). So you can implement a “default flow”, and override only the step that changes for a specific scenario.
+
+Example: the flow is `createDeck → createCard → trackAnalytics`. For onboarding we only want to change analytics, everything else stays identical.
+
+```ts
+import { CNS, collateral, neuron, afferentPath, modality } from '@cnstra/core';
+
+const uiAxon = {
+  createCardWithDeck: collateral<{ deckTitle: string; cardTitle: string }>(),
+};
+
+const axon = {
+  deckCreated: collateral<{ deckId: string; cardTitle: string }>(),
+  cardCreated: collateral<{ cardId: string }>(),
+};
+
+// Paths = scenarios (identity-based)
+const normal = afferentPath();
+const onboarding = afferentPath();
+const scenarios = modality({ normal, onboarding });
+
+const createDeck = neuron(axon).modalityDendrite({
+  collateral: uiAxon.createCardWithDeck,
+  modality: scenarios,
+  // Same step shape, potentially different behavior per scenario
+  afferentPaths: new Map([
+    [normal, payload => ({ deckId: `deck-${payload.deckTitle}`, cardTitle: payload.cardTitle })],
+    [onboarding, payload => ({ deckId: `deck-${payload.deckTitle}`, cardTitle: payload.cardTitle })],
+  ]),
+  output: (result, axon) => axon.deckCreated.createSignal(result),
+});
+
+const createCard = neuron(axon).modalityDendrite({
+  collateral: axon.deckCreated,
+  modality: scenarios,
+  afferentPaths: new Map([
+    [normal, payload => ({ cardId: `card-${payload.cardTitle}` })],
+    [onboarding, payload => ({ cardId: `card-${payload.cardTitle}` })],
+  ]),
+  output: (result, axon) => axon.cardCreated.createSignal(result),
+});
+
+// ✅ Only this step differs per scenario (the “override”)
+const trackAnalytics = neuron({}).modalityDendrite({
+  collateral: axon.cardCreated,
+  modality: scenarios,
+  afferentPaths: new Map([
+    [normal, payload => {
+      track('card_created', { cardId: payload.cardId });
+    }],
+    [onboarding, payload => {
+      track('onboarding_card_created', { cardId: payload.cardId });
+    }],
+  ]),
+  output: () => undefined,
+});
+
+const cns = new CNS([createDeck, createCard, trackAnalytics]);
+
+// Start the same flow with different inherited context:
+await cns
+  .stimulate(uiAxon.createCardWithDeck.createSignal({ deckTitle: 'A', cardTitle: 'B' }), {
+    modality: scenarios,
+    afferentPath: scenarios.afferentPaths.onboarding,
+  })
+  .waitUntilComplete();
+
+function track(event: string, props: Record<string, string>) {
+  console.log(event, props);
+}
+```
 
 ## Creating Modalities and Afferent Paths
 
@@ -405,7 +481,7 @@ neuron({ output })
 1. **Use meaningful variable names**: Variable names for afferent paths should reflect their purpose (e.g., `const uiPath = afferentPath()`)
 2. **Create hierarchies logically**: Parent paths should represent a higher level of abstraction
 3. **Group related paths**: Combine related paths into a single modality
-4. **Use for debugging**: Modalities are especially useful when debugging complex flows
+4. **Use for scenario overrides**: Treat afferent paths as “scenario selectors” that let you override a step (or a subtree) without duplicating the whole flow
 5. **Don't overcomplicate**: Don't create overly deep hierarchies without need
 6. **Use object references**: Always compare afferent paths by object reference (`path === card`), not by name
 
@@ -413,14 +489,14 @@ neuron({ output })
 
 ## Conclusion
 
-Modalities and afferent paths provide a powerful mechanism for tracking and understanding data flow through your CNStra network. They are especially useful for:
+Modalities and afferent paths provide a powerful **flow inheritance** mechanism: one selected context (modality + afferent path) is shared across the entire stimulation, so every step can react consistently to the same “scenario”.
 
-- Debugging complex flows
-- Analytics and monitoring
-- Conditional processing based on context
-- Documenting system architecture
+- **Override one step** (or a few steps) for onboarding/retry/admin/etc. without rewriting the whole pipeline
+- **Reuse the same flow** across different entrypoints/triggers while keeping behavior explicit and deterministic
+- **Route deterministically** with `modalityDendrite` (object-reference matching, no stringly-typed switches)
+- **Improve observability** as a side effect (clearer tracing, analytics, and debugging)
 
-Use them to create more transparent and understandable signal processing systems.
+Use them when you want “one flow, many scenarios” — shared logic by default, with targeted overrides where needed.
 
 
 
