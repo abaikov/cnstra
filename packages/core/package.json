@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsup && tsc --emitDeclarationOnly",
     "build:types": "tsc --emitDeclarationOnly",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm run test && npm run test:types && npm run build",
     "test": "jest",
     "test:types": "tsd",
     "examples": "tsx examples/run-examples.ts"

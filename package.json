@@ -29,8 +29,8 @@
     "example:start": "npm run start --workspace=@cnstra/example-app",
     "example:start:attach-electron": "npm run start:attach-electron --workspace=@cnstra/example-app",
     "release:electron": "./scripts/release-devtools-electron.sh",
-    "publish:all": "npm run build && npm publish --workspaces --access public",
-    "publish:core": "npm run build --workspace=@cnstra/core && npm publish --workspace=@cnstra/core --access public",
+    "publish:all": "npm run test && npm run build && npm publish --workspaces --access public",
+    "publish:core": "npm run test --workspace=@cnstra/core && npm run test:types --workspace=@cnstra/core && npm run build --workspace=@cnstra/core && npm publish --workspace=@cnstra/core --access public",
     "publish:react": "npm run build --workspace=@cnstra/react && npm publish --workspace=@cnstra/react --access public",
     "version:all": "npm version patch --workspaces"
   },

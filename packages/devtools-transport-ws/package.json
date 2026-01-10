@@ -21,7 +21,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run test && npm run build"
   },
   "files": [
     "dist"
@@ -30,7 +30,7 @@
     "@cnstra/devtools-dto": "1.0.0"
   },
   "peerDependencies": {
-    "@cnstra/devtools": "1.0.0"
+    "@cnstra/devtools": "^1.0.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",
