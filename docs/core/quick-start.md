@@ -49,7 +49,7 @@ await stimulation.waitUntilComplete();
 
 ## Next Steps
 
-- Understand the architecture: [CNStra Overview](/docs/concepts/cnstra)
+- Understand the architecture: [CNStra Overview](/docs/core/overview)
 - Explore API: [Core API](/docs/core/api)
 - Use in React: [React Patterns](/docs/frontend/react-patterns)
  - Debugging: [DevTools](/docs/devtools/overview)

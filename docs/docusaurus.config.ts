@@ -162,7 +162,7 @@ const config: Config = {
                         },
                         {
                             label: 'Concepts',
-                            to: '/docs/concepts/cnstra',
+                            to: '/docs/core/overview',
                         },
                         {
                             label: 'Recipes',
