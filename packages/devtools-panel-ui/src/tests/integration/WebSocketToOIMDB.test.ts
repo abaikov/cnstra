@@ -402,6 +402,7 @@ describe('WebSocket → CNS → OIMDB Integration', () => {
                 stimulationId: `s-${i}`,
                 neuronId: 'no-stim-app:main:worker',
                 appId: 'no-stim-app',
+                cnsId: 'no-stim-app:main',
                 timestamp: Date.now() + i * 50,
                 inputCollateralName: 'job',
                 outputCollateralName: 'work',

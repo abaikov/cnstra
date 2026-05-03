@@ -56,7 +56,7 @@ function cleanupOldResponses(appId: string) {
     }
 }
 
-export const responsesNeuron = neuron('responses-neuron', appModelAxon).bind(
+export const responsesNeuron = neuron(appModelAxon).bind(
     appModelAxon,
     {
         devtoolsInit: () => {},
@@ -121,8 +121,7 @@ export const responsesNeuron = neuron('responses-neuron', appModelAxon).bind(
                     timestamp: r.timestamp,
                     appId: responseAppId,
                     cnsId: (r as any).cnsId || responseAppId, // fallback to appId
-                    inputCollateralName:
-                        (r.inputCollateralName as string) || undefined,
+                    inputCollateralName: (r.inputCollateralName as string) || '',
                     outputCollateralName: outColl,
                     hopIndex:
                         typeof r.hopIndex === 'number'

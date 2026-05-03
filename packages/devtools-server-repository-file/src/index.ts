@@ -1,5 +1,4 @@
 import { DevToolsApp } from '@cnstra/devtools-dto';
-import { ICNSDevToolsServerRepository } from '@cnstra/devtools-server';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 
@@ -10,9 +9,7 @@ export interface FileRepositoryOptions {
     maxMessages?: number; // keep last N messages
 }
 
-export class CNSDevToolsServerRepositoryFile
-    implements ICNSDevToolsServerRepository
-{
+export class CNSDevToolsServerRepositoryFile {
     private readonly appsPath: string;
     private readonly messagesPath: string;
     private apps = new Map<

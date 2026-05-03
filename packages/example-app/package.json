@@ -1,6 +1,7 @@
 {
   "name": "@cnstra/example-app",
   "version": "1.0.0",
+  "private": true,
   "description": "Example application demonstrating CNStra DevTools integration",
   "type": "module",
   "main": "dist/index.js",

@@ -1,14 +1,17 @@
 {
   "name": "@cnstra/react",
-  "version": "1.0.1",
-  "description": "React bindings for CNS neural network-inspired event flow system",
+  "version": "1.0.2",
+  "description": "React bindings for CNStra workflow/orchestration engine (provider + hooks).",
   "keywords": [
     "react",
     "neural-network",
     "event-flow",
     "reactive",
     "context",
-    "hooks"
+    "hooks",
+    "workflow",
+    "orchestration",
+    "orchestrator"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
@@ -31,17 +34,17 @@
     "dist"
   ],
   "peerDependencies": {
+    "@cnstra/core": "2.0.1",
     "react": ">=16.8.0",
-    "react-dom": ">=16.8.0",
-    "@cnstra/core": "^2.0.0"
+    "react-dom": ">=16.8.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "@types/react-dom": "18.2.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tsup": "8.5.1",
+    "typescript": "5.8.3"
   },
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "license": "MIT",

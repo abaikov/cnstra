@@ -8,7 +8,7 @@
     "docs"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build": "npm run build:core && npm run build:devtools && npm run build:devtools-server && npm run build --workspace=@cnstra/react && npm run build --workspace=cnstra-docs",
     "build:core": "npm run build --workspace=@cnstra/core",
     "build:devtools": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools && npm run build --workspace=@cnstra/devtools-transport-ws && npm run build --workspace=@cnstra/devtools-panel-ui",
     "build:devtools-server": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-server && npm run build --workspace=@cnstra/devtools-server-repository-in-memory",
@@ -20,8 +20,10 @@
     "dev:devtools-panel-ui": "npm run dev --workspace=@cnstra/devtools-panel-ui",
     "dev:devtools-electron": "npm run dev --workspace=@cnstra/devtools-electron",
     "dev:example": "npm run dev --workspace=@cnstra/example-app",
-    "test": "npm run test --workspaces",
-    "test:types": "npm run test:types --workspaces",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "npm run test --workspaces --if-present",
+    "test:types": "npm run test:types --workspaces --if-present",
     "clean": "npm run clean --workspaces && rm -rf node_modules",
     "demo": "npm run build:example && npm run start:all --workspace=@cnstra/example-app",
     "dev:electron": "npm run dev --workspace=@cnstra/devtools-panel-ui & npm run dev --workspace=@cnstra/devtools-electron",
@@ -29,9 +31,9 @@
     "example:start": "npm run start --workspace=@cnstra/example-app",
     "example:start:attach-electron": "npm run start:attach-electron --workspace=@cnstra/example-app",
     "release:electron": "./scripts/release-devtools-electron.sh",
-    "publish:all": "npm run test && npm run build && npm publish --workspaces --access public",
-    "publish:core": "npm run test --workspace=@cnstra/core && npm run test:types --workspace=@cnstra/core && npm run build --workspace=@cnstra/core && npm publish --workspace=@cnstra/core --access public",
-    "publish:react": "npm run build --workspace=@cnstra/react && npm publish --workspace=@cnstra/react --access public",
+    "publish:all": "npm run lint && npm run test && npm run test:types && npm run build && npm publish --workspaces --access public",
+    "publish:core": "npm run lint && npm run test --workspace=@cnstra/core && npm run test:types --workspace=@cnstra/core && npm run build --workspace=@cnstra/core && npm publish --workspace=@cnstra/core --access public",
+    "publish:react": "npm run lint && npm run build --workspace=@cnstra/react && npm publish --workspace=@cnstra/react --access public",
     "version:all": "npm version patch --workspaces"
   },
   "repository": {
@@ -45,11 +47,24 @@
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/jest": "^29.5.12",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.6.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.1",
     "tsd": "^0.33.0",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.59.1"
+  },
+  "overrides": {
+    "serialize-javascript": "7.0.5",
+    "uuid": "14.0.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

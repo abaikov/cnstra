@@ -1,6 +1,6 @@
 # @cnstra/core
 
-**Graph-routed, type-safe orchestration for reactive apps — no global event bus.**
+**Workflow / orchestration engine for TypeScript — deterministic, embeddable, in-memory.**
 
 📚 **[Full Documentation →](https://cnstra.org/)** | [Quick Start](https://cnstra.org/docs/core/quick-start) | [API Reference](https://cnstra.org/docs/core/api) | [Recipes](https://cnstra.org/docs/recipes)
 
@@ -9,6 +9,10 @@
 **CNStra (Central Nervous System Orchestrator)** models your app as a **typed neuron graph**. You explicitly start a run with `cns.stimulate(...)`; CNStra then performs a **deterministic, hop-bounded traversal** from **collateral → dendrite → returned signal**, step by step.
 
 **Zero dependencies** • **No pub/sub** • **CNS approach** (Central Neural Network of your app)
+
+Common backend use-cases:
+- **Jobs** (queues/workers), **sync/integrations** (webhooks), **ETL/pipelines**
+- **Retries/timeouts/cancellation** and **saga-style compensations**
 
 👉 **[Read the full documentation →](https://cnstra.org/)**
 

@@ -7,7 +7,7 @@ export default function Home(): JSX.Element {
     return (
         <Layout
             title="CNStra Documentation"
-            description="Central Nervous System Orchestrator for apps"
+            description="Workflow / orchestration engine for TypeScript (embeddable, deterministic, in-memory)"
         >
             <header className="hero hero--primary">
                 <div className="container">
@@ -15,8 +15,8 @@ export default function Home(): JSX.Element {
                         CNStra
                     </Heading>
                     <p className="hero__subtitle">
-                        Central Nervous System Orchestrator for building
-                        predictable, reactive pipelines.
+                        Workflow / orchestration engine for building predictable,
+                        type-safe pipelines.
                     </p>
                     {/* removed extra tagline */}
                     <div>
@@ -53,6 +53,45 @@ export default function Home(): JSX.Element {
                                 neuron networks.
                             </p>
                         </div>
+                    </div>
+                </section>
+                <section className="container margin-vert--lg">
+                    <div className="row">
+                        <div className="col col--3">
+                            <h3>Backend jobs</h3>
+                            <p>
+                                Orchestrate workers and queue-triggered flows
+                                (fan-out/fan-in, concurrency gates).
+                            </p>
+                        </div>
+                        <div className="col col--3">
+                            <h3>Sync & integrations</h3>
+                            <p>
+                                Webhooks and third-party APIs with explicit,
+                                testable steps.
+                            </p>
+                        </div>
+                        <div className="col col--3">
+                            <h3>ETL & pipelines</h3>
+                            <p>
+                                Step-by-step transforms with retries/backoff and
+                                clear boundaries.
+                            </p>
+                        </div>
+                        <div className="col col--3">
+                            <h3>Retries & sagas</h3>
+                            <p>
+                                Deterministic retry patterns, cancellation, and
+                                compensation flows.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="margin-top--md">
+                        <Link to="/docs/backend/overview">Backend overview</Link>
+                        {' · '}
+                        <Link to="/docs/concepts/comparison">
+                            CNStra vs Temporal/Zeebe/Conductor
+                        </Link>
                     </div>
                 </section>
             </main>

@@ -4,7 +4,7 @@ import type { UINeuron } from '../../../model';
 import { appModelAxon } from '../../controller-layer/AppModelAxon';
 import { StimulationBatchMessage } from '@cnstra/devtools-dto';
 
-export const neuronNeuron = neuron('neuron-neuron', {}).bind(appModelAxon, {
+export const neuronNeuron = neuron({}).bind(appModelAxon, {
     devtoolsResponseBatch: payload => {
         payload.responses.forEach(response => {
             const appId = response.appId;

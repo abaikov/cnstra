@@ -3,7 +3,7 @@ import { appModelAxon } from '../../controller-layer/AppModelAxon';
 import { db } from '../../../model';
 import { OIMReactiveIndexManual } from '@oimdb/core';
 
-export const collateralNeuron = neuron('collateral-neuron', appModelAxon).bind(
+export const collateralNeuron = neuron(appModelAxon).bind(
     appModelAxon,
     {
         devtoolsInit: payload => {

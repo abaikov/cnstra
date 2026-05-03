@@ -6,7 +6,7 @@ import { db } from '../../model';
 import { OIMReactiveIndexManual } from '@oimdb/core';
 import { dbEventQueue } from '../../model';
 
-export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
+export const appIngressNeuron = neuron(appModelAxon).bind(
     wsAxon,
     {
         open: () => {},
@@ -17,10 +17,13 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                 const msg =
                     typeof raw === 'string' ? JSON.parse(raw) : undefined;
                 if (!msg) return;
+                const rawPreview =
+                    typeof raw === 'string' && raw.length > 200
+                        ? raw.substring(0, 200) + '...'
+                        : raw;
                 console.log('🔍 AppIngressNeuron received:', msg.type, {
                     timestamp: new Date().toISOString(),
-                    payload:
-                        raw.length > 200 ? raw.substring(0, 200) + '...' : raw,
+                    payload: rawPreview,
                 });
                 if (msg.type === 'init') {
                     console.log(
@@ -234,6 +237,7 @@ export const appIngressNeuron = neuron('app-ingress-neuron', appModelAxon).bind(
                 }
                 if (msg.type === 'app:disconnected') {
                     return axon.appDisconnected.createSignal({
+                        type: 'app:disconnected',
                         appId: msg.appId as string,
                     });
                 }

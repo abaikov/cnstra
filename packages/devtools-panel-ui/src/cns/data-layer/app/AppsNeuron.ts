@@ -10,7 +10,7 @@ import {
     ResponseBatchMessage,
 } from '@cnstra/devtools-dto';
 
-export const appsNeuron = neuron('apps-neuron', appModelAxon)
+export const appsNeuron = neuron(appModelAxon)
     .dendrite({
         collateral: appModelAxon.devtoolsInit,
         response: (payload: InitMessage) => {

@@ -1,11 +1,6 @@
 import { TCNSDevToolsOptions } from './types/TCNSDevToolsOptions';
 import { ICNSDevToolsTransport } from './interfaces/ICNSDevToolsTransport';
-import {
-    CNS,
-    CNSStimulationContextStore,
-    TCNSDendrite,
-    TCNSStimulationOptions,
-} from '@cnstra/core';
+import { CNSStimulationContextStore } from '@cnstra/core';
 import {
     InitMessage,
     StimulateCommand,
@@ -16,7 +11,7 @@ import {
 } from '@cnstra/devtools-dto';
 
 export class CNSDevTools {
-    private cns: CNS<any, any, any, any> | undefined;
+    private cns: any | undefined;
 
     constructor(
         protected readonly appId: string,
@@ -27,11 +22,11 @@ export class CNSDevTools {
     /**
      * Register a CNS instance to this DevTools instance and emit init/topology.
      */
-    registerCNS(cns: CNS<any, any, any, any>, cnsName: string): void {
+    registerCNS(cns: any, cnsName: string): void {
         if (this.cns) return; // already registered
         this.cns = cns;
 
-        this.cns.addResponseListener(response => {
+        this.cns.addResponseListener((response: any) => {
             const contexts = response.ctx?.getAll?.() || {};
             const safeInputPayload = this.safeJson(
                 response.inputSignal?.payload
@@ -132,8 +127,8 @@ export class CNSDevTools {
 
     private sendInitMessage(transport: ICNSDevToolsTransport): Promise<void> {
         if (!this.cns) throw new Error('CNS is not registered');
-        const neurons = this.cns.getNeurons();
-        const collaterals = this.cns.getCollaterals();
+        const neurons = this.cns.getNeurons() as any[];
+        const collaterals = this.cns.getCollaterals() as any[];
         const appId =
             this.appId || this.options.devToolsInstanceId || 'cns-app';
         // Prefer provided cnsId; else derive from appId + name for multi-CNS support
@@ -142,7 +137,7 @@ export class CNSDevTools {
             `${appId}:${this.options.devToolsInstanceName || 'cns'}`;
 
         // Create Neuron DTO objects
-        const neuronDTOs: Neuron[] = neurons.map(neuron => ({
+        const neuronDTOs: Neuron[] = neurons.map((neuron: any) => ({
             id: `${cnsId}:${neuron.name}`,
             appId,
             cnsId,
@@ -150,10 +145,10 @@ export class CNSDevTools {
         }));
 
         // Create Collateral DTO objects
-        const collateralDTOs: Collateral[] = collaterals.map(collateral => {
+        const collateralDTOs: Collateral[] = collaterals.map((collateral: any) => {
             // Find the parent neuron for this collateral by checking axon keys
             // Need to handle case conversion between kebab-case collateral names and camelCase axon keys
-            const parentNeuron = neurons.find(neuron => {
+            const parentNeuron = neurons.find((neuron: any) => {
                 const neuronAxonKeys = Object.keys(neuron.axon || {});
 
                 // Try direct match first
@@ -182,7 +177,7 @@ export class CNSDevTools {
             });
 
             if (!parentNeuron) {
-                const availableAxonKeys = neurons.flatMap(n =>
+                const availableAxonKeys = neurons.flatMap((n: any) =>
                     Object.keys(n.axon || {})
                 );
                 throw new Error(
@@ -205,10 +200,10 @@ export class CNSDevTools {
         });
 
         // Create Dendrite DTO objects
-        const dendriteDTOs: Dendrite[] = neurons.flatMap(neuron => {
+        const dendriteDTOs: Dendrite[] = neurons.flatMap((neuron: any) => {
             return neuron.dendrites.map(
                 (
-                    dendrite: TCNSDendrite<any, any, any, any, any, any>,
+                    dendrite: any,
                     index: number
                 ) => {
                     const neuronId = `${cnsId}:${neuron.name}`;
@@ -287,7 +282,7 @@ export class CNSDevTools {
     private handleStimulate(cmd: StimulateCommand): void {
         if (!this.cns) return;
         const collaterals = this.cns.getCollaterals();
-        const collateral = collaterals.find(c => c.name === cmd.collateralName);
+        const collateral = collaterals.find((c: any) => c.name === cmd.collateralName);
         if (!collateral) {
             // nothing to do; optional rejection can be sent by transport before calling here
             return;
@@ -303,9 +298,18 @@ export class CNSDevTools {
         }
 
         const ctx = new CNSStimulationContextStore();
-        if (cmd.contexts) ctx.setAll(cmd.contexts);
+        if (cmd.contexts) {
+            ctx.setAll(
+                new Map(
+                    Object.entries(cmd.contexts).map(([key, value]) => [
+                        { name: key },
+                        value,
+                    ])
+                )
+            );
+        }
 
-        const options: TCNSStimulationOptions<any, any, any> = {
+        const options: any = {
             stimulationId: cmd.stimulationCommandId,
         };
 
@@ -322,7 +326,8 @@ export class CNSDevTools {
             if (src.maxNeuronHops) options.maxNeuronHops = src.maxNeuronHops;
             if (src.concurrency) options.concurrency = src.concurrency;
             if (src.allowedNames)
-                options.allowName = t => src.allowedNames.includes(t as any);
+                options.allowName = (t: any) =>
+                    src.allowedNames.includes(t as any);
             if (src.timeoutMs && typeof AbortController !== 'undefined') {
                 const ac = new AbortController();
                 setTimeout(() => ac.abort(), src.timeoutMs as number);
@@ -341,7 +346,7 @@ export class CNSDevTools {
                 `${appId}:${this.options.devToolsInstanceName || 'cns'}`;
 
             // Find the parent neuron for this collateral
-            const parentNeuron = neurons.find(neuron => {
+            const parentNeuron = neurons.find((neuron: any) => {
                 const neuronAxonKeys = Object.keys(neuron.axon || {});
 
                 // Try direct match first

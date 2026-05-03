@@ -23,10 +23,8 @@ export const ResponseDataViewer: React.FC<ResponseDataViewerProps> = ({
     defaultExpanded = false,
     responseId,
 }) => {
-    // Use persistent state from collection if responseId is provided
-    const uiState = responseId
-        ? useSelectEntityByPk(db.responseUIState, responseId)
-        : null;
+    // Hooks must be called unconditionally; the result is ignored without responseId.
+    const uiState = useSelectEntityByPk(db.responseUIState, responseId ?? '');
 
     // Local state for cases without responseId
     const [localExpanded, setLocalExpanded] = useState(defaultExpanded);

@@ -1,7 +1,7 @@
 {
   "name": "@cnstra/core",
-  "version": "2.0.0",
-  "description": "Neural network-inspired event flow system for building reactive applications with dependency-injected neurons and synapses",
+  "version": "2.0.1",
+  "description": "Embeddable workflow/orchestration engine for TypeScript: deterministic runs over a typed neuron graph (in-memory, zero dependencies).",
   "keywords": [
     "neural-network",
     "event-flow",
@@ -11,6 +11,18 @@
     "synapse",
     "axon",
     "dendrite",
+    "workflow",
+    "workflow-engine",
+    "orchestrator",
+    "orchestration",
+    "job-orchestration",
+    "background-jobs",
+    "etl",
+    "pipeline",
+    "retries",
+    "retry",
+    "saga",
+    "bullmq",
     "typescript",
     "node",
     "browser"
@@ -40,7 +52,7 @@
     "build:types": "tsc --emitDeclarationOnly",
     "prepublishOnly": "npm run test && npm run test:types && npm run build",
     "test": "jest",
-    "test:types": "tsd",
+    "test:types": "npm run build:types",
     "examples": "tsx examples/run-examples.ts"
   },
   "files": [
@@ -55,7 +67,7 @@
     "@types/jest": "^29.5.12",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.1",
-    "tsup": "^8.5.0",
+    "tsup": "8.5.1",
     "tsx": "^4.20.5",
     "typescript": "^5.8.3"
   }

@@ -13,6 +13,8 @@ import { ICNS } from './interfaces/ICNS';
 import { TCNSNeuronActivationTaskFailure } from './types/TCNSNeuronActivationTaskFailure';
 import { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
 import { CNSCollateral } from './CNSCollateral';
+import { TNCNeuronResponseReturn } from './types/TCNSNeuronResponseReturn';
+import { TCNSAxon } from './types/TCNSAxon';
 
 export class CNSStimulation<
     TNeuron extends TCNSNeuron<any, any>,
@@ -288,7 +290,7 @@ export class CNSStimulation<
             // Mark neuron as active only when we actually start processing (after gate allows it)
             this.markNeuronActive(neuron);
 
-            let response;
+            let response: TNCNeuronResponseReturn<TCNSAxon>;
             try {
                 response = dendrite.response(
                     inputSignal?.payload,

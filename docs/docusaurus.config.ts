@@ -1,10 +1,10 @@
 import type { Config } from '@docusaurus/types';
-import type { Preset } from '@docusaurus/preset-classic';
+import type * as Preset from '@docusaurus/preset-classic';
 import { themes as prismThemes } from 'prism-react-renderer';
 
 const config: Config = {
     title: 'CNStra',
-    tagline: 'Central Nervous System for JavaScript apps',
+    tagline: 'Workflow / orchestration engine for TypeScript',
     favicon: 'favicon.svg',
 
     url: 'https://cnstra.org',
@@ -78,14 +78,14 @@ const config: Config = {
             {
                 name: 'description',
                 content:
-                    'CNStra: Type-safe state machine and orchestration library for JavaScript/TypeScript. Zero dependencies. Deterministic workflows, saga patterns, SOLID/SRP by design. Perfect for React state management, backend orchestration, ETL pipelines, queue systems (BullMQ/RabbitMQ), and distributed workflows. Alternative to Redux, XState, MobX. Works in Node.js, browsers, serverless, React Native, and Swift/SwiftUI.',
+                    'CNStra: Embeddable workflow/orchestration engine for JavaScript/TypeScript. Zero dependencies. Deterministic runs, retries, and saga patterns by design. Use it for backend jobs, sync/integrations, ETL pipelines, and queue-triggered workers (BullMQ/RabbitMQ/SQS), plus reactive apps. Works in Node.js, browsers, serverless, React Native, and Swift/SwiftUI.',
             },
             { property: 'og:type', content: 'website' },
             { property: 'og:site_name', content: 'CNStra' },
             {
                 property: 'og:title',
                 content:
-                    'CNStra - Type-Safe State Machine & Orchestration for JavaScript',
+                    'CNStra - Workflow Engine / Orchestration for TypeScript',
             },
             {
                 property: 'og:image:alt',
@@ -101,7 +101,7 @@ const config: Config = {
             { name: 'twitter:site', content: '@abaikov' },
             {
                 name: 'twitter:title',
-                content: 'CNStra - State Machine & Orchestration Library',
+                content: 'CNStra - Workflow Engine / Orchestration Library',
             },
             {
                 name: 'twitter:description',

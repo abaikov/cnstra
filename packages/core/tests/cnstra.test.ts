@@ -6,6 +6,7 @@ import {
     TCNSSignal,
     afferentPath,
     modality,
+    CNSDrainGuard,
 } from '../src/index';
 
 const uiAxon = {
@@ -2819,6 +2820,112 @@ describe('CNStra Core Tests', () => {
             expect(executed).toContain('step1-100');
             expect(executed).toContain('step2-100');
             expect(executed).toContain('step3-100');
+        });
+    });
+
+    describe('CNSDrainGuard', () => {
+        it('should reuse the same drain while processing is active', async () => {
+            const input = collateral<{ id: number }>();
+            let starts = 0;
+            let resolveCurrentRun!: () => void;
+
+            const worker = neuron({}).dendrite({
+                collateral: input,
+                response: async () => {
+                    starts++;
+                    await new Promise<void>(resolve => {
+                        resolveCurrentRun = resolve;
+                    });
+                },
+            });
+
+            const cns = new CNS([worker]);
+            const guard = new CNSDrainGuard({
+                cns,
+                signal: input.createSignal({ id: 1 }),
+            });
+
+            const firstDrain = guard.drain();
+            const secondDrain = guard.drain();
+
+            expect(firstDrain).toBe(secondDrain);
+            expect(guard.isDraining()).toBe(true);
+            expect(starts).toBe(1);
+
+            resolveCurrentRun();
+            await firstDrain;
+
+            expect(guard.isDraining()).toBe(false);
+
+            const nextDrain = guard.drain();
+
+            expect(guard.isDraining()).toBe(true);
+            expect(starts).toBe(2);
+
+            resolveCurrentRun();
+            await nextDrain;
+
+            expect(guard.isDraining()).toBe(false);
+        });
+
+        it('should abort the current drain when using the guard abort controller', async () => {
+            const input = collateral();
+
+            const worker = neuron({}).dendrite({
+                collateral: input,
+                response: (_payload, _axon, ctx) =>
+                    new Promise<void>((_resolve, reject) => {
+                        ctx.abortSignal?.addEventListener('abort', () => {
+                            reject(new Error('aborted by guard'));
+                        });
+                    }),
+            });
+
+            const cns = new CNS([worker]);
+            const guard = new CNSDrainGuard({
+                cns,
+                signal: input.createSignal(),
+            });
+
+            const drain = guard.drain();
+
+            expect(guard.abort()).toBe(true);
+            await expect(drain).rejects.toThrow('Stimulation aborted');
+            expect(guard.isDraining()).toBe(false);
+        });
+
+        it('should not abort when an external abort signal owns cancellation', async () => {
+            const input = collateral();
+            const abortController = new AbortController();
+
+            const worker = neuron({}).dendrite({
+                collateral: input,
+                response: (_payload, _axon, ctx) =>
+                    new Promise<void>((_resolve, reject) => {
+                        ctx.abortSignal?.addEventListener('abort', () => {
+                            reject(new Error('aborted externally'));
+                        });
+                    }),
+            });
+
+            const cns = new CNS([worker]);
+            const guard = new CNSDrainGuard({
+                cns,
+                signal: input.createSignal(),
+                options: {
+                    abortSignal: abortController.signal,
+                },
+            });
+
+            const drain = guard.drain();
+
+            expect(guard.abort()).toBe(false);
+            expect(guard.isDraining()).toBe(true);
+
+            abortController.abort();
+
+            await expect(drain).rejects.toThrow('Stimulation aborted');
+            expect(guard.isDraining()).toBe(false);
         });
     });
 });

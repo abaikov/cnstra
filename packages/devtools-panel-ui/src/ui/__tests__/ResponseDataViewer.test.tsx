@@ -33,18 +33,19 @@ describe('ResponseDataViewer', () => {
         };
         render(<ResponseDataViewer data={data} defaultExpanded={true} />);
         expect(screen.getByText('📊 Response Data')).toBeInTheDocument();
-        expect(screen.getByText('🧠 Contexts')).toBeInTheDocument();
+        expect(screen.getByText('🧠 Context Storage')).toBeInTheDocument();
     });
 
-    it('renders with input and output contexts', () => {
+    it('renders with response context storage', () => {
         const data = {
-            inputContexts: { before: 'state' },
-            outputContexts: { after: 'state' },
+            contexts: {
+                before: 'state',
+                after: 'state',
+            },
         };
         render(<ResponseDataViewer data={data} defaultExpanded={true} />);
         expect(screen.getByText('📊 Response Data')).toBeInTheDocument();
-        expect(screen.getByText('🧠 Input Context')).toBeInTheDocument();
-        expect(screen.getByText('🧠 Output Context')).toBeInTheDocument();
+        expect(screen.getByText('🧠 Context Storage')).toBeInTheDocument();
     });
 
     it('renders with snapshot data', () => {
@@ -60,16 +61,14 @@ describe('ResponseDataViewer', () => {
         const data = {
             inputPayload: { test: 'input' },
             outputPayload: { test: 'output' },
-            inputContexts: { before: 'state' },
-            outputContexts: { after: 'state' },
+            contexts: { before: 'state', after: 'state' },
             snapshot: { memory: 'usage' },
         };
         render(<ResponseDataViewer data={data} defaultExpanded={true} />);
         expect(screen.getByText('📊 Response Data')).toBeInTheDocument();
         expect(screen.getByText('📥 Input Signal')).toBeInTheDocument();
         expect(screen.getByText('📤 Output Signal')).toBeInTheDocument();
-        expect(screen.getByText('🧠 Input Context')).toBeInTheDocument();
-        expect(screen.getByText('🧠 Output Context')).toBeInTheDocument();
+        expect(screen.getByText('🧠 Context Storage')).toBeInTheDocument();
         expect(screen.getByText('📸 Data Snapshot')).toBeInTheDocument();
     });
 

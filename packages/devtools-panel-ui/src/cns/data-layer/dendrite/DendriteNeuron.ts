@@ -2,7 +2,7 @@ import { neuron } from '@cnstra/core';
 import { db } from '../../../model';
 import { appModelAxon } from '../../controller-layer/AppModelAxon';
 
-export const dendriteNeuron = neuron('dendrite-neuron', appModelAxon).bind(
+export const dendriteNeuron = neuron(appModelAxon).bind(
     appModelAxon,
     {
         devtoolsInit: (payload: any) => {

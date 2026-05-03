@@ -1187,13 +1187,20 @@ export class CNSDevToolsServer {
             this.startMetricsLoop();
         }
 
-        // Handle client disconnection
-        ws.on('close', () => {
-            this.removeClient(ws);
-        });
-        ws.on('error', () => {
-            this.removeClient(ws);
-        });
+        // Handle client disconnection when the socket implementation supports events.
+        const eventedWs = ws as WebSocket & {
+            on?: (event: string, listener: () => void) => void;
+            addEventListener?: (event: string, listener: () => void) => void;
+        };
+        const remove = () => this.removeClient(ws);
+
+        if (eventedWs.on) {
+            eventedWs.on('close', remove);
+            eventedWs.on('error', remove);
+        } else if (eventedWs.addEventListener) {
+            eventedWs.addEventListener('close', remove);
+            eventedWs.addEventListener('error', remove);
+        }
     }
 
     removeClient(ws: WebSocket): void {

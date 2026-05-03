@@ -9,20 +9,11 @@ import {
 } from '@cnstra/devtools-dto';
 
 export const appModelAxon = {
-    devtoolsInit: collateral<InitMessage, 'devtools:init'>('devtools:init'),
-    devtoolsResponseBatch: collateral<
-        ResponseBatchMessage,
-        'devtools:response-batch'
-    >('devtools:response-batch'),
-    appsActive: collateral<AppsActiveMessage, 'apps:active'>('apps:active'),
-    appAdded: collateral<{ type: 'app:added'; app: DevToolsApp }, 'app:added'>(
-        'app:added'
-    ),
-    appDisconnected: collateral<AppDisconnectedMessage, 'app:disconnected'>(
-        'app:disconnected'
-    ),
-    selectAppClicked: collateral<{ appId: string }, 'app:select'>('app:select'),
-    stimulationBatch: collateral<StimulationBatchMessage, 'stimulation:batch'>(
-        'stimulation:batch'
-    ),
+    devtoolsInit: collateral<InitMessage>(),
+    devtoolsResponseBatch: collateral<ResponseBatchMessage>(),
+    appsActive: collateral<AppsActiveMessage>(),
+    appAdded: collateral<{ type: 'app:added'; app: DevToolsApp }>(),
+    appDisconnected: collateral<AppDisconnectedMessage>(),
+    selectAppClicked: collateral<{ appId: string }>(),
+    stimulationBatch: collateral<StimulationBatchMessage>(),
 };

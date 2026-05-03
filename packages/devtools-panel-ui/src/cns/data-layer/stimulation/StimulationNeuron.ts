@@ -49,7 +49,7 @@ function cleanupOldStimulations(appId: string) {
     }
 }
 
-export const stimulationNeuron = neuron('stimulation-neuron', {}).bind(
+export const stimulationNeuron = neuron({}).bind(
     appModelAxon,
     {
         devtoolsInit: () => {},

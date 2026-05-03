@@ -10,7 +10,7 @@ export function CNSProvider({ cns, children }: CNSProviderProps) {
     return <CNSContext.Provider value={value}>{children}</CNSContext.Provider>;
 }
 
-export function useCNS(): CNS<any, any, any, any> {
+export function useCNS(): CNS<any, any> {
     const context = useContext(CNSContext);
 
     if (!context) {

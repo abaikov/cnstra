@@ -2,7 +2,7 @@ import { neuron } from '@cnstra/core';
 import { appModelAxon } from '../../controller-layer/AppModelAxon';
 import { db, dbEventQueue } from '../../../model';
 
-export const uiStateNeuron = neuron('ui-state-neuron', appModelAxon).bind(
+export const uiStateNeuron = neuron(appModelAxon).bind(
     appModelAxon,
     {
         devtoolsInit: () => {},

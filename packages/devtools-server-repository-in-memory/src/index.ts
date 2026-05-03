@@ -18,6 +18,7 @@ export class CNSDevToolsServerRepositoryInMemory
     private dendrites = new Map<string, Dendrite>(); // key: dendrite.id
     private stimulations = new Map<string, StimulationMessage>(); // key: stimulation.stimulationId
     private responses = new Map<string, StimulationResponse>(); // key: response.responseId
+    private messages: any[] = [];
 
     // Indexes for efficient querying
     private neuronsByCns = new Map<string, Set<string>>(); // cnsId -> Set<neuronId>
@@ -29,12 +30,18 @@ export class CNSDevToolsServerRepositoryInMemory
     // App management
     upsertApp(app: DevToolsApp): void {
         const existing = this.apps.get(app.appId);
+        const firstSeenAt = app.firstSeenAt || existing?.firstSeenAt || Date.now();
+        const lastSeenAt =
+            app.lastSeenAt ||
+            (existing
+                ? Math.max(Date.now(), firstSeenAt + 1)
+                : Date.now());
         const updatedApp: DevToolsApp = {
             appId: app.appId,
             appName: app.appName,
             version: app.version,
-            firstSeenAt: app.firstSeenAt || existing?.firstSeenAt || Date.now(),
-            lastSeenAt: app.lastSeenAt || Date.now(),
+            firstSeenAt,
+            lastSeenAt,
         };
         this.apps.set(app.appId, updatedApp);
     }
@@ -145,9 +152,18 @@ export class CNSDevToolsServerRepositoryInMemory
 
     // Legacy message support
     saveMessage(message: any): void {
-        // This is a legacy method for backward compatibility
-        // In the new architecture, messages are handled by specific save methods
-        // This implementation does nothing to avoid storing duplicate data
+        this.messages.push({
+            ...message,
+            receivedAt: Date.now(),
+        });
+
+        if (this.messages.length > 1000) {
+            this.messages = this.messages.slice(this.messages.length - 1000);
+        }
+    }
+
+    getMessages(): any[] {
+        return [...this.messages];
     }
 
     // Stimulation management
@@ -342,6 +358,7 @@ export class CNSDevToolsServerRepositoryInMemory
         this.dendrites.clear();
         this.stimulations.clear();
         this.responses.clear();
+        this.messages = [];
         this.neuronsByCns.clear();
         this.collateralsByCns.clear();
         this.dendritesByCns.clear();
