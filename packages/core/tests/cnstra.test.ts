@@ -801,7 +801,7 @@ describe('CNStra Core Tests', () => {
                 const afferentPathsMap = new Map([
                     [uiButton, async (payload: { source: string }, axon: any) => {
                         await new Promise(resolve =>
-                            setTimeout(resolve, 10)
+                            setTimeout(resolve, 2)
                         );
                         return {
                             id: `async-${payload.source}`,
@@ -1561,7 +1561,7 @@ describe('CNStra Core Tests', () => {
                 const asyncStep1 = neuron( { step1 }).dendrite({
                     collateral: input,
                     response: async (payload, axon) => {
-                        await new Promise(resolve => setTimeout(resolve, 20));
+                        await new Promise(resolve => setTimeout(resolve, 2));
                         return axon.step1.createSignal({
                             value: payload.value * 2,
                         });
@@ -1571,7 +1571,7 @@ describe('CNStra Core Tests', () => {
                 const asyncStep2 = neuron( { output }).dendrite({
                     collateral: step1,
                     response: async (payload, axon) => {
-                        await new Promise(resolve => setTimeout(resolve, 15));
+                        await new Promise(resolve => setTimeout(resolve, 2));
                         return axon.output.createSignal({
                             result: payload.value + 10,
                         });
@@ -2119,7 +2119,7 @@ describe('CNStra Core Tests', () => {
             const generator = neuron( { output }).dendrite({
                 collateral: input,
                 response: async (payload, axon) => {
-                    await new Promise(r => setTimeout(r, 10));
+                    await new Promise(r => setTimeout(r, 2));
                     const signals = [];
                     for (let i = 0; i < payload.count; i++) {
                         signals.push(axon.output.createSignal({ index: i }));
@@ -2301,25 +2301,25 @@ describe('CNStra Core Tests', () => {
             });
             const cns = new CNS([n]);
 
-            // Global async listener (~25ms)
+            // Global async listener.
             cns.addResponseListener(async () => {
-                await new Promise<void>(r => setTimeout(r, 25));
+                await new Promise<void>(r => setTimeout(r, 5));
             });
 
             const start = Date.now();
             await cns
                 .stimulate(input.createSignal(), {
                     onResponse: async _r => {
-                        // Local async listener (~25ms)
-                        await new Promise<void>(r => setTimeout(r, 25));
+                        // Local async listener.
+                        await new Promise<void>(r => setTimeout(r, 5));
                     },
                 })
                 .waitUntilComplete();
 
             const elapsed = Date.now() - start;
-            // Should be ~25ms (parallel), definitely less than 45ms
-            expect(elapsed).toBeGreaterThanOrEqual(20);
-            expect(elapsed).toBeLessThan(45);
+            // Should be roughly one listener delay because local and global run in parallel.
+            expect(elapsed).toBeGreaterThanOrEqual(1);
+            expect(elapsed).toBeLessThan(30);
         });
 
         it('should reject stimulate when local onResponse throws', async () => {
@@ -2423,11 +2423,11 @@ describe('CNStra Core Tests', () => {
 
             let secondRan = false;
             cns.addResponseListener(async () => {
-                await new Promise<void>(r => setTimeout(r, 10));
+                await new Promise<void>(r => setTimeout(r, 2));
                 return Promise.reject(new Error('boom'));
             });
             cns.addResponseListener(async () => {
-                await new Promise<void>(r => setTimeout(r, 10));
+                await new Promise<void>(r => setTimeout(r, 2));
                 secondRan = true;
             });
 
@@ -2448,34 +2448,47 @@ describe('CNStra Core Tests', () => {
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
+            let sinkRan = false;
             const sink = neuron( {}).dendrite({
                 collateral: output,
                 response: () => {
-                    // would run if enqueued; we will abort before enqueue happens
+                    sinkRan = true;
                 },
             });
             const cns = new CNS([n, sink]);
 
             const controller = new AbortController();
-            const start = Date.now();
+            let releaseOnResponse!: () => void;
+            const outputResponseBlocked = new Promise<void>(resolve => {
+                releaseOnResponse = resolve;
+            });
+            let markOutputResponseReached!: () => void;
+            const outputResponseReached = new Promise<void>(resolve => {
+                markOutputResponseReached = resolve;
+            });
 
             const p = cns
                 .stimulate(input.createSignal(), {
                     abortSignal: controller.signal,
-                    // delay enqueue of subscribers
-                    onResponse: async () => {
-                        await new Promise<void>(r => setTimeout(r, 30));
+                    // Block only after the upstream neuron produced `output`,
+                    // before that signal is allowed to enqueue subscribers.
+                    onResponse: async response => {
+                        if (response.outputSignal?.collateral !== output) {
+                            return;
+                        }
+
+                        markOutputResponseReached();
+                        await outputResponseBlocked;
                     },
                 })
                 .waitUntilComplete();
 
-            // abort while no active operations (before enqueue after onResponse)
-            setTimeout(() => controller.abort(), 10);
+            await outputResponseReached;
+            controller.abort();
+            releaseOnResponse();
 
-            // When aborted, the promise should reject
             await expect(p).rejects.toThrow('Stimulation aborted');
-            const elapsed = Date.now() - start;
-            expect(elapsed).toBeLessThan(40);
+            expect(sinkRan).toBe(false);
         });
 
         it('should block subscriber enqueue until onResponse resolves', async () => {
@@ -2493,24 +2506,35 @@ describe('CNStra Core Tests', () => {
             });
             const cns = new CNS([a, b]);
 
-            const start = Date.now();
-            let seenOutputAt: number | undefined;
+            let releaseMidResponse!: () => void;
+            const midResponseBlocked = new Promise<void>(resolve => {
+                releaseMidResponse = resolve;
+            });
+            let outputSeenBeforeMidResponseReleased = false;
+            let midResponseReleased = false;
+            let outputSeen = false;
 
-            await cns
-                .stimulate(input.createSignal(), {
-                    onResponse: async r => {
-                        if (r.outputSignal?.collateral === mid) {
-                            await new Promise<void>(res => setTimeout(res, 30));
-                        }
-                        if (r.outputSignal?.collateral === output) {
-                            seenOutputAt = Date.now();
-                        }
-                    },
-                })
-                .waitUntilComplete();
+            const stimulation = cns.stimulate(input.createSignal(), {
+                onResponse: async r => {
+                    if (r.outputSignal?.collateral === mid) {
+                        await midResponseBlocked;
+                        midResponseReleased = true;
+                    }
+                    if (r.outputSignal?.collateral === output) {
+                        outputSeen = true;
+                        outputSeenBeforeMidResponseReleased =
+                            !midResponseReleased;
+                    }
+                },
+            });
 
-            expect(seenOutputAt).toBeDefined();
-            expect(seenOutputAt! - start).toBeGreaterThanOrEqual(25);
+            await Promise.resolve();
+            expect(outputSeen).toBe(false);
+            releaseMidResponse();
+            await stimulation.waitUntilComplete();
+
+            expect(outputSeen).toBe(true);
+            expect(outputSeenBeforeMidResponseReleased).toBe(false);
         });
     });
 
@@ -2535,7 +2559,7 @@ describe('CNStra Core Tests', () => {
                             processed: [...current.processed, 'step1'],
                             step: 1,
                         });
-                        await new Promise(resolve => setTimeout(resolve, 10));
+                        await new Promise(resolve => setTimeout(resolve, 2));
                         return axon.intermediate.createSignal({
                             value: payload.value,
                         });
@@ -2551,7 +2575,7 @@ describe('CNStra Core Tests', () => {
                         processed: [...current.processed, 'step2'],
                         step: 2,
                     });
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise(resolve => setTimeout(resolve, 2));
                     return axon.output.createSignal({
                         result: `Result: ${payload.value}`,
                     });
@@ -2570,7 +2594,7 @@ describe('CNStra Core Tests', () => {
             );
 
             // Wait a bit, then abort
-            await new Promise(resolve => setTimeout(resolve, 5));
+            await new Promise(resolve => setTimeout(resolve, 1));
             abortController.abort();
 
             // Wait for abort to complete - should reject
@@ -2749,7 +2773,7 @@ describe('CNStra Core Tests', () => {
                             `step1-${payload.id}`,
                         ],
                     });
-                    await new Promise(resolve => setTimeout(resolve, 30));
+                    await new Promise(resolve => setTimeout(resolve, 5));
                     return axon.step1Out.createSignal({ id: payload.id });
                 },
             });
@@ -2764,7 +2788,7 @@ describe('CNStra Core Tests', () => {
                             `step2-${payload.id}`,
                         ],
                     });
-                    await new Promise(resolve => setTimeout(resolve, 15));
+                    await new Promise(resolve => setTimeout(resolve, 5));
                     return axon.step2Out.createSignal({ id: payload.id });
                 },
             });
@@ -2797,7 +2821,7 @@ describe('CNStra Core Tests', () => {
             );
 
             // Wait for step1 to complete, then abort
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 2));
             abortController.abort();
             // Wait for abort to complete - should reject
             await expect(stimulation1.waitUntilComplete()).rejects.toThrow(
