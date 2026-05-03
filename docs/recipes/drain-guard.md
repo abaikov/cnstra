@@ -15,6 +15,17 @@ keywords: [CNSDrainGuard, drain, batch processing, cron, NestJS, database jobs, 
 
 Create one guard per workflow/source and call `drain()` freely. If a run is already active, `drain()` returns the same promise and does not start a second stimulation. When the current run reaches idle, the next `drain()` call can start a new stimulation.
 
+<figure className="text--center">
+  <img
+    src="/img/brain_drain.png"
+    alt="A stylized brain drain illustration for CNSDrainGuard"
+    style={{ maxWidth: '680px', width: '100%', borderRadius: '16px' }}
+  />
+  <figcaption>
+    One drain guard keeps repeated triggers flowing through a single active processing run.
+  </figcaption>
+</figure>
+
 ## Basic Shape
 
 ```ts
