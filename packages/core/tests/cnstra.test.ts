@@ -1583,27 +1583,29 @@ describe('CNStra Core Tests', () => {
                     collateral: unknown;
                     payload: unknown;
                 }> = [];
-                const startTime = Date.now();
 
-                await cns.stimulate(input.createSignal({ value: 5 }), {
+                const stimulation = cns.stimulate(input.createSignal({ value: 5 }), {
                     onResponse: response => {
                         responses.push({
                             collateral: response.outputSignal?.collateral,
                             payload: response.outputSignal?.payload,
                         });
-
-                        if (
-                            response.outputSignal?.collateral === output
-                        ) {
-                            const elapsed = Date.now() - startTime;
-                            expect(elapsed).toBeGreaterThanOrEqual(35);
-                            expect(responses).toHaveLength(3);
-                            expect(responses[2]).toMatchObject({
-                                collateral: output,
-                                payload: { result: 20 }, // (5*2)+10
-                            });
-                        }
                     },
+                });
+                await stimulation.waitUntilComplete();
+
+                expect(responses).toHaveLength(3);
+                expect(responses[0]).toMatchObject({
+                    collateral: input,
+                    payload: { value: 5 },
+                });
+                expect(responses[1]).toMatchObject({
+                    collateral: step1,
+                    payload: { value: 10 },
+                });
+                expect(responses[2]).toMatchObject({
+                    collateral: output,
+                    payload: { result: 20 }, // (5*2)+10
                 });
             });
         });
@@ -1807,7 +1809,7 @@ describe('CNStra Core Tests', () => {
                 response: (_p, axon) => axon.in.createSignal(),
             });
 
-            const DELAY = 30;
+            const DELAY = 5;
             const worker = neuron( { out })
                 .setConcurrency(1)
                 .dendrite({
@@ -1821,23 +1823,27 @@ describe('CNStra Core Tests', () => {
             const cns = new CNS([u1, u2, worker]);
 
             let outCount = 0;
-            const startTime = Date.now();
-            await new Promise<void>(resolve => {
-                cns.stimulate(start.createSignal(), {
-                    onResponse: r => {
-                        if (r.outputSignal?.collateral === out) {
-                            outCount++;
-                            if (outCount === 2) {
-                                const elapsed = Date.now() - startTime;
-                                expect(elapsed).toBeGreaterThanOrEqual(
-                                    DELAY * 2 - 5
-                                );
-                                resolve();
-                            }
-                        }
-                    },
-                });
+            let active = 0;
+            let maxActive = 0;
+            worker.dendrites[0].response = async (_payload, axon) => {
+                active++;
+                maxActive = Math.max(maxActive, active);
+                await new Promise(r => setTimeout(r, DELAY));
+                active--;
+                return axon.out.createSignal();
+            };
+
+            const stimulation = cns.stimulate(start.createSignal(), {
+                onResponse: r => {
+                    if (r.outputSignal?.collateral === out) {
+                        outCount++;
+                    }
+                },
             });
+            await stimulation.waitUntilComplete();
+
+            expect(outCount).toBe(2);
+            expect(maxActive).toBe(1);
         });
 
         it('should allow up to N concurrent tasks per neuron (concurrency=2)', async () => {
@@ -1858,7 +1864,7 @@ describe('CNStra Core Tests', () => {
                 response: (_p, axon) => axon.in.createSignal(),
             });
 
-            const DELAY = 30;
+            const DELAY = 5;
             const worker = neuron( { out })
                 .setConcurrency(2)
                 .dendrite({
@@ -1872,23 +1878,27 @@ describe('CNStra Core Tests', () => {
             const cns = new CNS([u1, u2, u3, worker]);
 
             let outCount = 0;
-            const startTime = Date.now();
-            await new Promise<void>(resolve => {
-                cns.stimulate(start.createSignal(), {
-                    onResponse: r => {
-                        if (r.outputSignal?.collateral === out) {
-                            outCount++;
-                            if (outCount === 3) {
-                                const elapsed = Date.now() - startTime;
-                                expect(elapsed).toBeGreaterThanOrEqual(
-                                    DELAY * 2 - 5
-                                );
-                                resolve();
-                            }
-                        }
-                    },
-                });
+            let active = 0;
+            let maxActive = 0;
+            worker.dendrites[0].response = async (_payload, axon) => {
+                active++;
+                maxActive = Math.max(maxActive, active);
+                await new Promise(r => setTimeout(r, DELAY));
+                active--;
+                return axon.out.createSignal();
+            };
+
+            const stimulation = cns.stimulate(start.createSignal(), {
+                onResponse: r => {
+                    if (r.outputSignal?.collateral === out) {
+                        outCount++;
+                    }
+                },
             });
+            await stimulation.waitUntilComplete();
+
+            expect(outCount).toBe(3);
+            expect(maxActive).toBe(2);
         });
 
         it('should not limit when concurrency is not set', async () => {
@@ -1905,7 +1915,7 @@ describe('CNStra Core Tests', () => {
                 response: (_p, axon) => axon.in.createSignal(),
             });
 
-            const DELAY = 30;
+            const DELAY = 5;
             const worker = neuron( { out }).dendrite({
                 collateral: inC,
                 response: async (_payload, axon) => {
@@ -1917,22 +1927,27 @@ describe('CNStra Core Tests', () => {
             const cns = new CNS([u1, u2, worker]);
 
             let outCount = 0;
-            const startTime = Date.now();
-            await new Promise<void>(resolve => {
-                cns.stimulate(start.createSignal(), {
-                    onResponse: r => {
-                        if (r.outputSignal?.collateral === out) {
-                            outCount++;
-                            if (outCount === 2) {
-                                const elapsed = Date.now() - startTime;
-                                // Should complete close to single delay since both can run together
-                                expect(elapsed).toBeLessThan(DELAY * 2);
-                                resolve();
-                            }
-                        }
-                    },
-                });
+            let active = 0;
+            let maxActive = 0;
+            worker.dendrites[0].response = async (_payload, axon) => {
+                active++;
+                maxActive = Math.max(maxActive, active);
+                await new Promise(r => setTimeout(r, DELAY));
+                active--;
+                return axon.out.createSignal();
+            };
+
+            const stimulation = cns.stimulate(start.createSignal(), {
+                onResponse: r => {
+                    if (r.outputSignal?.collateral === out) {
+                        outCount++;
+                    }
+                },
             });
+            await stimulation.waitUntilComplete();
+
+            expect(outCount).toBe(2);
+            expect(maxActive).toBe(2);
         });
 
         it('should enforce limit across separate stimulations (global gate)', async () => {
@@ -1944,29 +1959,43 @@ describe('CNStra Core Tests', () => {
                 .dendrite({
                     collateral: input,
                     response: async (_p, axon) => {
-                        await new Promise(r => setTimeout(r, 40));
+                        await new Promise(r => setTimeout(r, 5));
                         return axon.out.createSignal();
                     },
                 });
 
             const cns = new CNS([worker]);
 
-            const start = Date.now();
             let done = 0;
-            await new Promise<void>(resolve => {
-                const handler = (r: any) => {
-                    if (r.outputSignal?.collateral === workerOut) {
-                        done++;
-                        if (done === 2) {
-                            const elapsed = Date.now() - start;
-                            expect(elapsed).toBeGreaterThanOrEqual(75);
-                            resolve();
-                        }
-                    }
-                };
-                cns.stimulate(input.createSignal(), { onResponse: handler });
-                cns.stimulate(input.createSignal(), { onResponse: handler });
+            let active = 0;
+            let maxActive = 0;
+            worker.dendrites[0].response = async (_p, axon) => {
+                active++;
+                maxActive = Math.max(maxActive, active);
+                await new Promise(r => setTimeout(r, 5));
+                active--;
+                return axon.out.createSignal();
+            };
+
+            const handler = (r: any) => {
+                if (r.outputSignal?.collateral === workerOut) {
+                    done++;
+                }
+            };
+            const stimulation1 = cns.stimulate(input.createSignal(), {
+                onResponse: handler,
             });
+            const stimulation2 = cns.stimulate(input.createSignal(), {
+                onResponse: handler,
+            });
+
+            await Promise.all([
+                stimulation1.waitUntilComplete(),
+                stimulation2.waitUntilComplete(),
+            ]);
+
+            expect(done).toBe(2);
+            expect(maxActive).toBe(1);
         });
     });
 
