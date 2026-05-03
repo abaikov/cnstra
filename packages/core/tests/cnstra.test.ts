@@ -60,14 +60,14 @@ const card = neuron({})
     .dendrite({
         collateral: deckAxon.createdAtCreateCardWithDeckButtonClicked,
         response: payload => {
-            console.log('card title', payload.cardTitle);
+            void payload;
             // create a card
         },
     })
     .dendrite({
         collateral: deckAxon.createdAtUserEntersApp,
         response: payload => {
-            console.log('card title', payload.cardTitle);
+            void payload;
             // create a card
         },
     });
