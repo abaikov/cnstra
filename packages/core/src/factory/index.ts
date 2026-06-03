@@ -1,8 +1,10 @@
 import { CNSCollateral } from '../CNSCollateral';
+import { CNSPersistOptionsRegistry } from '../CNSPersistOptionsRegistry';
 import { TCNSAxon } from '../types/TCNSAxon';
 import { TCNSDendrite } from '../types/TCNSDendrite';
 import { TCNSLocalContextValueStore } from '../types/TCNSLocalContextValueStore';
 import { TNCNeuronResponseReturn } from '../types/TCNSNeuronResponseReturn';
+import { TCNSNeuron } from '../types/TCNSNeuron';
 import { ICNS } from '../interfaces/ICNS';
 import { TCNSModality } from '../types/TCNSModality';
 import { TCNSAfferentPath } from '../types/TCNSAfferentPath';
@@ -426,4 +428,69 @@ export const modality = (
     return {
         afferentPaths,
     };
+};
+
+/**
+ * Creates a CNSPersistOptionsRegistry from a plain object of named neurons.
+ * All axon collaterals of each neuron are registered automatically.
+ *
+ * Use this for both production persistence and devtools/AI inspection —
+ * the same registry serves both purposes.
+ *
+ * @example
+ * // src/neurons/registry.ts
+ * import { createPersistRegistry } from '@cnstra/core';
+ * import { deckNeuron, cardNeuron } from './index';
+ *
+ * export const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+ */
+type CNSNeuronRegistryEntry<TAxon extends TCNSAxon = TCNSAxon> = {
+    neuron: TCNSNeuron<any, TAxon>;
+    collaterals?: { [K in keyof TAxon]?: string };
+};
+
+type CNSRegistryValue<N extends TCNSNeuron<any, any>> =
+    | N
+    | (N extends TCNSNeuron<any, infer TAxon>
+        ? { neuron: N; collaterals?: { [K in keyof TAxon]?: string } }
+        : never);
+
+/**
+ * Creates a CNSPersistOptionsRegistry from a plain object of named neurons.
+ * All axon collaterals are registered automatically.
+ *
+ * @example
+ * // Auto names from JS identifiers:
+ * export const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+ *
+ * // Explicit neuron name:
+ * export const registry = createPersistRegistry({ 'deck-neuron': deckNeuron });
+ *
+ * // Explicit collateral names (keys are type-checked against the neuron's axon):
+ * export const registry = createPersistRegistry({
+ *   'deck-neuron': { neuron: deckNeuron, collaterals: { deckCreated: 'deck-created' } }
+ * });
+ */
+export const createPersistRegistry = <TMap extends Record<string, TCNSNeuron<any, any>>>(
+    namedNeurons: { [K in keyof TMap]: CNSRegistryValue<TMap[K]> }
+): CNSPersistOptionsRegistry => {
+    const registry = new CNSPersistOptionsRegistry();
+    for (const [name, entry] of Object.entries(namedNeurons)) {
+        const isEntry = 'neuron' in (entry as object) && !('axon' in (entry as object));
+        const neuron = isEntry
+            ? (entry as CNSNeuronRegistryEntry).neuron
+            : entry as TCNSNeuron<any, any>;
+        const colNames = isEntry
+            ? ((entry as CNSNeuronRegistryEntry).collaterals ?? {})
+            : {};
+
+        registry.addNeuron(neuron, { name, neuron });
+        for (const [key, col] of Object.entries(neuron.axon)) {
+            registry.addCollateral(col as CNSCollateral<unknown>, {
+                name: (colNames as Record<string, string>)[key] ?? key,
+                collateral: col as CNSCollateral<unknown>,
+            });
+        }
+    }
+    return registry;
 };

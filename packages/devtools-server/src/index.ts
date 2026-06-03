@@ -151,13 +151,7 @@ export class CNSDevToolsServer {
     private appSockets = new Map<string, WebSocket>();
     private clientSockets = new Set<WebSocket>();
     private lastInitByApp = new Map<string, InitMessage>();
-    private stimulationsByApp = new Map<string, StimulationMessage[]>();
     private stimulationBuffer: StimulationMessage[] = [];
-    // Topology per CNS (cnsId == devToolsInstanceId for now)
-    private neuronsByCns = new Map<string, Neuron[]>();
-    private dendritesByCns = new Map<string, Dendrite[]>();
-    private collateralsByCns = new Map<string, Collateral[]>();
-    private responsesByCns = new Map<string, StimulationResponse[]>();
     // Track app connection times
     private appFirstSeenAt = new Map<string, number>();
     private appLastSeenAt = new Map<string, number>();
@@ -246,7 +240,16 @@ export class CNSDevToolsServer {
         return value;
     }
 
-    constructor(private repository: ICNSDevToolsServerRepository) {}
+    constructor(
+        private repository: ICNSDevToolsServerRepository,
+        private readonly options: { consoleLogEnabled?: boolean } = {}
+    ) {}
+
+    private log(...args: unknown[]): void {
+        if (this.options.consoleLogEnabled) {
+            console.log(...args);
+        }
+    }
 
     private isNeuronResponseMessage(
         message: unknown
@@ -321,13 +324,15 @@ export class CNSDevToolsServer {
 
     async handleMessage(ws: WebSocket, message: unknown): Promise<unknown> {
         if (!this.isMessageWithType(message)) {
-            console.warn('⚠️ Unknown message format:', message);
+            if (this.options.consoleLogEnabled) {
+                console.warn('Unknown message format:', message);
+            }
             return null;
         }
 
         switch (message.type) {
             case 'devtools-client-connect':
-                console.log('🔗 DevTools client connecting...');
+                this.log('DevTools client connecting...');
                 this.addClient(ws);
                 // Start metrics loop if not already started
                 if (!this.metricsTimer) {
@@ -335,10 +340,7 @@ export class CNSDevToolsServer {
                 }
                 // Send response to client
                 ws.send(JSON.stringify({ type: 'devtools-client-connected' }));
-                console.log(
-                    '✅ DevTools client connected, total clients:',
-                    this.clientSockets.size
-                );
+                this.log('DevTools client connected, total clients:', this.clientSockets.size);
                 return { type: 'devtools-client-connected' };
 
             case 'init':
@@ -851,7 +853,7 @@ export class CNSDevToolsServer {
             }
 
             default:
-                console.log('Unknown message type:', message.type);
+                this.log('Unknown message type:', message.type);
                 return null;
         }
     }
@@ -929,19 +931,10 @@ export class CNSDevToolsServer {
             await this.repository.upsertDendrite(dendrite);
         }
 
-        // Also store in memory for backward compatibility
-        this.neuronsByCns.set(cnsId, message.neurons || []);
-        this.collateralsByCns.set(cnsId, message.collaterals || []);
-        this.dendritesByCns.set(cnsId, message.dendrites || []);
-
         await this.repository.addCnsToApp(app.appId, cnsId);
 
-        console.log(
-            `✅ App connected: ${message.appName} (${message.devToolsInstanceId})`
-        );
-        console.log(
-            `📊 Topology: ${message.neurons.length} neurons, ${message.collaterals.length} collaterals, ${message.dendrites.length} dendrites`
-        );
+        this.log(`App connected: ${message.appName} (${message.devToolsInstanceId})`);
+        this.log(`Topology: ${message.neurons.length} neurons, ${message.collaterals.length} collaterals, ${message.dendrites.length} dendrites`);
 
         // Return apps list to broadcast
         const apps = await this.repository.listApps();
@@ -954,15 +947,10 @@ export class CNSDevToolsServer {
 
         // Additionally broadcast the full apps:active list so late-joined devtools panels
         // can reliably refresh their app list even if they miss app:added for any reason
-        console.log(
-            '📡 Broadcasting apps:active to',
-            this.clientSockets.size,
-            'clients:',
-            {
-                appsCount: apps.length,
-                appIds: apps.map(a => a.appId),
-            }
-        );
+        this.log('Broadcasting apps:active to', this.clientSockets.size, 'clients:', {
+            appsCount: apps.length,
+            appIds: apps.map(a => a.appId),
+        });
         this.broadcastToClients({
             type: 'apps:active',
             apps: apps,
@@ -978,14 +966,12 @@ export class CNSDevToolsServer {
         ws: WebSocket,
         message: { type: string; items?: unknown[] }
     ): Promise<void> {
-        console.log(
-            '📦 Server handling batch with',
-            message.items?.length || 0,
-            'items'
-        );
+        this.log('Server handling batch with', message.items?.length || 0, 'items');
 
         if (!Array.isArray(message.items)) {
-            console.warn('⚠️ Invalid batch message - no items array');
+            if (this.options.consoleLogEnabled) {
+                console.warn('Invalid batch message - no items array');
+            }
             return;
         }
 
@@ -997,7 +983,7 @@ export class CNSDevToolsServer {
                 responses.push(actualMessage);
             } else {
                 // Handle non-response messages individually
-                console.log('📦 Batch item (non-response):', {
+                this.log('Batch item (non-response):', {
                     type: (actualMessage as any)?.type,
                 });
                 await this.handleMessage(ws, actualMessage);
@@ -1006,11 +992,7 @@ export class CNSDevToolsServer {
 
         // Send response batch if we have responses
         if (responses.length > 0) {
-            console.log(
-                '📦 Creating response-batch with',
-                responses.length,
-                'responses'
-            );
+            this.log('Creating response-batch with', responses.length, 'responses');
             const responseBatch = {
                 type: 'response-batch' as const,
                 devToolsInstanceId:
@@ -1037,7 +1019,7 @@ export class CNSDevToolsServer {
         });
 
         if (replayResponses.length > 0) {
-            console.log('🔁 [Server] Received REPLAY response-batch:', {
+            this.log('[Server] Received REPLAY response-batch:', {
                 totalResponses: message.responses?.length || 0,
                 replayResponsesCount: replayResponses.length,
                 replayStimIds: replayResponses
@@ -1058,19 +1040,6 @@ export class CNSDevToolsServer {
         // Persist responses in normalized repository
         for (const response of message.responses) {
             await this.repository.saveResponse(response);
-        }
-
-        // Also persist in memory for backward compatibility
-        // Extract cnsId from the first response
-        if (message.responses && message.responses.length > 0) {
-            const cnsId = message.responses[0].cnsId;
-            if (cnsId) {
-                const list = this.responsesByCns.get(cnsId) || [];
-                list.push(...(message.responses || []));
-                // Keep last N
-                if (list.length > 2000) list.splice(0, list.length - 2000);
-                this.responsesByCns.set(cnsId, list);
-            }
         }
 
         // Broadcast to all devtools clients
@@ -1113,13 +1082,11 @@ export class CNSDevToolsServer {
                 const appWs = this.appSockets.get(cnsIdFromCmd);
                 if (appWs && appWs.readyState === 1) {
                     appWs.send(JSON.stringify(message));
-                    console.log(
-                        `📨 Stimulate forwarded to cns ${cnsIdFromCmd}`
-                    );
+                    this.log(`Stimulate forwarded to cns ${cnsIdFromCmd}`);
                 } else {
-                    console.warn(
-                        `⚠️ CNS socket not available for ${cnsIdFromCmd}`
-                    );
+                    if (this.options.consoleLogEnabled) {
+                        console.warn(`CNS socket not available for ${cnsIdFromCmd}`);
+                    }
                 }
             } else if (appIdFromCmd) {
                 const cnsIds = await this.repository.getCnsByApp(appIdFromCmd);
@@ -1131,9 +1098,7 @@ export class CNSDevToolsServer {
                         count++;
                     }
                 }
-                console.log(
-                    `📨 Stimulate forwarded to ${count} CNS of app ${appIdFromCmd}`
-                );
+                this.log(`Stimulate forwarded to ${count} CNS of app ${appIdFromCmd}`);
             } else {
                 // Fallback: broadcast to all app sockets
                 let count = 0;
@@ -1146,7 +1111,9 @@ export class CNSDevToolsServer {
                 // Removed verbose logging
             }
         } catch (e) {
-            console.error('❌ Failed to forward stimulate:', e);
+            if (this.options.consoleLogEnabled) {
+                console.error('Failed to forward stimulate:', e);
+            }
         }
 
         return null;
@@ -1157,17 +1124,13 @@ export class CNSDevToolsServer {
         for (const [cnsId, socket] of Array.from(this.appSockets.entries())) {
             if (socket === ws) {
                 this.appSockets.delete(cnsId);
-                console.log(`❌ CNS disconnected: ${cnsId}`);
+                this.log(`CNS disconnected: ${cnsId}`);
 
                 // Derive base appId from cnsId
                 const sepIdx = cnsId.indexOf(':');
                 const baseAppId = sepIdx > 0 ? cnsId.slice(0, sepIdx) : cnsId;
 
                 // Remove per-CNS cached topology
-                this.neuronsByCns.delete(cnsId);
-                this.dendritesByCns.delete(cnsId);
-                this.collateralsByCns.delete(cnsId);
-                this.responsesByCns.delete(cnsId);
                 this.lastInitByApp.delete(cnsId);
 
                 // Update cnsByApp mapping
@@ -1216,17 +1179,6 @@ export class CNSDevToolsServer {
         // Store stimulation in normalized repository
         await this.repository.saveStimulation(message);
 
-        // Also store in memory for backward compatibility
-        const appStimulations = this.stimulationsByApp.get(message.appId) || [];
-        appStimulations.push(message);
-
-        // Keep only last 1000 stimulations per app to prevent memory issues
-        if (appStimulations.length > 1000) {
-            appStimulations.splice(0, appStimulations.length - 1000);
-        }
-
-        this.stimulationsByApp.set(message.appId, appStimulations);
-
         // Add to buffer for batch sending
         this.stimulationBuffer.push(message);
 
@@ -1247,17 +1199,16 @@ export class CNSDevToolsServer {
                     clientWs.send(messageStr);
                     sentCount++;
                 } catch (error) {
-                    console.error(
-                        '❌ Failed to send message to client:',
-                        error
-                    );
+                    if (this.options.consoleLogEnabled) {
+                        console.error('Failed to send message to client:', error);
+                    }
                 }
             }
         });
         // Only log if not all clients received the message
-        if (sentCount !== this.clientSockets.size) {
+        if (sentCount !== this.clientSockets.size && this.options.consoleLogEnabled) {
             console.warn(
-                `⚠️ Sent message to ${sentCount}/${this.clientSockets.size} clients`
+                `Sent message to ${sentCount}/${this.clientSockets.size} clients`
             );
         }
     }
@@ -1312,7 +1263,7 @@ export class CNSDevToolsServer {
     }
 
     stop(): void {
-        console.log('Stopping server!');
+        this.log('Stopping server.');
         this.stopped = true;
         // Clear metrics timer
         if (this.metricsTimer) {
@@ -1334,14 +1285,12 @@ export class CNSDevToolsServer {
 
         // Clear all data
         this.lastInitByApp.clear();
-        this.stimulationsByApp.clear();
         this.stimulationBuffer = [];
-        this.neuronsByCns.clear();
-        this.dendritesByCns.clear();
-        this.collateralsByCns.clear();
-        this.responsesByCns.clear();
         this.appFirstSeenAt.clear();
         this.appLastSeenAt.clear();
         this.replaysByApp.clear();
     }
 }
+
+export { startDevTools } from './start';
+export type { StartDevToolsOptions, DevToolsHandle } from './start';

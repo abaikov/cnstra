@@ -54,6 +54,46 @@ const stimulation = cns.stimulate(userCreated.createSignal({
 await stimulation.waitUntilComplete();
 ```
 
+## Registry & Naming
+
+`CNSPersistOptionsRegistry` maps object references to stable string names — used by devtools, MCP server, and persistence/resume patterns.
+
+**Per-file registration (recommended):**
+
+```ts
+// src/neurons/registry.ts
+import { CNSPersistOptionsRegistry } from '@cnstra/core';
+export const registry = new CNSPersistOptionsRegistry();
+
+// src/neurons/deck.ts — each neuron registers itself
+import { collateral, withCtx } from '@cnstra/core';
+import { registry } from './registry';
+
+const deckCreated = collateral<{ deckId: string }>();
+const importStarted = collateral<{ importId: string }>(); // external entry point
+
+const deckNeuron = withCtx()
+    .neuron({ deckCreated })
+    .bind({ importStarted }, {
+        importStarted: ({ importId }, axon) => axon.deckCreated.createSignal({ deckId: importId }),
+    });
+
+registry
+    .register('deckNeuron', deckNeuron)                    // registers neuron + axon collaterals
+    .register('deckNeuron', deckNeuron, { deckCreated: 'deck-created' }) // explicit collateral names
+    .registerCollateral('importStarted', importStarted);   // standalone collateral (no neuron)
+```
+
+**All at once (simple projects):**
+
+```ts
+import { createPersistRegistry } from '@cnstra/core';
+
+export const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+// explicit neuron name:        { 'deck-neuron': deckNeuron }
+// explicit collateral names:   { 'deck-neuron': { neuron: deckNeuron, collaterals: { deckCreated: 'deck-created' } } }
+```
+
 ## Documentation
 
 - **[Quick Start Guide](https://cnstra.org/docs/core/quick-start)** — Get up and running in minutes

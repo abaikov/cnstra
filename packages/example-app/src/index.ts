@@ -1,4 +1,4 @@
-import { CNS, collateral, withCtx } from '@cnstra/core';
+import { CNS, collateral, withCtx, createPersistRegistry } from '@cnstra/core';
 // DevTools client is loaded dynamically when enabled
 import { WebSocket as NodeWebSocket, WebSocketServer } from 'ws';
 import { createServer } from 'http';
@@ -21,83 +21,81 @@ const DEVTOOLS_SERVER_ENABLED =
         : DEVTOOLS_ENABLED;
 
 // E-commerce domain collaterals
-const userLogin = collateral<{ email: string; password: string }>('user-login');
+const userLogin = collateral<{ email: string; password: string }>();
 const userAuthenticated = collateral<{
     userId: string;
     token: string;
     email: string;
-}>('user-authenticated');
+}>();
 const searchProducts = collateral<{
     query: string;
     category?: string;
     userId?: string;
-}>('search-products');
+}>();
 const productsFound = collateral<{
     products: Product[];
     query: string;
     totalCount: number;
-}>('products-found');
+}>();
 const addToCart = collateral<{
     userId: string;
     productId: string;
     quantity: number;
-}>('add-to-cart');
+}>();
 const cartUpdated = collateral<{
     userId: string;
     cartItems: CartItem[];
     total: number;
-}>('cart-updated');
+}>();
 const checkout = collateral<{
     userId: string;
     cartItems: CartItem[];
     paymentMethod: string;
-}>('checkout');
+}>();
 const orderCreated = collateral<{
     orderId: string;
     userId: string;
     items: CartItem[];
     total: number;
-}>('order-created');
+}>();
 const processPayment = collateral<{
     orderId: string;
     amount: number;
     paymentMethod: string;
-}>('process-payment');
+}>();
 const paymentProcessed = collateral<{
     orderId: string;
     status: 'success' | 'failed';
     transactionId?: string;
-}>('payment-processed');
+}>();
 const sendNotification = collateral<{
     userId: string;
     type: string;
     message: string;
     email?: string;
-}>('send-notification');
+}>();
 const notificationSent = collateral<{
     userId: string;
     type: string;
     status: 'sent' | 'failed';
-}>('notification-sent');
+}>();
 const recordMetric = collateral<{
     event: string;
     userId?: string;
     metadata?: any;
-}>('record-metric');
+}>();
 const auditLog = collateral<{
     action: string;
     userId?: string;
     details: any;
     timestamp: number;
-}>('audit-log');
-const inventoryCheck = collateral<{ productId: string; quantity: number }>(
-    'inventory-check'
-);
+}>();
+const inventoryCheck = collateral<{ productId: string; quantity: number }>();
 const inventoryUpdated = collateral<{
     productId: string;
     available: number;
     reserved: number;
-}>('inventory-updated');
+}>();
 
 // Type definitions
 interface Product {
@@ -212,7 +210,7 @@ sampleUsers.forEach(user => users.set(user.id, user));
 
 // Authentication Service
 const authNeuron = withCtx()
-    .neuron('auth-service', {
+    .neuron({
         userAuthenticated,
         recordMetric,
         auditLog,
@@ -287,7 +285,7 @@ const authNeuron = withCtx()
 
 // Product Search Service
 const searchNeuron = withCtx()
-    .neuron('search-service', {
+    .neuron({
         productsFound,
         recordMetric,
         auditLog,
@@ -345,7 +343,7 @@ const searchNeuron = withCtx()
 
 // Shopping Cart Service
 const cartNeuron = withCtx()
-    .neuron('cart-service', {
+    .neuron({
         cartUpdated,
         recordMetric,
         auditLog,
@@ -426,7 +424,7 @@ const cartNeuron = withCtx()
 
 // Order Service
 const orderNeuron = withCtx()
-    .neuron('order-service', {
+    .neuron({
         orderCreated,
         processPayment,
         recordMetric,
@@ -492,7 +490,7 @@ const orderNeuron = withCtx()
 
 // Payment Service
 const paymentNeuron = withCtx()
-    .neuron('payment-service', {
+    .neuron({
         paymentProcessed,
         sendNotification,
         recordMetric,
@@ -556,7 +554,7 @@ const paymentNeuron = withCtx()
 
 // Notification Service
 const notificationNeuron = withCtx()
-    .neuron('notification-service', {
+    .neuron({
         notificationSent,
         recordMetric,
         auditLog,
@@ -599,7 +597,7 @@ const notificationNeuron = withCtx()
 
 // Inventory Service
 const inventoryNeuron = withCtx()
-    .neuron('inventory-service', {
+    .neuron({
         inventoryUpdated,
         recordMetric,
         auditLog,
@@ -660,7 +658,7 @@ const inventoryNeuron = withCtx()
 
 // Analytics Service
 const analyticsNeuron = withCtx()
-    .neuron('analytics-service', {})
+    .neuron({})
     .bind(
         { recordMetric },
         {
@@ -681,7 +679,7 @@ const analyticsNeuron = withCtx()
 
 // Audit Service
 const auditNeuron = withCtx()
-    .neuron('audit-service', {})
+    .neuron({})
     .bind(
         { auditLog },
         {
@@ -984,6 +982,18 @@ const cns = new CNS([
     analyticsNeuron,
     auditNeuron,
 ]);
+
+export const registry = createPersistRegistry({
+    authNeuron,
+    searchNeuron,
+    cartNeuron,
+    orderNeuron,
+    paymentNeuron,
+    notificationNeuron,
+    inventoryNeuron,
+    analyticsNeuron,
+    auditNeuron,
+});
 
 // Setup DevTools with WebSocket transport (optional)
 console.log('🔧 DevTools CLIENT enabled:', DEVTOOLS_CLIENT_ENABLED);

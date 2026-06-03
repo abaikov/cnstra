@@ -16,8 +16,11 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
+      "@cnstra/core": ["../core/dist"],
       "@cnstra/devtools": ["../devtools/dist/index.d.ts"],
-      "@cnstra/devtools-dto": ["../devtools-dto/dist/index.d.ts"]
+      "@cnstra/devtools-dto": ["../devtools-dto/dist/index.d.ts"],
+      "@cnstra/devtools-transport-ws": ["../devtools-transport-ws/dist/index.d.ts"],
+      "@cnstra/devtools-server-repository-in-memory": ["../devtools-server-repository-in-memory/dist/index.d.ts"]
     }
   },
   "include": [

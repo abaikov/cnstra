@@ -23,6 +23,8 @@ export type TWSOpts = {
     autoConnect?: boolean;
     /** Max reconnect attempts (default Infinity) */
     maxReconnectAttempts?: number;
+    /** When true, print transport-level console logs */
+    consoleLogEnabled?: boolean;
 };
 
 type WSLike = WebSocket;
@@ -82,13 +84,17 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
             const ws = new WS(this.opts.url, this.opts.protocols) as WSLike;
             this.ws = ws;
             ws.onopen = () => {
-                console.log('🔗 DevTools connected to server');
+                if (this.opts.consoleLogEnabled) {
+                    console.log('DevTools connected to server');
+                }
                 this.connecting = false;
                 this.reconnectAttempts = 0; // Reset on successful connection
 
                 // On reconnect, resend init message first
                 if (this.hasConnectedOnce && this.lastInitMessage) {
-                    console.log('🔄 Reconnected - resending init message');
+                    if (this.opts.consoleLogEnabled) {
+                        console.log('DevTools reconnected - resending init message');
+                    }
                     this.buffer.unshift({
                         type: 'init',
                         payload: this.lastInitMessage,
@@ -106,9 +112,11 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
                     this.reconnectAttempts < this.maxReconnectAttempts
                 ) {
                     this.reconnectAttempts++;
-                    console.log(
-                        `🔄 DevTools disconnected, reconnecting... (attempt ${this.reconnectAttempts})`
-                    );
+                    if (this.opts.consoleLogEnabled) {
+                        console.log(
+                            `DevTools disconnected, reconnecting... (attempt ${this.reconnectAttempts})`
+                        );
+                    }
                     setTimeout(
                         () => this.ensureSocket().catch(() => {}),
                         this.reconnectDelayMs
@@ -116,7 +124,9 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
                 } else if (
                     this.reconnectAttempts >= this.maxReconnectAttempts
                 ) {
-                    console.log('❌ DevTools max reconnect attempts reached');
+                    if (this.opts.consoleLogEnabled) {
+                        console.log('DevTools max reconnect attempts reached');
+                    }
                 }
             };
             ws.onerror = () => {
@@ -198,8 +208,8 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
                 );
             });
 
-        if (replayResponses.length > 0) {
-            console.log('🔁 [Transport] Flushing REPLAY responses batch:', {
+        if (replayResponses.length > 0 && this.opts.consoleLogEnabled) {
+            console.log('[Transport] Flushing REPLAY responses batch:', {
                 totalItems: items.length,
                 replayResponsesCount: replayResponses.length,
                 replayStimIds: replayResponses

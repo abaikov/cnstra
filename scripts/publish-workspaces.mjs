@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const args = process.argv.slice(2);
 const workspaces = [];
@@ -62,9 +64,43 @@ const run = (command, commandArgs) => {
 };
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const npmRun = script => run(npm, ['run', script]);
+const npmRun = script => run(npm, ['run', script, '--if-present']);
 
 run(npm, ['whoami']);
+
+// Pre-publish check: verify no package tries to overwrite an already-published version
+{
+    const packagesDir = new URL('../packages', import.meta.url).pathname;
+    const pkgDirs = readdirSync(packagesDir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => join(packagesDir, d.name, 'package.json'));
+
+    const toCheck = [];
+    for (const pkgPath of pkgDirs) {
+        let pkg;
+        try { pkg = JSON.parse(readFileSync(pkgPath, 'utf8')); } catch { continue; }
+        if (pkg.private) continue;
+        if (workspaces.length > 0 && !workspaces.includes(pkg.name)) continue;
+        toCheck.push({ name: pkg.name, version: pkg.version });
+    }
+
+    const conflicts = [];
+    for (const { name, version } of toCheck) {
+        const result = spawnSync('npm', ['view', `${name}@${version}`, 'version'], { encoding: 'utf8' });
+        if (result.stdout.trim() === version) {
+            conflicts.push(`  ${name}@${version}`);
+        }
+    }
+
+    if (conflicts.length > 0) {
+        console.error('\n❌ Cannot publish — these versions already exist on npm:');
+        conflicts.forEach(c => console.error(c));
+        console.error('\nBump their versions before publishing.\n');
+        process.exit(1);
+    }
+
+    console.log(`✓ Version check passed (${toCheck.length} packages)\n`);
+}
 
 if (workspaces.length === 0) {
     npmRun('lint');

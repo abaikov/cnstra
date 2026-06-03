@@ -67,6 +67,54 @@ Each active `CNSStimulation` instance has a fixed overhead for internal data str
 
 **⚠️ Memory warning**: If your payloads are large (e.g., full documents, images, large JSON objects) and queues grow (e.g., due to slow processing or high concurrency), memory usage can explode quickly.
 
+### How much can you queue before hitting 1 GB?
+
+CNStra's queue is **purely in-memory** — a ring buffer that holds every pending task until a dendrite processes it. There is no spilling to disk, no backpressure from the queue itself. All pending work lives in RAM.
+
+Each queued task occupies roughly:
+
+```
+~200 bytes (task metadata + ring buffer slot overhead) + payload size
+```
+
+From that, the maximum number of tasks you can hold in 1 GB of RAM:
+
+| Payload size | Max tasks in 1 GB | Typical scenario |
+|---|---|---|
+| ~0 bytes (IDs only) | ~5,000,000 | Event IDs, simple triggers |
+| ~100 bytes (small record) | ~3,300,000 | Minimal user events |
+| ~1 KB (typical entity) | ~830,000 | Order, session, compact DTO |
+| ~10 KB (medium document) | ~97,000 | Product page, large form submission |
+| ~100 KB (large document) | ~9,800 | Full report, paginated result set |
+| ~1 MB (binary / large JSON) | ~1,000 | Image metadata, export chunk |
+
+**These numbers are per-process totals across all concurrent stimulations.** If you have 1,000 stimulations running in parallel and each queues 100 tasks with 10 KB payloads, that's already 100,000 tasks × 10 KB ≈ **1 GB consumed**.
+
+### When not to use CNStra's queue for work items
+
+The in-memory queue is designed for **short fan-outs within a single business flow** — a stimulation that spawns a handful of parallel tasks, each completing quickly. It is **not** a job queue.
+
+**Stop and reach for an external queue (BullMQ, SQS, RabbitMQ) when:**
+
+- **You don't control queue depth** — work arrives faster than dendrites can drain it (e.g., webhook bursts, large imports)
+- **The total item count is unbounded** — processing "all users", "all orders", "all rows in a CSV" fans out into a queue that grows linearly with data size
+- **Payloads are large** — passing full documents or large objects through signals; at 100 KB per payload you hit 1 GB at fewer than 10,000 queued tasks
+- **The process might restart** — everything in the ring buffer is lost on crash; if durability matters, use an external queue
+- **You need visibility and retries** — external queues give you dead-letter queues, retry policies, and dashboards out of the box
+
+**The correct pattern** for large workloads: let the external queue control depth, and have each worker create exactly one CNStra stimulation per job:
+
+```ts
+// ✅ External queue controls how many items are in-flight at once
+new Worker('jobs', async (job) => {
+  // One stimulation per job — CNStra queue depth stays tiny
+  const stimulation = cns.stimulate(myCollateral.createSignal(job.data));
+  await stimulation.waitUntilComplete();
+});
+```
+
+This way CNStra's queue never holds more than the tasks for a single job, regardless of how many jobs are waiting.
+
 ### Memory usage at scale
 
 | Concurrent Stimulations | Minimal Context (2-3 keys) | Growing Context (10 keys, objects) |

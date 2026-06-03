@@ -8,7 +8,7 @@
     "docs"
   ],
   "scripts": {
-    "build": "npm run build:core && npm run build:devtools && npm run build:devtools-server && npm run build --workspace=@cnstra/react && npm run build --workspace=cnstra-docs",
+    "build": "npm run build:core && npm run build --workspace=@cnstra/mcp && npm run build:devtools && npm run build:devtools-server && npm run build --workspace=@cnstra/react && npm run build --workspace=cnstra-docs",
     "build:core": "npm run build --workspace=@cnstra/core",
     "build:devtools": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools && npm run build --workspace=@cnstra/devtools-transport-ws && npm run build --workspace=@cnstra/devtools-panel-ui",
     "build:devtools-server": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-server && npm run build --workspace=@cnstra/devtools-server-repository-in-memory",
@@ -20,8 +20,8 @@
     "dev:devtools-panel-ui": "npm run dev --workspace=@cnstra/devtools-panel-ui",
     "dev:devtools-electron": "npm run dev --workspace=@cnstra/devtools-electron",
     "dev:example": "npm run dev --workspace=@cnstra/example-app",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "node node_modules/eslint/bin/eslint.js .",
+    "lint:fix": "node node_modules/eslint/bin/eslint.js . --fix",
     "test": "npm run test --workspaces --if-present",
     "test:types": "npm run test:types --workspaces --if-present",
     "clean": "npm run clean --workspaces && rm -rf node_modules",
@@ -34,6 +34,7 @@
     "publish:all": "node scripts/publish-workspaces.mjs",
     "publish:core": "node scripts/publish-workspaces.mjs --workspace=@cnstra/core",
     "publish:react": "node scripts/publish-workspaces.mjs --workspace=@cnstra/react",
+    "docs:llms": "node scripts/generate-llms-full.mjs",
     "version:all": "npm version patch --workspaces"
   },
   "repository": {

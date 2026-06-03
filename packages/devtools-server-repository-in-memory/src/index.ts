@@ -329,8 +329,7 @@ export class CNSDevToolsServerRepositoryInMemory
             );
         }
         if (filters.neuronId) {
-            // Note: StimulationResponse doesn't have neuronId, this would need to be added or handled differently
-            // For now, we'll skip this filter
+            responses = responses.filter(r => r.neuronId === filters.neuronId);
         }
         if (filters.collateralName) {
             responses = responses.filter(

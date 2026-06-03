@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-server",
-  "version": "1.0.1",
+  "version": "1.1.1",
   "description": "CNStra DevTools server (WebSocket only for now)",
   "keywords": [
     "cnstra",
@@ -20,6 +20,9 @@
       "require": "./dist/index.cjs"
     }
   },
+  "bin": {
+    "cnstra-devtools": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsup && tsc --emitDeclarationOnly",
     "build:types": "tsc --emitDeclarationOnly",
@@ -31,11 +34,26 @@
     "dist"
   ],
   "dependencies": {
-    "@cnstra/devtools-dto": "1.0.0",
+    "@cnstra/devtools-dto": "^1.0.0",
+    "@cnstra/devtools-server-repository-in-memory": "^1.1.0",
     "ws": "^8.18.0"
   },
   "peerDependencies": {
-    "@cnstra/devtools": "^1.0.1"
+    "@cnstra/core": "^2.1.0",
+    "@cnstra/devtools": "^1.0.1",
+    "@cnstra/devtools-panel-ui": "^1.0.0",
+    "@cnstra/devtools-transport-ws": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@cnstra/devtools-panel-ui": {
+      "optional": true
+    },
+    "@cnstra/devtools": {
+      "optional": true
+    },
+    "@cnstra/devtools-transport-ws": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.7.4",

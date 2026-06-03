@@ -1,13 +1,13 @@
 ---
-id: drain-guard
+id: stimulation-gate
 title: Drain Guard
 sidebar_label: Drain Guard
-slug: /recipes/drain-guard
-description: Use CNSDrainGuard to trigger batch processing from cron, webhooks, or manual calls without starting overlapping CNS stimulations.
-keywords: [CNSDrainGuard, drain, batch processing, cron, NestJS, database jobs, background jobs, stimulation guard, no overlapping jobs]
+slug: /recipes/stimulation-gate
+description: Use CNSStimulationGate to trigger batch processing from cron, webhooks, or manual calls without starting overlapping CNS stimulations.
+keywords: [CNSStimulationGate, drain, batch processing, cron, NestJS, database jobs, background jobs, stimulation guard, no overlapping jobs]
 ---
 
-`CNSDrainGuard` is a small utility for a common backend pattern:
+`CNSStimulationGate` is a small utility for a common backend pattern:
 
 - a cron, webhook, or manual trigger may fire many times;
 - only one processing run should be active at a time;
@@ -18,7 +18,7 @@ Create one guard per workflow/source and call `drain()` freely. If a run is alre
 <figure className="text--center">
   <img
     src="/img/brain_drain.png"
-    alt="A stylized brain drain illustration for CNSDrainGuard"
+    alt="A stylized brain drain illustration for CNSStimulationGate"
     style={{ maxWidth: '680px', width: '100%', borderRadius: '16px' }}
   />
   <figcaption>
@@ -29,9 +29,9 @@ Create one guard per workflow/source and call `drain()` freely. If a run is alre
 ## Basic Shape
 
 ```ts
-import { CNSDrainGuard } from '@cnstra/core';
+import { CNSStimulationGate } from '@cnstra/core';
 
-const guard = new CNSDrainGuard({
+const guard = new CNSStimulationGate({
   cns,
   signal: jobsAxon.processPendingUsers.createSignal(),
   options: {
@@ -43,7 +43,7 @@ const guard = new CNSDrainGuard({
 await guard.drain();
 ```
 
-`CNSDrainGuard` is usually a singleton per workflow. Do not create it inside the cron handler, because then each tick would get its own guard and could overlap with other ticks.
+`CNSStimulationGate` is usually a singleton per workflow. Do not create it inside the cron handler, because then each tick would get its own guard and could overlap with other ticks.
 
 ## NestJS Cron Example
 
@@ -54,7 +54,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   CNS,
-  CNSDrainGuard,
+  CNSStimulationGate,
   collateral,
   neuron,
 } from '@cnstra/core';
@@ -92,7 +92,7 @@ export class PendingUsersWorkflow {
 
   private readonly cns = new CNS([this.processPendingUsers]);
 
-  private readonly pendingUsersDrain = new CNSDrainGuard({
+  private readonly pendingUsersDrain = new CNSStimulationGate({
     cns: this.cns,
     signal: jobsAxon.processPendingUsers.createSignal(),
     options: {
@@ -163,13 +163,13 @@ That keeps the stimulation alive while there may be more rows to process. Once t
 
 ## Abort Behavior
 
-If you do not pass `options.abortSignal`, `CNSDrainGuard` creates an internal `AbortController`. Calling `guard.abort()` aborts the current stimulation and returns `true` when it actually sent an abort.
+If you do not pass `options.abortSignal`, `CNSStimulationGate` creates an internal `AbortController`. Calling `guard.abort()` aborts the current stimulation and returns `true` when it actually sent an abort.
 
 If you pass your own `abortSignal`, `guard.abort()` returns `false`; in that case, abort from the owner of that signal.
 
 ## When To Use It
 
-Use `CNSDrainGuard` when:
+Use `CNSStimulationGate` when:
 
 - cron or external triggers can arrive while previous work is still active;
 - work should be pulled in batches;

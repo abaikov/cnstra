@@ -1,0 +1,68 @@
+# CNStra
+
+> CNStra is a zero-dependency orchestration library for TypeScript/JavaScript. It models your application as a Central Nervous System (CNS): a graph of typed neurons connected by collaterals (output channels) and dendrites (input bindings). Flows become explicit, deterministic, and compile-time safe. Works in React, Node.js, and any JS runtime.
+
+## Getting Started
+
+- [Introduction](https://cnstra.org/docs/concepts/intro): Core concepts — neurons, axons, collaterals, signals, stimulation. Biological analogy and key design properties.
+- [Quick Start](https://cnstra.org/docs/core/quick-start): Install CNStra and run your first neuron in 5 minutes.
+- [CNStra Overview](https://cnstra.org/docs/core/overview): Why MVC/Redux/Signals fall short for workflows and how CNStra fixes it with explicit, traceable orchestration.
+- [Basics](https://cnstra.org/docs/concepts/basics): Single-process stimulation, command pattern with built-in DI, and separation of mutations from reads.
+
+## Core API
+
+- [API Reference](https://cnstra.org/docs/core/api): Full reference for `collateral`, `neuron`, `dendrite`, `bind`, `CNS`, `stimulate`, `withCtx`, signals, and context.
+- [Stimulation Options](https://cnstra.org/docs/core/stimulation-options): Options for `cns.stimulate()` — abort signals, timeouts, and execution control.
+
+## Frontend
+
+- [OIMDB — Optimistic In-Memory Database](https://cnstra.org/docs/frontend/oimdb): CNStra's recommended state layer for React. Zero-overhead reactive reads without a global store.
+- [React Patterns](https://cnstra.org/docs/frontend/react-patterns): How to wire neurons into React components, hooks, and lifecycle.
+- [Redux Migration](https://cnstra.org/docs/frontend/redux-migration): Step-by-step guide for moving from Redux Toolkit to CNStra.
+- [Benchmark](https://cnstra.org/docs/frontend/benchmark): Performance comparison — CNStra+OIMDB vs Zustand, Redux Toolkit, Effector (execution time and memory).
+
+## Backend
+
+- [Backend Overview](https://cnstra.org/docs/backend/overview): Using CNStra for backend workflows, pipelines, and domain events.
+- [CQRS](https://cnstra.org/docs/backend/cqrs): Implementing Command/Query Responsibility Segregation with neurons and collaterals.
+
+## Advanced
+
+- [Persistence & Resume](https://cnstra.org/docs/advanced/persistence): How to use CNSPersistOptionsRegistry to serialize in-flight stimulations, persist to DB, and resume after process restart. Patterns for message brokers, checkpointing, and context restore.
+- [Best Practices](https://cnstra.org/docs/advanced/best-practices): Signal ownership, neuron granularity, naming conventions, and architectural guidelines.
+- [Performance](https://cnstra.org/docs/advanced/performance): Tips for high-throughput stimulations and memory-efficient neuron graphs.
+- [Custom Context Store](https://cnstra.org/docs/advanced/custom-context-store): Replacing the default per-stimulation context with your own implementation.
+- [Common Issues](https://cnstra.org/docs/advanced/common-issues): Troubleshooting guide for the most frequent mistakes.
+
+## Recipes
+
+- [Cancel](https://cnstra.org/docs/recipes/cancel): Cancelling in-flight stimulations with AbortSignal.
+- [Retry](https://cnstra.org/docs/recipes/retry): Retry logic inside dendrites.
+- [Retry Stimulation](https://cnstra.org/docs/recipes/retry-stimulation): Re-stimulating the whole flow on failure.
+- [Error Handling](https://cnstra.org/docs/recipes/error-handling): Catching and routing errors in neuron graphs.
+- [Saga](https://cnstra.org/docs/recipes/saga): Long-running multi-step sagas with compensation.
+- [Multiple Signals](https://cnstra.org/docs/recipes/multiple-signals): Emitting multiple signals from one dendrite response.
+- [Response Listeners](https://cnstra.org/docs/recipes/response-listeners): Observing stimulation results without coupling neurons.
+- [Flow Inheritance](https://cnstra.org/docs/recipes/flow-inheritance): Passing parent flow context to child stimulations.
+- [Self-Loop Cycles](https://cnstra.org/docs/recipes/self-loop-cycles): Neurons that re-stimulate themselves.
+- [Stimulation Gate](https://cnstra.org/docs/recipes/stimulation-gate): Preventing stimulation queue overflow.
+- [Exhaustive Binding](https://cnstra.org/docs/recipes/exhaustive-binding): Using `neuron.bind()` for compile-time coverage of all collaterals.
+- [Testing](https://cnstra.org/docs/recipes/testing): Unit and integration testing patterns for neuron graphs.
+
+## Integrations & Ecosystem
+
+- [Message Brokers](https://cnstra.org/docs/integrations/message-brokers): Integrating CNStra with RabbitMQ, BullMQ, SQS, and other queues.
+- [Swift SDK](https://cnstra.org/docs/ecosystem/swift-sdk): CNStra for iOS/macOS applications.
+
+## DevTools
+
+- [DevTools Overview](https://cnstra.org/docs/devtools/overview): Visual debugger for stimulation graphs.
+- [DevTools Integration](https://cnstra.org/docs/devtools/integration): Wiring `@cnstra/devtools` into your project.
+- [MCP Server](https://cnstra.org/docs/devtools/mcp): Give Claude Code and Cursor live access to the neuron graph via MCP tools (`cns_get_graph`, `cns_get_neuron`, `cns_list_collaterals`). Zero prod overhead.
+- [AI Graph Inspection](https://cnstra.org/docs/devtools/ai-inspection): Export the neuron graph and runtime history as Markdown so AI tools (Claude, Cursor) instantly understand your architecture. `dumpCNSGraph` + `CNSHistoryLogger`.
+- [DevTools Advanced](https://cnstra.org/docs/devtools/advanced): Custom transport, filtering, and production-safe setup.
+- [Download DevTools](https://cnstra.org/docs/devtools/download): Install the DevTools desktop app.
+
+## Workflow Engine Comparison
+
+- [CNStra vs Workflow Engines](https://cnstra.org/docs/concepts/workflow-engine-comparison): How CNStra compares to Temporal, XState, Redux-Saga, and similar tools.

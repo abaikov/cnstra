@@ -1,9 +1,16 @@
 {
   "name": "@cnstra/devtools-panel-ui",
-  "version": "1.0.0",
-  "description": "DevTools Panel UI (React + Pixi) for web/electron",
-  "private": true,
+  "version": "1.0.1",
+  "description": "CNStra DevTools UI — browser panel for debugging neuron graphs",
   "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
   "scripts": {
     "dev": "webpack serve --mode development --open --hot --color",
     "build": "webpack --mode production --color",
@@ -17,8 +24,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@cnstra/core": "2.0.1",
-    "@cnstra/react": "1.0.2",
+    "@cnstra/core": "^2.1.0",
+    "@cnstra/react": "^1.1.0",
     "@oimdb/core": "1.0.6",
     "@oimdb/react": "1.1.0",
     "@types/react-window": "2.0.0",

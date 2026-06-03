@@ -407,7 +407,8 @@ describe('CNSDevToolsTransportWs', () => {
     test('logs replay batch when flushing replay responses', async () => {
       transport = new CNSDevToolsTransportWs({
         ...defaultOptions,
-        bufferMaxSize: 1
+        bufferMaxSize: 1,
+        consoleLogEnabled: true
       });
 
       const initMessage: InitMessage = {
@@ -439,7 +440,7 @@ describe('CNSDevToolsTransportWs', () => {
       await transport.sendNeuronResponseMessage(responseMessage);
 
       expect(console.log).toHaveBeenCalledWith(
-        '🔁 [Transport] Flushing REPLAY responses batch:',
+        '[Transport] Flushing REPLAY responses batch:',
         expect.any(Object)
       );
     });
@@ -735,6 +736,82 @@ describe('CNSDevToolsTransportWs', () => {
       // Should not have created new connections
       expect(MockWebSocket.getInstances().length).toBe(initialInstanceCount);
       expect(transport.isConnected).toBe(false);
+    });
+
+    test('logs reconnect message when consoleLogEnabled and resending init', async () => {
+      transport = new CNSDevToolsTransportWs({
+        ...defaultOptions,
+        reconnectDelayMs: 20,
+        consoleLogEnabled: true,
+      });
+
+      const initMessage: InitMessage = {
+        type: 'init', appId: 'test-app', cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app', appName: 'Test App', version: '1.0.0',
+        timestamp: Date.now(), neurons: [], collaterals: [], dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(transport.isConnected).toBe(true);
+
+      const wsInstance = MockWebSocket.getLatestInstance();
+      wsInstance.close();
+      await new Promise(resolve => setTimeout(resolve, 60));
+
+      expect(console.log).toHaveBeenCalledWith('DevTools reconnected - resending init message');
+    });
+
+    test('logs disconnect message when consoleLogEnabled and reconnecting', async () => {
+      transport = new CNSDevToolsTransportWs({
+        ...defaultOptions,
+        reconnectDelayMs: 20,
+        maxReconnectAttempts: 3,
+        consoleLogEnabled: true,
+      });
+
+      const initMessage: InitMessage = {
+        type: 'init', appId: 'test-app', cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app', appName: 'Test App', version: '1.0.0',
+        timestamp: Date.now(), neurons: [], collaterals: [], dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(transport.isConnected).toBe(true);
+
+      const wsInstance = MockWebSocket.getLatestInstance();
+      wsInstance.close();
+      await new Promise(resolve => setTimeout(resolve, 30));
+
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('DevTools disconnected, reconnecting')
+      );
+    });
+
+    test('logs max attempts message when consoleLogEnabled and max attempts reached', async () => {
+      transport = new CNSDevToolsTransportWs({
+        ...defaultOptions,
+        reconnectDelayMs: 10,
+        maxReconnectAttempts: 0,
+        consoleLogEnabled: true,
+      });
+
+      const initMessage: InitMessage = {
+        type: 'init', appId: 'test-app', cnsId: 'test-app:default',
+        devToolsInstanceId: 'test-app', appName: 'Test App', version: '1.0.0',
+        timestamp: Date.now(), neurons: [], collaterals: [], dendrites: []
+      };
+
+      await transport.sendInitMessage(initMessage);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(transport.isConnected).toBe(true);
+
+      const wsInstance = MockWebSocket.getLatestInstance();
+      wsInstance.close();
+      await new Promise(resolve => setTimeout(resolve, 30));
+
+      expect(console.log).toHaveBeenCalledWith('DevTools max reconnect attempts reached');
     });
   });
 

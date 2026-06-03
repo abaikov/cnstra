@@ -7,20 +7,20 @@ import type { TCNSSignal } from '../types/TCNSSignal';
 import type { TCNSStimulationOptions } from '../types/TCNSStimulationOptions';
 import type { TCNSStimulationResponse } from '../types/TCNSStimulationResponse';
 
-export type TCNSDrainGuardSignal =
+export type TCNSStimulationGateSignal =
     | TCNSSignal<CNSCollateral<unknown>>
     | TCNSSignal<CNSCollateral<unknown>>[];
 
-export type TCNSDrainGuardOptions<
+export type TCNSStimulationGateOptions<
     TNeuron extends TCNSNeuron<any, any>,
     TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
 > = {
     cns: CNS<TNeuron, TDendrite>;
-    signal: TCNSDrainGuardSignal;
+    signal: TCNSStimulationGateSignal;
     options?: TCNSStimulationOptions<TCNSStimulationResponse>;
 };
 
-export class CNSDrainGuard<
+export class CNSStimulationGate<
     TNeuron extends TCNSNeuron<any, any>,
     TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
 > {
@@ -29,7 +29,7 @@ export class CNSDrainGuard<
     private currentAbortController?: AbortController;
 
     constructor(
-        private readonly guardOptions: TCNSDrainGuardOptions<TNeuron, TDendrite>
+        private readonly guardOptions: TCNSStimulationGateOptions<TNeuron, TDendrite>
     ) {}
 
     public isDraining(): boolean {

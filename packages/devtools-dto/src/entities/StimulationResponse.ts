@@ -22,6 +22,8 @@ export interface StimulationResponse {
     appId: DevToolsAppId;
     /** CNS instance identifier (format: `${appId}:${cnsName}`) */
     cnsId: string;
+    /** Neuron identifier (format: `${cnsId}:${neuronName}`) */
+    neuronId?: string;
     /** When this response occurred */
     timestamp: number;
     /** Name of the input collateral that triggered this response */

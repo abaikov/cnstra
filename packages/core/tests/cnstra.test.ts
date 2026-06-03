@@ -6,7 +6,7 @@ import {
     TCNSSignal,
     afferentPath,
     modality,
-    CNSDrainGuard,
+    CNSStimulationGate,
 } from '../src/index';
 
 const uiAxon = {
@@ -2876,7 +2876,7 @@ describe('CNStra Core Tests', () => {
         });
     });
 
-    describe('CNSDrainGuard', () => {
+    describe('CNSStimulationGate', () => {
         it('should reuse the same drain while processing is active', async () => {
             const input = collateral<{ id: number }>();
             let starts = 0;
@@ -2893,7 +2893,7 @@ describe('CNStra Core Tests', () => {
             });
 
             const cns = new CNS([worker]);
-            const guard = new CNSDrainGuard({
+            const guard = new CNSStimulationGate({
                 cns,
                 signal: input.createSignal({ id: 1 }),
             });
@@ -2935,7 +2935,7 @@ describe('CNStra Core Tests', () => {
             });
 
             const cns = new CNS([worker]);
-            const guard = new CNSDrainGuard({
+            const guard = new CNSStimulationGate({
                 cns,
                 signal: input.createSignal(),
             });
@@ -2962,7 +2962,7 @@ describe('CNStra Core Tests', () => {
             });
 
             const cns = new CNS([worker]);
-            const guard = new CNSDrainGuard({
+            const guard = new CNSStimulationGate({
                 cns,
                 signal: input.createSignal(),
                 options: {

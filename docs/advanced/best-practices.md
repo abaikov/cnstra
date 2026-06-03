@@ -3,8 +3,8 @@ id: best-practices
 title: Best Practices
 sidebar_label: Best Practices
 slug: /advanced/best-practices
-description: Best practices for building robust CNStra applications. Learn about context store usage, collateral design, idempotency, and handling non-serializable data.
-keywords: [best practices, context store, idempotency, collaterals, non-serializable data, message brokers, retries, design patterns]
+description: Best practices for building robust CNStra applications. Domain neuron ownership, collateral naming, intent collaterals, neuron focus, context store, idempotency.
+keywords: [best practices, context store, idempotency, collaterals, non-serializable data, domain neuron, neuron ownership, event naming, intent collateral, afferent path, mapper layer, auxiliary neuron, design patterns]
 ---
 
 This guide covers best practices for building robust, maintainable CNStra applications.
@@ -369,6 +369,161 @@ const handler = neuron({ entityCreated })
 - **Better debugging**: Know exactly which interaction caused an issue
 - **Explicit design**: Forces explicit thinking about user interaction flows
 
+## Domain Neuron Ownership
+
+### One Model, One Neuron
+
+**Each domain model should have exactly one neuron responsible for all its mutations.** Other neurons must not write to a model they don't own — they can read it, but mutations belong to the owning neuron.
+
+**Why?** When mutations are scattered across multiple neurons, it becomes impossible to reason about what state a model can be in, and impossible to find all the places that change it. The owning neuron is the single source of truth for how that model evolves.
+
+**✅ Good**: one `deckNeuron` owns all deck mutations
+
+```ts
+const deckAxon = {
+  createdAtOnboarding: collateral<{ deckId: string; userId: string }>(),
+  createdAtButtonClick: collateral<{ deckId: string }>(),
+  renamed: collateral<{ deckId: string; title: string }>(),
+  archived: collateral<{ deckId: string }>(),
+};
+
+const deckNeuron = neuron(deckAxon)
+  .dendrite({
+    collateral: uiAxon.createDeckButtonClicked,
+    response: async (payload, axon) => {
+      const deckId = await db.decks.create({ title: payload.title });
+      return axon.createdAtButtonClick.createSignal({ deckId });
+    },
+  })
+  .dendrite({
+    collateral: onboardingAxon.userOnboarded,
+    response: async (payload, axon) => {
+      const deckId = await db.decks.create({ title: 'My first deck' });
+      return axon.createdAtOnboarding.createSignal({ deckId, userId: payload.userId });
+    },
+  });
+```
+
+**❌ Bad**: deck mutations spread across neurons
+
+```ts
+// ❌ onboardingNeuron mutates decks — that's deckNeuron's responsibility
+const onboardingNeuron = neuron({ userOnboarded }).dendrite({
+  collateral: userRegistered,
+  response: async (payload, axon) => {
+    await db.decks.create({ title: 'My first deck', userId: payload.userId }); // ❌
+    await db.users.update(payload.userId, { onboarded: true });
+    return axon.userOnboarded.createSignal({ userId: payload.userId });
+  },
+});
+```
+
+### Collaterals Represent Past Events, Not Commands
+
+**Name collaterals in the past tense — they describe something that already happened**, not an instruction to do something. A collateral is an observable fact emitted by a neuron, not a request sent to one.
+
+```ts
+// ✅ Past events
+const deckCreated = collateral<{ deckId: string }>();
+const paymentFailed = collateral<{ orderId: string; reason: string }>();
+const userOnboarded = collateral<{ userId: string }>();
+
+// ❌ Commands / instructions
+const createDeck = collateral<{ title: string }>();      // sounds like a request
+const failPayment = collateral<{ orderId: string }>();   // sounds like an order
+```
+
+This matters for readability and for correctly understanding the graph: a subscriber reacts to what *happened*, not to what it's being asked to do.
+
+### Intent Collaterals — Use with Caution
+
+Sometimes the same logical operation is triggered from many places (button click, onboarding, import, API). It's tempting to create a single "command" collateral to avoid duplicating downstream wiring:
+
+```ts
+// Intent collateral — groups all "create deck" triggers into one
+const createDeckIntentActivated = collateral<{ title: string; source: string }>();
+```
+
+This works, but comes with a significant trade-off: **you lose afferent path traceability**. When `createDeckIntentActivated` fires, there is no way to see in the graph *where* it came from and *why* — all sources collapse into one anonymous signal.
+
+**Prefer keeping afferent paths separate:**
+
+```ts
+// ✅ Each source has its own collateral — origin is always visible
+const deckAxon = {
+  createdAtButtonClick: collateral<{ deckId: string }>(),
+  createdAtOnboarding: collateral<{ deckId: string; userId: string }>(),
+  createdAtImport: collateral<{ deckId: string; importId: string }>(),
+};
+```
+
+If you do use intent collaterals, keep them at the boundary of your system (e.g., as a public API for external callers) and document the sources explicitly. Never use them as a shortcut to avoid thinking about the graph.
+
+### Keep Neuron Code Focused on Mutations
+
+**A domain neuron's dendrite responses should primarily contain mutations — creating, updating, or deleting the model it owns.** Everything else is noise that makes the neuron harder to read and reason about.
+
+Move non-mutation logic out:
+
+**Mappings and transformations → utility functions or a mapper layer**
+
+```ts
+// ✅ Mapping lives outside the neuron
+import { toDeckEntity } from './deck.mapper';
+
+const deckNeuron = neuron(deckAxon).dendrite({
+  collateral: importAxon.deckRowParsed,
+  response: async (payload, axon) => {
+    const entity = toDeckEntity(payload); // mapping extracted
+    const deckId = await db.decks.create(entity);
+    return axon.createdAtImport.createSignal({ deckId, importId: payload.importId });
+  },
+});
+```
+
+**Concurrent I/O, retries, external requests → auxiliary neurons**
+
+When a domain neuron needs to make multiple external calls (fetch user, fetch plan, call API), extract that work into a dedicated auxiliary neuron that runs the I/O and emits a ready signal. The domain neuron then receives clean data and only runs its mutation.
+
+```ts
+// Auxiliary neuron: fetches everything needed, emits one ready signal
+const deckCreateDataFetched = collateral<{
+  userId: string;
+  plan: Plan;
+  defaultTitle: string;
+}>();
+
+const deckCreateFetcherNeuron = neuron({ deckCreateDataFetched }).dendrite({
+  collateral: uiAxon.createDeckButtonClicked,
+  response: async (payload, axon) => {
+    const [user, plan] = await Promise.all([
+      api.getUser(payload.userId),
+      api.getPlan(payload.userId),
+    ]);
+    return axon.deckCreateDataFetched.createSignal({
+      userId: payload.userId,
+      plan,
+      defaultTitle: user.preferredDeckTitle ?? 'New Deck',
+    });
+  },
+});
+
+// Domain neuron: only mutates
+const deckNeuron = neuron(deckAxon).dendrite({
+  collateral: deckCreateDataFetched,
+  response: async (payload, axon) => {
+    const deckId = await db.decks.create({
+      userId: payload.userId,
+      title: payload.defaultTitle,
+      planId: payload.plan.id,
+    });
+    return axon.createdAtButtonClick.createSignal({ deckId });
+  },
+});
+```
+
+This separation keeps domain neurons readable, testable, and focused — and makes auxiliary logic easy to reuse or replace independently.
+
 ## Summary
 
 1. **Context store**: Store only per-neuron per-stimulation metadata, not business data
@@ -376,6 +531,9 @@ const handler = neuron({ entityCreated })
 3. **Idempotency**: Ensure neurons are idempotent when using retries
 4. **Non-serializable data**: Use separate stimulations with shared context store for non-serializable payloads
 5. **User interactions**: Each user interaction should be a unique signal with unique responses for better traceability and system visibility
+6. **Domain ownership**: Each domain model has one owning neuron — all mutations live there, nowhere else
+7. **Event naming**: Collaterals describe past events, not commands; keep afferent paths separate instead of merging them into intent collaterals
+8. **Neuron focus**: Keep dendrite responses focused on mutations; extract mappings to utility functions and I/O to auxiliary neurons
 
 Following these practices will help you build robust, maintainable CNStra applications that handle edge cases gracefully.
 

@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-dto",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Standardized DevTools data transfer objects",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -15,5 +15,10 @@
   "devDependencies": {
     "tsup": "8.5.1",
     "typescript": "5.7.2"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
   }
 }

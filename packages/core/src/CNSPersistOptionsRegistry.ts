@@ -35,6 +35,17 @@ export class CNSPersistOptionsRegistry {
         return this.neuronNames.get(neuron);
     }
 
+    getNamedNeurons(): ReadonlyMap<string, TCNSNeuron<unknown, TCNSAxon>> {
+        return this.neurons;
+    }
+
+    getCollateralName(collateral: CNSCollateral<unknown>): string | undefined {
+        for (const [name, col] of this.collaterals) {
+            if (col === collateral) return name;
+        }
+        return undefined;
+    }
+
     removeNeuron(name: string): void {
         const neuron = this.neurons.get(name);
         if (neuron) this.neuronNames.delete(neuron);
@@ -71,5 +82,25 @@ export class CNSPersistOptionsRegistry {
 
     removeStimulation(stimulationId: string): void {
         this.stimulations.delete(stimulationId);
+    }
+
+    register<TAxon extends TCNSAxon>(
+        name: string,
+        neuron: TCNSNeuron<any, TAxon>,
+        collateralNames?: { [K in keyof TAxon]?: string }
+    ): this {
+        this.addNeuron(neuron as unknown as TCNSNeuron<unknown, TCNSAxon>, { name, neuron: neuron as unknown as TCNSNeuron<unknown, TCNSAxon> });
+        for (const [key, col] of Object.entries(neuron.axon)) {
+            this.addCollateral(col as CNSCollateral<unknown>, {
+                name: (collateralNames as Record<string, string> | undefined)?.[key] ?? key,
+                collateral: col as CNSCollateral<unknown>,
+            });
+        }
+        return this;
+    }
+
+    registerCollateral(name: string, collateral: CNSCollateral<unknown>): this {
+        this.addCollateral(collateral, { name, collateral });
+        return this;
     }
 }
