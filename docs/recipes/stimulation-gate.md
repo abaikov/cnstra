@@ -1,10 +1,10 @@
 ---
 id: stimulation-gate
-title: Drain Guard
-sidebar_label: Drain Guard
+title: Stimulation Gate
+sidebar_label: Stimulation Gate
 slug: /recipes/stimulation-gate
 description: Use CNSStimulationGate to trigger batch processing from cron, webhooks, or manual calls without starting overlapping CNS stimulations.
-keywords: [CNSStimulationGate, drain, batch processing, cron, NestJS, database jobs, background jobs, stimulation guard, no overlapping jobs]
+keywords: [CNSStimulationGate, drain, batch processing, cron, NestJS, database jobs, background jobs, stimulation gate, no overlapping jobs]
 ---
 
 `CNSStimulationGate` is a small utility for a common backend pattern:
@@ -22,7 +22,7 @@ Create one guard per workflow/source and call `drain()` freely. If a run is alre
     style={{ maxWidth: '680px', width: '100%', borderRadius: '16px' }}
   />
   <figcaption>
-    One drain guard keeps repeated triggers flowing through a single active processing run.
+    One stimulation gate keeps repeated triggers flowing through a single active processing run.
   </figcaption>
 </figure>
 

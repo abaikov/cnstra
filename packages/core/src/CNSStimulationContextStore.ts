@@ -1,26 +1,33 @@
 import { ICNSStimulationContextStore } from './interfaces/ICNSStimulationContextStore';
 
 export class CNSStimulationContextStore implements ICNSStimulationContextStore {
-    constructor(private readonly ctx: Map<object, unknown> = new Map()) {}
+    // Lazily allocated: most stimulations never touch neuron context, so we
+    // avoid allocating the backing Map until something is actually stored.
+    private ctx?: Map<object, unknown>;
+
+    constructor(ctx?: Map<object, unknown>) {
+        this.ctx = ctx;
+    }
 
     get(key: object): unknown {
-        return this.ctx.get(key);
+        return this.ctx?.get(key);
     }
 
     set(key: object, value: unknown): void {
-        this.ctx.set(key, value);
+        (this.ctx ??= new Map()).set(key, value);
     }
 
     getAll(): Map<object, unknown> {
-        return new Map(this.ctx);
+        return this.ctx ? new Map(this.ctx) : new Map();
     }
 
     setAll(values: Map<object, unknown>): void {
-        this.ctx.clear();
-        for (const [key, value] of values) this.ctx.set(key, value);
+        const ctx = (this.ctx ??= new Map());
+        ctx.clear();
+        for (const [key, value] of values) ctx.set(key, value);
     }
 
     delete(key: object): void {
-        this.ctx.delete(key);
+        this.ctx?.delete(key);
     }
 }

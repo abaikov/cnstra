@@ -57,10 +57,11 @@ export class CNS<
 
     private wrapOnResponse<T>(
         local?: (response: T) => void | Promise<void>
-    ): (response: T) => void | Promise<void> {
+    ): ((response: T) => void | Promise<void>) | undefined {
         if (this.globalResponseListeners.length === 0 && !local) {
-            // No-op fast path
-            return () => {};
+            // No listener at all: skip wrapping entirely so the stimulation can
+            // take its fast path and avoid building response objects per signal.
+            return undefined;
         }
         return (r: T) => {
             let anyPromise = false;
@@ -115,10 +116,8 @@ export class CNS<
         const stimulation = new CNSStimulation<TNeuron, TDendrite>(
             this,
             this.instanceNeuronQueue,
-            {
-                ...options,
-                onResponse: wrapped,
-            }
+            options,
+            wrapped
         );
         stimulation.responseToSignal(signalOrSignals);
         return stimulation;
@@ -135,10 +134,8 @@ export class CNS<
         const stimulation = new CNSStimulation<TNeuron, TDendrite>(
             this,
             this.instanceNeuronQueue,
-            {
-                ...options,
-                onResponse: wrapped,
-            }
+            options,
+            wrapped
         );
         stimulation.enqueueTasks(tasks);
         return stimulation;

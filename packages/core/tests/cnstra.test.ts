@@ -2547,6 +2547,10 @@ describe('CNStra Core Tests', () => {
 
             let step1Executed = false;
             let step2Executed = false;
+            // Assigned below; aborted from inside step1 so the abort
+            // deterministically lands while step1 is still in flight (instead
+            // of racing two setTimeout()s, which made this test flaky).
+            let abortController: AbortController;
 
             const step1 = ctxBuilder
                 .neuron( { intermediate })
@@ -2559,6 +2563,10 @@ describe('CNStra Core Tests', () => {
                             processed: [...current.processed, 'step1'],
                             step: 1,
                         });
+                        // Abort while this step is in flight: when it resolves,
+                        // step2 will be enqueued but never started, so it ends
+                        // up as a failed (aborted) task.
+                        abortController.abort();
                         await new Promise(resolve => setTimeout(resolve, 2));
                         return axon.intermediate.createSignal({
                             value: payload.value,
@@ -2584,18 +2592,14 @@ describe('CNStra Core Tests', () => {
 
             const cns = new CNS([step1, step2]);
 
-            // First stimulation - abort it
-            const abortController = new AbortController();
+            // First stimulation - step1 aborts it from the inside (see above)
+            abortController = new AbortController();
             const stimulation1 = cns.stimulate(
                 input.createSignal({ value: 42 }),
                 {
                     abortSignal: abortController.signal,
                 }
             );
-
-            // Wait a bit, then abort
-            await new Promise(resolve => setTimeout(resolve, 1));
-            abortController.abort();
 
             // Wait for abort to complete - should reject
             await expect(stimulation1.waitUntilComplete()).rejects.toThrow(
