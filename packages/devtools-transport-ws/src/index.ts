@@ -1,258 +1,137 @@
 import type { ICNSDevToolsTransport } from '@cnstra/devtools';
-import type {
-    InitMessage,
-    NeuronResponseMessage,
-    StimulateCommand,
-    StimulateAccepted,
-    StimulateRejected,
-    StimulationMessage,
-} from '@cnstra/devtools-dto';
+import { CNSDTOReplayStartMessageSchema, type CNSDTOAppBatchMessage } from '@cnstra/devtools-dto';
 
-export type TWSOpts = {
-    /** ws://localhost:7777 or wss://... */
+export type CNSDevToolsTransportWsOptions = {
+    /** WebSocket URL, e.g. ws://localhost:3141 */
     url: string;
-    /** Optional protocols */
     protocols?: string | string[];
-    /** Reconnect delay in ms (default 1000) */
+    /** Reconnect delay in ms (default: 1000) */
     reconnectDelayMs?: number;
-    /** Max buffered messages before force flush (default 100) */
-    bufferMaxSize?: number;
-    /** Optional WebSocket implementation for Node (e.g., globalThis.WebSocket or ws) */
+    /** Max buffered batch items before force flush (default: 100) */
+    batchMaxSize?: number;
+    /** Provide a WebSocket implementation for Node.js (e.g. `ws`) */
     webSocketImpl?: typeof WebSocket;
-    /** Auto-connect on first message (default true) */
-    autoConnect?: boolean;
-    /** Max reconnect attempts (default Infinity) */
+    /** Max reconnect attempts (default: Infinity) */
     maxReconnectAttempts?: number;
-    /** When true, print transport-level console logs */
     consoleLogEnabled?: boolean;
 };
 
-type WSLike = WebSocket;
-
 export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
-    private ws?: WSLike;
+    private ws?: WebSocket;
     private connecting = false;
     private closed = false;
-    private readonly buffer: Array<{
-        type: 'init' | 'response';
-        payload: any;
-    }> = [];
-
-    // Store the latest init message for reconnect
-    private lastInitMessage?: InitMessage;
-    private hasConnectedOnce = false;
     private reconnectAttempts = 0;
+    private hasConnectedOnce = false;
 
-    constructor(private readonly opts: TWSOpts) {}
+    private readonly pendingBatches: CNSDTOAppBatchMessage[] = [];
+    private lastTopologyBatch?: CNSDTOAppBatchMessage;
+    private onReplayHandler?: (cmd: any) => void;
 
-    private get reconnectDelayMs() {
-        return this.opts.reconnectDelayMs ?? 1000;
+    constructor(private readonly opts: CNSDevToolsTransportWsOptions) {}
+
+    // ─── ICNSDevToolsTransport ────────────────────────────────────────────────────
+
+    async sendBatch(message: CNSDTOAppBatchMessage): Promise<void> {
+        if (message.items.some(i => i.type === 'topology')) {
+            this.lastTopologyBatch = message;
+        }
+        this.pendingBatches.push(message);
+        await this.flush();
     }
-    private get bufferMaxSize() {
-        return this.opts.bufferMaxSize ?? 100;
+
+    onReplayStart(handler: (cmd: any) => void): () => void {
+        this.onReplayHandler = handler;
+        return () => { this.onReplayHandler = undefined; };
     }
-    private get maxReconnectAttempts() {
-        return this.opts.maxReconnectAttempts ?? Infinity;
+
+    // ─── Connection management ────────────────────────────────────────────────────
+
+    private get WS(): typeof WebSocket {
+        const impl = this.opts.webSocketImpl
+            ?? (typeof WebSocket !== 'undefined' ? WebSocket : undefined);
+        if (!impl) throw new Error('No WebSocket implementation. Pass webSocketImpl option.');
+        return impl;
     }
 
     private ensureSocket(): Promise<void> {
-        const WS: typeof WebSocket | undefined =
-            this.opts.webSocketImpl ||
-            (typeof WebSocket !== 'undefined' ? WebSocket : undefined);
-        if (!WS)
-            return Promise.reject(
-                new Error(
-                    'WebSocket implementation is not available. Provide webSocketImpl.'
-                )
-            );
-        if (this.ws && this.ws.readyState === 1)
-            // OPEN = 1
-            return Promise.resolve();
+        if (this.ws?.readyState === 1) return Promise.resolve();
         if (this.connecting) {
             return new Promise(resolve => {
-                const check = () => {
-                    if (this.ws && this.ws.readyState === 1)
-                        // OPEN = 1
-                        return resolve();
-                    setTimeout(check, 50);
-                };
-                check();
+                const poll = () => this.ws?.readyState === 1 ? resolve() : setTimeout(poll, 50);
+                poll();
             });
         }
         this.connecting = true;
         return new Promise(resolve => {
-            const ws = new WS(this.opts.url, this.opts.protocols) as WSLike;
+            const ws = new this.WS(this.opts.url, this.opts.protocols) as WebSocket;
             this.ws = ws;
+
             ws.onopen = () => {
-                if (this.opts.consoleLogEnabled) {
-                    console.log('DevTools connected to server');
-                }
                 this.connecting = false;
-                this.reconnectAttempts = 0; // Reset on successful connection
+                this.reconnectAttempts = 0;
+                if (this.opts.consoleLogEnabled) console.log('[DevTools] Connected');
 
-                // On reconnect, resend init message first
-                if (this.hasConnectedOnce && this.lastInitMessage) {
-                    if (this.opts.consoleLogEnabled) {
-                        console.log('DevTools reconnected - resending init message');
-                    }
-                    this.buffer.unshift({
-                        type: 'init',
-                        payload: this.lastInitMessage,
-                    });
+                if (this.hasConnectedOnce && this.lastTopologyBatch) {
+                    this.pendingBatches.unshift(this.lastTopologyBatch);
                 }
-
                 this.hasConnectedOnce = true;
-                this.flush();
-                resolve();
+                this.flush().then(resolve);
             };
+
             ws.onclose = () => {
                 this.connecting = false;
-                if (
-                    !this.closed &&
-                    this.reconnectAttempts < this.maxReconnectAttempts
-                ) {
+                if (!this.closed && this.reconnectAttempts < (this.opts.maxReconnectAttempts ?? Infinity)) {
                     this.reconnectAttempts++;
                     if (this.opts.consoleLogEnabled) {
-                        console.log(
-                            `DevTools disconnected, reconnecting... (attempt ${this.reconnectAttempts})`
-                        );
+                        console.log(`[DevTools] Disconnected, reconnecting (attempt ${this.reconnectAttempts})`);
                     }
-                    setTimeout(
-                        () => this.ensureSocket().catch(() => {}),
-                        this.reconnectDelayMs
-                    );
-                } else if (
-                    this.reconnectAttempts >= this.maxReconnectAttempts
-                ) {
-                    if (this.opts.consoleLogEnabled) {
-                        console.log('DevTools max reconnect attempts reached');
-                    }
+                    setTimeout(() => this.ensureSocket().catch(() => {}), this.opts.reconnectDelayMs ?? 1000);
+                } else if (this.reconnectAttempts >= (this.opts.maxReconnectAttempts ?? Infinity)) {
+                    if (this.opts.consoleLogEnabled) console.log('[DevTools] Max reconnect attempts reached');
                 }
             };
-            ws.onerror = () => {
-                try {
-                    ws.close();
-                } catch {}
-            };
+
+            ws.onerror = () => { try { ws.close(); } catch {} };
+
             ws.onmessage = (ev: MessageEvent) => {
                 try {
-                    const data =
-                        typeof ev.data === 'string' ? ev.data : '' + ev.data;
-                    const msg = JSON.parse(data);
-                    if (msg && msg.type === 'stimulate') {
-                        const cmd = msg as StimulateCommand & {
-                            appId?: string;
-                            cnsId?: string;
-                        };
-                        const ack: StimulateAccepted = {
-                            type: 'stimulate-accepted',
-                            stimulationCommandId: cmd.stimulationCommandId,
-                            stimulationId: cmd.stimulationCommandId,
-                            appId: cmd.appId,
-                        };
-                        try {
-                            this.ws?.send(JSON.stringify(ack));
-                        } catch {}
-                        this.onStimulate?.(cmd);
+                    const msg = JSON.parse(typeof ev.data === 'string' ? ev.data : String(ev.data));
+                    if (msg?.type === 'replay.start') {
+                        const result = CNSDTOReplayStartMessageSchema.safeParse(msg);
+                        if (result.success) {
+                            this.onReplayHandler?.(result.data);
+                        } else if (this.opts.consoleLogEnabled) {
+                            console.warn('[DevTools] Invalid replay.start message:', result.error.message);
+                        }
                     }
-                } catch {
-                    // ignore invalid messages
-                }
+                } catch {}
             };
         });
     }
 
-    async sendInitMessage(message: InitMessage): Promise<void> {
-        // Store the latest init message for reconnects
-        this.lastInitMessage = message;
-
-        this.buffer.push({ type: 'init', payload: message });
-        if (this.buffer.length >= this.bufferMaxSize) await this.flush();
-        else void this.flush();
-    }
-
-    async sendNeuronResponseMessage(
-        message: NeuronResponseMessage
-    ): Promise<void> {
-        this.buffer.push({ type: 'response', payload: message });
-        if (this.buffer.length >= this.bufferMaxSize) await this.flush();
-        else void this.flush();
-    }
-
-    async sendStimulationMessage(message: StimulationMessage): Promise<void> {
-        await this.ensureSocket();
-        if (!this.ws || this.ws.readyState !== 1) return; // OPEN = 1
-        try {
-            this.ws.send(JSON.stringify(message));
-        } catch {
-            // ignore send errors
-        }
-    }
-
     private async flush(): Promise<void> {
-        if (this.buffer.length === 0) return;
+        if (this.pendingBatches.length === 0) return;
         await this.ensureSocket();
-        /* istanbul ignore next -- ts-jest source-map occasionally misattributes coverage for this guard */
-        if (!this.ws || this.ws.readyState !== 1) return; // OPEN = 1
-        /* istanbul ignore next -- see note above */
-        const items = this.buffer.splice(0, this.buffer.length);
+        if (this.ws?.readyState !== 1) return;
 
-        // Check for replay responses in the batch
-        /* istanbul ignore next -- see note above */
-        const replayResponses = items
-            .filter(item => item.type === 'response')
-            .filter(item => {
-                const stimId = item.payload?.stimulationId || '';
-                return (
-                    typeof stimId === 'string' && stimId.includes('-replay-')
-                );
-            });
-
-        if (replayResponses.length > 0 && this.opts.consoleLogEnabled) {
-            console.log('[Transport] Flushing REPLAY responses batch:', {
-                totalItems: items.length,
-                replayResponsesCount: replayResponses.length,
-                replayStimIds: replayResponses
-                    .slice(0, 3)
-                    .map(r => r.payload?.stimulationId),
-                replayAppIds: replayResponses
-                    .slice(0, 3)
-                    .map(r => r.payload?.appId),
-            });
-        }
-
+        const batches = this.pendingBatches.splice(0, this.pendingBatches.length);
+        if (batches.length === 0) return;
         try {
+            const items = batches.flatMap(b => b.items);
+            if (items.length === 0) return;
             this.ws.send(JSON.stringify({ type: 'batch', items }));
         } catch {
-            // requeue if send fails
-            this.buffer.unshift(...items);
+            this.pendingBatches.unshift(...batches);
         }
     }
 
-    private onStimulate?: (cmd: StimulateCommand) => void;
-    onStimulateCommand(handler: (cmd: StimulateCommand) => void): () => void {
-        this.onStimulate = handler;
-        return () => {
-            this.onStimulate = undefined;
-        };
-    }
-
-    /** Close the connection and stop reconnecting */
     close(): void {
         this.closed = true;
-        try {
-            this.ws?.close();
-        } catch {}
+        try { this.ws?.close(); } catch {}
         this.ws = undefined;
     }
 
-    /** Get connection status */
     get isConnected(): boolean {
-        return this.ws?.readyState === 1; // OPEN = 1
-    }
-
-    /** Get buffered message count */
-    get bufferSize(): number {
-        return this.buffer.length;
+        return this.ws?.readyState === 1;
     }
 }

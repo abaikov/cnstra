@@ -10,7 +10,6 @@ import { createServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { createRequire } from 'module';
-
 import { WebSocketServer, WebSocket } from 'ws';
 import { CNSDevToolsServer } from './index';
 
@@ -31,13 +30,13 @@ const MIME: Record<string, string> = {
     svg: 'image/svg+xml', png: 'image/png', woff2: 'font/woff2',
 };
 
-const port      = Number(process.env.PORT ?? process.argv[2] ?? 3141);
+const port = Number(process.env.PORT ?? process.argv[2] ?? 3141);
 const panelUIDir = findPanelUIDir();
 
 const httpServer = createServer((req, res) => {
     const safe = (req.url ?? '/').split('?')[0].replace(/\.\./g, '');
-    const file  = safe === '/' ? '/index.html' : safe;
-    const full  = join(panelUIDir, file);
+    const file = safe === '/' ? '/index.html' : safe;
+    const full = join(panelUIDir, file);
 
     if (existsSync(full) && full.startsWith(panelUIDir)) {
         const ext = full.split('.').pop() ?? '';
@@ -56,21 +55,14 @@ const { CNSDevToolsServerRepositoryInMemory } = await import(
     '@cnstra/devtools-server-repository-in-memory'
 );
 const dtServer = new CNSDevToolsServer(new CNSDevToolsServerRepositoryInMemory());
-const clients  = new Set<WebSocket>();
 
 wss.on('connection', (ws) => {
-    clients.add(ws);
     ws.on('message', async (data) => {
         try {
-            const msg    = JSON.parse(data.toString());
-            const result = await dtServer.handleMessage(ws as any, msg);
-            if (result) {
-                const payload = JSON.stringify(result);
-                clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(payload); });
-            }
+            await dtServer.handleMessage(ws as any, data.toString());
         } catch {}
     });
-    ws.on('close', () => { clients.delete(ws); dtServer.handleDisconnect(ws as any); });
+    ws.on('close', () => dtServer.removeClient(ws as any));
 });
 
 httpServer.listen(port, () => {

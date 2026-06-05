@@ -20,6 +20,7 @@ class MockWebSocket {
   public onmessage?: (event: MessageEvent) => void;
 
   private static instances: MockWebSocket[] = [];
+  public sentMessages: string[] = [];
 
   constructor(url: string, protocols?: string | string[]) {
     this.url = url;
@@ -39,10 +40,7 @@ class MockWebSocket {
     if (this.readyState !== MockWebSocket.OPEN) {
       throw new Error('WebSocket is not open');
     }
-    // Echo back for testing
-    setTimeout(() => {
-      this.onmessage?.(new MessageEvent('message', { data }));
-    }, 1);
+    this.sentMessages.push(typeof data === 'string' ? data : String(data));
   }
 
   public close(code?: number, reason?: string): void {

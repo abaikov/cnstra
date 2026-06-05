@@ -1,7 +1,12 @@
 export default {
   preset: 'ts-jest',
-  testEnvironment: 'jsdom', // For WebSocket support
+  testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+  moduleNameMapper: {
+    '^@cnstra/devtools-dto$': '<rootDir>/../devtools-dto/src/index.ts',
+    '^@cnstra/devtools$': '<rootDir>/../devtools/src/index.tsx',
+    '^@cnstra/core$': '<rootDir>/../core/src/index.ts',
+  },
   collectCoverage: true,
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'html', 'lcov', 'json-summary'],

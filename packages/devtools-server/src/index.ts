@@ -1,1296 +1,343 @@
 import {
-    DevToolsApp,
-    InitMessage,
-    NeuronResponseMessage,
-    ResponseBatchMessage,
-    AppsActiveMessage,
-    AppDisconnectedMessage,
-    StimulateCommand,
-    StimulateAccepted,
-    StimulateRejected,
-    StimulationMessage,
-    StimulationBatchMessage,
-    Neuron,
-    Collateral,
-    Dendrite,
-    StimulationResponse,
+    CNSDTOApp,
+    CNSDTOAppBatchMessageSchema,
+    CNSDTOClientMessageSchema,
+    CNSDTOExecution,
+    CNSDTOExecutionFilter,
+    CNSDTOHop,
+    CNSDTOTopologyMessage,
 } from '@cnstra/devtools-dto';
 import { WebSocket } from 'ws';
 
-// Union type for all possible messages that can be broadcast
-type BroadcastableMessage =
-    | AppsActiveMessage
-    | AppDisconnectedMessage
-    | ResponseBatchMessage
-    | StimulationBatchMessage
-    | { type: 'app:added'; app: DevToolsApp }
-    | {
-          type: 'server:metrics';
-          timestamp: number;
-          rssMB: number;
-          heapUsedMB: number;
-          heapTotalMB: number;
-          externalMB: number;
-          cpuPercent: number;
-      }
-    | { type: 'apps:topology'; inits: InitMessage[] }
-    | {
-          type: 'apps:replays';
-          appId: string;
-          replays: Array<{ timestamp: number }>;
-      }
-    | { type: 'apps:export-stimulations'; stimulations: StimulationMessage[] }
-    | {
-          type: 'apps:snapshot';
-          appId: string | null;
-          topology: InitMessage[];
-          stimulations: StimulationMessage[];
-          responses: StimulationResponse[];
-          createdAt: number;
-          sizeBytes?: number;
-          warning?: string;
-      }
-    | {
-          type: 'cns:export-responses';
-          cnsId: string;
-          responses: StimulationResponse[];
-      }
-    | { type: 'apps:list'; apps: DevToolsApp[] }
-    | {
-          type: 'apps:cns';
-          appId: string;
-          cns: Array<{ cnsId: string; appId: string }>;
-      }
-    | {
-          type: 'apps:responses';
-          appId: string;
-          responses: StimulationResponse[];
-          total: number;
-          offset: number;
-          limit: number;
-      }
-    | {
-          type: 'cns:responses';
-          cnsId: string;
-          responses: StimulationResponse[];
-      };
+// ─── Repository interface ─────────────────────────────────────────────────────
+
+export type CNSDTOTopologySnapshot = Omit<CNSDTOTopologyMessage, 'type'>;
 
 export interface ICNSDevToolsServerRepository {
-    // App management
-    upsertApp(app: DevToolsApp): Promise<void> | void;
-    listApps(): Promise<DevToolsApp[]> | DevToolsApp[];
+    // Apps
+    upsertApp(app: CNSDTOApp): void | Promise<void>;
+    listApps(): CNSDTOApp[] | Promise<CNSDTOApp[]>;
 
-    // Topology management
-    upsertNeuron(neuron: Neuron): Promise<void> | void;
-    upsertCollateral(collateral: Collateral): Promise<void> | void;
-    upsertDendrite(dendrite: Dendrite): Promise<void> | void;
-    removeNeuron?(neuronId: string): Promise<void> | void;
-    removeCollateral?(collateralId: string): Promise<void> | void;
-    removeDendrite?(dendriteId: string): Promise<void> | void;
-    getNeuronsByCns(cnsId: string): Promise<Neuron[]> | Neuron[];
-    getCollateralsByCns(cnsId: string): Promise<Collateral[]> | Collateral[];
-    getDendritesByCns(cnsId: string): Promise<Dendrite[]> | Dendrite[];
+    // Topology
+    saveTopology(snapshot: CNSDTOTopologySnapshot): void | Promise<void>;
+    getTopology(cnsId?: string): CNSDTOTopologySnapshot[] | Promise<CNSDTOTopologySnapshot[]>;
 
-    // Stimulation management
-    saveStimulation(stimulation: StimulationMessage): Promise<void> | void;
-    getStimulationsByApp(
+    // Executions
+    saveExecution(execution: CNSDTOExecution): void | Promise<void>;
+    completeExecution(
+        executionId: string,
+        completedAt: number,
+        hopCount: number,
+        hasError: boolean
+    ): void | Promise<void>;
+    getExecutions(
         appId: string,
-        filters?: {
-            fromTimestamp?: number;
-            toTimestamp?: number;
-            limit?: number;
-            offset?: number;
-            hasError?: boolean;
-            errorContains?: string;
-            collateralName?: string;
-            neuronId?: string;
-        }
-    ): Promise<StimulationMessage[]> | StimulationMessage[];
+        filter: CNSDTOExecutionFilter
+    ): { items: CNSDTOExecution[]; total: number } | Promise<{ items: CNSDTOExecution[]; total: number }>;
 
-    // Response management
-    saveResponse(response: StimulationResponse): Promise<void> | void;
-    getResponsesByCns(
-        cnsId: string,
-        filters?: {
-            fromTimestamp?: number;
-            toTimestamp?: number;
-            limit?: number;
-            offset?: number;
-            hasError?: boolean;
-            errorContains?: string;
-            neuronId?: string;
-            collateralName?: string;
-        }
-    ): Promise<StimulationResponse[]> | StimulationResponse[];
+    // Hops
+    saveHop(hop: CNSDTOHop): void | Promise<void>;
+    getHops(executionId: string): CNSDTOHop[] | Promise<CNSDTOHop[]>;
 
-    // Legacy message support
-    saveMessage?(message: any): Promise<void> | void;
-
-    // CNS management
-    addCnsToApp(appId: string, cnsId: string): Promise<void> | void;
-    removeCnsFromApp(appId: string, cnsId: string): Promise<void> | void;
-    getCnsByApp(appId: string): Promise<string[]> | string[];
-    findAppIdByCnsId(
-        cnsId: string
-    ): Promise<string | undefined> | string | undefined;
-
-    // Replay management
-    getReplaysByApp(
-        appId: string,
-        filters?: {
-            fromTimestamp?: number;
-            toTimestamp?: number;
-            limit?: number;
-            offset?: number;
-        }
-    ): Promise<Array<{ timestamp: number }>> | Array<{ timestamp: number }>;
+    // CNS ↔ App mapping
+    addCnsToApp(appId: string, cnsId: string): void | Promise<void>;
+    getCnsByApp(appId: string): string[] | Promise<string[]>;
+    findAppByCns(cnsId: string): string | undefined | Promise<string | undefined>;
 }
 
-export class CNSDevToolsServer {
-    private stopped = false;
-    private appSockets = new Map<string, WebSocket>();
-    private clientSockets = new Set<WebSocket>();
-    private lastInitByApp = new Map<string, InitMessage>();
-    private stimulationBuffer: StimulationMessage[] = [];
-    // Track app connection times
-    private appFirstSeenAt = new Map<string, number>();
-    private appLastSeenAt = new Map<string, number>();
-    private replaysByApp = new Map<
-        string,
-        Array<{
-            stimulationCommandId: string;
-            appId: string;
-            cnsId?: string;
-            collateralName?: string;
-            payload?: unknown;
-            contexts?: unknown;
-            options?: unknown;
-            timestamp: number;
-            result?: 'accepted' | 'rejected';
-        }>
-    >();
+// ─── Server ───────────────────────────────────────────────────────────────────
 
-    // server metrics sampling
+export class CNSDevToolsServer {
+    /** WebSocket → appId (for app clients) */
+    private appSockets = new Map<WebSocket, string>();
+    /** appId → WebSocket[] (one app may have multiple CNS instances) */
+    private appWsByAppId = new Map<string, Set<WebSocket>>();
+    /** WebSocket clients that registered as UI clients */
+    private uiClients = new Set<WebSocket>();
+
+    private metricsTimer?: NodeJS.Timeout;
     private lastCpuUsage = process.cpuUsage();
     private lastCpuTime = Date.now();
-    private metricsTimer?: NodeJS.Timeout;
 
-    private static sanitizeValue(
-        value: unknown,
-        depth: number = 0,
-        limits: {
-            maxDepth: number;
-            maxString: number;
-            maxArray: number;
-            maxObjectKeys: number;
-        } = {
-            maxDepth: 5,
-            maxString: 2000,
-            maxArray: 200,
-            maxObjectKeys: 200,
-        }
-    ): unknown {
-        if (value === null || value === undefined) return value;
-        if (depth >= limits.maxDepth) return '[MaxDepth]';
-        const t = typeof value;
-        if (t === 'string') {
-            const s = value as string;
-            return s.length > limits.maxString
-                ? s.slice(0, limits.maxString) +
-                      `…[+${s.length - limits.maxString}]`
-                : s;
-        }
-        if (
-            t === 'number' ||
-            t === 'boolean' ||
-            t === 'bigint' ||
-            t === 'symbol'
-        )
-            return value;
-        if (t === 'function') return '[Function]';
-        if (value instanceof Error) {
-            return {
-                name: value.name,
-                message: value.message,
-                stack: value.stack,
-            };
-        }
-        if (Array.isArray(value)) {
-            const arr = value as unknown[];
-            const slice = arr.slice(0, limits.maxArray);
-            const mapped = slice.map(v =>
-                this.sanitizeValue(v, depth + 1, limits)
-            );
-            if (arr.length > slice.length)
-                mapped.push(`[…+${arr.length - slice.length} items]`);
-            return mapped;
-        }
-        if (t === 'object') {
-            const out: Record<string, unknown> = {};
-            const entries = Object.entries(value as Record<string, unknown>);
-            const slice = entries.slice(0, limits.maxObjectKeys);
-            for (const [k, v] of slice) {
-                out[k] = this.sanitizeValue(v, depth + 1, limits);
-            }
-            if (entries.length > slice.length) {
-                out['…'] = `+${entries.length - slice.length} keys`;
-            }
-            return out;
-        }
-        return value;
-    }
+    constructor(private readonly repository: ICNSDevToolsServerRepository) {}
 
-    constructor(
-        private repository: ICNSDevToolsServerRepository,
-        private readonly options: { consoleLogEnabled?: boolean } = {}
-    ) {}
+    // ─── Message entry point ─────────────────────────────────────────────────
 
-    private log(...args: unknown[]): void {
-        if (this.options.consoleLogEnabled) {
-            console.log(...args);
-        }
-    }
-
-    private isNeuronResponseMessage(
-        message: unknown
-    ): message is NeuronResponseMessage {
-        return (
-            message !== null &&
-            typeof message === 'object' &&
-            'stimulationId' in message &&
-            'neuronId' in message &&
-            'appId' in message &&
-            'collateralName' in message &&
-            'timestamp' in message &&
-            typeof (message as any).stimulationId === 'string' &&
-            typeof (message as any).neuronId === 'string' &&
-            typeof (message as any).appId === 'string' &&
-            typeof (message as any).collateralName === 'string' &&
-            typeof (message as any).timestamp === 'number' &&
-            !('type' in message)
-        ); // No type field indicates raw NeuronResponseMessage
-    }
-
-    private isMessageWithType(message: unknown): message is { type: string } {
-        return (
-            message !== null &&
-            typeof message === 'object' &&
-            'type' in message &&
-            typeof (message as any).type === 'string'
-        );
-    }
-
-    // Expose sockets map size for tests
-    /** @internal */
-    get connectedAppCount(): number {
-        return this.appSockets.size;
-    }
-
-    private static applyWindowAndPaginate<T extends { timestamp: number }>(
-        items: ReadonlyArray<T>,
-        params: {
-            fromTimestamp?: number;
-            toTimestamp?: number;
-            offset?: number;
-            limit?: number;
-        }
-    ): T[] {
-        const { fromTimestamp, toTimestamp } = params;
-        const offset = Math.max(0, params.offset ?? 0);
-        const limit =
-            params.limit !== undefined && params.limit > 0
-                ? params.limit
-                : undefined;
-
-        // Copy, filter by time window, sort ASC by timestamp
-        const filtered = items
-            .filter(
-                item =>
-                    (fromTimestamp === undefined ||
-                        item.timestamp >= fromTimestamp) &&
-                    (toTimestamp === undefined || item.timestamp <= toTimestamp)
-            )
-            .slice() // avoid mutating original arrays
-            .sort((a, b) => a.timestamp - b.timestamp);
-
-        if (offset > 0 || limit !== undefined) {
-            return filtered.slice(
-                offset,
-                limit !== undefined ? offset + limit : undefined
-            );
-        }
-        return filtered;
-    }
-
-    async handleMessage(ws: WebSocket, message: unknown): Promise<unknown> {
-        if (!this.isMessageWithType(message)) {
-            if (this.options.consoleLogEnabled) {
-                console.warn('Unknown message format:', message);
-            }
-            return null;
-        }
-
-        switch (message.type) {
-            case 'devtools-client-connect':
-                this.log('DevTools client connecting...');
-                this.addClient(ws);
-                // Start metrics loop if not already started
-                if (!this.metricsTimer) {
-                    this.startMetricsLoop();
-                }
-                // Send response to client
-                ws.send(JSON.stringify({ type: 'devtools-client-connected' }));
-                this.log('DevTools client connected, total clients:', this.clientSockets.size);
-                return { type: 'devtools-client-connected' };
-
-            case 'init':
-                return this.handleInit(ws, message as InitMessage);
-
-            case 'batch':
-                return this.handleBatch(
-                    ws,
-                    message as { type: string; items?: unknown[] }
-                );
-
-            case 'neuron-response-batch':
-            case 'response-batch':
-                return this.handleResponseBatch(
-                    ws,
-                    message as ResponseBatchMessage
-                );
-
-            case 'stimulate':
-                return this.handleStimulate(ws, message as StimulateCommand);
-
-            case 'stimulate-accepted':
-                // Forward ack to clients
-                try {
-                    const msg = message as StimulateAccepted;
-                    const cmdId = msg.stimulationCommandId;
-                    const appId = msg.appId;
-                    if (cmdId && appId) {
-                        const arr = this.replaysByApp.get(appId) || [];
-                        // Update latest matching replay by command id
-                        for (let i = arr.length - 1; i >= 0; i--) {
-                            if (arr[i].stimulationCommandId === cmdId) {
-                                arr[i].result = 'accepted';
-                                break;
-                            }
-                        }
-                        this.replaysByApp.set(appId, arr);
-                    }
-                } catch {}
-                return message as StimulateAccepted;
-
-            case 'stimulate-rejected':
-                // Forward nack to clients
-                try {
-                    const msg = message as StimulateRejected;
-                    const cmdId = msg.stimulationCommandId;
-                    const appId = msg.appId;
-                    if (cmdId && appId) {
-                        const arr = this.replaysByApp.get(appId) || [];
-                        for (let i = arr.length - 1; i >= 0; i--) {
-                            if (arr[i].stimulationCommandId === cmdId) {
-                                arr[i].result = 'rejected';
-                                break;
-                            }
-                        }
-                        this.replaysByApp.set(appId, arr);
-                    }
-                } catch {}
-                return message as StimulateRejected;
-
-            case 'stimulation':
-                return this.handleStimulation(
-                    ws,
-                    message as StimulationMessage
-                );
-
-            case 'apps:get-topology': {
-                const inits = Array.from(this.lastInitByApp.values());
-                return { type: 'apps:topology', inits };
-            }
-
-            case 'apps:get-stimulations': {
-                const msg = message as {
-                    appId?: string;
-                    limit?: number;
-                    fromTimestamp?: number;
-                    toTimestamp?: number;
-                    offset?: number;
-                    hasError?: boolean;
-                    errorContains?: string;
-                    collateralName?: string;
-                    neuronId?: string;
-                };
-                const {
-                    appId,
-                    limit,
-                    fromTimestamp,
-                    toTimestamp,
-                    offset,
-                    hasError,
-                    errorContains,
-                    collateralName,
-                    neuronId,
-                } = msg;
-
-                let stimulations: StimulationMessage[] = [];
-                if (appId) {
-                    // Use normalized repository
-                    stimulations = await this.repository.getStimulationsByApp(
-                        appId,
-                        {
-                            fromTimestamp,
-                            toTimestamp,
-                            limit,
-                            offset,
-                            hasError,
-                            errorContains,
-                            collateralName,
-                            neuronId,
-                        }
-                    );
-                } else {
-                    // Get all stimulations from all apps using repository
-                    const apps = await this.repository.listApps();
-                    for (const app of apps) {
-                        const appStimulations =
-                            await this.repository.getStimulationsByApp(
-                                app.appId,
-                                {
-                                    fromTimestamp,
-                                    toTimestamp,
-                                    limit,
-                                    offset,
-                                    hasError,
-                                    errorContains,
-                                    collateralName,
-                                    neuronId,
-                                }
-                            );
-                        stimulations = stimulations.concat(appStimulations);
-                    }
-                    // Filters and pagination are already applied in repository calls
-                    return {
-                        type: 'stimulation-batch',
-                        stimulations,
-                    } as StimulationBatchMessage;
-                }
-
-                // Filters and pagination are already applied in repository call
-                return {
-                    type: 'stimulation-batch',
-                    stimulations,
-                } as StimulationBatchMessage;
-            }
-
-            case 'apps:get-replays': {
-                const msg = message as {
-                    appId?: string;
-                    limit?: number;
-                    fromTimestamp?: number;
-                    toTimestamp?: number;
-                    offset?: number;
-                };
-                const { appId, limit, fromTimestamp, toTimestamp, offset } =
-                    msg;
-                if (!appId) {
-                    return { type: 'apps:replays', replays: [] };
-                }
-                let list = this.replaysByApp.get(appId) || [];
-
-                // Apply filters
-                if (fromTimestamp !== undefined) {
-                    list = list.filter(r => r.timestamp >= fromTimestamp);
-                }
-                if (toTimestamp !== undefined) {
-                    list = list.filter(r => r.timestamp <= toTimestamp);
-                }
-
-                // Sort by timestamp descending (most recent first)
-                list = list.sort((a, b) => b.timestamp - a.timestamp);
-
-                // Apply offset and limit
-                if (offset !== undefined && offset > 0) {
-                    list = list.slice(offset);
-                }
-                if (limit !== undefined && limit > 0) {
-                    list = list.slice(0, limit);
-                }
-
-                return { type: 'apps:replays', appId, replays: list };
-            }
-
-            // Export endpoints (JSON export over WS)
-            case 'apps:export-topology': {
-                const { appId } = message as any;
-                const inits = Array.from(this.lastInitByApp.values());
-                if (appId) {
-                    const filtered = inits.filter(init => {
-                        const baseAppId =
-                            (init as any).appId ||
-                            (init as any).devToolsInstanceId;
-                        return baseAppId === appId;
-                    });
-                    return { type: 'apps:topology', inits: filtered } as any;
-                }
-                return { type: 'apps:topology', inits } as any;
-            }
-
-            case 'apps:export-stimulations': {
-                const {
-                    appId,
-                    limit,
-                    fromTimestamp,
-                    toTimestamp,
-                    offset,
-                    hasError,
-                    errorContains,
-                    collateralName,
-                    neuronId,
-                } = message as any;
-                let stimulations: StimulationMessage[] = [];
-                if (appId) {
-                    stimulations = await this.repository.getStimulationsByApp(
-                        appId,
-                        {
-                            fromTimestamp,
-                            toTimestamp,
-                            limit,
-                            offset,
-                            hasError,
-                            errorContains,
-                            collateralName,
-                            neuronId,
-                        }
-                    );
-                } else {
-                    // Get all stimulations from all apps
-                    const apps = await this.repository.listApps();
-                    for (const app of apps) {
-                        const appStimulations =
-                            await this.repository.getStimulationsByApp(
-                                app.appId,
-                                {
-                                    fromTimestamp,
-                                    toTimestamp,
-                                    limit,
-                                    offset,
-                                    hasError,
-                                    errorContains,
-                                    collateralName,
-                                    neuronId,
-                                }
-                            );
-                        stimulations = stimulations.concat(appStimulations);
-                    }
-                }
-                // Filters and pagination are already applied in repository calls
-                return {
-                    type: 'apps:export-stimulations',
-                    stimulations,
-                } as any;
-            }
-
-            case 'apps:export-snapshot': {
-                const { appId, limitResponses, limitStimulations } =
-                    message as any;
-                const inits = Array.from(this.lastInitByApp.values());
-                const topology = appId
-                    ? inits.filter(
-                          init =>
-                              ((init as any).appId ||
-                                  (init as any).devToolsInstanceId) === appId
-                      )
-                    : inits;
-                // Collect stimulations from repository
-                let stimulations: StimulationMessage[] = [];
-                if (appId) {
-                    stimulations = await this.repository.getStimulationsByApp(
-                        appId
-                    );
-                } else {
-                    const apps = await this.repository.listApps();
-                    for (const app of apps) {
-                        const appStimulations =
-                            await this.repository.getStimulationsByApp(
-                                app.appId
-                            );
-                        stimulations = stimulations.concat(appStimulations);
-                    }
-                }
-
-                // Collect responses from repository
-                const responses: StimulationResponse[] = [];
-                if (appId) {
-                    // Get all CNS for this app
-                    const cnsIds = await this.repository.getCnsByApp(appId);
-                    for (const cnsId of cnsIds) {
-                        const cnsResponses =
-                            await this.repository.getResponsesByCns(cnsId);
-                        responses.push(...cnsResponses);
-                    }
-                } else {
-                    // Get all responses from all CNS
-                    const apps = await this.repository.listApps();
-                    for (const app of apps) {
-                        const cnsIds = await this.repository.getCnsByApp(
-                            app.appId
-                        );
-                        for (const cnsId of cnsIds) {
-                            const cnsResponses =
-                                await this.repository.getResponsesByCns(cnsId);
-                            responses.push(...cnsResponses);
-                        }
-                    }
-                }
-                const tail = <T>(arr: T[], n?: number) =>
-                    typeof n === 'number' && n > 0
-                        ? arr.slice(Math.max(0, arr.length - n))
-                        : arr;
-                const sanitizedStim = tail(stimulations, limitStimulations).map(
-                    s => ({
-                        ...s,
-                        payload: CNSDevToolsServer.sanitizeValue(
-                            (s as any).payload
-                        ),
-                    })
-                );
-                const sanitizedResp = tail(responses, limitResponses).map(
-                    r => ({
-                        ...r,
-                        payload: CNSDevToolsServer.sanitizeValue(
-                            (r as any).payload
-                        ),
-                        contexts: CNSDevToolsServer.sanitizeValue(
-                            (r as any).contexts
-                        ),
-                    })
-                );
-                const snapshot = {
-                    type: 'apps:snapshot',
-                    appId: appId || null,
-                    topology,
-                    stimulations: sanitizedStim,
-                    responses: sanitizedResp,
-                    createdAt: Date.now(),
-                } as any;
-                try {
-                    const sizeBytes = Buffer.byteLength(
-                        JSON.stringify(snapshot)
-                    );
-                    (snapshot as any).sizeBytes = sizeBytes;
-                    const maxBytes = 5 * 1024 * 1024; // 5MB
-                    if (sizeBytes > maxBytes) {
-                        (
-                            snapshot as any
-                        ).warning = `Snapshot size ${sizeBytes} bytes exceeds ${maxBytes} bytes; consider narrowing filters.`;
-                    }
-                } catch {}
-                return snapshot;
-            }
-
-            case 'cns:export-responses': {
-                const {
-                    cnsId,
-                    limit,
-                    fromTimestamp,
-                    toTimestamp,
-                    offset,
-                    hasError,
-                    errorContains,
-                    neuronId,
-                    collateralName,
-                } = message as any;
-                const responsesAll = await this.repository.getResponsesByCns(
-                    cnsId,
-                    {
-                        fromTimestamp,
-                        toTimestamp,
-                        limit,
-                        offset,
-                        hasError,
-                        errorContains,
-                        neuronId,
-                        collateralName,
-                    }
-                );
-                // Filters and pagination are already applied in repository call
-                return {
-                    type: 'cns:export-responses',
-                    cnsId,
-                    responses: responsesAll,
-                } as any;
-            }
-
-            // REST-like over WS
-            case 'apps:list': {
-                const apps = await this.repository.listApps();
-                return { type: 'apps:list', apps };
-            }
-            case 'apps:get-cns': {
-                const { appId } = message as any;
-                const cnsIds = await this.repository.getCnsByApp(appId);
-                const cns = cnsIds.map(cnsId => ({ cnsId, appId }));
-                return { type: 'apps:cns', appId, cns };
-            }
-
-            case 'apps:get-responses': {
-                const {
-                    appId,
-                    limit,
-                    fromTimestamp,
-                    toTimestamp,
-                    offset,
-                    hasError,
-                    errorContains,
-                    neuronId,
-                    collateralName,
-                } = message as any;
-
-                // Get all responses from all CNS for the app
-                let allResponses: StimulationResponse[] = [];
-                if (appId) {
-                    const cnsIds = await this.repository.getCnsByApp(appId);
-                    for (const cnsId of cnsIds) {
-                        const responses =
-                            await this.repository.getResponsesByCns(cnsId, {
-                                fromTimestamp,
-                                toTimestamp,
-                                hasError,
-                                errorContains,
-                                neuronId,
-                                collateralName,
-                            });
-                        allResponses = allResponses.concat(responses);
-                    }
-                } else {
-                    // Get all responses from all CNS
-                    const apps = await this.repository.listApps();
-                    for (const app of apps) {
-                        const cnsIds = await this.repository.getCnsByApp(
-                            app.appId
-                        );
-                        for (const cnsId of cnsIds) {
-                            const responses =
-                                await this.repository.getResponsesByCns(cnsId, {
-                                    fromTimestamp,
-                                    toTimestamp,
-                                    hasError,
-                                    errorContains,
-                                    neuronId,
-                                    collateralName,
-                                });
-                            allResponses = allResponses.concat(responses);
-                        }
-                    }
-                }
-
-                // Filters and pagination are already applied in repository calls
-
-                // Sort by timestamp descending
-                allResponses.sort((a, b) => b.timestamp - a.timestamp);
-
-                const response = {
-                    type: 'apps:responses',
-                    appId: appId || 'all',
-                    responses: allResponses,
-                    total: allResponses.length,
-                    offset: offset || 0,
-                    limit: limit || allResponses.length,
-                };
-
-                // Send response to client
-                ws.send(JSON.stringify(response));
-                return response;
-            }
-            case 'cns:get-responses': {
-                const msg = message as {
-                    cnsId?: string;
-                    limit?: number;
-                    fromTimestamp?: number;
-                    toTimestamp?: number;
-                    offset?: number;
-                    hasError?: boolean;
-                    errorContains?: string;
-                    neuronId?: string;
-                    collateralName?: string;
-                };
-                const {
-                    cnsId,
-                    limit,
-                    fromTimestamp,
-                    toTimestamp,
-                    offset,
-                    hasError,
-                    errorContains,
-                    neuronId,
-                    collateralName,
-                } = msg;
-
-                if (!cnsId) {
-                    return { type: 'cns:responses', cnsId: '', responses: [] };
-                }
-
-                // Use normalized repository
-                const responses = await this.repository.getResponsesByCns(
-                    cnsId,
-                    {
-                        fromTimestamp,
-                        toTimestamp,
-                        limit,
-                        offset,
-                        hasError,
-                        errorContains,
-                        neuronId,
-                        collateralName,
-                    }
-                );
-
-                return { type: 'cns:responses', cnsId, responses };
-            }
-
-            default:
-                this.log('Unknown message type:', message.type);
-                return null;
-        }
-    }
-
-    async handleInit(
+    async handleMessage(
         ws: WebSocket,
-        message: InitMessage
-    ): Promise<AppsActiveMessage> {
-        // Prefer new clean fields from InitMessage
-        const baseAppId = message.appId || message.devToolsInstanceId;
-        const cnsId = message.cnsId || message.devToolsInstanceId;
-
-        if (!baseAppId || !cnsId) {
-            throw new Error('Invalid InitMessage: missing appId or cnsId');
-        }
-
-        this.lastInitByApp.set(cnsId, message);
-
-        // Track connection times
-        const now = Date.now();
-        if (!this.appFirstSeenAt.has(baseAppId)) {
-            this.appFirstSeenAt.set(baseAppId, now);
-        }
-        this.appLastSeenAt.set(baseAppId, now);
-
-        const app: DevToolsApp = {
-            appId: baseAppId,
-            appName: message.appName,
-            version: message.version!,
-            firstSeenAt: this.appFirstSeenAt.get(baseAppId)!,
-            lastSeenAt: now,
-        };
-
-        // Removed verbose logging
-        await this.repository.upsertApp(app);
-
-        this.appSockets.set(cnsId, ws);
-
-        // Clean up old topology data for this CNS before storing new one
-        // This ensures that if the app reconnects with different topology,
-        // old neurons/collaterals/dendrites are removed
-        const existingNeurons = await this.repository.getNeuronsByCns(cnsId);
-        const existingCollaterals = await this.repository.getCollateralsByCns(
-            cnsId
-        );
-        const existingDendrites = await this.repository.getDendritesByCns(
-            cnsId
-        );
-
-        // Remove old topology from repository
-        for (const neuron of existingNeurons) {
-            if (this.repository.removeNeuron) {
-                await this.repository.removeNeuron(neuron.id);
-            }
-        }
-        for (const collateral of existingCollaterals) {
-            if (this.repository.removeCollateral) {
-                await this.repository.removeCollateral(collateral.id);
-            }
-        }
-        for (const dendrite of existingDendrites) {
-            if (this.repository.removeDendrite) {
-                await this.repository.removeDendrite(dendrite.id);
-            }
-        }
-
-        // Store new topology in normalized repository
-        for (const neuron of message.neurons || []) {
-            await this.repository.upsertNeuron(neuron);
-        }
-        for (const collateral of message.collaterals || []) {
-            await this.repository.upsertCollateral(collateral);
-        }
-        for (const dendrite of message.dendrites || []) {
-            await this.repository.upsertDendrite(dendrite);
-        }
-
-        await this.repository.addCnsToApp(app.appId, cnsId);
-
-        this.log(`App connected: ${message.appName} (${message.devToolsInstanceId})`);
-        this.log(`Topology: ${message.neurons.length} neurons, ${message.collaterals.length} collaterals, ${message.dendrites.length} dendrites`);
-
-        // Return apps list to broadcast
-        const apps = await this.repository.listApps();
-
-        // Send app:added event to all connected clients
-        this.broadcastToClients({
-            type: 'app:added',
-            app: app,
-        });
-
-        // Additionally broadcast the full apps:active list so late-joined devtools panels
-        // can reliably refresh their app list even if they miss app:added for any reason
-        this.log('Broadcasting apps:active to', this.clientSockets.size, 'clients:', {
-            appsCount: apps.length,
-            appIds: apps.map(a => a.appId),
-        });
-        this.broadcastToClients({
-            type: 'apps:active',
-            apps: apps,
-        });
-
-        return {
-            type: 'apps:active',
-            apps: apps,
-        };
-    }
-
-    async handleBatch(
-        ws: WebSocket,
-        message: { type: string; items?: unknown[] }
+        raw: unknown
     ): Promise<void> {
-        this.log('Server handling batch with', message.items?.length || 0, 'items');
+        if (typeof raw !== 'string' && typeof raw !== 'object') return;
 
-        if (!Array.isArray(message.items)) {
-            if (this.options.consoleLogEnabled) {
-                console.warn('Invalid batch message - no items array');
+        let data: unknown;
+        try {
+            data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch {
+            return;
+        }
+
+        if (!data || typeof data !== 'object' || !('type' in data)) return;
+        const type = (data as any).type as string;
+
+        // App batch (topology + execution events)
+        if (type === 'batch') {
+            const result = CNSDTOAppBatchMessageSchema.safeParse(data);
+            if (!result.success) return;
+            for (const item of result.data.items) {
+                await this.handleAppBatchItem(ws, item);
             }
             return;
         }
 
-        // Group responses together (same logic as example-app)
-        const responses: unknown[] = [];
-        for (const item of message.items || []) {
-            const actualMessage = (item as any).payload || item;
-            if ((item as any).type === 'response') {
-                responses.push(actualMessage);
-            } else {
-                // Handle non-response messages individually
-                this.log('Batch item (non-response):', {
-                    type: (actualMessage as any)?.type,
-                });
-                await this.handleMessage(ws, actualMessage);
-            }
-        }
+        // UI client message
+        const clientResult = CNSDTOClientMessageSchema.safeParse(data);
+        if (!clientResult.success) return;
+        const msg = clientResult.data;
 
-        // Send response batch if we have responses
-        if (responses.length > 0) {
-            this.log('Creating response-batch with', responses.length, 'responses');
-            const responseBatch = {
-                type: 'response-batch' as const,
-                devToolsInstanceId:
-                    (responses[0] as any).cnsId ||
-                    (responses[0] as any).appId ||
-                    'unknown',
-                responses: responses as NeuronResponseMessage[],
-            };
-            await this.handleResponseBatch(
-                ws,
-                responseBatch as ResponseBatchMessage
-            );
-        }
-    }
-
-    async handleResponseBatch(
-        ws: WebSocket,
-        message: ResponseBatchMessage
-    ): Promise<ResponseBatchMessage> {
-        // Check for replay responses
-        const replayResponses = (message.responses || []).filter(r => {
-            const stimId = r.stimulationId || '';
-            return typeof stimId === 'string' && stimId.includes('-replay-');
-        });
-
-        if (replayResponses.length > 0) {
-            this.log('[Server] Received REPLAY response-batch:', {
-                totalResponses: message.responses?.length || 0,
-                replayResponsesCount: replayResponses.length,
-                replayStimIds: replayResponses
-                    .slice(0, 3)
-                    .map(r => r.stimulationId),
-                replayAppIds: replayResponses.slice(0, 3).map(r => r.appId),
-            });
-        }
-
-        // Update lastSeenAt for the app
-        if (message.responses && message.responses.length > 0) {
-            const appId = message.responses[0].appId;
-            if (appId) {
-                this.appLastSeenAt.set(appId, Date.now());
-            }
-        }
-
-        // Persist responses in normalized repository
-        for (const response of message.responses) {
-            await this.repository.saveResponse(response);
-        }
-
-        // Broadcast to all devtools clients
-        this.broadcastToClients(message);
-
-        // Forward to clients
-        return message;
-    }
-
-    async handleStimulate(
-        ws: WebSocket,
-        message: StimulateCommand
-    ): Promise<null> {
-        // Removed verbose logging
-
-        // Determine routing target: prefer cnsId, else appId, else broadcast
-        const cnsIdFromCmd = (message as any).cnsId as string | undefined;
-        const appIdFromCmd = (message as any).appId as string | undefined;
-
-        try {
-            // Persist replay intent for history (best effort)
-            try {
-                const entry = {
-                    stimulationCommandId: (message as any).stimulationCommandId,
-                    appId: (message as any).appId,
-                    cnsId: (message as any).cnsId,
-                    collateralName: (message as any).collateralName,
-                    payload: (message as any).payload,
-                    contexts: (message as any).contexts,
-                    options: (message as any).options,
-                    timestamp: Date.now(),
-                };
-                const arr = this.replaysByApp.get(entry.appId) || [];
-                arr.push(entry);
-                if (arr.length > 1000) arr.splice(0, arr.length - 1000);
-                this.replaysByApp.set(entry.appId, arr);
-            } catch {}
-
-            if (cnsIdFromCmd) {
-                const appWs = this.appSockets.get(cnsIdFromCmd);
-                if (appWs && appWs.readyState === 1) {
-                    appWs.send(JSON.stringify(message));
-                    this.log(`Stimulate forwarded to cns ${cnsIdFromCmd}`);
-                } else {
-                    if (this.options.consoleLogEnabled) {
-                        console.warn(`CNS socket not available for ${cnsIdFromCmd}`);
-                    }
-                }
-            } else if (appIdFromCmd) {
-                const cnsIds = await this.repository.getCnsByApp(appIdFromCmd);
-                let count = 0;
-                for (const cnsId of cnsIds) {
-                    const appWs = this.appSockets.get(cnsId);
-                    if (appWs && appWs.readyState === 1) {
-                        appWs.send(JSON.stringify(message));
-                        count++;
-                    }
-                }
-                this.log(`Stimulate forwarded to ${count} CNS of app ${appIdFromCmd}`);
-            } else {
-                // Fallback: broadcast to all app sockets
-                let count = 0;
-                for (const [, appWs] of Array.from(this.appSockets.entries())) {
-                    if (appWs.readyState === 1) {
-                        appWs.send(JSON.stringify(message));
-                        count++;
-                    }
-                }
-                // Removed verbose logging
-            }
-        } catch (e) {
-            if (this.options.consoleLogEnabled) {
-                console.error('Failed to forward stimulate:', e);
-            }
-        }
-
-        return null;
-    }
-
-    async handleDisconnect(ws: WebSocket): Promise<void> {
-        // Remove from app sockets
-        for (const [cnsId, socket] of Array.from(this.appSockets.entries())) {
-            if (socket === ws) {
-                this.appSockets.delete(cnsId);
-                this.log(`CNS disconnected: ${cnsId}`);
-
-                // Derive base appId from cnsId
-                const sepIdx = cnsId.indexOf(':');
-                const baseAppId = sepIdx > 0 ? cnsId.slice(0, sepIdx) : cnsId;
-
-                // Remove per-CNS cached topology
-                this.lastInitByApp.delete(cnsId);
-
-                // Update cnsByApp mapping
-                await this.repository.removeCnsFromApp(baseAppId, cnsId);
+        switch (msg.type) {
+            case 'client.connect':
+                await this.handleClientConnect(ws);
                 break;
-            }
+            case 'apps.query':
+                await this.handleAppsQuery(ws, msg.requestId);
+                break;
+            case 'topology.query':
+                await this.handleTopologyQuery(ws, msg.requestId, msg.cnsId, msg.appId);
+                break;
+            case 'executions.query':
+                await this.handleExecutionsQuery(ws, msg);
+                break;
+            case 'hops.query':
+                await this.handleHopsQuery(ws, msg);
+                break;
+            case 'replay.start':
+                await this.handleReplayStart(ws, msg);
+                break;
         }
-
-        // Remove from client sockets
-        this.clientSockets.delete(ws);
     }
 
     addClient(ws: WebSocket): void {
-        this.clientSockets.add(ws);
-        // start metrics loop on first client
-        if (!this.metricsTimer) {
-            this.startMetricsLoop();
-        }
-
-        // Handle client disconnection when the socket implementation supports events.
-        const eventedWs = ws as WebSocket & {
-            on?: (event: string, listener: () => void) => void;
-            addEventListener?: (event: string, listener: () => void) => void;
-        };
-        const remove = () => this.removeClient(ws);
-
-        if (eventedWs.on) {
-            eventedWs.on('close', remove);
-            eventedWs.on('error', remove);
-        } else if (eventedWs.addEventListener) {
-            eventedWs.addEventListener('close', remove);
-            eventedWs.addEventListener('error', remove);
-        }
+        this.uiClients.add(ws);
+        if (this.uiClients.size === 1) this.startMetrics();
     }
 
     removeClient(ws: WebSocket): void {
-        this.clientSockets.delete(ws);
+        this.uiClients.delete(ws);
+        this.appSockets.delete(ws);
+        if (this.uiClients.size === 0) this.stopMetrics();
     }
 
-    async handleStimulation(
-        ws: WebSocket,
-        message: StimulationMessage
-    ): Promise<void> {
-        // Removed verbose logging - too frequent
-
-        // Store stimulation in normalized repository
-        await this.repository.saveStimulation(message);
-
-        // Add to buffer for batch sending
-        this.stimulationBuffer.push(message);
-
-        // Send immediately to all connected devtools clients
-        this.broadcastToClients({
-            type: 'stimulation-batch',
-            stimulations: [message],
-        } as StimulationBatchMessage);
-    }
-
-    private broadcastToClients(message: BroadcastableMessage): void {
-        const messageStr = JSON.stringify(message);
-        let sentCount = 0;
-        this.clientSockets.forEach(clientWs => {
-            if (clientWs.readyState === 1) {
-                // WebSocket.OPEN
-                try {
-                    clientWs.send(messageStr);
-                    sentCount++;
-                } catch (error) {
-                    if (this.options.consoleLogEnabled) {
-                        console.error('Failed to send message to client:', error);
-                    }
-                }
-            }
-        });
-        // Only log if not all clients received the message
-        if (sentCount !== this.clientSockets.size && this.options.consoleLogEnabled) {
-            console.warn(
-                `Sent message to ${sentCount}/${this.clientSockets.size} clients`
-            );
-        }
-    }
-
-    private startMetricsLoop(): void {
-        // Don't start if already running
-        if (this.metricsTimer) {
-            return;
-        }
-
-        this.lastCpuUsage = process.cpuUsage();
-        this.lastCpuTime = Date.now();
-        this.metricsTimer = setInterval(() => {
-            if (this.stopped) {
-                clearInterval(this.metricsTimer);
-                this.metricsTimer = undefined;
-                return;
-            }
-            try {
-                const mem = process.memoryUsage();
-                const now = Date.now();
-                const cpu = process.cpuUsage(this.lastCpuUsage);
-                const elapsedMs = Math.max(1, now - this.lastCpuTime);
-                const userMs = cpu.user / 1000;
-                const systemMs = cpu.system / 1000;
-                const cpuPercent = Math.min(
-                    100,
-                    Math.round(((userMs + systemMs) / elapsedMs) * 100)
-                );
-                this.lastCpuUsage = process.cpuUsage();
-                this.lastCpuTime = now;
-
-                const payload = {
-                    type: 'server:metrics',
-                    timestamp: now,
-                    rssMB: Math.round((mem.rss / 1024 / 1024) * 100) / 100,
-                    heapUsedMB:
-                        Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
-                    heapTotalMB:
-                        Math.round((mem.heapTotal / 1024 / 1024) * 100) / 100,
-                    externalMB:
-                        Math.round((mem.external / 1024 / 1024) * 100) / 100,
-                    cpuPercent,
-                } as any;
-                this.broadcastToClients(payload);
-            } catch {}
-        }, 1000);
-    }
-
-    async getActiveApps(): Promise<DevToolsApp[]> {
-        return await this.repository.listApps();
+    async getActiveApps(): Promise<CNSDTOApp[]> {
+        return this.repository.listApps();
     }
 
     stop(): void {
-        this.log('Stopping server.');
-        this.stopped = true;
-        // Clear metrics timer
+        this.stopMetrics();
+    }
+
+    // ─── App batch item handlers ──────────────────────────────────────────────
+
+    private async handleAppBatchItem(ws: WebSocket, item: any): Promise<void> {
+        switch (item.type) {
+            case 'topology':
+                await this.handleTopology(ws, item);
+                break;
+            case 'execution.started':
+                await this.handleExecutionStarted(ws, item.execution);
+                break;
+            case 'execution.hop':
+                await this.handleExecutionHop(item.hop);
+                break;
+            case 'execution.completed':
+                await this.handleExecutionCompleted(item);
+                break;
+        }
+    }
+
+    private async handleTopology(ws: WebSocket, msg: any): Promise<void> {
+        const { appId, cnsId, appName, version, timestamp, neurons, collaterals, dendrites } = msg;
+
+        const now = Date.now();
+        const app: CNSDTOApp = {
+            id: appId,
+            name: appName,
+            version,
+            connectedAt: now,
+            lastSeenAt: now,
+        };
+
+        await this.repository.upsertApp(app);
+        await this.repository.addCnsToApp(appId, cnsId);
+        await this.repository.saveTopology({ appId, cnsId, appName, version, timestamp, neurons, collaterals, dendrites });
+
+        // Track app socket
+        this.appSockets.set(ws, appId);
+        if (!this.appWsByAppId.has(appId)) this.appWsByAppId.set(appId, new Set());
+        this.appWsByAppId.get(appId)!.add(ws);
+
+        // Broadcast topology + app connected to UI clients
+        const topologyBroadcast = {
+            type: 'topology.result' as const,
+            requestId: '__broadcast__',
+            snapshots: await this.repository.getTopology(cnsId),
+        };
+
+        this.broadcast({ type: 'app.connected', app, topology: { cnsId, neurons, collaterals, dendrites } });
+        // Also send topology snapshot so UI can refresh graph
+        this.broadcastRaw(JSON.stringify(topologyBroadcast));
+    }
+
+    private async handleExecutionStarted(ws: WebSocket, execution: CNSDTOExecution): Promise<void> {
+        // Update lastSeenAt for the app
+        const appId = this.appSockets.get(ws);
+        if (appId) {
+            const apps = await this.repository.listApps();
+            const app = apps.find(a => a.id === appId);
+            if (app) await this.repository.upsertApp({ ...app, lastSeenAt: Date.now() });
+        }
+
+        await this.repository.saveExecution(execution);
+        this.broadcast({ type: 'execution.started', execution });
+    }
+
+    private async handleExecutionHop(hop: CNSDTOHop): Promise<void> {
+        await this.repository.saveHop(hop);
+        this.broadcast({ type: 'execution.hop', hop });
+    }
+
+    private async handleExecutionCompleted(item: any): Promise<void> {
+        await this.repository.completeExecution(
+            item.executionId,
+            item.completedAt,
+            item.hopCount,
+            item.hasError
+        );
+        this.broadcast({
+            type: 'execution.completed',
+            executionId: item.executionId,
+            completedAt: item.completedAt,
+            hopCount: item.hopCount,
+            hasError: item.hasError,
+        });
+    }
+
+    // ─── UI client query handlers ─────────────────────────────────────────────
+
+    private async handleClientConnect(ws: WebSocket): Promise<void> {
+        this.addClient(ws);
+        this.send(ws, { type: 'apps.result', requestId: '__init__', items: await this.repository.listApps() });
+        this.send(ws, {
+            type: 'topology.result',
+            requestId: '__init__',
+            snapshots: await this.repository.getTopology(),
+        });
+    }
+
+    private async handleAppsQuery(ws: WebSocket, requestId: string): Promise<void> {
+        const items = await this.repository.listApps();
+        this.send(ws, { type: 'apps.result', requestId, items });
+    }
+
+    private async handleTopologyQuery(
+        ws: WebSocket,
+        requestId: string,
+        cnsId?: string,
+        appId?: string
+    ): Promise<void> {
+        let snapshots = await this.repository.getTopology(cnsId);
+        if (appId) snapshots = snapshots.filter(s => s.appId === appId);
+        this.send(ws, { type: 'topology.result', requestId, snapshots });
+    }
+
+    private async handleExecutionsQuery(ws: WebSocket, msg: any): Promise<void> {
+        const appId = msg.appId ?? (msg.cnsId ? await this.repository.findAppByCns(msg.cnsId) : undefined);
+
+        if (!appId) {
+            this.send(ws, { type: 'executions.result', requestId: msg.requestId, items: [], total: 0, offset: 0 });
+            return;
+        }
+
+        const { items, total } = await this.repository.getExecutions(appId, msg.filter ?? {});
+        this.send(ws, {
+            type: 'executions.result',
+            requestId: msg.requestId,
+            items,
+            total,
+            offset: msg.filter?.offset ?? 0,
+        });
+    }
+
+    private async handleHopsQuery(ws: WebSocket, msg: any): Promise<void> {
+        const items = await this.repository.getHops(msg.executionId);
+        this.send(ws, { type: 'hops.result', requestId: msg.requestId, items });
+    }
+
+    private async handleReplayStart(ws: WebSocket, msg: any): Promise<void> {
+        const appId = msg.appId ?? (msg.cnsId ? await this.repository.findAppByCns(msg.cnsId) : undefined);
+        const appSockets = appId ? this.appWsByAppId.get(appId) : undefined;
+
+        if (!appSockets || appSockets.size === 0) {
+            this.send(ws, { type: 'replay.rejected', replayId: msg.replayId, reason: 'App not connected' });
+            return;
+        }
+
+        const newExecutionId = `${msg.executionId}-replay-${Date.now()}`;
+        this.send(ws, { type: 'replay.accepted', replayId: msg.replayId, newExecutionId });
+
+        const payload = JSON.stringify(msg);
+        for (const appWs of appSockets) {
+            try { appWs.send(payload); } catch {}
+        }
+    }
+
+    // ─── Broadcast helpers ────────────────────────────────────────────────────
+
+    private broadcast(message: object): void {
+        this.broadcastRaw(JSON.stringify(message));
+    }
+
+    private broadcastRaw(payload: string): void {
+        for (const client of this.uiClients) {
+            try {
+                if ((client as any).readyState === 1) client.send(payload);
+            } catch {}
+        }
+    }
+
+    private send(ws: WebSocket, message: object): void {
+        try {
+            if ((ws as any).readyState === 1) ws.send(JSON.stringify(message));
+        } catch {}
+    }
+
+    // ─── Metrics ──────────────────────────────────────────────────────────────
+
+    private startMetrics(): void {
+        if (this.metricsTimer) return;
+        this.metricsTimer = setInterval(() => {
+            const mem = process.memoryUsage();
+            const now = Date.now();
+            const cpu = process.cpuUsage(this.lastCpuUsage);
+            const elapsed = (now - this.lastCpuTime) * 1000;
+            const cpuPercent = elapsed > 0 ? ((cpu.user + cpu.system) / elapsed) * 100 : 0;
+            this.lastCpuUsage = process.cpuUsage();
+            this.lastCpuTime = now;
+
+            this.broadcast({
+                type: 'server.metrics',
+                timestamp: now,
+                rssMB: mem.rss / 1024 / 1024,
+                heapUsedMB: mem.heapUsed / 1024 / 1024,
+                heapTotalMB: mem.heapTotal / 1024 / 1024,
+                cpuPercent,
+            });
+        }, 1000);
+    }
+
+    private stopMetrics(): void {
         if (this.metricsTimer) {
             clearInterval(this.metricsTimer);
             this.metricsTimer = undefined;
         }
-
-        // Close all app sockets
-        for (const ws of Array.from(this.appSockets.values())) {
-            ws.close();
-        }
-        this.appSockets.clear();
-
-        // Close all client sockets
-        for (const ws of Array.from(this.clientSockets)) {
-            ws.close();
-        }
-        this.clientSockets.clear();
-
-        // Clear all data
-        this.lastInitByApp.clear();
-        this.stimulationBuffer = [];
-        this.appFirstSeenAt.clear();
-        this.appLastSeenAt.clear();
-        this.replaysByApp.clear();
     }
 }
-
-export { startDevTools } from './start';
-export type { StartDevToolsOptions, DevToolsHandle } from './start';

@@ -1,311 +1,278 @@
 import { CNSDevToolsServerRepositoryInMemory } from '../src/index';
-import { DevToolsApp } from '@cnstra/devtools-dto';
+import type { CNSDTOApp, CNSDTOExecution, CNSDTOHop } from '@cnstra/devtools-dto';
+import type { CNSDTOTopologySnapshot } from '@cnstra/devtools-server';
+
+const makeApp = (id: string, overrides: Partial<CNSDTOApp> = {}): CNSDTOApp => ({
+    id,
+    name: `App ${id}`,
+    version: '1.0.0',
+    connectedAt: Date.now(),
+    lastSeenAt: Date.now(),
+    ...overrides,
+});
+
+const makeTopology = (cnsId: string, appId: string): CNSDTOTopologySnapshot => ({
+    cnsId,
+    appId,
+    appName: 'Test App',
+    version: '1.0.0',
+    timestamp: Date.now(),
+    neurons: [],
+    collaterals: [],
+    dendrites: [],
+});
+
+const makeExecution = (id: string, appId: string, overrides: Partial<CNSDTOExecution> = {}): CNSDTOExecution => ({
+    id,
+    cnsId: `${appId}:cns`,
+    appId,
+    collateralId: `${appId}:cns:n:col`,
+    payload: {},
+    startedAt: Date.now(),
+    completedAt: null,
+    hopCount: 0,
+    hasError: false,
+    replayOf: null,
+    ...overrides,
+});
+
+const makeHop = (id: string, executionId: string, index: number): CNSDTOHop => ({
+    id,
+    executionId,
+    index,
+    neuronId: 'app:cns:n',
+    inputCollateralId: 'app:cns:n:col',
+    outputCollateralId: null,
+    inputPayload: {},
+    outputPayload: null,
+    startedAt: Date.now(),
+    duration: null,
+    error: null,
+});
 
 describe('CNSDevToolsServerRepositoryInMemory', () => {
-  let repository: CNSDevToolsServerRepositoryInMemory;
+    let repo: CNSDevToolsServerRepositoryInMemory;
 
-  beforeEach(() => {
-    repository = new CNSDevToolsServerRepositoryInMemory();
-  });
-
-  describe('Constructor', () => {
-    test('creates repository with empty state', () => {
-      expect(repository.listApps()).toEqual([]);
-      expect(repository.getMessages()).toEqual([]);
-    });
-  });
-
-  describe('App Management', () => {
-    test('upserts new app with correct timestamps', () => {
-      const now = Date.now();
-      const app: DevToolsApp = {
-        appId: 'test-app-1',
-        appName: 'Test App',
-        version: '1.0.0',
-        lastSeenAt: 0,
-        firstSeenAt: 0
-      };
-
-      repository.upsertApp(app);
-      const apps = repository.listApps();
-
-      expect(apps).toHaveLength(1);
-      expect(apps[0]).toMatchObject({
-        appId: 'test-app-1',
-        appName: 'Test App',
-        version: '1.0.0'
-      });
-      expect(apps[0].lastSeenAt).toBeGreaterThanOrEqual(now);
-      expect(apps[0].firstSeenAt).toBeGreaterThanOrEqual(now);
-      expect(apps[0].firstSeenAt).toBeLessThanOrEqual(apps[0].lastSeenAt);
+    beforeEach(() => {
+        repo = new CNSDevToolsServerRepositoryInMemory();
     });
 
-    test('updates existing app preserving firstSeenAt', () => {
-      const app: DevToolsApp = {
-        appId: 'test-app-1',
-        appName: 'Test App',
-        version: '1.0.0',
-        lastSeenAt: 0,
-        firstSeenAt: 0
-      };
-
-      // First upsert
-      repository.upsertApp(app);
-      const firstApps = repository.listApps();
-      const originalFirstSeen = firstApps[0].firstSeenAt;
-
-      // Wait a small amount to ensure different timestamps
-      const delay = () => new Promise(resolve => setTimeout(resolve, 1));
-      return delay().then(() => {
-        // Second upsert with same appId
-        const updatedApp: DevToolsApp = {
-          appId: 'test-app-1',
-          appName: 'Updated Test App',
-          version: '2.0.0',
-          lastSeenAt: 0,
-          firstSeenAt: 0
-        };
-
-        repository.upsertApp(updatedApp);
-        const updatedApps = repository.listApps();
-
-        expect(updatedApps).toHaveLength(1);
-        expect(updatedApps[0]).toMatchObject({
-          appId: 'test-app-1',
-          appName: 'Updated Test App',
-          version: '2.0.0'
+    describe('Apps', () => {
+        test('upserts and lists apps', () => {
+            repo.upsertApp(makeApp('app-1'));
+            expect(repo.listApps()).toHaveLength(1);
+            expect(repo.listApps()[0].id).toBe('app-1');
         });
-        expect(updatedApps[0].firstSeenAt).toBe(originalFirstSeen);
-        expect(updatedApps[0].lastSeenAt).toBeGreaterThan(originalFirstSeen);
-      });
+
+        test('overwrites app on re-upsert', () => {
+            repo.upsertApp(makeApp('app-1', { name: 'Old' }));
+            repo.upsertApp(makeApp('app-1', { name: 'New' }));
+            const apps = repo.listApps();
+            expect(apps).toHaveLength(1);
+            expect(apps[0].name).toBe('New');
+        });
+
+        test('stores multiple apps independently', () => {
+            repo.upsertApp(makeApp('app-1'));
+            repo.upsertApp(makeApp('app-2'));
+            const ids = repo.listApps().map(a => a.id).sort();
+            expect(ids).toEqual(['app-1', 'app-2']);
+        });
+
+        test('listApps returns empty array initially', () => {
+            expect(repo.listApps()).toEqual([]);
+        });
     });
 
-    test('handles multiple apps', () => {
-      const app1: DevToolsApp = {
-        appId: 'app-1',
-        appName: 'App One',
-        version: '1.0.0',
-        lastSeenAt: 0,
-        firstSeenAt: 0
-      };
+    describe('Topology', () => {
+        test('saves and gets topology', () => {
+            repo.saveTopology(makeTopology('app:cns', 'app'));
+            const result = repo.getTopology();
+            expect(result).toHaveLength(1);
+            expect(result[0].cnsId).toBe('app:cns');
+        });
 
-      const app2: DevToolsApp = {
-        appId: 'app-2',
-        appName: 'App Two',
-        version: '2.0.0',
-        lastSeenAt: 0,
-        firstSeenAt: 0
-      };
+        test('gets topology by cnsId', () => {
+            repo.saveTopology(makeTopology('app:cns1', 'app'));
+            repo.saveTopology(makeTopology('app:cns2', 'app'));
+            expect(repo.getTopology('app:cns1')).toHaveLength(1);
+            expect(repo.getTopology('app:cns1')[0].cnsId).toBe('app:cns1');
+        });
 
-      repository.upsertApp(app1);
-      repository.upsertApp(app2);
+        test('returns empty array for unknown cnsId', () => {
+            expect(repo.getTopology('unknown')).toEqual([]);
+        });
 
-      const apps = repository.listApps();
-      expect(apps).toHaveLength(2);
-
-      const appIds = apps.map(app => app.appId).sort();
-      expect(appIds).toEqual(['app-1', 'app-2']);
+        test('overwrites topology for same cnsId', () => {
+            repo.saveTopology(makeTopology('app:cns', 'app'));
+            repo.saveTopology({ ...makeTopology('app:cns', 'app'), appName: 'Updated' });
+            const result = repo.getTopology('app:cns');
+            expect(result).toHaveLength(1);
+            expect(result[0].appName).toBe('Updated');
+        });
     });
 
-    test('listApps returns empty array for new repository', () => {
-      expect(repository.listApps()).toEqual([]);
-    });
-  });
+    describe('Executions', () => {
+        test('saves and gets executions with filter', () => {
+            repo.saveExecution(makeExecution('exec-1', 'app-1'));
+            const { items, total } = repo.getExecutions('app-1', {});
+            expect(total).toBe(1);
+            expect(items[0].id).toBe('exec-1');
+        });
 
-  describe('Message Management', () => {
-    test('saves message with receivedAt timestamp', () => {
-      const now = Date.now();
-      const message = {
-        type: 'test-message',
-        data: { value: 123 }
-      };
+        test('completes execution', () => {
+            repo.saveExecution(makeExecution('exec-1', 'app-1'));
+            repo.completeExecution('exec-1', Date.now(), 3, false);
+            const { items } = repo.getExecutions('app-1', {});
+            expect(items[0].completedAt).not.toBeNull();
+            expect(items[0].hopCount).toBe(3);
+        });
 
-      repository.saveMessage(message);
-      const messages = repository.getMessages();
+        test('completeExecution ignores unknown id', () => {
+            expect(() => repo.completeExecution('no-such', Date.now(), 0, false)).not.toThrow();
+        });
 
-      expect(messages).toHaveLength(1);
-      expect(messages[0]).toMatchObject({
-        type: 'test-message',
-        data: { value: 123 }
-      });
-      expect(messages[0].receivedAt).toBeGreaterThanOrEqual(now);
-    });
+        test('filters by fromTimestamp', () => {
+            const now = Date.now();
+            repo.saveExecution(makeExecution('old', 'app', { startedAt: now - 1000 }));
+            repo.saveExecution(makeExecution('new', 'app', { startedAt: now + 1000 }));
+            const { items } = repo.getExecutions('app', { fromTimestamp: now });
+            expect(items.map(i => i.id)).toEqual(['new']);
+        });
 
-    test('preserves message order', () => {
-      const messages = [
-        { type: 'message-1', id: 1 },
-        { type: 'message-2', id: 2 },
-        { type: 'message-3', id: 3 }
-      ];
+        test('filters by toTimestamp', () => {
+            const now = Date.now();
+            repo.saveExecution(makeExecution('old', 'app', { startedAt: now - 1000 }));
+            repo.saveExecution(makeExecution('new', 'app', { startedAt: now + 1000 }));
+            const { items } = repo.getExecutions('app', { toTimestamp: now });
+            expect(items.map(i => i.id)).toEqual(['old']);
+        });
 
-      messages.forEach(msg => repository.saveMessage(msg));
-      const saved = repository.getMessages();
+        test('filters by hasError', () => {
+            repo.saveExecution(makeExecution('ok', 'app', { hasError: false }));
+            repo.saveExecution(makeExecution('err', 'app', { hasError: true }));
+            const { items } = repo.getExecutions('app', { hasError: true });
+            expect(items.map(i => i.id)).toEqual(['err']);
+        });
 
-      expect(saved).toHaveLength(3);
-      expect(saved[0].id).toBe(1);
-      expect(saved[1].id).toBe(2);
-      expect(saved[2].id).toBe(3);
-    });
+        test('filters by collateralId', () => {
+            repo.saveExecution(makeExecution('e1', 'app', { collateralId: 'app:cns:n:col-a' }));
+            repo.saveExecution(makeExecution('e2', 'app', { collateralId: 'app:cns:n:col-b' }));
+            const { items } = repo.getExecutions('app', { collateralId: 'app:cns:n:col-a' });
+            expect(items.map(i => i.id)).toEqual(['e1']);
+        });
 
-    test('limits messages to 1000', () => {
-      // Save 1005 messages
-      for (let i = 0; i < 1005; i++) {
-        repository.saveMessage({ id: i, data: `message-${i}` });
-      }
+        test('filters by neuronId prefix', () => {
+            repo.saveExecution(makeExecution('e1', 'app', { collateralId: 'app:cns:neuronA:col' }));
+            repo.saveExecution(makeExecution('e2', 'app', { collateralId: 'app:cns:neuronB:col' }));
+            const { items } = repo.getExecutions('app', { neuronId: 'app:cns:neuronA' });
+            expect(items.map(i => i.id)).toEqual(['e1']);
+        });
 
-      const messages = repository.getMessages();
-      expect(messages).toHaveLength(1000);
+        test('paginates executions', () => {
+            const now = Date.now();
+            for (let i = 0; i < 5; i++) {
+                repo.saveExecution(makeExecution(`exec-${i}`, 'app', { startedAt: now + i }));
+            }
+            const { items, total } = repo.getExecutions('app', { limit: 2, offset: 1 });
+            expect(total).toBe(5);
+            expect(items).toHaveLength(2);
+        });
 
-      // Should contain the last 1000 messages (5 through 1004)
-      expect(messages[0].id).toBe(5);
-      expect(messages[999].id).toBe(1004);
-    });
+        test('returns only executions for requested appId', () => {
+            repo.saveExecution(makeExecution('e1', 'app-1'));
+            repo.saveExecution(makeExecution('e2', 'app-2'));
+            const { items } = repo.getExecutions('app-1', {});
+            expect(items.every(e => e.appId === 'app-1')).toBe(true);
+        });
 
-    test('handles message limit boundary correctly', () => {
-      // Save exactly 1000 messages
-      for (let i = 0; i < 1000; i++) {
-        repository.saveMessage({ id: i, data: `message-${i}` });
-      }
+        test('sorts executions by startedAt descending', () => {
+            const now = Date.now();
+            repo.saveExecution(makeExecution('early', 'app', { startedAt: now - 100 }));
+            repo.saveExecution(makeExecution('late', 'app', { startedAt: now + 100 }));
+            const { items } = repo.getExecutions('app', {});
+            expect(items[0].id).toBe('late');
+            expect(items[1].id).toBe('early');
+        });
 
-      let messages = repository.getMessages();
-      expect(messages).toHaveLength(1000);
-      expect(messages[0].id).toBe(0);
-      expect(messages[999].id).toBe(999);
-
-      // Add one more message
-      repository.saveMessage({ id: 1000, data: 'message-1000' });
-
-      messages = repository.getMessages();
-      expect(messages).toHaveLength(1000);
-      expect(messages[0].id).toBe(1);
-      expect(messages[999].id).toBe(1000);
-    });
-
-    test('getMessages returns copy of messages array', () => {
-      const message = { type: 'test', data: 'original' };
-      repository.saveMessage(message);
-
-      const messages1 = repository.getMessages();
-      const messages2 = repository.getMessages();
-
-      // Should be different array instances
-      expect(messages1).not.toBe(messages2);
-
-      // But have same content
-      expect(messages1).toEqual(messages2);
-
-      // Modifying returned array shouldn't affect repository
-      messages1.push({ type: 'modified' } as any);
-      expect(repository.getMessages()).toHaveLength(1);
-    });
-
-    test('getMessages returns empty array for new repository', () => {
-      expect(repository.getMessages()).toEqual([]);
-    });
-  });
-
-  describe('Clear functionality', () => {
-    test('clears all apps and messages', () => {
-      // Add some apps
-      repository.upsertApp({
-        appId: 'app-1',
-        appName: 'Test App',
-        version: '1.0.0',
-        lastSeenAt: 0,
-        firstSeenAt: 0
-      });
-
-      // Add some messages
-      repository.saveMessage({ type: 'test-message', data: 'test' });
-
-      // Verify data exists
-      expect(repository.listApps()).toHaveLength(1);
-      expect(repository.getMessages()).toHaveLength(1);
-
-      // Clear everything
-      repository.clear();
-
-      // Verify everything is cleared
-      expect(repository.listApps()).toEqual([]);
-      expect(repository.getMessages()).toEqual([]);
+        test('uses default limit and offset when not provided', () => {
+            for (let i = 0; i < 5; i++) {
+                repo.saveExecution(makeExecution(`exec-${i}`, 'app'));
+            }
+            const { items } = repo.getExecutions('app', {});
+            expect(items).toHaveLength(5);
+        });
     });
 
-    test('clear works on empty repository', () => {
-      repository.clear();
-      expect(repository.listApps()).toEqual([]);
-      expect(repository.getMessages()).toEqual([]);
+    describe('Hops', () => {
+        test('saves and gets hops sorted by index', () => {
+            repo.saveHop(makeHop('h2', 'exec-1', 2));
+            repo.saveHop(makeHop('h0', 'exec-1', 0));
+            repo.saveHop(makeHop('h1', 'exec-1', 1));
+            const hops = repo.getHops('exec-1');
+            expect(hops.map(h => h.index)).toEqual([0, 1, 2]);
+        });
+
+        test('returns empty array for unknown executionId', () => {
+            expect(repo.getHops('no-such')).toEqual([]);
+        });
+
+        test('keeps hops isolated per executionId', () => {
+            repo.saveHop(makeHop('h1', 'exec-1', 0));
+            repo.saveHop(makeHop('h2', 'exec-2', 0));
+            expect(repo.getHops('exec-1')).toHaveLength(1);
+            expect(repo.getHops('exec-2')).toHaveLength(1);
+        });
     });
 
-    test('repository functions normally after clear', () => {
-      // Add and clear data
-      repository.upsertApp({
-        appId: 'app-1',
-        appName: 'Test App',
-        version: '1.0.0',
-        lastSeenAt: 0,
-        firstSeenAt: 0
-      });
-      repository.saveMessage({ type: 'test', data: 'test' });
-      repository.clear();
+    describe('CNS mapping', () => {
+        test('maps cns to app bidirectionally', () => {
+            repo.addCnsToApp('app-1', 'app-1:cns');
+            expect(repo.findAppByCns('app-1:cns')).toBe('app-1');
+            expect(repo.getCnsByApp('app-1')).toContain('app-1:cns');
+        });
 
-      // Add new data after clear
-      repository.upsertApp({
-        appId: 'app-2',
-        appName: 'New App',
-        version: '2.0.0',
-        lastSeenAt: 0,
-        firstSeenAt: 0
-      });
-      repository.saveMessage({ type: 'new-message', data: 'new' });
+        test('supports multiple cns per app', () => {
+            repo.addCnsToApp('app-1', 'app-1:cns-a');
+            repo.addCnsToApp('app-1', 'app-1:cns-b');
+            expect(repo.getCnsByApp('app-1')).toHaveLength(2);
+        });
 
-      expect(repository.listApps()).toHaveLength(1);
-      expect(repository.listApps()[0].appId).toBe('app-2');
-      expect(repository.getMessages()).toHaveLength(1);
-      expect(repository.getMessages()[0].type).toBe('new-message');
-    });
-  });
+        test('findAppByCns returns undefined for unknown cnsId', () => {
+            expect(repo.findAppByCns('unknown')).toBeUndefined();
+        });
 
-  describe('Edge Cases', () => {
-    test('handles app with minimal data', () => {
-      const minimalApp: DevToolsApp = {
-        appId: 'minimal',
-        appName: '',
-        version: '',
-        lastSeenAt: 0,
-        firstSeenAt: 0
-      };
+        test('getCnsByApp returns empty array for unknown appId', () => {
+            expect(repo.getCnsByApp('unknown')).toEqual([]);
+        });
 
-      repository.upsertApp(minimalApp);
-      const apps = repository.listApps();
-
-      expect(apps).toHaveLength(1);
-      expect(apps[0].appId).toBe('minimal');
-      expect(apps[0].appName).toBe('');
-      expect(apps[0].version).toBe('');
+        test('addCnsToApp is idempotent', () => {
+            repo.addCnsToApp('app-1', 'app-1:cns');
+            repo.addCnsToApp('app-1', 'app-1:cns');
+            expect(repo.getCnsByApp('app-1')).toHaveLength(1);
+        });
     });
 
-    test('handles empty message object', () => {
-      repository.saveMessage({});
-      const messages = repository.getMessages();
+    describe('Clear', () => {
+        test('clears all data', () => {
+            repo.upsertApp(makeApp('app-1'));
+            repo.saveTopology(makeTopology('app-1:cns', 'app-1'));
+            repo.saveExecution(makeExecution('exec-1', 'app-1'));
+            repo.saveHop(makeHop('h1', 'exec-1', 0));
+            repo.addCnsToApp('app-1', 'app-1:cns');
 
-      expect(messages).toHaveLength(1);
-      expect(messages[0]).toHaveProperty('receivedAt');
+            repo.clear();
+
+            expect(repo.listApps()).toEqual([]);
+            expect(repo.getTopology()).toEqual([]);
+            expect(repo.getExecutions('app-1', {})).toEqual({ items: [], total: 0 });
+            expect(repo.getHops('exec-1')).toEqual([]);
+            expect(repo.getCnsByApp('app-1')).toEqual([]);
+            expect(repo.findAppByCns('app-1:cns')).toBeUndefined();
+        });
+
+        test('clear works on empty repository', () => {
+            expect(() => repo.clear()).not.toThrow();
+        });
     });
-
-    test('handles null/undefined message properties', () => {
-      const message = {
-        type: null,
-        data: undefined,
-        value: 'test'
-      };
-
-      repository.saveMessage(message);
-      const messages = repository.getMessages();
-
-      expect(messages).toHaveLength(1);
-      expect(messages[0].type).toBeNull();
-      expect(messages[0].data).toBeUndefined();
-      expect(messages[0].value).toBe('test');
-    });
-  });
 });

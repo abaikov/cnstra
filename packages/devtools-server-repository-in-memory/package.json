@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-server-repository-in-memory",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "In-memory repository for CNStra DevTools server",
   "keywords": ["cnstra", "devtools", "repository", "in-memory"],
   "type": "module",
