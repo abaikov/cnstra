@@ -19,15 +19,18 @@ CNStra is designed to be memory-efficient and fast for reactive orchestration.
 
 ## Memory overhead per stimulation
 
-Each active `CNSStimulation` instance has a fixed overhead for internal data structures:
+Each active `CNSStimulation` instance carries some internal overhead, but most
+of it is **allocated lazily** — a minimal synchronous fire-and-forget run
+(no listener, no context, never awaited) allocates only the object itself plus a
+small ring-buffer array.
 
 ### Base overhead (minimal context, ~2-3 keys)
 
-- **CNSStimulation object**: ~1.2-1.5 KB
-  - Context store (Map): ~200 bytes
-  - Task queue (array + Set): ~500 bytes
-  - Pending/failed tasks tracking: ~200 bytes
-  - Promise and metadata: ~300 bytes
+- **CNSStimulation object**: ~0.6-1.5 KB depending on what's actually used
+  - Activation queue: a small ring-buffer array (lazily allocated on first enqueue); the active-tasks `Set` is only created while an async task is in flight
+  - Context store (`Map`): lazily created — only when a neuron reads/writes `ctx`
+  - Pending/failed task tracking: lazily created — only on async `onResponse` or an actual failure
+  - Completion `Promise`: created only if you call `waitUntilComplete()`
 
 - **Active tasks in queue**: ~100-150 bytes per task (metadata only)
   - **⚠️ Important**: Each task stores the full input signal with payload
@@ -389,9 +392,9 @@ await stimulation.waitUntilComplete();
 
 ### Avoid `autoCleanupContexts` in production
 
-The CNS `autoCleanupContexts` option adds significant overhead:
+The CNS `autoCleanupContexts` option adds overhead:
 
-- **O(V²) initialization cost**: building SCC (Strongly Connected Components) structures
+- **Initialization cost**: the SCC (Strongly Connected Components) analysis is built lazily on first use — so it is only paid when this option is enabled (or you read the SCC APIs), not on every `new CNS()`. Building it is `O(V + E)` for the graph/SCC pass plus the SCC-ancestor transitive closure (up to `O(V²)` for densely connected graphs).
 - **O(1 + A) runtime cost** per cleanup check (where A = number of SCC ancestors)
 - **Memory overhead** for storing SCC graphs and ancestor relationships
 

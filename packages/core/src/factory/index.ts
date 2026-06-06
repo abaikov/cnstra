@@ -277,8 +277,7 @@ export const neuron = <
                 modality: singleModality,
                 modalities: multipleModalities,
                 afferentPaths: singleAfferentPaths,
-                default: singleDefaultHandler,
-                default: globalDefaultHandler,
+                default: defaultHandler,
                 output,
             } = s;
 
@@ -294,7 +293,7 @@ export const neuron = <
                       {
                           modality: singleModality,
                           afferentPaths: singleAfferentPaths,
-                          default: singleDefaultHandler,
+                          default: defaultHandler,
                       },
                   ]
                 : [];
@@ -309,13 +308,13 @@ export const neuron = <
                 const stimOptions = stimulation?.options;
 
                 const runGlobalDefault = () => {
-                    if (!globalDefaultHandler) {
+                    if (!defaultHandler) {
                         throw new Error(
                             `modalityDendrite: No handler found for modality and no default handler provided`
                         );
                     }
 
-                    const res = globalDefaultHandler(payload, axon, ctx);
+                    const res = defaultHandler(payload, axon, ctx);
                     if (res && typeof (res as any).then === 'function') {
                         return (res as Promise<any>).then((result: any) =>
                             output(result, axon, ctx)
@@ -346,7 +345,7 @@ export const neuron = <
                         : undefined;
 
                 const effectiveHandler =
-                    handler ?? matchingConfig.default ?? globalDefaultHandler;
+                    handler ?? matchingConfig.default ?? defaultHandler;
 
                 if (!effectiveHandler) {
                     throw new Error(

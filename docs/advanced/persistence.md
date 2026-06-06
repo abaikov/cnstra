@@ -115,6 +115,8 @@ stimulation.waitUntilComplete().then(() => {
 });
 ```
 
+> **Per-hop checkpoints (finer granularity).** The pattern above records progress at start/finish. If you need to durably record progress at *each* hop, return a promise from `onResponse` — it acts as a **barrier**, so the next hops do not run until your write lands. This gives a transactional boundary per hop: a crash between the checkpoint and the next hop resumes exactly the not-yet-done work. See [Response Listeners → Async listeners are a barrier](../recipes/response-listeners.md#async-listeners-are-a-barrier-this-is-how-checkpointing-works).
+
 **On restart** — find stale `running` records in the DB and re-stimulate:
 
 ```ts

@@ -16,12 +16,13 @@ import { TNCNeuronResponseReturn } from './types/TCNSNeuronResponseReturn';
 import { TCNSAxon } from './types/TCNSAxon';
 
 /**
- * Response object handed to onResponse listeners. Implemented as a class so the
- * `contextValue` accessor lives once on the prototype (not re-created per
- * response) and instances share a single monomorphic hidden class. `contextValue`
- * is computed lazily: cloning the context Map is the heaviest part of the
- * response and most listeners never read it.
+ * Internal, non-enumerable cache of the resolved dendrite on activation tasks we
+ * create ourselves. Lets executeActivationTask skip the subscriber lookup on the
+ * hot path. Tasks supplied externally via activate() simply lack it and fall
+ * back to the lookup. Symbol-keyed so it never shows up in JSON/spread/keys.
  */
+const TASK_DENDRITE = Symbol('cnstra.taskDendrite');
+
 /**
  * Per-activation context handed to a dendrite's `response`. Implemented as a
  * class so get/set/delete live once on the prototype and each activation
@@ -47,6 +48,13 @@ class CNSDendriteContext {
     }
 }
 
+/**
+ * Response object handed to onResponse listeners. Implemented as a class so the
+ * `contextValue` accessor lives once on the prototype (not re-created per
+ * response) and instances share a single monomorphic hidden class. `contextValue`
+ * is computed lazily: cloning the context Map is the heaviest part of the
+ * response and most listeners never read it.
+ */
 class CNSStimulationResponseImpl {
     constructor(
         public readonly stimulation: CNSStimulation<any, any>,
@@ -91,7 +99,7 @@ export class CNSStimulation<
     private pumping = false;
     private needsPump = false;
 
-    private readonly nueronVisitMap?: Map<TNeuron, number>;
+    private readonly neuronVisitMap?: Map<TNeuron, number>;
     private readonly instanceNeuronQueue: CNSInstanceNeuronQueue<TNeuron>;
     private scheduledCount = 0;
     // Lazily allocated: only needed while subscriber tasks wait for an async
@@ -139,7 +147,7 @@ export class CNSStimulation<
         this.onResponse = onResponse;
 
         if (this.options?.maxNeuronHops) {
-            this.nueronVisitMap = new Map();
+            this.neuronVisitMap = new Map();
         }
 
         if (this.autoCleanupContextsEnabled) {
@@ -487,16 +495,16 @@ export class CNSStimulation<
     ) {
         if (this.options?.maxNeuronHops) {
             if (
-                (this.nueronVisitMap?.get(subscriber.neuron) ?? 0) >=
+                (this.neuronVisitMap?.get(subscriber.neuron) ?? 0) >=
                 this.options?.maxNeuronHops
             ) {
                 throw new Error(
                     `Max neuron hops reached when trying to enqueue subscriber`
                 );
             } else {
-                this.nueronVisitMap?.set(
+                this.neuronVisitMap?.set(
                     subscriber.neuron,
-                    (this.nueronVisitMap?.get(subscriber.neuron) ?? 0) + 1
+                    (this.neuronVisitMap?.get(subscriber.neuron) ?? 0) + 1
                 );
             }
         }
@@ -506,22 +514,29 @@ export class CNSStimulation<
             dendriteCollateral: subscriber.dendrite.collateral as CNSCollateral<unknown>,
             input: inputSignal,
         };
+        // Cache the resolved subscriber so executeActivationTask can skip the
+        // lookup (invisible to JSON/spread thanks to the Symbol key).
+        (neuronActivationTask as any)[TASK_DENDRITE] = subscriber;
         return neuronActivationTask;
     }
 
     private executeActivationTask(
         neuronActivationTask: TCNSNeuronActivationTask<TNeuron>
     ) {
-        const subscribers = this.cns.network.getSubscribers(
-            neuronActivationTask.dendriteCollateral
-        );
-        let subscriber:
+        // Fast path: tasks we created carry their resolved subscriber. Tasks
+        // supplied externally via activate() don't, so fall back to a lookup.
+        let subscriber = (neuronActivationTask as any)[TASK_DENDRITE] as
             | TCNSSubscriber<TNeuron, TDendrite>
             | undefined;
-        for (let i = 0; i < subscribers.length; i++) {
-            if (subscribers[i].neuron === neuronActivationTask.neuron) {
-                subscriber = subscribers[i];
-                break;
+        if (!subscriber) {
+            const subscribers = this.cns.network.getSubscribers(
+                neuronActivationTask.dendriteCollateral
+            );
+            for (let i = 0; i < subscribers.length; i++) {
+                if (subscribers[i].neuron === neuronActivationTask.neuron) {
+                    subscriber = subscribers[i];
+                    break;
+                }
             }
         }
         if (!subscriber) {
@@ -797,7 +812,7 @@ export class CNSStimulation<
                     outputSignal,
                     this.qSize + this.scheduledCount,
                     this.options?.maxNeuronHops && emitter
-                        ? this.nueronVisitMap?.get(emitter) ?? 0
+                        ? this.neuronVisitMap?.get(emitter) ?? 0
                         : undefined,
                     error
                 ) as TCNSStimulationResponse

@@ -10,8 +10,17 @@ export class CNSNetwork<
     /**
      * Strongly Connected Components of the neuron graph.
      * Each component is a set of neuron objects that can reach each other.
+     *
+     * Computed lazily on first access: the SCC machinery is only needed for
+     * `autoCleanupContexts` (off by default), so most networks never pay for it.
      */
-    public stronglyConnectedComponents: Set<TNeuron>[] = [];
+    private _stronglyConnectedComponents: Set<TNeuron>[] = [];
+    private sccBuilt = false;
+
+    public get stronglyConnectedComponents(): Set<TNeuron>[] {
+        this.ensureSCC();
+        return this._stronglyConnectedComponents;
+    }
 
     /**
      * Quick lookup: neuron -> SCC index for fast reachability checks.
@@ -37,26 +46,19 @@ export class CNSNetwork<
         TCNSSubscriber<TNeuron, TDendrite>[]
     >();
 
-    private dendriteIndex = new Map<CNSCollateral<unknown>, TDendrite>();
-    private collateralIndex = new Set<CNSCollateral<unknown>>();
-
     private parentNeuronByCollateral = new Map<CNSCollateral<unknown>, TNeuron>();
 
     constructor(private readonly neurons: TNeuron[]) {
-        this.validateUniqueIdentifiers();
+        // Indexes are needed on the hot path (subscriber/parent lookups), so they
+        // are built eagerly. SCC analysis is deferred until first use.
         this.buildIndexes();
-        this.buildSCC();
     }
 
-    /**
-     * Validate uniqueness constraints:
-     * - (legacy) collateral instances used to be single-owner; in object-identity routing
-     *   a collateral can be emitted by multiple neurons (fan-in), so we no longer
-     *   enforce single ownership here.
-     * Throws aggregated error if violations are found.
-     */
-    private validateUniqueIdentifiers(): void {
-        // Intentionally no-op.
+    /** Build the SCC analysis the first time anything needs it. */
+    private ensureSCC(): void {
+        if (this.sccBuilt) return;
+        this.sccBuilt = true;
+        this.buildSCC();
     }
 
     /**
@@ -151,7 +153,7 @@ export class CNSNetwork<
             }
         }
 
-        this.stronglyConnectedComponents = components;
+        this._stronglyConnectedComponents = components;
 
         // Build quick lookup map for reachability checks
         for (let i = 0; i < components.length; i++) {
@@ -174,13 +176,13 @@ export class CNSNetwork<
         this.sccDag.clear();
 
         // Initialize DAG
-        for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
+        for (let i = 0; i < this._stronglyConnectedComponents.length; i++) {
             this.sccDag.set(i, new Set());
         }
 
         // Build edges between SCCs
-        for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
-            const scc = this.stronglyConnectedComponents[i];
+        for (let i = 0; i < this._stronglyConnectedComponents.length; i++) {
+            const scc = this._stronglyConnectedComponents[i];
 
             for (const neuron of Array.from(scc)) {
                 const neighbors = neuronGraph.get(neuron) || new Set();
@@ -207,36 +209,38 @@ export class CNSNetwork<
         this.sccAncestors.clear();
 
         // Initialize ancestor sets
-        for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
+        for (let i = 0; i < this._stronglyConnectedComponents.length; i++) {
             this.sccAncestors.set(i, new Set());
         }
 
-        // Topological sort to compute ancestors efficiently
+        // Build forward adjacency (source SCC -> target SCCs) once, instead of
+        // re-deriving it per node by scanning the whole DAG. sccDag stores the
+        // reverse edges (target -> sources that can reach it).
+        const n = this._stronglyConnectedComponents.length;
+        const forward: number[][] = Array.from({ length: n }, () => []);
         const inDegree = new Map<number, number>();
         const queue: number[] = [];
 
-        // Calculate in-degrees
-        for (let i = 0; i < this.stronglyConnectedComponents.length; i++) {
-            const incomingEdges = this.sccDag.get(i) || new Set();
-            inDegree.set(i, incomingEdges.size);
-
-            if (incomingEdges.size === 0) {
-                queue.push(i);
+        for (let target = 0; target < n; target++) {
+            const sources = this.sccDag.get(target) || new Set();
+            inDegree.set(target, sources.size);
+            if (sources.size === 0) queue.push(target);
+            for (const source of Array.from(sources)) {
+                forward[source].push(target);
             }
         }
 
         // Process nodes in topological order
         while (queue.length > 0) {
             const current = queue.shift()!;
-            const outgoingEdges = this.getOutgoingEdges(current);
+            const currentAncestors = this.sccAncestors.get(current)!;
 
-            for (const neighbor of Array.from(outgoingEdges)) {
+            for (const neighbor of forward[current]) {
                 // Add current as ancestor of neighbor
                 const neighborAncestors = this.sccAncestors.get(neighbor)!;
                 neighborAncestors.add(current);
 
                 // Add all ancestors of current to neighbor
-                const currentAncestors = this.sccAncestors.get(current)!;
                 for (const ancestor of Array.from(currentAncestors)) {
                     neighborAncestors.add(ancestor);
                 }
@@ -253,38 +257,24 @@ export class CNSNetwork<
     }
 
     /**
-     * Get outgoing edges for a given SCC index
-     */
-    private getOutgoingEdges(sccIndex: number): Set<number> {
-        const outgoing = new Set<number>();
-
-        // Find all SCCs that have this SCC as an incoming edge
-        for (const [targetScc, incomingEdges] of Array.from(this.sccDag)) {
-            if (incomingEdges.has(sccIndex)) {
-                outgoing.add(targetScc);
-            }
-        }
-
-        return outgoing;
-    }
-
-    /**
      * Check if a neuron can be reached again (including self-calling).
      * Returns true if the neuron is in a strongly connected component with more than one member,
      * or if it's in a single-member SCC that can reach itself.
      */
     public getSCCSetByNeuron(neuron: TNeuron) {
+        this.ensureSCC();
         const sccIndex = this.neuronToSCC.get(neuron);
 
         if (sccIndex === undefined) return;
 
-        return this.stronglyConnectedComponents[sccIndex];
+        return this._stronglyConnectedComponents[sccIndex];
     }
 
     /**
      * Get the SCC index for a given neuron
      */
     public getSccIndexByNeuron(neuron: TNeuron): number | undefined {
+        this.ensureSCC();
         return this.neuronToSCC.get(neuron);
     }
 
@@ -296,6 +286,7 @@ export class CNSNetwork<
         neuron: TNeuron,
         activeSccCounts: Map<number, number>
     ): boolean {
+        this.ensureSCC();
         const sccIndex = this.neuronToSCC.get(neuron);
         if (sccIndex === undefined) return true; // Neuron not in graph
 
@@ -326,8 +317,6 @@ export class CNSNetwork<
     private buildIndexes() {
         this.subIndex.clear();
         this.parentNeuronByCollateral.clear();
-        this.dendriteIndex.clear();
-        this.collateralIndex.clear();
         for (const neuron of this.neurons) {
             for (const dendrite of neuron.dendrites) {
                 const key = dendrite.collateral as CNSCollateral<unknown>;
@@ -337,14 +326,12 @@ export class CNSNetwork<
                     key,
                     arr as TCNSSubscriber<TNeuron, TDendrite>[]
                 );
-                this.dendriteIndex.set(key, dendrite as TDendrite);
             }
             Object.values(neuron.axon).forEach(collateral => {
                 this.parentNeuronByCollateral.set(
                     collateral as CNSCollateral<unknown>,
                     neuron
                 );
-                this.collateralIndex.add(collateral as CNSCollateral<unknown>);
             });
         }
     }
@@ -353,12 +340,29 @@ export class CNSNetwork<
         return this.parentNeuronByCollateral.get(collateral);
     }
 
+    // Computed on demand (rarely used): one dendrite per collateral, last wins —
+    // preserving the previous index semantics without building it every construct.
     public getDendrites() {
-        return Array.from(this.dendriteIndex.values());
+        const byCollateral = new Map<CNSCollateral<unknown>, TDendrite>();
+        for (const neuron of this.neurons) {
+            for (const dendrite of neuron.dendrites) {
+                byCollateral.set(
+                    dendrite.collateral as CNSCollateral<unknown>,
+                    dendrite as TDendrite
+                );
+            }
+        }
+        return Array.from(byCollateral.values());
     }
 
     public getCollaterals() {
-        return Array.from(this.collateralIndex.values());
+        const collaterals = new Set<CNSCollateral<unknown>>();
+        for (const neuron of this.neurons) {
+            for (const collateral of Object.values(neuron.axon)) {
+                collaterals.add(collateral as CNSCollateral<unknown>);
+            }
+        }
+        return Array.from(collaterals);
     }
 
     public getSubscribers(

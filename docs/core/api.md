@@ -111,7 +111,7 @@ Main orchestrator. `new CNS(neurons, options?)`
 **Constructor options:**
 ```ts
 const cns = new CNS(neurons, {
-  autoCleanupContexts: false // Auto-cleanup unused contexts (performance warning: O(V²) cost)
+  autoCleanupContexts: false // Auto-cleanup unused contexts (builds SCC analysis lazily on first use; adds per-hop runtime cost — see performance docs)
 });
 ```
 
