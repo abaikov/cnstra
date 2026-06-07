@@ -316,29 +316,14 @@ You literally **cannot ship** an incomplete flow.
 
 **📊 [View Full Benchmark Report](/docs/frontend/benchmark)** | **🔗 [Interactive Results](https://abaikov.github.io/cnstra-oimdb-bench/)** | **📦 [Source Code](https://github.com/abaikov/cnstra-oimdb-bench)**
 
-### Execution Time
+The honest picture (measured on three planes — see the full report):
 
-CNStra + OIMDB leads in all categories:
+- **Under React (production build), fine-grained stores tie.** Cnstra + OIMDB, both MobX variants, and atomic Effector all land at ~33–36 µs/update — React's commit cost dominates and the small spread between them is noise.
+- **The reproducible difference is fine-grained vs coarse.** Coarse stores that copy the whole record and re-run all selectors (Effector-ids, Zustand, Redux Toolkit) are **35–160× slower** under React (1230 / 2372 / 5430 µs/update).
+- **On the pure data layer (no React), OIMDB/Cnstra are fastest** — 0.25–0.48 µs/update, ~2–3× faster than MobX, while coarse stores sit at 95–302 µs. The Cnstra orchestration on top of OIMDB is a small fixed cost (≈ noise), not a multiplier.
+- **On memory, Cnstra/OIMDB are the lightest** — 25.8–28.1 MB steady-state heap (in-place is leanest). Atomic Effector is ~3.5× heavier (89.7 MB): a store + event per entity buys update speed with memory.
 
-| Scenario | CNStra + OIMDB | Zustand | Redux Toolkit | Effector |
-|----------|----------------|---------|---------------|----------|
-| Background Churn | **69.4ms** | 83.0ms | 100.6ms | 127.3ms |
-| Inline Editing | **70.8ms** | 152.9ms | 250.5ms | 400.4ms |
-| Bulk Update | **50.7ms** | 81.2ms | 156.8ms | 103.7ms |
-
-### Memory Usage
-
-Top results in two categories, competitive in the third:
-
-| Scenario | CNStra + OIMDB | Zustand | Redux Toolkit | Effector |
-|----------|----------------|---------|---------------|----------|
-| Background Churn | **5.5 MB** | 5.8 MB | 6.0 MB | 3.4 MB |
-| Inline Editing | **1.1 MB** | 3.5 MB | 3.1 MB | 6.5 MB |
-| Bulk Update | **1.7 MB** | 3.6 MB | 5.1 MB | 4.4 MB |
-
-### Code Complexity
-
-Second simplest codebase (394 LOC) while being the fastest — no trade-offs between performance and structure.
+Takeaway: switching between fine-grained stores won't change React throughput (React dominates) — pick on architecture, data-layer cost, and memory. Cnstra + OIMDB is in the top tier under React, leads the data layer, **and** has the lightest footprint.
 
 ---
 
