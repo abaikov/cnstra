@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../model';
-import { useSelectEntitiesByIndexKey } from '@oimdb/react';
 
 interface PerformanceMetrics {
     memoryUsage: {
@@ -73,17 +72,20 @@ export const PerformanceMonitor: React.FC = () => {
                   ) / recentResponses.length
                 : 0;
 
-        // Calculate average hop count (not available in StimulationResponse DTO)
-        const avgHopCount = 0;
+        // Average hop count per stimulation (now available via
+        // CNSDTOStimulation.hopCount).
+        const avgHopCount =
+            allStimulations.length > 0
+                ? allStimulations.reduce((sum, s) => sum + s.hopCount, 0) /
+                  allStimulations.length
+                : 0;
 
-        // Count active neurons (neurons with recent stimulations)
+        // Count active neurons (neurons with recent activity). Stimulations no
+        // longer carry neuronId in the new protocol, so derive activity from
+        // hops (db.responses / CNSDTOHop), which do.
         const recentTime = now - 5000; // last 5 seconds
-        const recentStimulations = allStimulations.filter(
-            s => s.timestamp > recentTime
-        );
-        const activeNeuronIds = new Set(
-            recentStimulations.map(s => s.neuronId)
-        );
+        const recentHops = allResponses.filter(r => r.startedAt > recentTime);
+        const activeNeuronIds = new Set(recentHops.map(r => r.neuronId));
         const activeNeurons = activeNeuronIds.size;
 
         // Count total connections (unique collateral -> dendrite pairs)
@@ -851,17 +853,10 @@ export const PerformanceMonitor: React.FC = () => {
                                                 MB
                                             </span>
                                         </div>
-                                        <div>
-                                            <span>External:</span>
-                                            <br />
-                                            <span
-                                                style={{
-                                                    color: 'var(--text-primary)',
-                                                }}
-                                            >
-                                                {latest.externalMB.toFixed(1)}MB
-                                            </span>
-                                        </div>
+                                        {/* TODO(protocol-migration): externalMB
+                                            was dropped from the server metrics
+                                            payload in the new protocol; cell
+                                            removed rather than fabricated. */}
                                     </div>
                                 </div>
                             );

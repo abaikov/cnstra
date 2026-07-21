@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { db } from '../model';
-import { useSelectEntitiesByIndexKey } from '@oimdb/react';
+import { db, TStimulation } from '../model';
+import { useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
 import { JsonViewer } from './JsonViewer';
 import { safeStringify } from '../utils/safeJson';
+import type { CNSDTOReplayStartMessage } from '@cnstra/devtools-dto';
 
 interface SignalInjectionPayload {
     collateralName: string;
@@ -41,14 +42,22 @@ export const SignalDebugger: React.FC<Props> = ({
     const [selectedCollateral, setSelectedCollateral] = useState<string>('');
 
     // Get all collaterals for the selected app
-    const allCollaterals = useSelectEntitiesByIndexKey(
+    const allCollateralsRaw = useSelectEntitiesByIndexKeySetBased(
         db.collaterals,
         db.collaterals.indexes.appId,
         selectedAppId || 'dummy-id'
     );
 
+    const allCollaterals = (allCollateralsRaw || []).filter(
+        (c): c is NonNullable<typeof c> => c != null
+    );
+
+    // Resolve a collateral name from its id.
+    const collateralNameById = (collateralId: string): string =>
+        db.collaterals.getOneByPk(collateralId)?.name ?? collateralId;
+
     // Get recent stimulations for inspection
-    const recentStimulationsRaw = useSelectEntitiesByIndexKey(
+    const recentStimulationsRaw = useSelectEntitiesByIndexKeySetBased(
         db.stimulations,
         db.stimulations.indexes.appId,
         selectedAppId || 'dummy-id'
@@ -57,7 +66,7 @@ export const SignalDebugger: React.FC<Props> = ({
     const recentStimulations = (recentStimulationsRaw || [])
         .filter((s): s is NonNullable<typeof s> => s != null)
         .slice()
-        .sort((a, b) => b.timestamp - a.timestamp)
+        .sort((a, b) => b.startedAt - a.startedAt)
         .slice(0, 10);
 
     const handleInjectSignal = () => {
@@ -95,15 +104,26 @@ export const SignalDebugger: React.FC<Props> = ({
                 selectedCnsId ||
                 (cnsIds.size === 1 ? Array.from(cnsIds)[0] : undefined);
 
-            const stimulateCommand = {
-                type: 'stimulate',
-                stimulationCommandId: `debug-${Date.now()}`,
-                collateralName: injectionData.collateralName,
+            // Resolve the target collateral id from the selected name.
+            const targetCollateral = allCollaterals.find(
+                c => c.name === injectionData.collateralName
+            );
+
+            // The new protocol has no fresh-stimulate command; the closest
+            // equivalent is `replay.start`. There is no source stimulation for a
+            // manual injection, so `stimulationId` is left empty.
+            // TODO: `contexts` has no equivalent in the new protocol and is dropped.
+            void contexts;
+            const stimulateCommand: CNSDTOReplayStartMessage = {
+                type: 'replay.start',
+                replayId: `debug-${Date.now()}`,
+                stimulationId: '',
+                collateralId:
+                    targetCollateral?.id ?? injectionData.collateralName,
                 payload,
-                contexts,
-                options,
                 appId: selectedAppId,
                 ...(singleCnsId ? { cnsId: singleCnsId } : {}),
+                ...(options ? { options } : {}),
             };
 
             wsRef.current.send(JSON.stringify(stimulateCommand));
@@ -135,11 +155,12 @@ export const SignalDebugger: React.FC<Props> = ({
         }
     };
 
-    const handleCopyStimulation = (stimulation: any) => {
+    const handleCopyStimulation = (stimulation: TStimulation) => {
         setInjectionData({
-            collateralName: stimulation.collateralName,
+            collateralName: collateralNameById(stimulation.collateralId),
             payload: safeStringify(stimulation.payload || {}, 2),
-            contexts: safeStringify(stimulation.contexts || {}, 2),
+            // `contexts` is no longer part of a stimulation in the new protocol.
+            contexts: '{}',
             options: '{}',
         });
     };
@@ -424,7 +445,7 @@ export const SignalDebugger: React.FC<Props> = ({
                             {recentStimulations.length > 0 ? (
                                 recentStimulations.map((stim, index) => (
                                     <div
-                                        key={stim.stimulationId}
+                                        key={stim.id}
                                         style={{
                                             background: 'var(--bg-secondary)',
                                             border: '1px solid var(--border-primary)',
@@ -447,7 +468,9 @@ export const SignalDebugger: React.FC<Props> = ({
                                                     color: 'var(--infection-green)',
                                                 }}
                                             >
-                                                {stim.collateralName}
+                                                {collateralNameById(
+                                                    stim.collateralId
+                                                )}
                                             </span>
                                             <button
                                                 onClick={() =>
@@ -472,9 +495,12 @@ export const SignalDebugger: React.FC<Props> = ({
                                             }}
                                         >
                                             {new Date(
-                                                stim.timestamp
+                                                stim.startedAt
                                             ).toLocaleTimeString()}{' '}
-                                            | from: {stim.neuronId}
+                                            | from:{' '}
+                                            {db.collaterals.getOneByPk(
+                                                stim.collateralId
+                                            )?.neuronId ?? '-'}
                                         </div>
                                         <JsonViewer
                                             data={stim.payload || {}}

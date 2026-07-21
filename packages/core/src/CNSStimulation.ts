@@ -37,6 +37,12 @@ class CNSDendriteContext {
         public readonly abortSignal: AbortSignal | undefined,
         public readonly cns: any
     ) {}
+    // Prototype getter, not a constructor field: the per-activation allocation is
+    // unchanged (still 4 fields) and you only pay a single `cns.global` read on the
+    // dendrites that actually reach for it. Value getter, so `{ global }` destructuring is safe.
+    get global(): unknown {
+        return this.cns.global;
+    }
     get(): unknown {
         return this.stimulation.getContext().get(this.neuron);
     }

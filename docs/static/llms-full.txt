@@ -2,12 +2,14 @@
 
 > CNStra is a zero-dependency orchestration library for TypeScript/JavaScript. It models your application as a Central Nervous System (CNS): a graph of typed neurons connected by collaterals (output channels) and dendrites (input bindings). Flows become explicit, deterministic, and compile-time safe. Works in React, Node.js, and any JS runtime.
 
+**Full documentation as a single file:** [llms-full.txt](https://cnstra.org/llms-full.txt) — every page listed below, concatenated with full content (~260 KB). Fetch this for complete text instead of following links one by one.
+
 ## Getting Started
 
 - [Introduction](https://cnstra.org/docs/concepts/intro): Core concepts — neurons, axons, collaterals, signals, stimulation. Biological analogy and key design properties.
 - [Quick Start](https://cnstra.org/docs/core/quick-start): Install CNStra and run your first neuron in 5 minutes.
 - [CNStra Overview](https://cnstra.org/docs/core/overview): Why MVC/Redux/Signals fall short for workflows and how CNStra fixes it with explicit, traceable orchestration.
-- [Basics](https://cnstra.org/docs/concepts/basics): Single-process stimulation, command pattern with built-in DI, and separation of mutations from reads.
+- [Basics](https://cnstra.org/docs/concepts/basics): Single-process stimulation, command pattern with signal-based dependency wiring, and separation of mutations from reads.
 
 ## Core API
 
@@ -52,6 +54,7 @@
 ## Integrations & Ecosystem
 
 - [Message Brokers](https://cnstra.org/docs/integrations/message-brokers): Integrating CNStra with RabbitMQ, BullMQ, SQS, and other queues.
+- [pg-boss (Postgres)](https://cnstra.org/docs/integrations/pg-boss): Run stimulations as Postgres-backed jobs with `@cnstra/pg-boss`; retries/backoff/scheduling, plus per-hop progress for a durable admin panel.
 - [Swift SDK](https://cnstra.org/docs/ecosystem/swift-sdk): CNStra for iOS/macOS applications.
 
 ## DevTools
@@ -90,7 +93,7 @@ Analogy: biology ↔ application
 - Queues (conduction control) ↔ ordered/batched/parallel execution with backpressure
 
 Key properties
-- Deterministic: same input + same context → same path; hop‑bounded; no hidden listeners
+- Deterministic routing: signal routing over the registered graph is reproducible for a given input + context (execution is reproducible when your dendrite handlers are deterministic); hop‑bounded; no hidden listeners
 - SRP by construction: actors are visible; responsibilities are local and explicit
 - Ownership: a neuron emits only its axon’s collaterals; others bind via dendrites
 
@@ -361,12 +364,12 @@ cns.stimulate(
 ```
 
 - Each collateral has a **named, typed identity**.
-- A neuron can only emit signals declared on **its own axon**.
-- This prevents accidental emissions and guarantees explicit wiring.
+- A neuron is expected to emit only signals declared on **its own axon** — a typed convention the compiler and graph make visible, rather than a runtime lock.
+- This prevents accidental emissions and keeps wiring explicit.
 - Even if two flows share logic, they stay **structurally distinct**.
 - Both flows produce the **same deterministic orchestration**, but each carries its **own flow identity**.
 
-This is impossible to achieve in MVC/Redux/Signals with the same compile-time guarantees without building your own CNStra on top.
+You can build the same compile-time guarantees on top of MVC/Redux/Signals using discriminated unions, exhaustive switches, and event schemas — but that essentially means reimplementing CNStra yourself. The value here is having this as one cohesive, ready-made model rather than a hand-assembled one.
 
 ---
 
@@ -415,29 +418,14 @@ You literally **cannot ship** an incomplete flow.
 
 **📊 [View Full Benchmark Report](/docs/frontend/benchmark)** | **🔗 [Interactive Results](https://abaikov.github.io/cnstra-oimdb-bench/)** | **📦 [Source Code](https://github.com/abaikov/cnstra-oimdb-bench)**
 
-### Execution Time
+What we measured on three planes (one machine, fixed library versions — directional, not universal; see the full report):
 
-CNStra + OIMDB leads in all categories:
+- **Under React (production build), fine-grained stores tie.** Cnstra + OIMDB, both MobX variants, and atomic Effector all land at ~33–36 µs/update — React's commit cost dominates and the small spread between them is noise.
+- **The clearest difference we saw is fine-grained vs coarse.** Coarse stores that copy the whole record and re-run all selectors (Effector-ids, Zustand, Redux Toolkit) were **~35–160× slower** under React (1230 / 2372 / 5430 µs/update).
+- **On the pure data layer (no React), OIMDB/Cnstra measured fastest** — 0.25–0.48 µs/update, roughly 2–3× faster than MobX in our runs, while coarse stores sat at 95–302 µs. The Cnstra orchestration on top of OIMDB read as a small fixed cost (≈ noise), not a multiplier.
+- **On memory, Cnstra/OIMDB had the lightest footprint we measured** — 25.8–28.1 MB steady-state heap (in-place is leanest). Atomic Effector was ~3.5× heavier (89.7 MB): a store + event per entity buys update speed with memory.
 
-| Scenario | CNStra + OIMDB | Zustand | Redux Toolkit | Effector |
-|----------|----------------|---------|---------------|----------|
-| Background Churn | **69.4ms** | 83.0ms | 100.6ms | 127.3ms |
-| Inline Editing | **70.8ms** | 152.9ms | 250.5ms | 400.4ms |
-| Bulk Update | **50.7ms** | 81.2ms | 156.8ms | 103.7ms |
-
-### Memory Usage
-
-Top results in two categories, competitive in the third:
-
-| Scenario | CNStra + OIMDB | Zustand | Redux Toolkit | Effector |
-|----------|----------------|---------|---------------|----------|
-| Background Churn | **5.5 MB** | 5.8 MB | 6.0 MB | 3.4 MB |
-| Inline Editing | **1.1 MB** | 3.5 MB | 3.1 MB | 6.5 MB |
-| Bulk Update | **1.7 MB** | 3.6 MB | 5.1 MB | 4.4 MB |
-
-### Code Complexity
-
-Second simplest codebase (394 LOC) while being the fastest — no trade-offs between performance and structure.
+Takeaway: switching between fine-grained stores won't change React throughput (React dominates) — pick on architecture, data-layer cost, and memory. In our setup Cnstra + OIMDB sat in the top tier under React, measured fastest on the data layer, **and** had the lightest footprint — though that's a single-machine snapshot, so verify on your own workload.
 
 ---
 
@@ -636,7 +624,7 @@ Main orchestrator. `new CNS(neurons, options?)`
 **Constructor options:**
 ```ts
 const cns = new CNS(neurons, {
-  autoCleanupContexts: false // Auto-cleanup unused contexts (performance warning: O(V²) cost)
+  autoCleanupContexts: false // Auto-cleanup unused contexts (builds SCC analysis lazily on first use; adds per-hop runtime cost — see performance docs)
 });
 ```
 
@@ -829,16 +817,16 @@ For multi-process scenarios, CNStra doesn't prescribe a specific inter-process c
 
 Each CNS instance handles its own stimulations independently, and you orchestrate communication between instances using your preferred mechanism. This flexibility allows you to scale horizontally while maintaining the simplicity and reliability of single-process stimulation execution.
 
-## Command Pattern with Built-in Dependency Injection
+## Command Pattern with Signal-Based Dependency Wiring
 
-CNStra implements a large-scale command pattern where each stimulation is a command that gets processed by many processors (neurons). This architecture provides dependency injection out of the box:
+CNStra implements a large-scale command pattern where each stimulation is a command that gets processed by many processors (neurons). This is not a DI container (there are no lifecycle scopes, constructor injection, or token resolution) — instead, the graph itself wires dependencies implicitly:
 
 - **Stimulations as commands**: When you call `cns.stimulate(signal)`, you're issuing a command that flows through the neuron graph
 - **Multiple processors**: Each neuron that binds to the signal's collateral becomes a processor for that command
 - **Automatic wiring**: The dependency graph is explicit and type-safe—neurons declare their dependencies (dendrites) and outputs (collaterals), and CNStra automatically routes signals between them
-- **No manual DI setup**: You don't need to configure dependency injection containers or manually wire dependencies—the graph structure itself defines the dependencies
+- **No manual wiring**: You don't need to manually connect dependencies—the graph structure itself defines them
 
-This approach combines the benefits of the command pattern (encapsulation, decoupling, extensibility) with automatic dependency resolution through the explicit neuron graph structure.
+This approach combines the benefits of the command pattern (encapsulation, decoupling, extensibility) with automatic signal routing through the explicit neuron graph structure.
 
 ```ts
 // Each stimulation is a command
@@ -986,7 +974,7 @@ Traditional state management approaches like Redux or MobX have limitations:
 OIMDB solves these problems with:
 
 - **Normalized storage**: Entities stored by primary key in Maps (O(1) lookups)
-- **Reactive indexes**: Manual indexes for efficient queries (e.g., "all posts by author")
+- **Reactive indexes**: Set- and array-based indexes for efficient queries (e.g., "all posts by author")
 - **Event coalescing**: Multiple rapid updates to the same entity trigger only one notification
 - **Configurable scheduling**: Choose when events fire (microtask, animationFrame, timeout, immediate)
 
@@ -1000,13 +988,13 @@ npm install @oimdb/core
 
 ### Collections: Normalized Entity Storage
 
-Collections store entities by primary key, providing O(1) lookups:
+The canonical entry point is `createOIMCollectionKit`. It wires a collection to an event queue and returns a kit with everything you need — `collection` (reads/writes/subscriptions), `indexFactory` (build indexes), and `select` (selectors). Entities are stored by primary key, providing O(1) lookups:
 
 ```typescript
-import { 
-    OIMReactiveCollection, 
+import {
     OIMEventQueue,
-    OIMEventQueueSchedulerFactory
+    OIMEventQueueSchedulerFactory,
+    createOIMCollectionKit,
 } from '@oimdb/core';
 
 interface User {
@@ -1020,56 +1008,54 @@ const queue = new OIMEventQueue({
     scheduler: OIMEventQueueSchedulerFactory.createMicrotask()
 });
 
-// Create reactive collection
-const users = new OIMReactiveCollection<User, string>(queue, {
+// Create a collection kit
+const users = createOIMCollectionKit<User, string>(queue, {
     selectPk: (user) => user.id
 });
 
-// CRUD operations
-users.upsertOne({ id: 'user1', name: 'John Doe', email: 'john@example.com' });
-users.upsertMany([
+// CRUD operations go through users.collection
+users.collection.upsertOne({ id: 'user1', name: 'John Doe', email: 'john@example.com' });
+users.collection.upsertMany([
     { id: 'user2', name: 'Jane Smith', email: 'jane@example.com' },
     { id: 'user3', name: 'Bob Wilson', email: 'bob@example.com' }
 ]);
 
 // O(1) lookups
-const user = users.getOneByPk('user1');
-const multipleUsers = users.getManyByPks(['user1', 'user2']);
+const user = users.collection.getOneByPk('user1');
+const multipleUsers = users.collection.getManyByPks(['user1', 'user2']);
 ```
 
 ### Reactive Updates: Key-Specific Subscriptions
 
-Subscribe to changes for specific entities:
+Subscribe directly on the collection to changes for specific entities. Handlers receive no payload — read the current value from the collection when they fire:
 
 ```typescript
 // Subscribe to changes for a specific user
-users.updateEventEmitter.subscribeOnKey('user1', () => {
-    console.log('User1 changed!');
+users.collection.subscribeOnKey('user1', () => {
+    console.log('User1 changed!', users.collection.getOneByPk('user1'));
 });
 
 // Subscribe to changes for multiple users
-users.updateEventEmitter.subscribeOnKeys(['user1', 'user2'], () => {
+users.collection.subscribeOnKeys(['user1', 'user2'], () => {
     console.log('Users changed!');
 });
 
 // Updates trigger notifications
-users.upsertOne({ id: 'user1', name: 'John Updated' });
+users.collection.upsertOne({ id: 'user1', name: 'John Updated' });
 // Notification fires in next microtask
 ```
 
 ### Indexes: Efficient Queries
 
-OIMDB provides two index types optimized for different use cases:
+Indexes are created through the kit's `indexFactory`. OIMDB provides two manual index types optimized for different use cases, plus **derived** indexes that maintain themselves from an entity field.
 
 #### SetBased Indexes: For Incremental Updates
 
 Use when you frequently add/remove individual items:
 
 ```typescript
-import { OIMReactiveIndexManualSetBased } from '@oimdb/core';
-
-// Create Set-based index for user roles
-const userRoleIndex = new OIMReactiveIndexManualSetBased<string, string>(queue);
+// Create a manual Set-based index for user roles
+const userRoleIndex = users.indexFactory.setBasedIndex<string>();
 
 // Build the index
 userRoleIndex.setPks('admin', ['user1']);
@@ -1080,7 +1066,12 @@ userRoleIndex.addPks('admin', ['user2']); // O(1)
 userRoleIndex.removePks('admin', ['user1']); // O(1)
 
 // Query returns Set<TPk>
-const adminUsers = userRoleIndex.index.getPksByKey('admin'); // Set(['user1', 'user2'])
+const adminUsers = userRoleIndex.getPksByKey('admin'); // Set(['user2'])
+
+// Subscribe to a specific index key
+userRoleIndex.subscribeOnKey('admin', () => {
+    console.log('Admins changed:', userRoleIndex.getPksByKey('admin'));
+});
 ```
 
 #### ArrayBased Indexes: For Full Replacements
@@ -1088,16 +1079,14 @@ const adminUsers = userRoleIndex.index.getPksByKey('admin'); // Set(['user1', 'u
 Use when you typically replace entire arrays (e.g., ordered lists):
 
 ```typescript
-import { OIMReactiveIndexManualArrayBased } from '@oimdb/core';
-
-// Create Array-based index for deck cards
-const cardsByDeckIndex = new OIMReactiveIndexManualArrayBased<string, string>(queue);
+// Create a manual Array-based index for deck cards
+const cardsByDeckIndex = cards.indexFactory.arrayBasedIndex<string>();
 
 // Set full array (O(1) - direct assignment, no diff computation)
 cardsByDeckIndex.setPks('deck1', ['card1', 'card2', 'card3']);
 
 // Query returns TPk[]
-const deckCards = cardsByDeckIndex.index.getPksByKey('deck1'); // ['card1', 'card2', 'card3']
+const deckCards = cardsByDeckIndex.getPksByKey('deck1'); // ['card1', 'card2', 'card3']
 
 // For ArrayBased, prefer setPks for updates
 cardsByDeckIndex.setPks('deck1', ['card1', 'card2', 'card4']); // Recommended
@@ -1108,15 +1097,27 @@ cardsByDeckIndex.setPks('deck1', ['card1', 'card2', 'card4']); // Recommended
 - **SetBased**: Frequent add/remove operations, order doesn't matter
 - **ArrayBased**: Full array replacements, need to preserve order/sorting
 
+#### Derived Indexes: Maintained Automatically
+
+When the index key is a field of the entity, use a derived index — it updates itself on every upsert/remove, so you never call `setPks` manually:
+
+```typescript
+// Automatically groups users by their `teamId` field
+const usersByTeam = users.indexFactory.derivedSetIndex((user) => user.teamId);
+
+// Query returns Set<TPk>, always in sync with the collection
+const engineering = usersByTeam.getPksByKey('engineering');
+```
+
 ### Event Coalescing: Performance Optimization
 
 Multiple rapid updates to the same entity are automatically coalesced into a single notification:
 
 ```typescript
 // These three updates...
-users.upsertOne({ id: 'user1', name: 'John' });
-users.upsertOne({ id: 'user1', email: 'john@test.com' });
-users.upsertOne({ id: 'user1', role: 'admin' });
+users.collection.upsertOne({ id: 'user1', name: 'John' });
+users.collection.upsertOne({ id: 'user1', email: 'john@test.com' });
+users.collection.upsertOne({ id: 'user1', name: 'John Doe' });
 
 // ...result in only one notification with the final state
 // This prevents unnecessary re-renders and improves performance
@@ -1157,13 +1158,13 @@ manualQueue.flush(); // Execute when ready
 
 ### Collections with Indexes
 
-Use `OIMRICollection` to combine collections with indexes:
+A kit already exposes `indexFactory` — create as many indexes as you need and keep references to them:
 
 ```typescript
-import { 
-    OIMRICollection, 
-    OIMReactiveIndexManualSetBased,
-    OIMReactiveIndexManualArrayBased
+import {
+    OIMEventQueue,
+    OIMEventQueueSchedulerFactory,
+    createOIMCollectionKit,
 } from '@oimdb/core';
 
 interface User {
@@ -1173,63 +1174,65 @@ interface User {
     role: 'admin' | 'user';
 }
 
-// Create indexes
-const teamIndex = new OIMReactiveIndexManualSetBased<string, string>(queue);
-const roleIndex = new OIMReactiveIndexManualArrayBased<string, string>(queue);
+const queue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
 
-// Create collection with indexes
-const users = new OIMRICollection(queue, {
-    collectionOpts: {
-        selectPk: (user: User) => user.id
-    },
-    indexes: {
-        byTeam: teamIndex,
-        byRole: roleIndex
-    }
+// Create the collection kit
+const users = createOIMCollectionKit<User, string>(queue, {
+    selectPk: (user) => user.id,
 });
+
+// Derived index: auto-maintained from the `teamId` field
+const usersByTeam = users.indexFactory.derivedSetIndex((user) => user.teamId);
+// Manual index: you control membership explicitly
+const usersByRole = users.indexFactory.setBasedIndex<string>();
 
 // Subscribe to index changes
-users.indexes.byTeam.updateEventEmitter.subscribeOnKey('engineering', (pks) => {
-    console.log('Engineering team changed:', pks);
+usersByTeam.subscribeOnKey('engineering', () => {
+    console.log('Engineering team changed:', usersByTeam.getPksByKey('engineering'));
 });
 
-// Update indexes manually
-users.indexes.byTeam.setPks('engineering', ['u1', 'u2']);
+// Writing entities keeps the derived index in sync automatically
+users.collection.upsertMany([
+    { id: 'u1', name: 'Ann', teamId: 'engineering', role: 'admin' },
+    { id: 'u2', name: 'Bob', teamId: 'engineering', role: 'user' },
+]);
+
+// Manual index is updated by hand
+usersByRole.setPks('admin', ['u1']);
 ```
 
 ### Custom Entity Updaters
 
-Customize how entities are merged on update:
+By default an upsert replaces the stored entity. To merge instead, pass an `updateEntity` updater. OIMDB ships factories for the common cases, and you can supply your own `(draft, prevEntity) => entity`:
 
 ```typescript
-import { TOIMEntityUpdater } from '@oimdb/core';
+import { createOIMCollectionKit, createMergeEntityUpdater } from '@oimdb/core';
 
-// Deep merge updater
-const deepMergeUpdater: TOIMEntityUpdater<User> = (newEntity, oldEntity) => {
-    const result = { ...oldEntity };
-    
-    for (const [key, value] of Object.entries(newEntity)) {
-        if (value !== undefined) {
-            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                result[key] = deepMergeUpdater(value, result[key] || {});
-            } else {
-                result[key] = value;
-            }
-        }
-    }
-    
-    return result;
-};
-
-// Use custom updater
-const users = new OIMReactiveCollection<User, string>(queue, {
+// Built-in shallow merge: partial upserts merge into the existing entity
+const users = createOIMCollectionKit<User, string>(queue, {
     selectPk: (user) => user.id,
-    updateEntity: deepMergeUpdater
+    updateEntity: createMergeEntityUpdater<User>(),
 });
 
 // Updates merge with existing
-users.upsertOne({ id: 'user1', name: 'John' });
-users.upsertOne({ id: 'user1', email: 'john@example.com' }); // Merges with existing
+users.collection.upsertOne({ id: 'user1', name: 'John' });
+users.collection.upsertOneByPk('user1', { email: 'john@example.com' }); // merges
+
+// Or a custom updater, e.g. a deep merge
+const deepMerge: (draft: Partial<User>, prev: User) => User = (draft, prev) => {
+    const result = { ...prev };
+    for (const [key, value] of Object.entries(draft)) {
+        if (value !== undefined) {
+            (result as any)[key] = value;
+        }
+    }
+    return result;
+};
+
+const usersDeep = createOIMCollectionKit<User, string>(queue, {
+    selectPk: (user) => user.id,
+    updateEntity: deepMerge,
+});
 ```
 
 ## Integration with CNStra
@@ -1252,12 +1255,11 @@ CNStra provides orchestration for OIMDB, replacing reducers, slices, thunks, and
 
 ```ts
 import { CNS, neuron, collateral } from '@cnstra/core';
-import { OIMEventQueue, OIMEventQueueSchedulerFactory, OIMRICollection, OIMReactiveIndexManualSetBased } from '@oimdb/core';
+import { OIMEventQueue, OIMEventQueueSchedulerFactory, createOIMCollectionKit } from '@oimdb/core';
 
 const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const users = new OIMRICollection(dbEventQueue, {
-  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (u: { id: string }) => u.id }
+export const users = createOIMCollectionKit<{ id: string; name: string }, string>(dbEventQueue, {
+  selectPk: (u) => u.id,
 });
 
 // Define UI/update collateral
@@ -1278,11 +1280,13 @@ const cns = new CNS([usersNeuron]);
 
 ### React Usage
 
+React hooks take the **reactive collection** (`users.collection`), not the kit:
+
 ```tsx
 import { useSelectEntityByPk } from '@oimdb/react';
 
 function UserName({ id }: { id: string }) {
-  const user = useSelectEntityByPk(users, id) || null;
+  const user = useSelectEntityByPk(users.collection, id) || null;
   return <span>{user?.name ?? ''}</span>;
 }
 ```
@@ -1293,28 +1297,31 @@ Best practice: each model is updated by its own domain neuron. The controller em
 
 ```ts
 import { collateral, neuron } from '@cnstra/core';
-import { OIMEventQueue, OIMEventQueueSchedulerFactory, OIMRICollection, OIMReactiveIndexManualSetBased } from '@oimdb/core';
+import { OIMEventQueue, OIMEventQueueSchedulerFactory, createOIMCollectionKit } from '@oimdb/core';
+
+type UserEntity = { id: string; name: string };
+type PostEntity = { id: string; title: string; authorId: string };
 
 const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const users = new OIMRICollection(dbEventQueue, {
-  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (u: { id: string }) => u.id },
+export const users = createOIMCollectionKit<UserEntity, string>(dbEventQueue, {
+  selectPk: (u) => u.id,
 });
-export const posts = new OIMRICollection(dbEventQueue, {
-  indexes: { byAuthor: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (p: { id: string }) => p.id },
+export const posts = createOIMCollectionKit<PostEntity, string>(dbEventQueue, {
+  selectPk: (p) => p.id,
 });
+// Derived index: posts grouped by author, kept in sync automatically
+export const postsByAuthor = posts.indexFactory.derivedSetIndex((p) => p.authorId);
 
 // Single incoming signal with both payloads
 const userAndPostUpdated = collateral<{
-  user: { id: string; name: string };
-  post: { id: string; title: string; authorId: string };
+  user: UserEntity;
+  post: PostEntity;
 }>();
 
 // Controller-owned single update signal
 const controllerUpdated = collateral<{
-  user: { id: string; name: string };
-  post: { id: string; title: string; authorId: string };
+  user: UserEntity;
+  post: PostEntity;
 }>();
 
 // Controller receives inbound and emits one outbound
@@ -1342,18 +1349,19 @@ export const postModel = neuron({}).dendrite({
 });
 ```
 
-React selectors will observe a single batched change after the run completes, not N re-renders during the sequence.
+React selectors will observe a single batched change after the run completes, not N re-renders during the sequence. Index hooks take the **index object** (not a string name):
 
 ```tsx
-import { useSelectEntityByPk, useSelectEntitiesByIndexKey } from '@oimdb/react';
+import { useSelectEntityByPk, useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
 
 function AuthorWithPosts({ authorId }: { authorId: string }) {
-  const user = useSelectEntityByPk(users, authorId) || null;
-  const postsByAuthor = useSelectEntitiesByIndexKey(posts, 'byAuthor', authorId) || [];
+  const user = useSelectEntityByPk(users.collection, authorId) || null;
+  const postsByAuthorList =
+    useSelectEntitiesByIndexKeySetBased(posts.collection, postsByAuthor, authorId) ?? [];
   return (
     <section>
       <h4>{user?.name}</h4>
-      <ul>{postsByAuthor.map(p => <li key={p.id}>{p.title}</li>)}</ul>
+      <ul>{postsByAuthorList.map(p => p && <li key={p.id}>{p.title}</li>)}</ul>
     </section>
   );
 }
@@ -1368,29 +1376,31 @@ import { CNS, collateral, neuron } from '@cnstra/core';
 import {
   OIMEventQueue,
   OIMEventQueueSchedulerFactory,
-  OIMRICollection,
-  OIMReactiveIndexManualSetBased,
+  createOIMCollectionKit,
 } from '@oimdb/core';
+
+type DeckEntity = { id: string; title: string };
+type CardEntity = { id: string; deckId: string; title: string };
 
 // OIMDB setup
 const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const decks = new OIMRICollection(dbEventQueue, {
-  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (d: { id: string }) => d.id },
+export const decks = createOIMCollectionKit<DeckEntity, string>(dbEventQueue, {
+  selectPk: (d) => d.id,
 });
-export const cards = new OIMRICollection(dbEventQueue, {
-  indexes: { byDeck: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (c: { id: string }) => c.id },
+export const cards = createOIMCollectionKit<CardEntity, string>(dbEventQueue, {
+  selectPk: (c) => c.id,
 });
+// Cards grouped by deck, maintained automatically
+export const cardsByDeck = cards.indexFactory.derivedSetIndex((c) => c.deckId);
 
 // Collaterals
 const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>();
 const controllerCreateDeckForCard = collateral<{ title: string; cardTitle: string }>();
-const controllerCreateCard = collateral<{ deckId: string; cardId: string; title: string }>();
+const controllerCreateCard = collateral<{ deckId: string; title: string }>();
 const deckCreatedForCard = collateral<{ deckId: string; title: string; cardTitle: string }>();
 
 // Services (mocked)
-const generateDeckId = (title: string) => 'deck-' + Math.random().toString(36).slice(2);
+const generateDeckId = () => 'deck-' + Math.random().toString(36).slice(2);
 const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
 
 // Deck neuron: listens controller:deck:createForCard, emits deck:createdForCard, upserts OIMDB
@@ -1409,9 +1419,7 @@ export const cardNeuron = neuron({}).dendrite({
   response: async (payload) => {
     const cardId = generateCardId();
     cards.collection.upsertOne({ id: cardId, deckId: payload.deckId, title: payload.title });
-    return {
-      card
-    };
+    return undefined;
   },
 });
 
@@ -1422,9 +1430,9 @@ export const controller = neuron({ controllerCreateDeckForCard, controllerCreate
     collateral: uiCreateCardClick,
     response: (payload, axon) => {
       // Pass cardTitle along with deck creation through payload
-      return axon.controllerCreateDeckForCard.createSignal({ 
+      return axon.controllerCreateDeckForCard.createSignal({
         title: payload.deckTitle,
-        cardTitle: payload.cardTitle 
+        cardTitle: payload.cardTitle
       });
     },
   })
@@ -1451,19 +1459,19 @@ import { CNS, collateral, neuron } from '@cnstra/core';
 import {
   OIMEventQueue,
   OIMEventQueueSchedulerFactory,
-  OIMRICollection,
-  OIMReactiveIndexManualSetBased,
+  createOIMCollectionKit,
 } from '@oimdb/core';
+
+type DeckEntity = { id: string; title: string };
+type CardEntity = { id: string; deckId: string; title: string };
 
 // OIMDB setup
 const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const decks = new OIMRICollection(dbEventQueue, {
-  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (d: { id: string }) => d.id },
+export const decks = createOIMCollectionKit<DeckEntity, string>(dbEventQueue, {
+  selectPk: (d) => d.id,
 });
-export const cards = new OIMRICollection(dbEventQueue, {
-  indexes: { byDeck: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (c: { id: string }) => c.id },
+export const cards = createOIMCollectionKit<CardEntity, string>(dbEventQueue, {
+  selectPk: (c) => c.id,
 });
 
 // Collaterals
@@ -1471,14 +1479,14 @@ const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>()
 const deckCreatedForCard = collateral<{ deckId: string; cardTitle: string }>();
 
 // Services (mocked)
-const generateDeckId = (title: string) => 'deck-' + Math.random().toString(36).slice(2);
+const generateDeckId = () => 'deck-' + Math.random().toString(36).slice(2);
 const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
 
 // Deck neuron: listens to UI click, creates deck, emits deckCreatedForCard
 export const deckNeuron = neuron({ deckCreatedForCard }).dendrite({
   collateral: uiCreateCardClick,
   response: async (payload, axon) => {
-    const deckId = generateDeckId(payload.deckTitle);
+    const deckId = generateDeckId();
     decks.collection.upsertOne({ id: deckId, title: payload.deckTitle });
     return axon.deckCreatedForCard.createSignal({ deckId, cardTitle: payload.cardTitle });
   },
@@ -1521,12 +1529,12 @@ await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTit
 
 ### Index Performance
 
-**SetBased Indexes** (`OIMReactiveIndexManualSetBased`):
+**SetBased Indexes** (`indexFactory.setBasedIndex()` / `derivedSetIndex()`):
 - Returns `Set<TPk>` for efficient membership checks
 - O(1) add/remove operations
 - Best for frequent incremental updates
 
-**ArrayBased Indexes** (`OIMReactiveIndexManualArrayBased`):
+**ArrayBased Indexes** (`indexFactory.arrayBasedIndex()` / `derivedArrayIndex()`):
 - Returns `TPk[]` for direct array access
 - O(1) `setPks` operation (direct assignment, no diff computation)
 - Best for full array replacements
@@ -1536,14 +1544,15 @@ await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTit
 
 ### React (@oimdb/react)
 
-The core library integrates seamlessly with React through dedicated hooks:
+The core library integrates seamlessly with React through dedicated hooks. All hooks take the **reactive collection** (`kit.collection`) and, for index queries, the **index object**:
 
 ```typescript
-import { useSelectEntitiesByPks, selectEntityByPk } from '@oimdb/react';
+import { useSelectEntityByPk, useSelectEntitiesByPks } from '@oimdb/react';
 
-// React hooks automatically subscribe to reactive collections
-const user = selectEntityByPk(users, 'user1');
-const teamUsers = useSelectEntitiesByPks(users, userIds);
+// Single entity by primary key
+const user = useSelectEntityByPk(users.collection, 'user1');
+// Many entities by primary keys
+const teamUsers = useSelectEntitiesByPks(users.collection, userIds);
 ```
 
 ### Redux (@oimdb/redux-adapter)
@@ -1554,63 +1563,56 @@ Migrate from Redux to OIMDB gradually or use both systems side-by-side with auto
 
 ## API Reference
 
-### Core Classes
+### Collection Kit
 
-#### `OIMReactiveCollection<TEntity, TPk>`
+#### `createOIMCollectionKit<TEntity, TPk>(queue, opts?)`
+
+Creates a reactive collection and returns a kit:
+
+```typescript
+const kit = createOIMCollectionKit<TEntity, TPk>(queue: OIMEventQueue, opts?: {
+    selectPk?: (entity: TEntity) => TPk;
+    updateEntity?: (draft: Partial<TEntity>, prevEntity: TEntity) => TEntity;
+});
+// kit = { queue, collection, indexFactory, select }
+```
+
+#### `kit.collection` — `OIMReactiveCollection<TEntity, TPk>`
 
 Reactive collection with automatic change notifications and event coalescing.
 
-**Constructor:**
-```typescript
-new OIMReactiveCollection(queue: OIMEventQueue, opts?: TOIMCollectionOptions<TEntity, TPk>)
-```
-
 **Key Methods:**
-- `upsertOne(entity: TEntity): void` - Insert or update single entity
-- `upsertMany(entities: TEntity[]): void` - Insert or update multiple entities
-- `getOneByPk(pk: TPk): TEntity | undefined` - Get entity by primary key
-- `getManyByPks(pks: readonly TPk[]): Map<TPk, TEntity | undefined>` - Get multiple entities
+- `upsertOne(entity): TOIMEntitySlot` - Insert or update a single entity
+- `upsertOneByPk(pk, partial): TOIMEntitySlot` - Insert or update by primary key
+- `upsertMany(entities): TOIMEntitySlot[]` - Insert or update multiple entities
+- `removeOneByPk(pk): void` / `removeManyByPks(pks): void` - Remove entities
+- `getOneByPk(pk): TEntity | undefined` - Get entity by primary key
+- `getManyByPks(pks): TEntity[]` - Get multiple entities
+- `getAll(): TEntity[]` - Get all entities
+- `subscribeOnKey(pk, handler): () => void` - Subscribe to a single key (handler takes no args)
+- `subscribeOnKeys(pks, handler): () => void` - Subscribe to multiple keys
 
-**Properties:**
-- `updateEventEmitter: OIMUpdateEventEmitter<TPk>` - Key-specific subscriptions
-- `coalescer: OIMUpdateEventCoalescerCollection<TPk>` - Event coalescing
+#### `kit.indexFactory` — `OIMCollectionIndexFactory<TEntity, TPk>`
 
-#### `OIMRICollection<TEntity, TPk, ...>`
+Builds indexes bound to the collection:
 
-Reactive collection with integrated indexing capabilities.
+- `setBasedIndex<TKey>(): OIMReactiveCollectionIndexManualSetBased` - Manual Set-based index
+- `arrayBasedIndex<TKey>(): OIMReactiveCollectionIndexManualArrayBased` - Manual Array-based index
+- `derivedSetIndex<TKey>(selectKey): OIMDerivedCollectionIndexSetBased` - Auto-maintained Set index
+- `derivedArrayIndex<TKey>(selectKey): OIMDerivedCollectionIndexArrayBased` - Auto-maintained Array index
 
-**Constructor:**
-```typescript
-new OIMRICollection(queue: OIMEventQueue, opts: {
-    collectionOpts?: TOIMCollectionOptions<TEntity, TPk>;
-    indexes: TReactiveIndexMap;
-})
-```
+**Index methods** (on the returned index):
+- `getPksByKey(key): Set<TPk> | TPk[]` - Query the index
+- `subscribeOnKey(key, handler): () => void` - Subscribe to a key
+- Manual indexes only: `setPks(key, pks)`, `addPks(key, pks)`, `removePks(key, pks)`, `clear(key?)`
 
-**Properties:**
-- `indexes: TReactiveIndexMap` - Named reactive indexes
+#### `kit.select` — `OIMCollectionSelectors<TEntity, TPk>`
 
-#### `OIMReactiveIndexManualSetBased<TKey, TPk>`
+Composable selectors (each has a `.watch(cb)` method):
+- `byPk(pk)` / `byPks(pks)`
+- `entitiesBySetIndexKey(index, key)` / `entitiesByArrayIndexKey(index, key)`
 
-Reactive Set-based index. Returns `Set<TPk>` for efficient membership checks.
-
-**Methods:**
-- `setPks(key: TKey, pks: readonly TPk[]): void` - Set primary keys (replaces entire Set)
-- `addPks(key: TKey, pks: readonly TPk[]): void` - Add primary keys (O(1))
-- `removePks(key: TKey, pks: readonly TPk[]): void` - Remove primary keys (O(1))
-- `index.getPksByKey(key: TKey): Set<TPk>` - Query index
-
-#### `OIMReactiveIndexManualArrayBased<TKey, TPk>`
-
-Reactive Array-based index. Returns `TPk[]` for direct array access.
-
-**Methods:**
-- `setPks(key: TKey, pks: readonly TPk[]): void` - Set primary keys (O(1), recommended)
-- `addPks(key: TKey, pks: readonly TPk[]): void` - Add primary keys (O(n))
-- `removePks(key: TKey, pks: readonly TPk[]): void` - Remove primary keys (O(n))
-- `index.getPksByKey(key: TKey): TPk[]` - Query index
-
-#### `OIMEventQueue`
+### `OIMEventQueue`
 
 Event processing queue with configurable scheduling.
 
@@ -1631,8 +1633,6 @@ new OIMEventQueue(options?: TOIMEventQueueOptions)
 Factory for creating different scheduler types:
 
 ```typescript
-// Available types: 'immediate' | 'microtask' | 'timeout' | 'animationFrame'
-
 OIMEventQueueSchedulerFactory.createMicrotask()
 OIMEventQueueSchedulerFactory.createAnimationFrame()
 OIMEventQueueSchedulerFactory.createTimeout(delay?: number)
@@ -1674,10 +1674,20 @@ function onSearch(q: string) {
 
 ## Derive UI lists via OIMDB
 
-Use OIMDB for queryable derived state (dashboards, analytics) and subscribe via hooks.
+Use OIMDB for queryable derived state (dashboards, analytics) and subscribe via hooks. Build an index once, then read it reactively with the matching hook (index hooks take the **index object**, not a string name).
 
 ```tsx
-const items = useSelectEntitiesByIndexKey(db.tables.logs, 'byType', 'warning');
+import { useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
+
+// logs = createOIMCollectionKit<LogEntry, string>(queue, { selectPk: l => l.id });
+// Derived set-based index keyed by the entry's `type` field:
+const logsByType = logs.indexFactory.derivedSetIndex(log => log.type);
+
+function WarningList() {
+  const items =
+    useSelectEntitiesByIndexKeySetBased(logs.collection, logsByType, 'warning') ?? [];
+  return <ul>{items.map(l => l && <li key={l.id}>{l.message}</li>)}</ul>;
+}
 ```
 
 ## Error and loading states
@@ -1699,7 +1709,7 @@ const [user, stimulate, status] = useNeuron(fetchUserNeuron);
 
 > **⚠️ Experimental**: This package is experimental. Functionality is not guaranteed and the API may change in future versions. Use at your own risk.
 
-Production-ready Redux adapter for OIMDB that enables seamless integration between OIMDB's reactive in-memory database and Redux state management. This package allows you to gradually migrate from Redux to OIMDB or use both systems side-by-side with automatic two-way synchronization.
+Experimental Redux adapter for OIMDB that enables integration between OIMDB's reactive in-memory database and Redux state management. This package allows you to gradually migrate from Redux to OIMDB or use both systems side-by-side with automatic two-way synchronization.
 
 ## 🚀 Installation
 
@@ -1711,7 +1721,7 @@ npm install @oimdb/redux-adapter @oimdb/core redux
 
 - **🔄 Two-Way Synchronization**: Automatic sync between OIMDB and Redux in both directions
 
-- **📦 Production Ready**: Battle-tested, optimized for large datasets with efficient change detection
+- **📦 Optimized**: Designed for large datasets with efficient change detection
 
 - **🔄 Gradual Migration**: Integrate OIMDB into existing Redux projects without breaking changes
 
@@ -2341,218 +2351,129 @@ The middleware created by `createMiddleware()` automatically calls `flushSilentl
 
 ## Overview
 
-We conducted a comprehensive performance benchmark comparing **Cnstra + OIMDB** against leading React state management libraries: **Redux Toolkit**, **Zustand**, and **Effector**. The benchmark evaluates execution time, memory usage, and code complexity across three critical scenarios.
+We compared **Cnstra + OIMDB** against **MobX**, **Effector**, **Zustand**, and **Redux Toolkit**. These are our results on one machine with the library versions we tested; read them as directional, not as universal rankings. The summary up front:
 
-**🔗 [View Interactive Benchmark Results](https://abaikov.github.io/cnstra-oimdb-bench/)** | **📦 [Benchmark Source Code](https://github.com/abaikov/cnstra-oimdb-bench)**
+- **Among fine-grained (per-key) stores, React's commit cost dominates and they effectively tie** at ~33–36 µs/update. The 1–3 µs spread between them did **not reproduce** across our runs — treat it as a coin flip.
+- **The clearest difference we saw is fine-grained vs coarse.** Coarse stores (copy the whole record + re-run all selectors per update) landed at 1230–5430 µs/update — **~35–160× slower** in our runs — and React does *not* hide this.
+- **On the pure data layer (no React), OIMDB/Cnstra measured fastest** (0.25–0.48 µs/update), roughly 2–3× faster than MobX in our runs, while coarse stores were 95–302 µs.
+- **On memory, Cnstra/OIMDB had the lightest footprint we measured** (25.8–28.1 MB steady-state). Atomic Effector was ~3.5× heavier (89.7 MB) — the price of a store + event per entity.
 
-## Tested Libraries
+**🔗 [Interactive Benchmark Results](https://abaikov.github.io/cnstra-oimdb-bench/)** | **📦 [Benchmark Source Code](https://github.com/abaikov/cnstra-oimdb-bench)**
 
-1. **Cnstra + OIMDB (ids-based)** - Reactive collections with CNS (Central Nervous System) combining Cnstra core with OIMDB reactive indexing
-2. **Effector (ids-based)** - Reactive state management library with fine-grained reactivity using stores and events
-3. **Redux Toolkit (ids-based)** - Official Redux toolkit with RTK Query using createSlice, createEntityAdapter, and optimized selectors
-4. **Zustand (ids-based)** - Lightweight state management with minimal boilerplate and simple API
+## Three measurement planes (and why)
 
-## Test Scenarios
+The three planes answer different questions, so we report all of them:
 
-### 1. Background Churn
-Tests batch update performance with frequent bulk updates, simulating real-world scenarios with high-frequency state mutations.
+- **React throughput (production build)** — the cost of one update in a real React app (`flushSync`, no frame floor). **Production build only** (`vite build` + `preview`): a dev build of React adds ~2× overhead (`jsxDEV`/validation) and distorts everything.
+- **Data-layer micro (no React)** — the pure cost of a store update: 1 subscriber per entity, `notify` confirms delivery.
+- **Steady-state memory** — heap after GC in the production app, with an identical DOM (50,162 nodes for every adapter), so the difference is the store layer, not the view.
 
-### 2. Inline Editing
-Tests reactivity during rapid user input (typing responsiveness), measuring how well each library handles fine-grained updates during user interaction.
+## Table 1 — React throughput, production (µs/update, lower is better)
 
-### 3. Bulk Update
-Tests batch operations on multiple entities, evaluating performance when updating large numbers of records simultaneously.
+1500 components, best-of-N.
 
-## Metrics Explained
+| Adapter | µs/update | upd/s | re-renders/update |
+|---|---:|---:|---:|
+| MobX (deep/in-place) | 33.0 | 30,300 | 1 |
+| MobX (ids-based) | 33.3 | 30,060 | 1 |
+| Oimdb (no cnstra) | 33.4 | 29,940 | 1 |
+| Cnstra + Oimdb (in-place) | 33.9 | 29,470 | 1 |
+| Cnstra + Oimdb (ids-based) | 34.2 | 29,210 | 1 |
+| Effector (atomic stores) | 36.1 | 27,700 | 1 |
+| *— tier boundary —* | | | |
+| Effector (ids-based) | 1,230 | 813 | 1 |
+| Zustand (ids-based) | 2,372 | 420 | 1 |
+| Redux Toolkit (ids-based) | 5,430 | 184 | 1 |
 
-- **Execution Time** (ms) - Total time to complete operations (lower is better)
-- **Memory Usage** (MB) - Memory consumed by operations (lower is better)
-- **Lines of Code (LOC)** - Implementation complexity (lower indicates simpler code)
+The top six (all **fine-grained**) are within noise of each other. The bottom three (all **coarse**) are ~35–160× slower — a gap large enough that it held consistently across our runs.
 
-## Detailed Results
+## Table 2 — Data layer, no React (µs/update)
 
-### Execution Time (ms) - Lower is Better
+1 subscriber per entity; `notify = 200000` for all.
 
-| Library | Background Churn | Inline Editing | Bulk Update |
-|---------|-----------------|----------------|-------------|
-| **Cnstra + OIMDB** | 69.4 | 70.8 | 50.7 |
-| **Zustand** | 83.0 | 152.9 | 81.2 |
-| **Redux Toolkit** | 100.6 | 250.5 | 156.8 |
-| **Effector** | 127.3 | 400.4 | 103.7 |
+| Layer | µs/update |
+|---|---:|
+| oimdb in-place upsert+flush | 0.25 |
+| oimdb merge upsert+flush | 0.34 |
+| cnstra → oimdb (full stimulate) | 0.48 |
+| mobx deep in-place + reaction | 0.67 |
+| mobx map.set + reaction | 0.74 |
+| effector atomic + watch | 0.89 |
+| zustand setState + N selectors | 95 |
+| effector record + useStoreMap | 248 |
+| redux dispatch + N selectors | 302 |
 
-### Memory Usage (MB) - Lower is Better
+This is the one plane where fine-grained stores separate at all — and OIMDB/Cnstra came out ahead in our runs. Note that adding the full Cnstra orchestration on top of OIMDB (0.34 → 0.48 µs) read as a small, fixed cost, not a multiplier.
 
-| Library | Background Churn | Inline Editing | Bulk Update |
-|---------|-----------------|----------------|-------------|
-| **Cnstra + OIMDB** | 5.5 | 1.1 | 1.7 |
-| **Zustand** | 5.8 | 3.5 | 3.6 |
-| **Redux Toolkit** | 6.0 | 3.1 | 5.1 |
-| **Effector** | 3.4 | 6.5 | 4.4 |
+## Table 3 — Steady-state heap, production, after GC (MB, lower is better)
 
-### Code Complexity (Lines of Code) - Lower is Better
+Identical DOM across all adapters (50,162 nodes), so this isolates the store layer.
 
-| Library | LOC |
-|--------|-----|
-| **Zustand** | 380 |
-| **Cnstra + OIMDB** | 394 |
-| **Redux Toolkit** | 531 |
-| **Effector** | 560 |
+| Adapter | heap MB |
+|---|---:|
+| Cnstra + Oimdb (in-place) | 25.8 |
+| Cnstra + Oimdb (ids-based) | 28.1 |
+| Oimdb (no cnstra) | 28.1 |
+| Zustand (ids-based) | 30.2 |
+| MobX (ids-based) | 31.5 |
+| MobX (deep/in-place) | 37.4 |
+| Redux Toolkit (ids-based) | 37.7 |
+| Effector (ids-based) | 42.0 |
+| Effector (atomic stores) | 89.7 |
 
-## Key Findings
+Memory is where the speed trade-offs become visible:
 
-### Performance Winners by Scenario
+- **Cnstra/OIMDB were the lightest we measured** (25.8–28.1 MB). The in-place updater also avoids per-update allocations, so it was the leanest in this run.
+- **Atomic Effector — 89.7 MB, ~3.5× heavier than anyone else.** That's the cost of a store + event *per entity*: thousands of Effector units. Atomic Effector buys its fast-tier update speed (Table 1/2) **with memory** — name this trade-off explicitly before reaching for it.
+- **MobX deep (37.4 MB) is heavier than MobX ids (31.5 MB)** — deep observables wrap every field (proxies/atoms), so the "native" idiom costs more memory than the normalized one.
+- **Redux / Effector-ids sit at ~38–42 MB.**
 
-- **Background Churn**: Cnstra + OIMDB (best execution time: 69.4ms)
-- **Inline Editing**: Cnstra + OIMDB (best execution time: 70.8ms)
-- **Bulk Update**: Cnstra + OIMDB (best execution time: 50.7ms)
+## What the variants are (not duplicates)
 
-### Overall Best Performer
+Several variants per framework are **different data-access idioms**, not repeats:
 
-**Cnstra + OIMDB** demonstrates superior performance across all scenarios:
+- **Cnstra + Oimdb (ids-based)** — the default: a merge updater (each upsert creates a new entity object) + `useSyncExternalStore` hooks. "Like everyone else."
+- **Cnstra + Oimdb (in-place)** — `createInPlaceEntityUpdater` (mutate the object in place, no allocation) + `*Signal` hooks (re-render by key subscription, read the mutated object). Fastest on the data layer.
+- **Oimdb (no cnstra)** — pure OIMDB, writing directly to the collection without CNS orchestration. Included to isolate Cnstra's cost (34.2 vs 33.4 → orchestration ≈ noise).
+- **MobX (ids-based)** — `observable.map`, replace the whole entity, `useObserver` per hook (normalized store, "like everyone else").
+- **MobX (deep/in-place)** — idiomatic MobX: deep observables, mutate a field in place, components in `observer()` (read observables directly in JSX). MobX's best case.
+- **Effector (ids-based)** — idiomatic: `Record` stores + `useStoreMap`, incremental indexes. Coarse (copies the `Record` per update).
+- **Effector (atomic stores)** — a store + event per entity (maximally granular). Fast tier.
+- **Zustand** — single store, manual normalization, per-component shallow selectors. Coarse.
+- **Redux Toolkit** — `createEntityAdapter` + memoized selectors (Immer). Coarse.
 
-- Fastest execution times in all scenarios (50.7-70.8ms)
-- Low memory usage (1.1-5.5 MB)
-- Second simplest codebase (394 LOC)
+## Findings
 
-### Code Complexity
+### 1. React noise drowns out good frameworks
 
-- **Simplest**: Zustand (380 LOC)
-- **Most Complex**: Effector (560 LOC)
-- **Cnstra + OIMDB**: 394 LOC (second simplest)
+In production React, every **fine-grained** (per-key) store — OIMDB, Cnstra, both MobX variants, atomic Effector — collapses into 33–36 µs. The 1–3 µs spread does not reproduce: paired runs gave a coin flip (OIMDB faster in 4/10, MobX in 6/10, median +1 µs). **The cost of the React commit itself dominates and zeroes out the differences between store layers** — their React numbers carry no signal.
 
-### Notable Observations
+### 2. Only two things are distinguishable
 
-1. **Cnstra + OIMDB** demonstrates superior performance across all metrics while maintaining relatively simple code (394 LOC).
-2. **Zustand** offers the simplest implementation (380 LOC) with good performance, making it a solid choice for projects prioritizing code simplicity.
-3. **Redux Toolkit** shows consistent performance but with higher memory usage and slower execution times in some scenarios.
-4. **Effector** has the highest code complexity (560 LOC) and shows slower execution times, particularly in inline editing scenarios (400ms).
+- **Fine vs coarse.** Coarse stores (Effector-ids, Zustand, Redux) copy the entire record and re-run all N selectors per update → 1230 / 2372 / 5430 µs, **35–160× slower**. React does **not** hide this.
+- **The data layer (no React).** There the store cost shows: OIMDB/Cnstra measured fastest (0.25–0.48 µs), ~2–3× faster than MobX (0.67–0.74) in our runs, and coarse stores were 95–302 µs. This is the one plane where fine-grained frameworks separate — and OIMDB came out ahead here.
 
-## Architectural Overview
+### 3. Re-renders/update = 1 for everyone
 
-### Cross-Library Indexing Strategy (Id-based)
+All frameworks are equally precise about React invalidation. The difference is purely the **CPU cost of the update**, not the volume of rendering.
 
-For all adapters we implemented id-based indexing:
+## What this means in practice
 
-- O(1) entity lookup by primary key (id/PK) with reference preservation wherever possible.
-- List views access precomputed id collections (e.g., `deck.cardIds`, `card.commentIds`, `card.tagIds`) or index key → PK sets.
-- Hooks/selectors subscribe at the id level and return stable references/arrays to avoid unnecessary React updates.
+- If you're already using a **fine-grained** store (OIMDB/Cnstra, MobX, atomic Effector), don't expect a React-visible speedup from switching between them — React dominates. Choose on ergonomics, architecture, and the data-layer cost (which matters off the render path: workers, sync engines, large in-memory derivations).
+- The decision that **does** move React throughput by orders of magnitude is **fine-grained vs coarse**. Coarse normalization (copy-the-record + re-run-all-selectors) is what costs 35–160×.
+- In our setup Cnstra + OIMDB sat in the **top tier under React**, measured **fastest on the data layer**, and had the **lightest memory footprint** — with the orchestration overhead showing up as noise. (One machine, fixed versions — your mileage may vary.)
+- **Watch the memory trade-off.** Granularity isn't free: atomic Effector wins a fast update tier but pays ~3.5× the heap (a unit per entity), and MobX's deep/native idiom costs more memory than its normalized one. Speed, memory, and ergonomics pull in different directions — pick deliberately.
 
-### Cnstra + OIMDB Architecture
+## Why coarse stores are slow
 
-- **Core model**: Normalized collections keyed by id with reactive secondary indexes (OIMDB).
-- **Data structures**: Primary storage is Map-like PK→entity; indexes are `Map<Key, Set<PK>>` for O(1) membership and fast fanout; PK APIs expose Set semantics (e.g., getPksByKey).
-- **Subscriptions**: Components subscribe to item-level data and index-driven queries; dependency tracking keeps subscriptions precise.
-- **Updates**: Batched via an event queue; writes upsert/remove PKs and incrementally update Map/Set indexes; `flush()` applies diffs atomically.
-- **Rendering**: Fine-grained invalidation means only affected rows/items update; index lookups avoid array scans on lists and tags.
+Coarse stores (Zustand/Redux/Effector-ids as benchmarked) update a single normalized record (`Record<ID, T>` or equivalent) and then re-run every subscribing selector to find what changed. Cost scales with the number of subscribers/selectors, not with the number of changed entities. OIMDB instead maintains `Map<Key, Set<PK>>` indexes incrementally and notifies only the affected keys, so an update touches O(changed) work regardless of how many components are mounted.
 
-### Other Libraries
+## Methodology
 
-**Zustand**:
-- Core model: Single store with setter functions; normalized entities as Records (`Record<ID, T>`), plus derived arrays on entities.
-- Data structures: Plain JS objects for maps; arrays for per-entity indexes.
-- Subscriptions: Per-selector subscriptions with shallow comparison; developers hand-roll normalization and memoization.
-
-**Redux Toolkit**:
-- Core model: Single immutable store; slices use Immer to draft and produce next state; entities normalized via `createEntityAdapter`.
-- Data structures: Adapter maintains `{ ids: ID[], entities: Record<ID, T> }`; per-entity arrays stored directly on entities.
-- Subscriptions: Selectors (often via Reselect) memoize and preserve references.
-
-**Effector**:
-- Core model: Event/store graph; base stores hold normalized Records, derived stores recompute indexes via `combine`.
-- Data structures: Entity maps are plain objects; grouping helpers produce `Map<Key, Value[]>` for intermediate rebuilds.
-- Subscriptions: Fine-grained at store level; derived graph fanout depends on dependency breadth.
-
-## Why the Results Differ
-
-### Background Churn (frequent bulk writes)
-
-- **Cnstra + OIMDB**: Incremental index maintenance and batched transactions minimize per-write work; precise subscriptions keep updates focused → lowest execution time.
-- **Zustand**: Low framework overhead keeps it competitive, but without automatic indexing some list/selector recomputation remains → mid-pack time.
-- **Redux Toolkit**: Copy-on-write via Immer plus action/reducer plumbing adds overhead under sustained churn → slower times.
-- **Effector**: Event/store graph propagation touches many derived stores; scheduling overhead accumulates with many small updates → slowest times.
-
-### Inline Editing (rapid keystrokes)
-
-All libraries constrain subscriptions at the field/row level, but compute paths differ:
-
-- **Cnstra + OIMDB**: Fine-grained dependency tracking updates only affected item/index entries → best time (70.8ms).
-- **Zustand**: Simple updates and selector subscriptions perform well; some selector churn keeps it behind OIMDB.
-- **Redux Toolkit**: Selector memoization helps, yet Immer and selector invalidation on each keystroke increase costs → slower times.
-- **Effector**: Graph fan-out on every keystroke causes more propagation work → slowest time and higher memory in this scenario.
-
-### Bulk Update (many entities at once)
-
-- **Cnstra + OIMDB**: Index-driven queries plus transactional batching keep updates focused → best time (50.7ms).
-- **Redux Toolkit**: `createEntityAdapter` and memoized selectors reduce churn effectively → respectable time.
-- **Zustand**: Without a built-in entity adapter, more list items change identity → higher time.
-- **Effector**: Many store updates propagate through derived graphs → slower time.
-
-## Boilerplate and Developer Ergonomics
-
-| Library | Boilerplate Level | Typical Sources |
-|---------|-------------------|-----------------|
-| **Redux Toolkit** | High | Slices, action creators, thunks/RTK Query setup, selectors, entity adapter wiring |
-| **Effector** | High | Unit definitions (events/stores), derived chains (`map/combine/sample`), clocking, FX/error wiring |
-| **Cnstra + OIMDB** | Low–Medium | Collection/index definitions, typed queries/selectors, transactional helpers |
-| **Zustand** | Low | Store shape, setters, optional custom selectors/memoization |
-
-These levels align with the measured LOC: Effector (560) and Redux (531) require more scaffolding; Cnstra + OIMDB (394) is the second simplest; Zustand (380) is the simplest.
-
-In practice, higher boilerplate buys structure (Redux) or expressive reactive graphs (Effector) but can slow iteration and increase maintenance. Lower boilerplate (Zustand, Cnstra+OIMDB) improves ergonomics; Cnstra's reactive indexes also translate to performance wins in data-heavy UIs.
-
-## Test Methodology
-
-- Each scenario was run 10 times
-- Results include warmup runs and outlier removal
-- Metrics calculated using median/mean aggregation with IQR outlier detection
-- All tests run on the same environment for consistency
-
-**Note**: This is a browser-based benchmark. While specific hardware configurations may vary, the observed performance differences (often measured in multiples) are substantial enough to draw meaningful conclusions. The relative performance characteristics remain consistent regardless of the testing environment.
-
----
-
-## Why Cnstra + OIMDB Wins: The Performance Advantage
-
-The benchmark results clearly demonstrate that **Cnstra + OIMDB** is not just competitive—it's the clear winner across virtually every metric. Here's why this combination delivers such exceptional performance:
-
-### Architectural Superiority
-
-**Incremental Index Maintenance**: Unlike libraries that rebuild entire state trees or recompute derived data on every change, OIMDB maintains indexes incrementally. When you toggle a tag or update an entity, only the affected index entries are modified. This O(1) update complexity means that as your data grows, performance doesn't degrade linearly.
-
-**Batched Transactional Updates**: The CNS (Central Nervous System) orchestrates updates across multiple collections, and OIMDB's event queue batches all changes. Everything is flushed atomically at the end of a run, resulting in smoother UI and better performance.
-
-**Fine-Grained Dependency Tracking**: Components subscribe at the entity or index level, not at the store level. When a single card's title changes, only components that actually depend on that specific card update. This precision eliminates unnecessary work that other libraries perform.
-
-### Real-World Performance Benefits
-
-**Background Churn Excellence**: In scenarios with frequent bulk updates (common in real-time applications, dashboards, or collaborative editing), Cnstra + OIMDB's 69.4ms execution time is 20% faster than the next best option. The incremental index updates and batched flushing mean your app stays responsive even under heavy load.
-
-**Inline Editing Perfection**: Cnstra + OIMDB delivers the best typing responsiveness. The fine-grained dependency tracking ensures that rapid keystrokes only update what's necessary.
-
-**Bulk Update Dominance**: When updating many entities at once, Cnstra + OIMDB completes in just 50.7ms—nearly 3x faster than Redux Toolkit and 2x faster than Effector. The index-driven queries and transactional batching keep updates focused and efficient.
-
-### Code Quality Meets Performance
-
-What makes these results even more impressive is that **Cnstra + OIMDB achieves this with only 394 lines of code**—the second simplest implementation. You get enterprise-grade performance without enterprise-grade complexity. The reactive indexes and normalized collections provide powerful abstractions that eliminate boilerplate while delivering speed.
-
-### Memory Efficiency
-
-With memory usage ranging from 1.1MB to 5.5MB across scenarios, Cnstra + OIMDB demonstrates excellent memory efficiency. The Map/Set-based data structures and incremental updates mean minimal allocations and reduced GC pressure compared to libraries that copy entire state trees.
-
-### The Complete Package
-
-**Cnstra + OIMDB** doesn't just win on one metric—it wins across the board:
-- ✅ Fastest execution times (all scenarios)
-- ✅ Low memory usage
-- ✅ Simple, maintainable code
-
-### Conclusion
-
-The benchmark results speak for themselves: **Cnstra + OIMDB is the optimal choice for React applications that demand both high performance and developer productivity**. Whether you're building a real-time dashboard, a collaborative editor, or a data-intensive application, this combination delivers the speed, efficiency, and maintainability you need.
-
-The architectural advantages—incremental indexing, batched transactions, and fine-grained reactivity—translate directly to measurable performance gains. And with code complexity that's second only to Zustand, you get these benefits without sacrificing developer experience.
-
-**Ready to experience the performance difference?** [View the interactive benchmark](https://abaikov.github.io/cnstra-oimdb-bench/) and see for yourself why Cnstra + OIMDB is the future of React state management. [Explore the benchmark source code](https://github.com/abaikov/cnstra-oimdb-bench) to see how each library was implemented.
+- **React plane**: production build (`vite build` + `preview`), `flushSync` per update (no frame floor / no batching across updates), 1500 mounted components, best-of-N with warmup.
+- **Data-layer plane**: no React; 1 subscriber per entity; `notify = 200000` across all adapters to confirm delivery.
+- **Memory plane**: steady-state heap measured after GC in the production build, with an identical DOM (50,162 nodes) across all adapters so the delta reflects the store layer, not the view.
+- All adapters ran on the **same single machine and environment**, with the library versions available at the time. We did **not** test across different hardware, OS, browsers, or library versions, so treat the absolute numbers as a snapshot rather than a general result. The large gaps (fine-vs-coarse, the memory spread) are big enough that we'd expect them to hold directionally elsewhere, but we haven't verified that. Sub-3 µs differences inside the fine-grained tier are within noise and should not be read as rankings.
 
 
 # Source: https://cnstra.org/docs/backend/overview
@@ -3307,15 +3228,18 @@ CNStra is designed to be memory-efficient and fast for reactive orchestration.
 
 ## Memory overhead per stimulation
 
-Each active `CNSStimulation` instance has a fixed overhead for internal data structures:
+Each active `CNSStimulation` instance carries some internal overhead, but most
+of it is **allocated lazily** — a minimal synchronous fire-and-forget run
+(no listener, no context, never awaited) allocates only the object itself plus a
+small ring-buffer array.
 
 ### Base overhead (minimal context, ~2-3 keys)
 
-- **CNSStimulation object**: ~1.2-1.5 KB
-  - Context store (Map): ~200 bytes
-  - Task queue (array + Set): ~500 bytes
-  - Pending/failed tasks tracking: ~200 bytes
-  - Promise and metadata: ~300 bytes
+- **CNSStimulation object**: ~0.6-1.5 KB depending on what's actually used
+  - Activation queue: a small ring-buffer array (lazily allocated on first enqueue); the active-tasks `Set` is only created while an async task is in flight
+  - Context store (`Map`): lazily created — only when a neuron reads/writes `ctx`
+  - Pending/failed task tracking: lazily created — only on async `onResponse` or an actual failure
+  - Completion `Promise`: created only if you call `waitUntilComplete()`
 
 - **Active tasks in queue**: ~100-150 bytes per task (metadata only)
   - **⚠️ Important**: Each task stores the full input signal with payload
@@ -3677,9 +3601,9 @@ await stimulation.waitUntilComplete();
 
 ### Avoid `autoCleanupContexts` in production
 
-The CNS `autoCleanupContexts` option adds significant overhead:
+The CNS `autoCleanupContexts` option adds overhead:
 
-- **O(V²) initialization cost**: building SCC (Strongly Connected Components) structures
+- **Initialization cost**: the SCC (Strongly Connected Components) analysis is built lazily on first use — so it is only paid when this option is enabled (or you read the SCC APIs), not on every `new CNS()`. Building it is `O(V + E)` for the graph/SCC pass plus the SCC-ancestor transitive closure (up to `O(V²)` for densely connected graphs).
 - **O(1 + A) runtime cost** per cleanup check (where A = number of SCC ancestors)
 - **Memory overhead** for storing SCC graphs and ancestor relationships
 
@@ -3828,6 +3752,8 @@ stimulation.waitUntilComplete().then(() => {
     db.stimulations.update(stimulationId, { status: 'failed' });
 });
 ```
+
+> **Per-hop checkpoints (finer granularity).** The pattern above records progress at start/finish. If you need to durably record progress at *each* hop, return a promise from `onResponse` — it acts as a **barrier**, so the next hops do not run until your write lands. This gives a transactional boundary per hop: a crash between the checkpoint and the next hop resumes exactly the not-yet-done work. See [Response Listeners → Async listeners are a barrier](../recipes/response-listeners.md#async-listeners-are-a-barrier-this-is-how-checkpointing-works).
 
 **On restart** — find stale `running` records in the DB and re-stimulate:
 
@@ -4962,8 +4888,28 @@ off();
 - `error`: when a dendrite throws
 - `queueLength`: current internal work queue length (can be used for backpressure metrics)
 
+## Async listeners are a barrier (this is how checkpointing works)
+
+A listener may be synchronous or `async`. The return value changes the semantics:
+
+- **Return nothing (or a non-promise)** → purely observational. Traversal continues immediately; the listener does not affect flow.
+- **Return a promise (or use `async`/`await`)** → the listener becomes a **barrier**: the subscribers of the current response (the *next* hops) are **not enqueued until your promise resolves**.
+
+This blocking is intentional and is what makes **per-hop checkpointing** correct: in `onResponse` you can durably persist progress *before* the next hop runs, so a crash between the checkpoint and the next hop resumes exactly the not-yet-done work — no double execution, no lost work. Any neuron's response can act as a checkpoint point this way.
+
+```ts
+await cns.stimulate(start.createSignal(input), {
+  onResponse: async (r) => {
+    // Subscribers of r.outputSignal wait until this write lands.
+    await db.checkpoints.save(serialize(r.stimulation));
+  },
+});
+```
+
+> ⚠️ **Footgun**: because the same hook is used for observation *and* gating, a "passive" listener that happens to `await` something (a slow logger, a metrics flush) will **throttle the entire graph** — every hop now waits on it. For pure observation, do not return/await anything; buffer and flush out of band instead.
+
 ## Tips
-- Keep listeners lightweight; heavy work should be offloaded (e.g., buffer and batch).
+- Keep listeners lightweight; heavy work should be offloaded (e.g., buffer and batch) — unless you *intend* to gate (see above).
 - Exceptions thrown in listeners will reject `stimulation.waitUntilComplete()` once all active tasks finish.
 - Combine with `maxNeuronHops` in `stimulate` options to constrain traversal during debugging. `maxNeuronHops` is disabled by default.
 
@@ -6720,6 +6666,210 @@ await queue.add('process', {
 - Save progress only when needed (errors, checkpoints), not on every response
 - For non-serializable data (blobs, file handles), use transaction neurons with inner stimulations
 - Use `cns.activate()` to resume from specific failed tasks with preserved context
+
+
+# Source: https://cnstra.org/docs/integrations/pg-boss
+
+> **⚠️ Experimental**: The `@cnstra/pg-boss` package is experimental. The API may change.
+
+[pg-boss](https://github.com/timgit/pg-boss) is a job queue built on PostgreSQL. If you're
+already on Postgres and want durable jobs, retries, backoff, scheduling and singleton
+guarantees **without adding Redis**, it pairs well with CNStra.
+
+This guide mirrors the [Message Brokers guide](/docs/integrations/message-brokers): the core
+model is **one job = one stimulation**. The one thing you must get right for a queue is that
+CNStra's runtime uses **object identity** for neurons/collaterals and stores context as a
+`Map<object, unknown>` — those references are **not portable across processes**. So jobs carry
+**names** (resolved through a `CNSPersistOptionsRegistry`), never serialized tasks or context.
+
+The `@cnstra/pg-boss` package packages the pattern below; you can also wire it by hand.
+
+```bash
+npm install @cnstra/pg-boss @cnstra/core pg-boss
+```
+
+## Basic integration
+
+```ts
+import PgBoss from 'pg-boss';
+import { createCNS } from '@cnstra/core';
+import { createCNSWorker, enqueueStimulation, stimulationJob } from '@cnstra/pg-boss';
+
+// Build the CNS and a registry from one map so names can't drift
+const { cns, registry } = createCNS({
+  importUser: importUserNeuron,
+  // …other neurons
+});
+
+const boss = new PgBoss(process.env.DATABASE_URL!);
+await boss.start();
+await boss.createQueue('cns');
+
+// Worker: one job → one stimulation
+await createCNSWorker({ boss, cns, registry, queue: 'cns' });
+
+// Producer: enqueue by (registered) collateral name
+const job = stimulationJob(registry, importUser, { userId: '42' });
+await enqueueStimulation(boss, 'cns', job);
+```
+
+Under the hood the worker does exactly what the message-brokers guide shows, just resolved by
+name:
+
+```ts
+await boss.work('cns', async ([job]) => {
+  const { collateralName, payload } = job.data;
+  const collateral = registry.getCollateral(collateralName);
+  if (!collateral) throw new Error(`Unknown collateral: ${collateralName}`);
+
+  const stimulation = cns.stimulate(collateral.createSignal(payload));
+  await stimulation.waitUntilComplete(); // rejects on failure/abort → pg-boss retries
+});
+```
+
+Because `waitUntilComplete()` **rejects** when a stimulation has failed tasks or was aborted,
+letting the error propagate is exactly what you want: pg-boss then applies its retry/backoff.
+
+## pg-boss features worth wiring
+
+| pg-boss option | CNStra use |
+| --- | --- |
+| `retryLimit` / `retryBackoff` / `retryDelay` | Retry the whole (idempotent) stimulation |
+| `singletonKey` | One in-flight stimulation per entity (e.g. per `userId`) |
+| `boss.schedule(...)` (cron) / `startAfter` | Scheduled / deferred stimulations |
+| `expireInSeconds` | Wire to an `AbortController` → `stimulate(signal, { abortSignal })` |
+| dead-letter queue | Park terminally failed runs; store `getFailedTasks()` (by name) |
+
+```ts
+await enqueueStimulation(boss, 'cns', job, {
+  retryLimit: 5,
+  retryBackoff: true,
+  singletonKey: 'user:42',
+});
+```
+
+## Retries & resume
+
+There are two levels, and only one is safe across processes:
+
+- **Whole-flow retry (recommended).** A retried job re-derives the entry signal by name and
+  re-runs the flow. Make neurons **idempotent**, or deduplicate work with a per-hop unique key
+  (see `unique (stimulation_id, index)` below).
+- **In-process partial resume.** `cns.activate(cns_stimulation.getFailedTasks(), …)` resumes only
+  the failed branch, but the failed tasks hold **live object references** — this works **only in
+  the same process**. Don't try to ship tasks/context through the queue. For resumable context
+  across processes you need a name-keyed serializable context store (see
+  [Custom Context Store](/docs/advanced/custom-context-store)).
+
+## Non-serializable data
+
+Queue payloads must be JSON (pg-boss stores `jsonb`). Keep blobs/handles in-process: a
+"controller" neuron holds them and launches an **inner stimulation** via `ctx.cns.stimulate(...)`,
+while only serializable IDs go on the queue. This is the same pattern as the
+[Message Brokers guide](/docs/integrations/message-brokers#non-serializable-data).
+
+## Per-step progress & an admin panel
+
+CNStra already emits everything an admin needs, per step, via `onResponse` (or the global
+`cns.addResponseListener`). Each response exposes the input/output signal, any error, the
+current `queueLength`, and (when `maxNeuronHops` is set) the hop count. This is the same data
+the DevTools stream models as `stimulation.started` / `stimulation.hop` / `stimulation.completed`.
+An admin panel is essentially **durable DevTools**: persist those events to Postgres.
+
+> **Shortcut — durable DevTools out of the box.** If you already run the CNStra DevTools
+> server, you don't have to hand-roll the store below. Swap its in-memory repository for
+> [`@cnstra/devtools-server-repository-postgres`](https://www.npmjs.com/package/@cnstra/devtools-server-repository-postgres)
+> or [`@cnstra/devtools-server-repository-redis`](https://www.npmjs.com/package/@cnstra/devtools-server-repository-redis)
+> — same `ICNSDevToolsServerRepository` contract, but stimulations and hops survive restarts,
+> and the existing DevTools panel becomes a persistent admin view:
+> ```ts
+> import { CNSDevToolsServer } from '@cnstra/devtools-server';
+> import { CNSDevToolsServerRepositoryPostgres } from '@cnstra/devtools-server-repository-postgres';
+> const repo = new CNSDevToolsServerRepositoryPostgres(pgPool);
+> await repo.init();
+> const server = new CNSDevToolsServer(repo);
+> ```
+> The schema below is for when you want your **own** progress tables (independent of DevTools).
+
+`@cnstra/pg-boss` exposes a `progress` sink for this. The key detail: **if `onHop` returns a
+Promise, CNStra waits for it before enqueuing the next hop** — a per-hop checkpoint barrier. So
+each step is durably committed *before* the flow advances, and after a crash the DB reflects
+exactly how far the run got.
+
+```ts
+await createCNSWorker({
+  boss, cns, registry, queue: 'cns',
+  progress: {
+    onStarted:   (s) => db.insertStimulation(s), // { jobId, collateralName, payload, startedAt }
+    onHop:       (h) => db.insertHop(h),          // one row per step (see schema)
+    onCompleted: (s) => db.finishStimulation(s),  // status: completed | failed, hopCount
+  },
+});
+```
+
+Suggested schema (your own tables — pg-boss has no per-step progress of its own):
+
+```sql
+create table cns_stimulation (
+  id uuid primary key,
+  job_id text,
+  collateral_name text not null,
+  payload jsonb,
+  status text not null,              -- running | completed | failed | aborted
+  started_at timestamptz,
+  completed_at timestamptz,
+  hop_count int default 0,
+  error text
+);
+
+create table cns_hop (
+  id bigserial primary key,
+  stimulation_id uuid references cns_stimulation(id),
+  index int not null,
+  neuron_name text,
+  input_collateral text,
+  output_collateral text,
+  input_payload jsonb,
+  output_payload jsonb,
+  started_at timestamptz,
+  duration_ms int,                   -- core does not time hops; stamp it yourself if needed
+  error text,
+  unique (stimulation_id, index)     -- makes retries/replay idempotent
+);
+```
+
+Names come from the registry (`registry.getNeuronName`, `registry.getCollateralName`), exactly
+like DevTools derives its ids — so the same registry powers execution, resume, and the admin.
+
+Three natural admin screens fall out of this:
+
+1. **Live runs** — `status = 'running'`, with `hop_count`, last neuron, and `queueLength`.
+2. **Run timeline** — the ordered `cns_hop` rows for one stimulation: a neuron-by-neuron
+   waterfall of payloads in/out and errors. The single most useful artifact for debugging a flow.
+3. **Failures & retries** — `status = 'failed'`, the failed tasks (by name), the pg-boss attempt
+   count, and a "replay" action that simply re-enqueues the job (idempotent).
+
+## pg-boss vs. your own Postgres utility?
+
+Separate two concerns:
+
+- **Execution / delivery** (who runs the stimulation, retries, backoff, cron, singleton,
+  concurrency): pg-boss solves this natively on Postgres. Reinventing `SELECT … FOR UPDATE SKIP
+  LOCKED` + backoff + scheduling + archival is a lot of subtle work — **use pg-boss**.
+- **Progress / history** (durable per-step records, admin): pg-boss has no per-step model, so
+  this is **always your own tables** regardless. The `progress` sink above is that layer.
+
+Roll your own queue only if you specifically need the job and its trace to be the same
+row/transaction, or you have visibility semantics that clash with pg-boss. Otherwise:
+**pg-boss for execution + a thin progress store for history/admin.**
+
+## Tips
+
+- Build `cns` + `registry` together with `createCNS(...)` so names never drift.
+- Use pg-boss concurrency/rate limits for backpressure; keep neurons idempotent.
+- Save progress on every hop only if you need a live admin; otherwise checkpoint on errors
+  and milestones to reduce write load.
+- Wire `expireInSeconds`/cancellation to an `AbortController` passed as `abortSignal`.
 
 
 # Source: https://cnstra.org/docs/ecosystem/swift-sdk

@@ -9,7 +9,7 @@ interface ResponseDataViewerProps {
     data: {
         inputPayload?: unknown;
         outputPayload?: unknown;
-        contexts?: Record<string, unknown>;
+        // TODO: the new CNSDTO protocol has no per-hop `contexts`; section removed.
         snapshot?: unknown;
     };
     title?: string;
@@ -44,7 +44,6 @@ export const ResponseDataViewer: React.FC<ResponseDataViewerProps> = ({
     const hasData =
         data.inputPayload !== undefined ||
         data.outputPayload !== undefined ||
-        data.contexts !== undefined ||
         data.snapshot !== undefined;
 
     // Use outputPayload for output signal
@@ -185,37 +184,8 @@ export const ResponseDataViewer: React.FC<ResponseDataViewerProps> = ({
                             </div>
                         )}
 
-                        {/* Context Storage */}
-                        {data.contexts !== undefined && (
-                            <div
-                                style={{
-                                    border: '1px solid var(--border-accent)',
-                                    borderRadius: 'var(--radius-xs)',
-                                    padding: 'var(--spacing-xs)',
-                                    background: 'var(--bg-primary)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        fontSize: 'var(--font-size-xs)',
-                                        fontWeight: 'bold',
-                                        color: 'var(--text-secondary)',
-                                        marginBottom: 'var(--spacing-xs)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 'var(--spacing-xs)',
-                                    }}
-                                >
-                                    🧠 Context Storage
-                                </div>
-                                <JsonViewer
-                                    data={data.contexts}
-                                    title=""
-                                    defaultExpanded={false}
-                                    maxHeight="200px"
-                                />
-                            </div>
-                        )}
+                        {/* TODO: Context Storage section removed — the new CNSDTO
+                            protocol carries no per-hop `contexts`. */}
 
                         {/* Data Snapshot */}
                         {data.snapshot !== undefined && (

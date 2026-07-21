@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const CNSDTOExecutionFilterSchema = z.object({
+export const CNSDTOStimulationFilterSchema = z.object({
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),
     fromTimestamp: z.number().optional(),
@@ -17,5 +17,5 @@ export const CNSDTOHopFilterSchema = z.object({
     neuronId: z.string().optional(),
 });
 
-export type CNSDTOExecutionFilter = z.infer<typeof CNSDTOExecutionFilterSchema>;
+export type CNSDTOStimulationFilter = z.infer<typeof CNSDTOStimulationFilterSchema>;
 export type CNSDTOHopFilter = z.infer<typeof CNSDTOHopFilterSchema>;

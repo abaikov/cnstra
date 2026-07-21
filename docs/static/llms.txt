@@ -2,12 +2,14 @@
 
 > CNStra is a zero-dependency orchestration library for TypeScript/JavaScript. It models your application as a Central Nervous System (CNS): a graph of typed neurons connected by collaterals (output channels) and dendrites (input bindings). Flows become explicit, deterministic, and compile-time safe. Works in React, Node.js, and any JS runtime.
 
+**Full documentation as a single file:** [llms-full.txt](https://cnstra.org/llms-full.txt) — every page listed below, concatenated with full content (~260 KB). Fetch this for complete text instead of following links one by one.
+
 ## Getting Started
 
 - [Introduction](https://cnstra.org/docs/concepts/intro): Core concepts — neurons, axons, collaterals, signals, stimulation. Biological analogy and key design properties.
 - [Quick Start](https://cnstra.org/docs/core/quick-start): Install CNStra and run your first neuron in 5 minutes.
 - [CNStra Overview](https://cnstra.org/docs/core/overview): Why MVC/Redux/Signals fall short for workflows and how CNStra fixes it with explicit, traceable orchestration.
-- [Basics](https://cnstra.org/docs/concepts/basics): Single-process stimulation, command pattern with built-in DI, and separation of mutations from reads.
+- [Basics](https://cnstra.org/docs/concepts/basics): Single-process stimulation, command pattern with signal-based dependency wiring, and separation of mutations from reads.
 
 ## Core API
 
@@ -52,6 +54,7 @@
 ## Integrations & Ecosystem
 
 - [Message Brokers](https://cnstra.org/docs/integrations/message-brokers): Integrating CNStra with RabbitMQ, BullMQ, SQS, and other queues.
+- [pg-boss (Postgres)](https://cnstra.org/docs/integrations/pg-boss): Run stimulations as Postgres-backed jobs with `@cnstra/pg-boss`; retries/backoff/scheduling, plus per-hop progress for a durable admin panel.
 - [Swift SDK](https://cnstra.org/docs/ecosystem/swift-sdk): CNStra for iOS/macOS applications.
 
 ## DevTools

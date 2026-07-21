@@ -108,8 +108,8 @@ describe('CNSDevTools', () => {
         });
     });
 
-    describe('execution tracking', () => {
-        it('sends execution.started + execution.hop on first response', async () => {
+    describe('stimulation tracking', () => {
+        it('sends stimulation.started + stimulation.hop on first response', async () => {
             const { registry } = makeRegistry();
             const cns = new MockCNS();
             const transport = new CaptureBatchTransport();
@@ -128,12 +128,12 @@ describe('CNSDevTools', () => {
 
             await new Promise(r => setTimeout(r, 0));
 
-            const started = transport.itemsOfType('execution.started');
-            const hops = transport.itemsOfType('execution.hop');
+            const started = transport.itemsOfType('stimulation.started');
+            const hops = transport.itemsOfType('stimulation.hop');
             expect(started).toHaveLength(1);
             expect(hops).toHaveLength(1);
             expect(hops[0].hop.index).toBe(0);
-            expect(hops[0].hop.executionId).toBe(started[0].execution.id);
+            expect(hops[0].hop.stimulationId).toBe(started[0].stimulation.id);
         });
 
         it('increments hop index for subsequent responses on same stimulation', async () => {
@@ -152,14 +152,14 @@ describe('CNSDevTools', () => {
 
             await new Promise(r => setTimeout(r, 0));
 
-            const hops = transport.itemsOfType('execution.hop');
+            const hops = transport.itemsOfType('stimulation.hop');
             expect(hops).toHaveLength(3);
             expect(hops[0].hop.index).toBe(0);
             expect(hops[1].hop.index).toBe(1);
             expect(hops[2].hop.index).toBe(2);
         });
 
-        it('sends execution.completed when stimulation resolves', async () => {
+        it('sends stimulation.completed when stimulation resolves', async () => {
             const { registry } = makeRegistry();
             const cns = new MockCNS();
             const transport = new CaptureBatchTransport();
@@ -171,12 +171,12 @@ describe('CNSDevTools', () => {
             stim.resolve();
             await new Promise(r => setTimeout(r, 10));
 
-            const completed = transport.itemsOfType('execution.completed');
+            const completed = transport.itemsOfType('stimulation.completed');
             expect(completed).toHaveLength(1);
             expect(completed[0].hasError).toBe(false);
         });
 
-        it('sends execution.completed with hasError=true when stimulation rejects', async () => {
+        it('sends stimulation.completed with hasError=true when stimulation rejects', async () => {
             const { registry } = makeRegistry();
             const cns = new MockCNS();
             const transport = new CaptureBatchTransport();
@@ -192,11 +192,11 @@ describe('CNSDevTools', () => {
             reject(new Error('fail'));
             await new Promise(r => setTimeout(r, 10));
 
-            const completed = transport.itemsOfType('execution.completed');
+            const completed = transport.itemsOfType('stimulation.completed');
             expect(completed[0].hasError).toBe(true);
         });
 
-        it('does not send execution.started again for same stimulation', async () => {
+        it('does not send stimulation.started again for same stimulation', async () => {
             const { registry } = makeRegistry();
             const cns = new MockCNS();
             const transport = new CaptureBatchTransport();
@@ -209,7 +209,7 @@ describe('CNSDevTools', () => {
 
             await new Promise(r => setTimeout(r, 0));
 
-            const started = transport.itemsOfType('execution.started');
+            const started = transport.itemsOfType('stimulation.started');
             expect(started).toHaveLength(1);
         });
     });

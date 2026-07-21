@@ -8,10 +8,11 @@
     "docs"
   ],
   "scripts": {
-    "build": "npm run build:core && npm run build --workspace=@cnstra/mcp && npm run build:devtools && npm run build:devtools-server && npm run build --workspace=@cnstra/react && npm run build --workspace=cnstra-docs",
+    "build": "npm run build:core && npm run build --workspace=@cnstra/pg-boss && npm run build --workspace=@cnstra/mcp && npm run build:devtools && npm run build:devtools-server && npm run build --workspace=@cnstra/react && npm run build --workspace=cnstra-docs",
     "build:core": "npm run build --workspace=@cnstra/core",
+    "build:pg-boss": "npm run build --workspace=@cnstra/pg-boss",
     "build:devtools": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools && npm run build --workspace=@cnstra/devtools-transport-ws && npm run build --workspace=@cnstra/devtools-panel-ui",
-    "build:devtools-server": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-server && npm run build --workspace=@cnstra/devtools-server-repository-in-memory",
+    "build:devtools-server": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-server && npm run build --workspace=@cnstra/devtools-server-repository-in-memory && npm run build --workspace=@cnstra/devtools-server-repository-postgres && npm run build --workspace=@cnstra/devtools-server-repository-redis",
     "build:devtools-panel-ui": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-panel-ui",
     "build:example": "npm run build --workspace=@cnstra/example-app",
     "dev": "npm run dev --workspaces",
@@ -32,6 +33,7 @@
     "example:start:attach-electron": "npm run start:attach-electron --workspace=@cnstra/example-app",
     "release:electron": "./scripts/release-devtools-electron.sh",
     "publish:all": "node scripts/publish-workspaces.mjs",
+    "publish:bumped": "node scripts/publish-workspaces.mjs --bumped",
     "publish:core": "node scripts/publish-workspaces.mjs --workspace=@cnstra/core",
     "publish:react": "node scripts/publish-workspaces.mjs --workspace=@cnstra/react",
     "docs:llms": "node scripts/generate-llms-full.mjs",

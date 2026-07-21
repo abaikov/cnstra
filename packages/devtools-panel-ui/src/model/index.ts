@@ -1,50 +1,69 @@
-// Normalized DevTools domain models aligned with DTO types
+// Normalized DevTools domain model, aligned 1:1 with @cnstra/devtools-dto.
+//
+// Storage is OIMDB 3.x: each `db.<entity>` is an OIMReactiveCollection with its
+// reactive indexes attached as `.indexes`. Indexes are *derived* (auto-maintained
+// from entity fields) except `apps.selected`, which is UI selection state and so
+// is a manual set index a controller writes.
 
 import {
     OIMEventQueue,
     OIMEventQueueSchedulerMicrotask,
-    OIMReactiveIndexManual,
-    OIMRICollection,
+    OIMReactiveIndexManualSetBased,
+    createOIMCollectionKit,
+    type OIMReactiveCollection,
+    type TOIMPk,
 } from '@oimdb/core';
 
-// Import and re-export DTO types as our database model types
 import type {
-    DevToolsApp,
-    DevToolsAppId,
-    Neuron,
-    NeuronId,
-    Collateral,
-    CollateralId,
-    Dendrite,
-    DendriteId,
-    Stimulation,
-    StimulationId,
-    StimulationResponse,
-    StimulationResponseId,
+    CNSDTOApp,
+    CNSDTONeuron,
+    CNSDTOCollateral,
+    CNSDTODendrite,
+    CNSDTOStimulation,
+    CNSDTOHop,
 } from '@cnstra/devtools-dto';
 
-export type TDevToolsApp = DevToolsApp;
-export type TDevToolsAppId = DevToolsAppId;
-export type TNeuron = Neuron;
-// UI-extended neuron with denormalized metrics
-export type UINeuron = TNeuron & { stimulationCount?: number };
-export type TNeuronId = NeuronId;
-export type TCollateral = Collateral;
-export type TCollateralId = CollateralId;
-export type TDendrite = Dendrite;
-export type TDendriteId = DendriteId;
-export type TStimulation = Stimulation;
-export type TStimulationId = StimulationId;
-export type TStimulationResponse = StimulationResponse;
-export type TStimulationResponseId = StimulationResponseId;
+// ─── Domain types (aliases over the DTO — one source of truth) ────────────────
 
-// PK helper types for derived collections
+export type TApp = CNSDTOApp;
+export type TAppId = string;
+export type TNeuron = CNSDTONeuron;
+export type TNeuronId = string;
+/** UI-extended neuron with denormalized metrics for graph sizing. */
+export type UINeuron = TNeuron & { stimulationCount?: number };
+export type TCollateral = CNSDTOCollateral;
+export type TCollateralId = string;
+export type TDendrite = CNSDTODendrite;
+export type TDendriteId = string;
+export type TStimulation = CNSDTOStimulation;
+export type TStimulationId = string;
+export type THop = CNSDTOHop;
+export type THopId = string;
+/**
+ * UI-extended hop: carries `appId` denormalized from its parent stimulation so
+ * hops can be indexed by app without a stimulation join. Populated at ingest.
+ */
+export type UIHop = THop & { appId: TAppId };
+
+// A CNS instance is not a DTO entity; the panel synthesizes one per (appId, cnsId)
+// from topology messages (an app can host several CNS).
+export type TCns = { cnsId: string; appId: TAppId };
+
+export type TServerMetrics = {
+    timestamp: number;
+    rssMB: number;
+    heapUsedMB: number;
+    heapTotalMB: number;
+    cpuPercent: number;
+};
+
+// ─── Derived graph data (panel-local, computed from base entities) ────────────
+
 export type TGraphLayoutPk = `${string}::${string}`;
 export type TGraphEdgePk = `${string}::${string}->${string}::${string}`;
 
-// Derived graph data stored separately to avoid duplicating base entities
 export type TGraphLayout = {
-    appId: TDevToolsAppId;
+    appId: TAppId;
     neuronId: TNeuronId;
     x: number;
     y: number;
@@ -52,168 +71,178 @@ export type TGraphLayout = {
 };
 
 export type TGraphEdge = {
-    appId: TDevToolsAppId;
+    appId: TAppId;
     from: TNeuronId;
     to: TNeuronId;
     label?: string;
-    count: number; // aggregated stimulation count per edge
+    count: number;
 };
 
-// CNS instance per app (supports many CNS per application)
-export type TCns = {
-    cnsId: string;
-    appId: TDevToolsAppId;
+// UI state for response/hop collapsible blocks.
+export type TResponseUIState = {
+    responseId: THopId;
+    isExpanded: boolean;
 };
+
+// ─── Event queue ──────────────────────────────────────────────────────────────
 
 export const dbEventQueue = new OIMEventQueue({
     scheduler: new OIMEventQueueSchedulerMicrotask(),
 });
 
-// Database collections aligned with DTO field names
+// ─── Collection helper ────────────────────────────────────────────────────────
+
+type CollectionWithIndexes<
+    TEntity extends object,
+    TPk extends TOIMPk,
+    TIndexes
+> = OIMReactiveCollection<TEntity, TPk> & { indexes: TIndexes };
+
+/**
+ * Build a reactive collection and attach its indexes as `.indexes`, so consumers
+ * (and the react hooks) keep the familiar `db.X` (collection) + `db.X.indexes.Y`
+ * shape while the indexes stay auto-maintained.
+ */
+function collectionWith<
+    TEntity extends object,
+    TPk extends TOIMPk,
+    TIndexes extends Record<string, unknown>
+>(
+    selectPk: (e: TEntity) => TPk,
+    buildIndexes: (
+        factory: ReturnType<
+            typeof createOIMCollectionKit<TEntity, TPk>
+        >['indexFactory']
+    ) => TIndexes
+): CollectionWithIndexes<TEntity, TPk, TIndexes> {
+    const kit = createOIMCollectionKit<TEntity, TPk>(dbEventQueue, { selectPk });
+    const indexes = buildIndexes(kit.indexFactory);
+    return Object.assign(kit.collection, { indexes });
+}
+
+// ─── Collections ──────────────────────────────────────────────────────────────
+
 export const db = {
-    apps: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            all: new OIMReactiveIndexManual<'all', TDevToolsAppId>(
+    apps: collectionWith<TApp, TAppId, {
+        all: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TApp, TAppId>>['indexFactory']['derivedSetIndex']
+        >;
+        selected: OIMReactiveIndexManualSetBased<'selected', TAppId>;
+    }>(
+        app => app.id,
+        factory => ({
+            all: factory.derivedSetIndex(() => ['all']),
+            selected: new OIMReactiveIndexManualSetBased<'selected', TAppId>(
                 dbEventQueue
             ),
-            selected: new OIMReactiveIndexManual<'selected', TDevToolsAppId>(
-                dbEventQueue
-            ),
-        },
-        collectionOpts: {
-            selectPk: (app: TDevToolsApp) => app.appId,
-        },
-    }),
-    neurons: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            appId: new OIMReactiveIndexManual<TDevToolsAppId, TNeuronId>(
-                dbEventQueue
-            ),
-        },
-        collectionOpts: {
-            selectPk: (neuron: UINeuron) => neuron.id,
-        },
-    }),
-    collaterals: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            appId: new OIMReactiveIndexManual<TDevToolsAppId, string>(
-                dbEventQueue
-            ),
-            neuronId: new OIMReactiveIndexManual<TNeuronId, string>(
-                dbEventQueue
-            ),
-        },
-        collectionOpts: {
-            selectPk: (collateral: TCollateral) => collateral.id,
-        },
-    }),
-    dendrites: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            appId: new OIMReactiveIndexManual<TDevToolsAppId, TDendriteId>(
-                dbEventQueue
-            ),
-            neuronId: new OIMReactiveIndexManual<TNeuronId, TDendriteId>(
-                dbEventQueue
-            ),
-        },
-        collectionOpts: {
-            selectPk: (dendrite: TDendrite) => dendrite.id,
-        },
-    }),
-    cns: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            appId: new OIMReactiveIndexManual<TDevToolsAppId, string>(
-                dbEventQueue
-            ),
-        },
-        collectionOpts: {
-            selectPk: (cns: TCns) => cns.cnsId,
-        },
-    }),
-    stimulations: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            appId: new OIMReactiveIndexManual<TDevToolsAppId, TStimulationId>(
-                dbEventQueue
-            ),
-        },
-        collectionOpts: {
-            selectPk: (stimulation: TStimulation) => stimulation.stimulationId,
-        },
-    }),
-    responses: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            stimulationId: new OIMReactiveIndexManual<
-                TStimulationId,
-                TStimulationResponseId
-            >(dbEventQueue),
-            appId: new OIMReactiveIndexManual<
-                TDevToolsAppId,
-                TStimulationResponseId
-            >(dbEventQueue),
-        },
-        collectionOpts: {
-            selectPk: (response: TStimulationResponse) => response.responseId,
-        },
-    }),
+        })
+    ),
 
-    // Graph layouts per app and neuron
-    graphLayouts: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            appId: new OIMReactiveIndexManual<TDevToolsAppId, TGraphLayoutPk>(
-                dbEventQueue
-            ),
-        },
-        collectionOpts: {
-            selectPk: (layout: TGraphLayout) =>
-                `${layout.appId}::${layout.neuronId}` as TGraphLayoutPk,
-        },
-    }),
+    neurons: collectionWith<UINeuron, TNeuronId, {
+        appId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<UINeuron, TNeuronId>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        neuron => neuron.id,
+        factory => ({ appId: factory.derivedSetIndex(n => [n.appId]) })
+    ),
 
-    // Graph edges per app
-    graphEdges: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            appId: new OIMReactiveIndexManual<TDevToolsAppId, TGraphEdgePk>(
-                dbEventQueue
-            ),
-        },
-        collectionOpts: {
-            selectPk: (edge: TGraphEdge) =>
-                `${edge.appId}::${edge.from}->${edge.to}::${
-                    edge.label || ''
-                }` as TGraphEdgePk,
-        },
-    }),
+    collaterals: collectionWith<TCollateral, TCollateralId, {
+        appId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TCollateral, TCollateralId>>['indexFactory']['derivedSetIndex']
+        >;
+        neuronId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TCollateral, TCollateralId>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        collateral => collateral.id,
+        factory => ({
+            appId: factory.derivedSetIndex(c => [c.appId]),
+            neuronId: factory.derivedSetIndex(c => [c.neuronId]),
+        })
+    ),
 
-    // Server runtime metrics (memory, CPU) timeline
-    serverMetrics: new OIMRICollection(dbEventQueue, {
-        indexes: {
-            all: new OIMReactiveIndexManual<'all', `${number}`>(dbEventQueue),
-        },
-        collectionOpts: {
-            selectPk: (m: TServerMetrics) => `${m.timestamp}`,
-        },
-    }),
+    dendrites: collectionWith<TDendrite, TDendriteId, {
+        appId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TDendrite, TDendriteId>>['indexFactory']['derivedSetIndex']
+        >;
+        neuronId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TDendrite, TDendriteId>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        dendrite => dendrite.id,
+        factory => ({
+            appId: factory.derivedSetIndex(d => [d.appId]),
+            neuronId: factory.derivedSetIndex(d => [d.neuronId]),
+        })
+    ),
 
-    // UI state for response collapsible blocks
-    responseUIState: new OIMRICollection(dbEventQueue, {
-        indexes: {},
-        collectionOpts: {
-            selectPk: (state: TResponseUIState) => state.responseId,
-        },
-    }),
-};
+    cns: collectionWith<TCns, string, {
+        appId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TCns, string>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        cns => cns.cnsId,
+        factory => ({ appId: factory.derivedSetIndex(c => [c.appId]) })
+    ),
 
-export type TServerMetrics = {
-    timestamp: number;
-    rssMB: number;
-    heapUsedMB: number;
-    heapTotalMB: number;
-    externalMB: number;
-    cpuPercent: number;
-};
+    stimulations: collectionWith<TStimulation, TStimulationId, {
+        appId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TStimulation, TStimulationId>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        stimulation => stimulation.id,
+        factory => ({ appId: factory.derivedSetIndex(s => [s.appId]) })
+    ),
 
-// UI state for response collapsible blocks
-export type TResponseUIState = {
-    responseId: TStimulationResponseId;
-    isExpanded: boolean;
+    // Hops (formerly "responses"): the per-neuron steps of a stimulation.
+    responses: collectionWith<UIHop, THopId, {
+        appId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<UIHop, THopId>>['indexFactory']['derivedSetIndex']
+        >;
+        stimulationId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<UIHop, THopId>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        hop => hop.id,
+        factory => ({
+            appId: factory.derivedSetIndex(h => [h.appId]),
+            stimulationId: factory.derivedSetIndex(h => [h.stimulationId]),
+        })
+    ),
+
+    graphLayouts: collectionWith<TGraphLayout, TGraphLayoutPk, {
+        appId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TGraphLayout, TGraphLayoutPk>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        layout => `${layout.appId}::${layout.neuronId}` as TGraphLayoutPk,
+        factory => ({ appId: factory.derivedSetIndex(l => [l.appId]) })
+    ),
+
+    graphEdges: collectionWith<TGraphEdge, TGraphEdgePk, {
+        appId: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TGraphEdge, TGraphEdgePk>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        edge =>
+            `${edge.appId}::${edge.from}->${edge.to}::${
+                edge.label || ''
+            }` as TGraphEdgePk,
+        factory => ({ appId: factory.derivedSetIndex(e => [e.appId]) })
+    ),
+
+    serverMetrics: collectionWith<TServerMetrics, `${number}`, {
+        all: ReturnType<
+            ReturnType<typeof createOIMCollectionKit<TServerMetrics, `${number}`>>['indexFactory']['derivedSetIndex']
+        >;
+    }>(
+        metrics => `${metrics.timestamp}` as `${number}`,
+        factory => ({ all: factory.derivedSetIndex(() => ['all']) })
+    ),
+
+    responseUIState: collectionWith<TResponseUIState, THopId, Record<string, never>>(
+        state => state.responseId,
+        () => ({})
+    ),
 };

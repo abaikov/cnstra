@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { CNSDTOAppSchema, CNSDTOCollateralSchema, CNSDTODendriteSchema, CNSDTOExecutionSchema, CNSDTOHopSchema, CNSDTONeuronSchema } from './entities';
-import { CNSDTOExecutionStartedMessageSchema, CNSDTOExecutionCompletedMessageSchema, CNSDTOHopAddedMessageSchema, CNSDTOTopologyMessageSchema } from './app-messages';
+import { CNSDTOAppSchema, CNSDTOCollateralSchema, CNSDTODendriteSchema, CNSDTOStimulationSchema, CNSDTOHopSchema, CNSDTONeuronSchema } from './entities';
+import { CNSDTOStimulationStartedMessageSchema, CNSDTOStimulationCompletedMessageSchema, CNSDTOHopAddedMessageSchema, CNSDTOTopologyMessageSchema } from './app-messages';
 
 // ─── Broadcasts (server → all connected UI clients) ───────────────────────────
 
@@ -49,10 +49,10 @@ export const CNSDTOTopologyResultSchema = z.object({
     })),
 });
 
-export const CNSDTOExecutionsResultSchema = z.object({
-    type: z.literal('executions.result'),
+export const CNSDTOStimulationsResultSchema = z.object({
+    type: z.literal('stimulations.result'),
     requestId: z.string(),
-    items: z.array(CNSDTOExecutionSchema),
+    items: z.array(CNSDTOStimulationSchema),
     total: z.number().int().nonnegative(),
     offset: z.number().int().nonnegative(),
 });
@@ -66,7 +66,7 @@ export const CNSDTOHopsResultSchema = z.object({
 export const CNSDTOReplayAcceptedSchema = z.object({
     type: z.literal('replay.accepted'),
     replayId: z.string(),
-    newExecutionId: z.string(),
+    newStimulationId: z.string(),
 });
 
 export const CNSDTOReplayRejectedSchema = z.object({
@@ -81,13 +81,13 @@ export const CNSDTOServerMessageSchema = z.discriminatedUnion('type', [
     CNSDTOAppConnectedBroadcastSchema,
     CNSDTOAppDisconnectedBroadcastSchema,
     CNSDTOServerMetricsBroadcastSchema,
-    CNSDTOExecutionStartedMessageSchema,
+    CNSDTOStimulationStartedMessageSchema,
     CNSDTOHopAddedMessageSchema,
-    CNSDTOExecutionCompletedMessageSchema,
+    CNSDTOStimulationCompletedMessageSchema,
     CNSDTOTopologyMessageSchema,
     CNSDTOAppsResultSchema,
     CNSDTOTopologyResultSchema,
-    CNSDTOExecutionsResultSchema,
+    CNSDTOStimulationsResultSchema,
     CNSDTOHopsResultSchema,
     CNSDTOReplayAcceptedSchema,
     CNSDTOReplayRejectedSchema,
@@ -98,7 +98,7 @@ export type CNSDTOAppDisconnectedBroadcast = z.infer<typeof CNSDTOAppDisconnecte
 export type CNSDTOServerMetricsBroadcast = z.infer<typeof CNSDTOServerMetricsBroadcastSchema>;
 export type CNSDTOAppsResult = z.infer<typeof CNSDTOAppsResultSchema>;
 export type CNSDTOTopologyResult = z.infer<typeof CNSDTOTopologyResultSchema>;
-export type CNSDTOExecutionsResult = z.infer<typeof CNSDTOExecutionsResultSchema>;
+export type CNSDTOStimulationsResult = z.infer<typeof CNSDTOStimulationsResultSchema>;
 export type CNSDTOHopsResult = z.infer<typeof CNSDTOHopsResultSchema>;
 export type CNSDTOReplayAccepted = z.infer<typeof CNSDTOReplayAcceptedSchema>;
 export type CNSDTOReplayRejected = z.infer<typeof CNSDTOReplayRejectedSchema>;

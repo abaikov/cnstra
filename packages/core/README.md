@@ -1,18 +1,28 @@
 # @cnstra/core
 
-**Workflow / orchestration engine for TypeScript — deterministic, embeddable, in-memory.**
+**Orchestration engine for TypeScript — deterministic, embeddable, in-memory.**
 
 📚 **[Full Documentation →](https://cnstra.org/)** | [Quick Start](https://cnstra.org/docs/core/quick-start) | [API Reference](https://cnstra.org/docs/core/api) | [Recipes](https://cnstra.org/docs/recipes)
 
 ## What is CNStra?
 
-**CNStra (Central Nervous System Orchestrator)** models your app as a **typed neuron graph**. You explicitly start a run with `cns.stimulate(...)`; CNStra then performs a **deterministic, hop-bounded traversal** from **collateral → dendrite → returned signal**, step by step.
+**CNStra** (Central Nervous System Orchestrator) models your app's control flow as a graph of **neurons** wired together by **typed signals**. You orchestrate work by wiring the graph — not by standing up an event bus.
 
-**Zero dependencies** • **No pub/sub** • **CNS approach** (Central Neural Network of your app)
+Instead of an event bus that broadcasts to whoever happens to be listening, CNStra keeps the flow explicit. You start a run with `cns.stimulate(signal)`, and it walks the graph deterministically — one hop at a time, `collateral → dendrite → returned signal` — until nothing is left to fire. A neuron receives a signal on one of its dendrites, does its work, and returns the next signal; that returned signal **is** the edge to the next neuron. No hidden subscribers, no fan-out you can't trace.
 
-Common backend use-cases:
-- **Jobs** (queues/workers), **sync/integrations** (webhooks), **ETL/pipelines**
-- **Retries/timeouts/cancellation** and **saga-style compensations**
+Four primitives:
+
+- **Collateral** — a typed channel; a signal is a payload sent on one.
+- **Neuron** — a unit of logic with one or more dendrites.
+- **Dendrite** — a handler that reacts to a collateral and returns the next signal.
+- **Signal** — what actually flows through a run.
+
+Because traversal is deterministic and hop-bounded, a run is reproducible and easy to reason about — which is what makes CNStra a good fit for:
+
+- **Jobs & workers**, **webhooks & integrations**, **ETL / pipelines**
+- **Retries, timeouts, cancellation**, and **saga-style compensations**
+
+Zero dependencies. No pub/sub. In-memory.
 
 👉 **[Read the full documentation →](https://cnstra.org/)**
 
@@ -92,6 +102,18 @@ import { createPersistRegistry } from '@cnstra/core';
 export const registry = createPersistRegistry({ deckNeuron, cardNeuron });
 // explicit neuron name:        { 'deck-neuron': deckNeuron }
 // explicit collateral names:   { 'deck-neuron': { neuron: deckNeuron, collaterals: { deckCreated: 'deck-created' } } }
+```
+
+**CNS + registry from one map:** if you're going to build both, `createCNS` lists the
+neuron set once and returns both — they derive from the same map, so the names can never
+drift from the runtime graph. Accepts the same explicit-name syntax as `createPersistRegistry`.
+
+```ts
+import { createCNS } from '@cnstra/core';
+
+const { cns, registry } = createCNS({ deckNeuron, cardNeuron });
+// `cns` is the runtime engine; `registry` carries the names for devtools/mcp/persistence.
+// Don't need naming/persistence? Just use `new CNS([deckNeuron, cardNeuron])` directly.
 ```
 
 ## Documentation

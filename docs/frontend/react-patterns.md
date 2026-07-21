@@ -33,10 +33,20 @@ function onSearch(q: string) {
 
 ## Derive UI lists via OIMDB
 
-Use OIMDB for queryable derived state (dashboards, analytics) and subscribe via hooks.
+Use OIMDB for queryable derived state (dashboards, analytics) and subscribe via hooks. Build an index once, then read it reactively with the matching hook (index hooks take the **index object**, not a string name).
 
 ```tsx
-const items = useSelectEntitiesByIndexKey(db.tables.logs, 'byType', 'warning');
+import { useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
+
+// logs = createOIMCollectionKit<LogEntry, string>(queue, { selectPk: l => l.id });
+// Derived set-based index keyed by the entry's `type` field:
+const logsByType = logs.indexFactory.derivedSetIndex(log => log.type);
+
+function WarningList() {
+  const items =
+    useSelectEntitiesByIndexKeySetBased(logs.collection, logsByType, 'warning') ?? [];
+  return <ul>{items.map(l => l && <li key={l.id}>{l.message}</li>)}</ul>;
+}
 ```
 
 ## Error and loading states

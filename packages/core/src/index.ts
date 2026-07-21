@@ -9,6 +9,7 @@ export type { ICNS } from './interfaces/ICNS';
 export type { TCNSNeuron } from './types/TCNSNeuron';
 export type { TCNSAxon } from './types/TCNSAxon';
 export type { TCNSDendrite } from './types/TCNSDendrite';
+export type { TCNSHandlerContext } from './types/TCNSHandlerContext';
 export type { TCNSSignal } from './types/TCNSSignal';
 export type { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
 export type { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
@@ -22,8 +23,12 @@ export type { TCNSStimulationGateOptions, TCNSStimulationGateSignal } from './ut
 export {
     collateral,
     neuron,
+    neuronFactory,
     withCtx,
+    withGlobal,
     afferentPath,
     modality,
     createPersistRegistry,
+    createCNS,
 } from './factory/index';
+export type { TNeuronFactory } from './factory/index';

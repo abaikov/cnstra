@@ -35,11 +35,20 @@ export class CNS<
         (r: any) => void | Promise<void>
     > = [];
 
+    /**
+     * Shared, app/organism-wide value handed to every dendrite as `ctx.global`.
+     * Stored untyped (the type is baked into neurons via `neuronFactory().withGlobal<T>()`);
+     * CNS is just a passthrough carrier, so injecting it here never touches the hot path.
+     */
+    public readonly global?: unknown;
+
     constructor(
         protected readonly neurons: TNeuron[],
-        public readonly options?: TCNSOptions
+        public readonly options?: TCNSOptions,
+        global?: unknown
     ) {
         this.network = new CNSNetwork(this.neurons);
+        this.global = global;
     }
 
     public addResponseListener(

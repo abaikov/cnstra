@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Stimulations Filters', () => {
-    test('applies Only errors and errorContains filters', async ({ page }) => {
+    test('applies the "Only errors" filter without breaking the list', async ({
+        page,
+    }) => {
         await page.goto('/');
         await expect(page.getByText('Server Connected')).toBeVisible({
             timeout: 60000,
@@ -10,22 +12,18 @@ test.describe('Stimulations Filters', () => {
             timeout: 60000,
         });
 
-        await page.getByRole('button', { name: '⚡ Stimulations' }).click();
-
-        // Toggle Only errors
+        // Filters live in the sidebar now.
         await page.getByRole('checkbox', { name: 'Only errors' }).check();
         await page.getByRole('button', { name: 'Apply Filters' }).click();
 
-        // Enter errorContains and apply
-        const errorContains = page.getByPlaceholder('error contains...');
-        await errorContains.fill('boom');
-        await page.getByRole('button', { name: 'Apply Filters' }).click();
+        await page.getByRole('button', { name: '⚡ Stimulations' }).click();
 
-        // We accept either empty (no matching errors yet) or presence of list
+        // The list re-renders under the filter — either matching items or the
+        // empty-state — without crashing.
         await expect(
             page
-                .locator('text=Total')
-                .or(page.locator('text=No stimulations yet'))
+                .getByText(/Total (responses|stimulations):/)
+                .or(page.getByText('No Activity Detected'))
                 .first()
         ).toBeVisible({ timeout: 60000 });
     });

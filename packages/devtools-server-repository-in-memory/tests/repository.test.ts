@@ -1,5 +1,5 @@
 import { CNSDevToolsServerRepositoryInMemory } from '../src/index';
-import type { CNSDTOApp, CNSDTOExecution, CNSDTOHop } from '@cnstra/devtools-dto';
+import type { CNSDTOApp, CNSDTOStimulation, CNSDTOHop } from '@cnstra/devtools-dto';
 import type { CNSDTOTopologySnapshot } from '@cnstra/devtools-server';
 
 const makeApp = (id: string, overrides: Partial<CNSDTOApp> = {}): CNSDTOApp => ({
@@ -22,7 +22,7 @@ const makeTopology = (cnsId: string, appId: string): CNSDTOTopologySnapshot => (
     dendrites: [],
 });
 
-const makeExecution = (id: string, appId: string, overrides: Partial<CNSDTOExecution> = {}): CNSDTOExecution => ({
+const makeStimulation = (id: string, appId: string, overrides: Partial<CNSDTOStimulation> = {}): CNSDTOStimulation => ({
     id,
     cnsId: `${appId}:cns`,
     appId,
@@ -36,9 +36,9 @@ const makeExecution = (id: string, appId: string, overrides: Partial<CNSDTOExecu
     ...overrides,
 });
 
-const makeHop = (id: string, executionId: string, index: number): CNSDTOHop => ({
+const makeHop = (id: string, stimulationId: string, index: number): CNSDTOHop => ({
     id,
-    executionId,
+    stimulationId,
     index,
     neuronId: 'app:cns:n',
     inputCollateralId: 'app:cns:n:col',
@@ -112,94 +112,94 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
         });
     });
 
-    describe('Executions', () => {
-        test('saves and gets executions with filter', () => {
-            repo.saveExecution(makeExecution('exec-1', 'app-1'));
-            const { items, total } = repo.getExecutions('app-1', {});
+    describe('Stimulations', () => {
+        test('saves and gets stimulations with filter', () => {
+            repo.saveStimulation(makeStimulation('exec-1', 'app-1'));
+            const { items, total } = repo.getStimulations('app-1', {});
             expect(total).toBe(1);
             expect(items[0].id).toBe('exec-1');
         });
 
-        test('completes execution', () => {
-            repo.saveExecution(makeExecution('exec-1', 'app-1'));
-            repo.completeExecution('exec-1', Date.now(), 3, false);
-            const { items } = repo.getExecutions('app-1', {});
+        test('completes stimulation', () => {
+            repo.saveStimulation(makeStimulation('exec-1', 'app-1'));
+            repo.completeStimulation('exec-1', Date.now(), 3, false);
+            const { items } = repo.getStimulations('app-1', {});
             expect(items[0].completedAt).not.toBeNull();
             expect(items[0].hopCount).toBe(3);
         });
 
-        test('completeExecution ignores unknown id', () => {
-            expect(() => repo.completeExecution('no-such', Date.now(), 0, false)).not.toThrow();
+        test('completeStimulation ignores unknown id', () => {
+            expect(() => repo.completeStimulation('no-such', Date.now(), 0, false)).not.toThrow();
         });
 
         test('filters by fromTimestamp', () => {
             const now = Date.now();
-            repo.saveExecution(makeExecution('old', 'app', { startedAt: now - 1000 }));
-            repo.saveExecution(makeExecution('new', 'app', { startedAt: now + 1000 }));
-            const { items } = repo.getExecutions('app', { fromTimestamp: now });
+            repo.saveStimulation(makeStimulation('old', 'app', { startedAt: now - 1000 }));
+            repo.saveStimulation(makeStimulation('new', 'app', { startedAt: now + 1000 }));
+            const { items } = repo.getStimulations('app', { fromTimestamp: now });
             expect(items.map(i => i.id)).toEqual(['new']);
         });
 
         test('filters by toTimestamp', () => {
             const now = Date.now();
-            repo.saveExecution(makeExecution('old', 'app', { startedAt: now - 1000 }));
-            repo.saveExecution(makeExecution('new', 'app', { startedAt: now + 1000 }));
-            const { items } = repo.getExecutions('app', { toTimestamp: now });
+            repo.saveStimulation(makeStimulation('old', 'app', { startedAt: now - 1000 }));
+            repo.saveStimulation(makeStimulation('new', 'app', { startedAt: now + 1000 }));
+            const { items } = repo.getStimulations('app', { toTimestamp: now });
             expect(items.map(i => i.id)).toEqual(['old']);
         });
 
         test('filters by hasError', () => {
-            repo.saveExecution(makeExecution('ok', 'app', { hasError: false }));
-            repo.saveExecution(makeExecution('err', 'app', { hasError: true }));
-            const { items } = repo.getExecutions('app', { hasError: true });
+            repo.saveStimulation(makeStimulation('ok', 'app', { hasError: false }));
+            repo.saveStimulation(makeStimulation('err', 'app', { hasError: true }));
+            const { items } = repo.getStimulations('app', { hasError: true });
             expect(items.map(i => i.id)).toEqual(['err']);
         });
 
         test('filters by collateralId', () => {
-            repo.saveExecution(makeExecution('e1', 'app', { collateralId: 'app:cns:n:col-a' }));
-            repo.saveExecution(makeExecution('e2', 'app', { collateralId: 'app:cns:n:col-b' }));
-            const { items } = repo.getExecutions('app', { collateralId: 'app:cns:n:col-a' });
+            repo.saveStimulation(makeStimulation('e1', 'app', { collateralId: 'app:cns:n:col-a' }));
+            repo.saveStimulation(makeStimulation('e2', 'app', { collateralId: 'app:cns:n:col-b' }));
+            const { items } = repo.getStimulations('app', { collateralId: 'app:cns:n:col-a' });
             expect(items.map(i => i.id)).toEqual(['e1']);
         });
 
         test('filters by neuronId prefix', () => {
-            repo.saveExecution(makeExecution('e1', 'app', { collateralId: 'app:cns:neuronA:col' }));
-            repo.saveExecution(makeExecution('e2', 'app', { collateralId: 'app:cns:neuronB:col' }));
-            const { items } = repo.getExecutions('app', { neuronId: 'app:cns:neuronA' });
+            repo.saveStimulation(makeStimulation('e1', 'app', { collateralId: 'app:cns:neuronA:col' }));
+            repo.saveStimulation(makeStimulation('e2', 'app', { collateralId: 'app:cns:neuronB:col' }));
+            const { items } = repo.getStimulations('app', { neuronId: 'app:cns:neuronA' });
             expect(items.map(i => i.id)).toEqual(['e1']);
         });
 
-        test('paginates executions', () => {
+        test('paginates stimulations', () => {
             const now = Date.now();
             for (let i = 0; i < 5; i++) {
-                repo.saveExecution(makeExecution(`exec-${i}`, 'app', { startedAt: now + i }));
+                repo.saveStimulation(makeStimulation(`exec-${i}`, 'app', { startedAt: now + i }));
             }
-            const { items, total } = repo.getExecutions('app', { limit: 2, offset: 1 });
+            const { items, total } = repo.getStimulations('app', { limit: 2, offset: 1 });
             expect(total).toBe(5);
             expect(items).toHaveLength(2);
         });
 
-        test('returns only executions for requested appId', () => {
-            repo.saveExecution(makeExecution('e1', 'app-1'));
-            repo.saveExecution(makeExecution('e2', 'app-2'));
-            const { items } = repo.getExecutions('app-1', {});
+        test('returns only stimulations for requested appId', () => {
+            repo.saveStimulation(makeStimulation('e1', 'app-1'));
+            repo.saveStimulation(makeStimulation('e2', 'app-2'));
+            const { items } = repo.getStimulations('app-1', {});
             expect(items.every(e => e.appId === 'app-1')).toBe(true);
         });
 
-        test('sorts executions by startedAt descending', () => {
+        test('sorts stimulations by startedAt descending', () => {
             const now = Date.now();
-            repo.saveExecution(makeExecution('early', 'app', { startedAt: now - 100 }));
-            repo.saveExecution(makeExecution('late', 'app', { startedAt: now + 100 }));
-            const { items } = repo.getExecutions('app', {});
+            repo.saveStimulation(makeStimulation('early', 'app', { startedAt: now - 100 }));
+            repo.saveStimulation(makeStimulation('late', 'app', { startedAt: now + 100 }));
+            const { items } = repo.getStimulations('app', {});
             expect(items[0].id).toBe('late');
             expect(items[1].id).toBe('early');
         });
 
         test('uses default limit and offset when not provided', () => {
             for (let i = 0; i < 5; i++) {
-                repo.saveExecution(makeExecution(`exec-${i}`, 'app'));
+                repo.saveStimulation(makeStimulation(`exec-${i}`, 'app'));
             }
-            const { items } = repo.getExecutions('app', {});
+            const { items } = repo.getStimulations('app', {});
             expect(items).toHaveLength(5);
         });
     });
@@ -213,11 +213,11 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
             expect(hops.map(h => h.index)).toEqual([0, 1, 2]);
         });
 
-        test('returns empty array for unknown executionId', () => {
+        test('returns empty array for unknown stimulationId', () => {
             expect(repo.getHops('no-such')).toEqual([]);
         });
 
-        test('keeps hops isolated per executionId', () => {
+        test('keeps hops isolated per stimulationId', () => {
             repo.saveHop(makeHop('h1', 'exec-1', 0));
             repo.saveHop(makeHop('h2', 'exec-2', 0));
             expect(repo.getHops('exec-1')).toHaveLength(1);
@@ -257,7 +257,7 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
         test('clears all data', () => {
             repo.upsertApp(makeApp('app-1'));
             repo.saveTopology(makeTopology('app-1:cns', 'app-1'));
-            repo.saveExecution(makeExecution('exec-1', 'app-1'));
+            repo.saveStimulation(makeStimulation('exec-1', 'app-1'));
             repo.saveHop(makeHop('h1', 'exec-1', 0));
             repo.addCnsToApp('app-1', 'app-1:cns');
 
@@ -265,7 +265,7 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
 
             expect(repo.listApps()).toEqual([]);
             expect(repo.getTopology()).toEqual([]);
-            expect(repo.getExecutions('app-1', {})).toEqual({ items: [], total: 0 });
+            expect(repo.getStimulations('app-1', {})).toEqual({ items: [], total: 0 });
             expect(repo.getHops('exec-1')).toEqual([]);
             expect(repo.getCnsByApp('app-1')).toEqual([]);
             expect(repo.findAppByCns('app-1:cns')).toBeUndefined();

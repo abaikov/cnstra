@@ -5,7 +5,7 @@ import type {
     CNSDTOAppBatchItem,
     CNSDTOCollateral,
     CNSDTODendrite,
-    CNSDTOExecution,
+    CNSDTOStimulation,
     CNSDTOHop,
     CNSDTONeuron,
     CNSDTOReplayStartMessage,
@@ -31,8 +31,8 @@ export type CNSDevToolsOptions = {
 type AnyNeuron = TCNSNeuron<any, any>;
 type AnyCollateral = CNSCollateral<unknown>;
 
-let executionCounter = 0;
-const newExecutionId = (appId: string) => `${appId}:exec:${++executionCounter}:${Date.now()}`;
+let stimulationCounter = 0;
+const newStimulationId = (appId: string) => `${appId}:stim:${++stimulationCounter}:${Date.now()}`;
 
 export class CNSDevTools {
     private readonly buffer: CNSDTOAppBatchItem[] = [];
@@ -48,7 +48,7 @@ export class CNSDevTools {
         const cnsId = this.options.cnsId ?? `${this.appId}:cns`;
 
         this.sendTopology(cns, registry, cnsId);
-        this.listenToExecutions(cns, registry, cnsId);
+        this.listenToStimulations(cns, registry, cnsId);
 
         if (this.transport.onReplayStart) {
             this.unregisterReplay = this.transport.onReplayStart(
@@ -101,25 +101,26 @@ export class CNSDevTools {
         void this.flush();
     }
 
-    // ─── Execution tracking ──────────────────────────────────────────────────────
+    // ─── Stimulation tracking ─────────────────────────────────────────────────────
 
-    private listenToExecutions(
+    private listenToStimulations(
         cns: ICNS<AnyNeuron>,
         registry: CNSPersistOptionsRegistry,
         cnsId: string
     ): void {
-        const executionIds = new WeakMap<object, string>();
+        // Maps a live core stimulation object → its DTO stimulation id.
+        const stimulationIds = new WeakMap<object, string>();
         const hopIndexes = new WeakMap<object, number>();
 
         cns.addResponseListener((resp: any) => {
             const stimulation = resp.stimulation;
             if (!stimulation) return;
 
-            const isFirst = !executionIds.has(stimulation);
+            const isFirst = !stimulationIds.has(stimulation);
 
             if (isFirst) {
-                const execId = newExecutionId(this.appId);
-                executionIds.set(stimulation, execId);
+                const stimId = newStimulationId(this.appId);
+                stimulationIds.set(stimulation, stimId);
                 hopIndexes.set(stimulation, 0);
 
                 const triggerCol = resp.outputSignal?.collateral as AnyCollateral | undefined;
@@ -127,8 +128,8 @@ export class CNSDevTools {
                     ? this.resolveCollateralId(triggerCol, cnsId, cns, registry)
                     : `${cnsId}:unknown`;
 
-                const execution: CNSDTOExecution = {
-                    id: execId,
+                const dtoStimulation: CNSDTOStimulation = {
+                    id: stimId,
                     cnsId,
                     appId: this.appId,
                     collateralId,
@@ -139,13 +140,13 @@ export class CNSDevTools {
                     hasError: false,
                     replayOf: null,
                 };
-                this.enqueue({ type: 'execution.started', execution });
+                this.enqueue({ type: 'stimulation.started', stimulation: dtoStimulation });
 
                 stimulation.waitUntilComplete()
                     .then(() => {
                         this.enqueue({
-                            type: 'execution.completed',
-                            executionId: execId,
+                            type: 'stimulation.completed',
+                            stimulationId: stimId,
                             completedAt: Date.now(),
                             hopCount: hopIndexes.get(stimulation) ?? 0,
                             hasError: false,
@@ -154,8 +155,8 @@ export class CNSDevTools {
                     })
                     .catch(() => {
                         this.enqueue({
-                            type: 'execution.completed',
-                            executionId: execId,
+                            type: 'stimulation.completed',
+                            stimulationId: stimId,
                             completedAt: Date.now(),
                             hopCount: hopIndexes.get(stimulation) ?? 0,
                             hasError: true,
@@ -164,7 +165,7 @@ export class CNSDevTools {
                     });
             }
 
-            const execId = executionIds.get(stimulation)!;
+            const stimId = stimulationIds.get(stimulation)!;
             const hopIndex = hopIndexes.get(stimulation) ?? 0;
             hopIndexes.set(stimulation, hopIndex + 1);
 
@@ -191,8 +192,8 @@ export class CNSDevTools {
             const neuronId = neuronName ? `${cnsId}:${neuronName}` : `${cnsId}:unknown`;
 
             const hop: CNSDTOHop = {
-                id: `${execId}:${hopIndex}`,
-                executionId: execId,
+                id: `${stimId}:${hopIndex}`,
+                stimulationId: stimId,
                 index: hopIndex,
                 neuronId,
                 inputCollateralId,
@@ -204,7 +205,7 @@ export class CNSDevTools {
                 error: resp.error ? String(resp.error) : null,
             };
 
-            this.enqueue({ type: 'execution.hop', hop });
+            this.enqueue({ type: 'stimulation.hop', hop });
             void this.flush();
         });
     }
@@ -257,13 +258,9 @@ export class CNSDevTools {
             ctx,
         });
 
-        // Tag all hops from this replay
+        // The stimulation.started for this run is emitted by listenToStimulations;
+        // the replay is correlated separately via replayId.
         const replayId = cmd.replayId;
-        const execIds = new WeakMap<object, string>();
-        const origStimRef = stimulation as unknown as object;
-
-        // The execution.started will be sent by listenToExecutions with replayOf=null
-        // We need to patch it after the fact - instead, we track via replayId separately
         if (this.options.consoleLogEnabled) {
             console.log(`[DevTools] Replay started: replayId=${replayId}`);
         }

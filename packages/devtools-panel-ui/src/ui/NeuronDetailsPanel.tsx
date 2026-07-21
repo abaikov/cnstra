@@ -8,15 +8,11 @@ import {
 import { DECAY_ICONS } from './theme-utils';
 import { JsonViewer } from './JsonViewer';
 import { db } from '../model';
-import type {
-    TNeuronId,
-    TStimulation,
-    TDendrite,
-    UINeuron,
-    TStimulationResponse,
-} from '../model';
-import { useSelectEntitiesByIndexKey, useSelectEntityByPk } from '@oimdb/react';
-import { IdUtils } from '@cnstra/devtools-dto';
+import type { TNeuronId, TDendrite, UINeuron } from '../model';
+import {
+    useSelectEntitiesByIndexKeySetBased,
+    useSelectEntityByPk,
+} from '@oimdb/react';
 
 interface NeuronDetailsPanelProps {
     neuronId: TNeuronId;
@@ -54,8 +50,17 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
 
     const currentAppId = appId || 'unknown';
 
+    // Resolve a collateral's display name from its id (protocol no longer carries
+    // collateral names on hops/dendrites).
+    const collateralName = (
+        collateralId: string | null | undefined
+    ): string | undefined =>
+        collateralId
+            ? db.collaterals.getOneByPk(collateralId)?.name
+            : undefined;
+
     // Dendrites of this neuron
-    const neuronDendritesRaw = useSelectEntitiesByIndexKey(
+    const neuronDendritesRaw = useSelectEntitiesByIndexKeySetBased(
         db.dendrites,
         db.dendrites.indexes.neuronId,
         neuronId
@@ -65,8 +70,8 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
         (d): d is NonNullable<typeof d> => d != null
     ) as TDendrite[];
 
-    // Get all responses for this app
-    const allResponsesRaw = useSelectEntitiesByIndexKey(
+    // Get all responses (hops) for this app
+    const allResponsesRaw = useSelectEntitiesByIndexKeySetBased(
         db.responses,
         db.responses.indexes.appId,
         currentAppId
@@ -83,20 +88,20 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
     );
     const neuronCollateralNames = neuronCollaterals.map(c => c.name);
 
-    // Input signals: responses where inputCollateralName matches dendrite names
-    const dendriteNames = neuronDendrites.map(d => d.name);
-    const inputSignals = allResponses.filter(
-        r =>
-            r.inputCollateralName &&
-            dendriteNames.includes(r.inputCollateralName)
-    );
+    // Input signals: hops whose input collateral matches a dendrite's collateral
+    const dendriteNames = neuronDendrites
+        .map(d => collateralName(d.collateralId))
+        .filter((n): n is string => Boolean(n));
+    const inputSignals = allResponses.filter(r => {
+        const name = collateralName(r.inputCollateralId);
+        return name != null && dendriteNames.includes(name);
+    });
 
-    // Output signals: responses where outputCollateralName matches neuron's collaterals
-    const outputSignals = allResponses.filter(
-        r =>
-            r.outputCollateralName &&
-            neuronCollateralNames.includes(r.outputCollateralName)
-    );
+    // Output signals: hops whose output collateral matches one of the neuron's
+    const outputSignals = allResponses.filter(r => {
+        const name = collateralName(r.outputCollateralId);
+        return name != null && neuronCollateralNames.includes(name);
+    });
 
     // Debug logging for E2E
     try {
@@ -287,13 +292,18 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                         }}
                     >
                         {neuronDendrites.map(dendrite => {
-                            // Get all responses for this dendrite (inputCollateralName matches dendrite name)
+                            const dendriteName = collateralName(
+                                dendrite.collateralId
+                            );
+                            // Get all hops for this dendrite (input collateral matches)
                             const dendriteResponses = allResponses.filter(
-                                r => r.inputCollateralName === dendrite.name
+                                r =>
+                                    collateralName(r.inputCollateralId) ===
+                                    dendriteName
                             );
 
                             const recentResponses = dendriteResponses
-                                .sort((a, b) => b.timestamp - a.timestamp)
+                                .sort((a, b) => b.startedAt - a.startedAt)
                                 .slice(0, 15);
 
                             return (
@@ -313,7 +323,8 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                                             fontWeight: 'bold',
                                         }}
                                     >
-                                        {DECAY_ICONS.dna} {dendrite.name}
+                                        {DECAY_ICONS.dna}{' '}
+                                        {dendriteName ?? dendrite.collateralId}
                                     </div>
                                     <div
                                         style={{
@@ -336,7 +347,7 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                                         >
                                             {recentResponses.map(resp => (
                                                 <div
-                                                    key={resp.responseId}
+                                                    key={resp.id}
                                                     style={{
                                                         fontSize:
                                                             'var(--font-size-xs)',
@@ -358,8 +369,9 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                                                                 color: 'var(--text-accent)',
                                                             }}
                                                         >
-                                                            {resp.inputCollateralName ||
-                                                                '?'}
+                                                            {collateralName(
+                                                                resp.inputCollateralId
+                                                            ) || '?'}
                                                         </span>
                                                         <span>→</span>
                                                         <span
@@ -367,8 +379,9 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                                                                 color: 'var(--decay-orange)',
                                                             }}
                                                         >
-                                                            {resp.outputCollateralName ||
-                                                                'no output'}
+                                                            {collateralName(
+                                                                resp.outputCollateralId
+                                                            ) || 'no output'}
                                                         </span>
                                                     </div>
                                                     <div
@@ -379,7 +392,7 @@ export const NeuronDetailsPanel: React.FC<NeuronDetailsPanelProps> = ({
                                                         }}
                                                     >
                                                         {formatTimestamp(
-                                                            resp.timestamp
+                                                            resp.startedAt
                                                         )}
                                                     </div>
                                                     {resp.inputPayload ||

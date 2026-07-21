@@ -1,23 +1,21 @@
 import { CNSCollateral } from '../CNSCollateral';
 import { TCNSAxon } from './TCNSAxon';
-import { TCNSLocalContextValueStore } from './TCNSLocalContextValueStore';
 import { TNCNeuronResponseReturn } from './TCNSNeuronResponseReturn';
-import { ICNS } from '../interfaces/ICNS';
+import { TCNSHandlerContext } from './TCNSHandlerContext';
 
 export type TCNSDendrite<
     TContextValue,
     TSenderCollateral extends CNSCollateral<unknown>,
     // We need axon type to be able to redirect to different collaterals
-    TAxonType extends TCNSAxon
+    TAxonType extends TCNSAxon,
+    // Extra ctx fields poured in by factory layers (e.g. withGlobal). Defaults to
+    // `unknown` → the base ctx bag, so plain dendrites carry no extra surface.
+    TExt = unknown
 > = {
     collateral: TSenderCollateral;
     response: (
         payload: TSenderCollateral extends CNSCollateral<infer P> ? P : never,
         axon: TAxonType,
-        ctx: TCNSLocalContextValueStore<TContextValue> & {
-            abortSignal?: AbortSignal;
-            cns?: ICNS<any, any>;
-            stimulation?: any;
-        }
+        ctx: TCNSHandlerContext<TContextValue, TExt>
     ) => TNCNeuronResponseReturn<TAxonType>;
 };

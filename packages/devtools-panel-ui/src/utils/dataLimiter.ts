@@ -75,17 +75,17 @@ export class DataLimiter {
         // Sort by creation time (newest first)
         const sortedStimulations = allStimulations
             .slice()
-            .sort((a, b) => b.timestamp - a.timestamp);
+            .sort((a, b) => b.startedAt - a.startedAt);
 
         // Remove old stimulations beyond time limit
-        const recentStimulations = sortedStimulations.filter(s => s.timestamp > cutoffTime);
+        const recentStimulations = sortedStimulations.filter(s => s.startedAt > cutoffTime);
 
         // Limit by count
         const limitedStimulations = recentStimulations.slice(0, DEVTOOLS_LIMITS.MAX_STIMULATIONS);
 
         // Find stimulations to remove
         const stimulationsToRemove = allStimulations.filter(s =>
-            !limitedStimulations.some(ls => ls.stimulationId === s.stimulationId)
+            !limitedStimulations.some(ls => ls.id === s.id)
         );
 
         // Remove old stimulations
@@ -108,17 +108,17 @@ export class DataLimiter {
         // Sort by timestamp (newest first)
         const sortedResponses = allResponses
             .slice()
-            .sort((a, b) => b.timestamp - a.timestamp);
+            .sort((a, b) => b.startedAt - a.startedAt);
 
         // Remove old responses beyond time limit
-        const recentResponses = sortedResponses.filter(r => r.timestamp > cutoffTime);
+        const recentResponses = sortedResponses.filter(r => r.startedAt > cutoffTime);
 
         // Limit by count
         const limitedResponses = recentResponses.slice(0, DEVTOOLS_LIMITS.MAX_RESPONSES);
 
         // Find responses to remove
         const responsesToRemove = allResponses.filter(r =>
-            !limitedResponses.some(lr => lr.responseId === r.responseId)
+            !limitedResponses.some(lr => lr.id === r.id)
         );
 
         // Remove old responses
@@ -140,11 +140,11 @@ export class DataLimiter {
 
         oldApps.forEach(app => {
             // Remove all data for this app
-            this.cleanupAppData(app.appId);
+            this.cleanupAppData(app.id);
 
             // Remove the app itself
             // Note: OIMDB collections don't have direct delete methods - apps are marked for cleanup
-            console.log(`App ${app.appId} marked for cleanup`);
+            console.log(`App ${app.id} marked for cleanup`);
         });
 
         if (oldApps.length > 0) {

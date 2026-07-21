@@ -1021,7 +1021,7 @@ if (DEVTOOLS_CLIENT_ENABLED) {
             totalOrders: orders.size,
         }),
     });
-    devtools.registerCNS(cns, 'root');
+    devtools.registerCNS(cns, registry);
 
     console.log('🚀 E-commerce CNS app started with DevTools CLIENT enabled');
     console.log(`   📡 Connecting to DevTools server: ${wsUrl}`);

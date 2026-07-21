@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { db } from '../model';
-import { useSelectEntitiesByIndexKey } from '@oimdb/react';
+import { useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
 
 interface Props {
     selectedAppId: string | null;
@@ -47,25 +47,25 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
     const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
 
     // Get all data for the selected app
-    const allStimulationsRaw = useSelectEntitiesByIndexKey(
+    const allStimulationsRaw = useSelectEntitiesByIndexKeySetBased(
         db.stimulations,
         db.stimulations.indexes.appId,
         selectedAppId || 'dummy-id'
     );
 
-    const allResponsesRaw = useSelectEntitiesByIndexKey(
+    const allResponsesRaw = useSelectEntitiesByIndexKeySetBased(
         db.responses,
         db.responses.indexes.appId,
         selectedAppId || 'dummy-id'
     );
 
-    const allNeuronsRaw = useSelectEntitiesByIndexKey(
+    const allNeuronsRaw = useSelectEntitiesByIndexKeySetBased(
         db.neurons,
         db.neurons.indexes.appId,
         selectedAppId || 'dummy-id'
     );
 
-    const allDendritesRaw = useSelectEntitiesByIndexKey(
+    const allDendritesRaw = useSelectEntitiesByIndexKeySetBased(
         db.dendrites,
         db.dendrites.indexes.appId,
         selectedAppId || 'dummy-id'
@@ -107,13 +107,13 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
             timeRange === 'all'
                 ? allStimulations
                 : allStimulations.filter(
-                      s => s.timestamp > timeRanges[timeRange]
+                      s => s.startedAt > timeRanges[timeRange]
                   );
 
         const filteredResponses =
             timeRange === 'all'
                 ? allResponses
-                : allResponses.filter(r => r.timestamp > timeRanges[timeRange]);
+                : allResponses.filter(r => r.startedAt > timeRanges[timeRange]);
 
         // Basic metrics
         const totalStimulations = filteredStimulations.length;
@@ -165,28 +165,25 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
             }
         >();
 
-        filteredStimulations.forEach(stim => {
-            if (!neuronStats.has(stim.neuronId)) {
-                neuronStats.set(stim.neuronId, {
+        // Stimulations no longer carry neuronId in the new protocol; per-neuron
+        // activity is derived from hops (db.responses / CNSDTOHop), which do.
+        filteredResponses.forEach(resp => {
+            if (!neuronStats.has(resp.neuronId)) {
+                neuronStats.set(resp.neuronId, {
                     stimulationCount: 0,
                     responseTimes: [],
                     errorCount: 0,
                 });
             }
-            neuronStats.get(stim.neuronId)!.stimulationCount++;
+            const stats = neuronStats.get(resp.neuronId)!;
+            stats.stimulationCount++;
+            if (resp.duration) {
+                stats.responseTimes.push(resp.duration);
+            }
+            if (resp.error) {
+                stats.errorCount++;
+            }
         });
-
-        // filteredResponses.forEach(resp => {
-        //     if (neuronStats.has(resp?.neuronId || '')) {
-        //         const stats = neuronStats.get(resp?.neuronId || '')!;
-        //         if (resp.duration) {
-        //             stats.responseTimes.push(resp.duration);
-        //         }
-        //         if (resp.error) {
-        //             stats.errorCount++;
-        //         }
-        //     }
-        // });
 
         const topPerformingNeurons = Array.from(neuronStats.entries())
             .map(([neuronId, stats]) => ({
@@ -204,19 +201,29 @@ export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
             .sort((a, b) => b.stimulationCount - a.stimulationCount)
             .slice(0, 5);
 
-        // Network complexity analysis (hops not available in StimulationResponse DTO)
-        const maxHops = 0;
-        const avgHops = 0;
+        // Network complexity analysis — hop counts now come from
+        // CNSDTOStimulation.hopCount.
+        const stimHopCounts = filteredStimulations.map(s => s.hopCount);
+        const maxHops =
+            stimHopCounts.length > 0 ? Math.max(...stimHopCounts) : 0;
+        const avgHops =
+            stimHopCounts.length > 0
+                ? stimHopCounts.reduce((sum, h) => sum + h, 0) /
+                  stimHopCounts.length
+                : 0;
 
         const hopDistribution = {} as Record<number, number>;
+        stimHopCounts.forEach(h => {
+            hopDistribution[h] = (hopDistribution[h] || 0) + 1;
+        });
 
         // Time range metrics
         const getMetricsForTimeRange = (rangeMs: number) => {
             const cutoff = now - rangeMs;
             const stimsInRange = allStimulations.filter(
-                s => s.timestamp > cutoff
+                s => s.startedAt > cutoff
             );
-            const respsInRange = allResponses.filter(r => r.timestamp > cutoff);
+            const respsInRange = allResponses.filter(r => r.startedAt > cutoff);
             const errorsInRange = respsInRange.filter(r => r.error);
 
             return {

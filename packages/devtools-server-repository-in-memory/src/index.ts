@@ -1,4 +1,4 @@
-import { CNSDTOApp, CNSDTOExecution, CNSDTOExecutionFilter, CNSDTOHop } from "@cnstra/devtools-dto";
+import { CNSDTOApp, CNSDTOStimulation, CNSDTOStimulationFilter, CNSDTOHop } from "@cnstra/devtools-dto";
 import type { ICNSDevToolsServerRepository, CNSDTOTopologySnapshot } from '@cnstra/devtools-server';
 
 export class CNSDevToolsServerRepositoryInMemory
@@ -6,8 +6,8 @@ export class CNSDevToolsServerRepositoryInMemory
 {
     private apps = new Map<string, CNSDTOApp>();
     private topologies = new Map<string, CNSDTOTopologySnapshot>(); // cnsId → snapshot
-    private executions = new Map<string, CNSDTOExecution>();        // executionId → execution
-    private hops = new Map<string, CNSDTOHop[]>();                  // executionId → hops
+    private stimulations = new Map<string, CNSDTOStimulation>();        // stimulationId → stimulation
+    private hops = new Map<string, CNSDTOHop[]>();                  // stimulationId → hops
     private cnsToApp = new Map<string, string>();             // cnsId → appId
     private appToCns = new Map<string, Set<string>>();        // appId → Set<cnsId>
 
@@ -35,32 +35,32 @@ export class CNSDevToolsServerRepositoryInMemory
         return [...this.topologies.values()];
     }
 
-    // ─── Executions ───────────────────────────────────────────────────────────
+    // ─── Stimulations ───────────────────────────────────────────────────────────
 
-    saveExecution(execution: CNSDTOExecution): void {
-        this.executions.set(execution.id, execution);
+    saveStimulation(stimulation: CNSDTOStimulation): void {
+        this.stimulations.set(stimulation.id, stimulation);
     }
 
-    completeExecution(
-        executionId: string,
+    completeStimulation(
+        stimulationId: string,
         completedAt: number,
         hopCount: number,
         hasError: boolean
     ): void {
-        const execution = this.executions.get(executionId);
-        if (execution) {
-            this.executions.set(executionId, { ...execution, completedAt, hopCount, hasError });
+        const stimulation = this.stimulations.get(stimulationId);
+        if (stimulation) {
+            this.stimulations.set(stimulationId, { ...stimulation, completedAt, hopCount, hasError });
         }
     }
 
-    getExecutions(
+    getStimulations(
         appId: string,
-        filter: CNSDTOExecutionFilter
-    ): { items: CNSDTOExecution[]; total: number } {
+        filter: CNSDTOStimulationFilter
+    ): { items: CNSDTOStimulation[]; total: number } {
         const limit = filter.limit ?? 100;
         const offset = filter.offset ?? 0;
 
-        let all = [...this.executions.values()].filter(e => e.appId === appId);
+        let all = [...this.stimulations.values()].filter(e => e.appId === appId);
 
         if (filter.fromTimestamp !== undefined)
             all = all.filter(e => e.startedAt >= filter.fromTimestamp!);
@@ -83,12 +83,12 @@ export class CNSDevToolsServerRepositoryInMemory
     // ─── Hops ─────────────────────────────────────────────────────────────────
 
     saveHop(hop: CNSDTOHop): void {
-        if (!this.hops.has(hop.executionId)) this.hops.set(hop.executionId, []);
-        this.hops.get(hop.executionId)!.push(hop);
+        if (!this.hops.has(hop.stimulationId)) this.hops.set(hop.stimulationId, []);
+        this.hops.get(hop.stimulationId)!.push(hop);
     }
 
-    getHops(executionId: string): CNSDTOHop[] {
-        return (this.hops.get(executionId) ?? []).sort((a, b) => a.index - b.index);
+    getHops(stimulationId: string): CNSDTOHop[] {
+        return (this.hops.get(stimulationId) ?? []).sort((a, b) => a.index - b.index);
     }
 
     // ─── CNS mapping ──────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ export class CNSDevToolsServerRepositoryInMemory
     clear(): void {
         this.apps.clear();
         this.topologies.clear();
-        this.executions.clear();
+        this.stimulations.clear();
         this.hops.clear();
         this.cnsToApp.clear();
         this.appToCns.clear();

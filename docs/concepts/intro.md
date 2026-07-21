@@ -24,7 +24,7 @@ Analogy: biology ↔ application
 - Queues (conduction control) ↔ ordered/batched/parallel execution with backpressure
 
 Key properties
-- Deterministic: same input + same context → same path; hop‑bounded; no hidden listeners
+- Deterministic routing: signal routing over the registered graph is reproducible for a given input + context (execution is reproducible when your dendrite handlers are deterministic); hop‑bounded; no hidden listeners
 - SRP by construction: actors are visible; responsibilities are local and explicit
 - Ownership: a neuron emits only its axon’s collaterals; others bind via dendrites
 

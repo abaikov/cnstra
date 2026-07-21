@@ -26,13 +26,13 @@ test.describe('CNStra DevTools Panel E2E', () => {
             page.getByText(/Total (responses|stimulations):/)
         ).toBeVisible({ timeout: 60000 });
 
-        // If there is data, ensure the first item appears eventually
-        // The demo app produces activity every 8-12s, so we wait generously
-        const anyOf = page
-            .locator('text=Showing stimulations')
-            .or(page.locator('text=id: '))
-            .or(page.locator('text=No stimulations yet'))
-            .first();
-        await expect(anyOf).toBeVisible({ timeout: 60000 });
+        // The demo emits activity every few seconds. Accept either real items
+        // (a non-zero total) or the empty-state placeholder.
+        await expect(
+            page
+                .getByText(/Total (responses|stimulations): [1-9]/)
+                .or(page.getByText('No Activity Detected'))
+                .first()
+        ).toBeVisible({ timeout: 60000 });
     });
 });

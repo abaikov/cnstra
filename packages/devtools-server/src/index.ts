@@ -2,8 +2,8 @@ import {
     CNSDTOApp,
     CNSDTOAppBatchMessageSchema,
     CNSDTOClientMessageSchema,
-    CNSDTOExecution,
-    CNSDTOExecutionFilter,
+    CNSDTOStimulation,
+    CNSDTOStimulationFilter,
     CNSDTOHop,
     CNSDTOTopologyMessage,
 } from '@cnstra/devtools-dto';
@@ -22,22 +22,22 @@ export interface ICNSDevToolsServerRepository {
     saveTopology(snapshot: CNSDTOTopologySnapshot): void | Promise<void>;
     getTopology(cnsId?: string): CNSDTOTopologySnapshot[] | Promise<CNSDTOTopologySnapshot[]>;
 
-    // Executions
-    saveExecution(execution: CNSDTOExecution): void | Promise<void>;
-    completeExecution(
-        executionId: string,
+    // Stimulations
+    saveStimulation(stimulation: CNSDTOStimulation): void | Promise<void>;
+    completeStimulation(
+        stimulationId: string,
         completedAt: number,
         hopCount: number,
         hasError: boolean
     ): void | Promise<void>;
-    getExecutions(
+    getStimulations(
         appId: string,
-        filter: CNSDTOExecutionFilter
-    ): { items: CNSDTOExecution[]; total: number } | Promise<{ items: CNSDTOExecution[]; total: number }>;
+        filter: CNSDTOStimulationFilter
+    ): { items: CNSDTOStimulation[]; total: number } | Promise<{ items: CNSDTOStimulation[]; total: number }>;
 
     // Hops
     saveHop(hop: CNSDTOHop): void | Promise<void>;
-    getHops(executionId: string): CNSDTOHop[] | Promise<CNSDTOHop[]>;
+    getHops(stimulationId: string): CNSDTOHop[] | Promise<CNSDTOHop[]>;
 
     // CNS ↔ App mapping
     addCnsToApp(appId: string, cnsId: string): void | Promise<void>;
@@ -79,7 +79,7 @@ export class CNSDevToolsServer {
         if (!data || typeof data !== 'object' || !('type' in data)) return;
         const type = (data as any).type as string;
 
-        // App batch (topology + execution events)
+        // App batch (topology + stimulation events)
         if (type === 'batch') {
             const result = CNSDTOAppBatchMessageSchema.safeParse(data);
             if (!result.success) return;
@@ -104,8 +104,8 @@ export class CNSDevToolsServer {
             case 'topology.query':
                 await this.handleTopologyQuery(ws, msg.requestId, msg.cnsId, msg.appId);
                 break;
-            case 'executions.query':
-                await this.handleExecutionsQuery(ws, msg);
+            case 'stimulations.query':
+                await this.handleStimulationsQuery(ws, msg);
                 break;
             case 'hops.query':
                 await this.handleHopsQuery(ws, msg);
@@ -142,14 +142,14 @@ export class CNSDevToolsServer {
             case 'topology':
                 await this.handleTopology(ws, item);
                 break;
-            case 'execution.started':
-                await this.handleExecutionStarted(ws, item.execution);
+            case 'stimulation.started':
+                await this.handleStimulationStarted(ws, item.stimulation);
                 break;
-            case 'execution.hop':
-                await this.handleExecutionHop(item.hop);
+            case 'stimulation.hop':
+                await this.handleStimulationHop(item.hop);
                 break;
-            case 'execution.completed':
-                await this.handleExecutionCompleted(item);
+            case 'stimulation.completed':
+                await this.handleStimulationCompleted(item);
                 break;
         }
     }
@@ -187,7 +187,7 @@ export class CNSDevToolsServer {
         this.broadcastRaw(JSON.stringify(topologyBroadcast));
     }
 
-    private async handleExecutionStarted(ws: WebSocket, execution: CNSDTOExecution): Promise<void> {
+    private async handleStimulationStarted(ws: WebSocket, stimulation: CNSDTOStimulation): Promise<void> {
         // Update lastSeenAt for the app
         const appId = this.appSockets.get(ws);
         if (appId) {
@@ -196,25 +196,25 @@ export class CNSDevToolsServer {
             if (app) await this.repository.upsertApp({ ...app, lastSeenAt: Date.now() });
         }
 
-        await this.repository.saveExecution(execution);
-        this.broadcast({ type: 'execution.started', execution });
+        await this.repository.saveStimulation(stimulation);
+        this.broadcast({ type: 'stimulation.started', stimulation });
     }
 
-    private async handleExecutionHop(hop: CNSDTOHop): Promise<void> {
+    private async handleStimulationHop(hop: CNSDTOHop): Promise<void> {
         await this.repository.saveHop(hop);
-        this.broadcast({ type: 'execution.hop', hop });
+        this.broadcast({ type: 'stimulation.hop', hop });
     }
 
-    private async handleExecutionCompleted(item: any): Promise<void> {
-        await this.repository.completeExecution(
-            item.executionId,
+    private async handleStimulationCompleted(item: any): Promise<void> {
+        await this.repository.completeStimulation(
+            item.stimulationId,
             item.completedAt,
             item.hopCount,
             item.hasError
         );
         this.broadcast({
-            type: 'execution.completed',
-            executionId: item.executionId,
+            type: 'stimulation.completed',
+            stimulationId: item.stimulationId,
             completedAt: item.completedAt,
             hopCount: item.hopCount,
             hasError: item.hasError,
@@ -249,17 +249,17 @@ export class CNSDevToolsServer {
         this.send(ws, { type: 'topology.result', requestId, snapshots });
     }
 
-    private async handleExecutionsQuery(ws: WebSocket, msg: any): Promise<void> {
+    private async handleStimulationsQuery(ws: WebSocket, msg: any): Promise<void> {
         const appId = msg.appId ?? (msg.cnsId ? await this.repository.findAppByCns(msg.cnsId) : undefined);
 
         if (!appId) {
-            this.send(ws, { type: 'executions.result', requestId: msg.requestId, items: [], total: 0, offset: 0 });
+            this.send(ws, { type: 'stimulations.result', requestId: msg.requestId, items: [], total: 0, offset: 0 });
             return;
         }
 
-        const { items, total } = await this.repository.getExecutions(appId, msg.filter ?? {});
+        const { items, total } = await this.repository.getStimulations(appId, msg.filter ?? {});
         this.send(ws, {
-            type: 'executions.result',
+            type: 'stimulations.result',
             requestId: msg.requestId,
             items,
             total,
@@ -268,7 +268,7 @@ export class CNSDevToolsServer {
     }
 
     private async handleHopsQuery(ws: WebSocket, msg: any): Promise<void> {
-        const items = await this.repository.getHops(msg.executionId);
+        const items = await this.repository.getHops(msg.stimulationId);
         this.send(ws, { type: 'hops.result', requestId: msg.requestId, items });
     }
 
@@ -281,8 +281,8 @@ export class CNSDevToolsServer {
             return;
         }
 
-        const newExecutionId = `${msg.executionId}-replay-${Date.now()}`;
-        this.send(ws, { type: 'replay.accepted', replayId: msg.replayId, newExecutionId });
+        const newStimulationId = `${msg.stimulationId}-replay-${Date.now()}`;
+        this.send(ws, { type: 'replay.accepted', replayId: msg.replayId, newStimulationId });
 
         const payload = JSON.stringify(msg);
         for (const appWs of appSockets) {

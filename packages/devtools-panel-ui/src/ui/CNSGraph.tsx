@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape, {
     Core,
     EdgeDefinition,
@@ -7,6 +7,9 @@ import cytoscape, {
 } from 'cytoscape';
 import dagre from 'cytoscape-dagre';
 import coseBilkent from 'cytoscape-cose-bilkent';
+import { EMPTY_FRONTIER, FrontierData, frontierSeverity } from './frontier';
+
+export type { FrontierData } from './frontier';
 
 cytoscape.use(dagre);
 cytoscape.use(coseBilkent);
@@ -44,6 +47,7 @@ interface CNSGraphProps {
     neurons: NeuronData[];
     connections: ConnectionData[];
     onNeuronClick: (neuron: NeuronData) => void;
+    frontier?: FrontierData;
     className?: string;
 }
 
@@ -51,10 +55,13 @@ export const CNSGraph: React.FC<CNSGraphProps> = ({
     neurons,
     connections,
     onNeuronClick,
+    frontier,
     className = '',
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const cyRef = useRef<Core | null>(null);
+    const frontierRef = useRef<FrontierData>(EMPTY_FRONTIER);
+    const frontierAppliedRef = useRef<Set<string>>(new Set());
     const [layoutName, setLayoutName] = useState<'cose-bilkent' | 'dagre'>(
         'cose-bilkent'
     );
@@ -210,6 +217,65 @@ export const CNSGraph: React.FC<CNSGraphProps> = ({
                         'border-color': '#a83c3c',
                         'line-color': '#a83c3c',
                         'target-arrow-color': '#a83c3c',
+                        opacity: 1,
+                    },
+                },
+                // ─── Live frontier: neurons/edges about to run (predicted from
+                //     the last hop's output collateral), aging into "stuck". ───
+                // Severity 1 — fresh (about to run)
+                {
+                    selector: 'node[frontier = 1]',
+                    style: {
+                        'border-color': '#00e5ff',
+                        'border-width': '6',
+                        'overlay-color': '#00e5ff',
+                        'overlay-opacity': '0.12',
+                    },
+                },
+                {
+                    selector: 'edge[frontier = 1]',
+                    style: {
+                        'line-color': '#00e5ff',
+                        'target-arrow-color': '#00e5ff',
+                        width: '6',
+                        opacity: 1,
+                    },
+                },
+                // Severity 2 — waiting a beat
+                {
+                    selector: 'node[frontier = 2]',
+                    style: {
+                        'border-color': '#ffb84d',
+                        'border-width': '7',
+                        'overlay-color': '#ffb84d',
+                        'overlay-opacity': '0.16',
+                    },
+                },
+                {
+                    selector: 'edge[frontier = 2]',
+                    style: {
+                        'line-color': '#ffb84d',
+                        'target-arrow-color': '#ffb84d',
+                        width: '6',
+                        opacity: 1,
+                    },
+                },
+                // Severity 3 — stuck (hop hasn't arrived for a while)
+                {
+                    selector: 'node[frontier = 3]',
+                    style: {
+                        'border-color': '#ff3b30',
+                        'border-width': '9',
+                        'overlay-color': '#ff3b30',
+                        'overlay-opacity': '0.24',
+                    },
+                },
+                {
+                    selector: 'edge[frontier = 3]',
+                    style: {
+                        'line-color': '#ff3b30',
+                        'target-arrow-color': '#ff3b30',
+                        width: '8',
                         opacity: 1,
                     },
                 },
@@ -475,6 +541,50 @@ export const CNSGraph: React.FC<CNSGraphProps> = ({
             lastLayoutNameRef.current = layoutName;
         }
     }, [neurons, connections, layoutName]);
+
+    // Apply the live frontier onto the graph: map each element's frontier age to
+    // a severity bucket (1 fresh → 3 stuck) and write it as `frontier` data, which
+    // the data-driven styles above pick up. Reads only refs, so it's stable and
+    // safe to call from an interval (aging) and on prop change.
+    const applyFrontier = useCallback(() => {
+        const cy = cyRef.current;
+        if (!cy) return;
+        const f = frontierRef.current;
+        const now = Date.now();
+        const nextIds = new Set<string>();
+        for (const nid in f.neurons) {
+            const el = cy.getElementById(nid);
+            if (el.empty()) continue;
+            el.data('frontier', frontierSeverity(now - f.neurons[nid]));
+            nextIds.add(nid);
+        }
+        for (const eid in f.edges) {
+            const el = cy.getElementById(eid);
+            if (el.empty()) continue;
+            el.data('frontier', frontierSeverity(now - f.edges[eid]));
+            nextIds.add(eid);
+        }
+        // Clear elements that left the frontier.
+        for (const id of frontierAppliedRef.current) {
+            if (!nextIds.has(id)) {
+                const el = cy.getElementById(id);
+                if (!el.empty()) el.data('frontier', 0);
+            }
+        }
+        frontierAppliedRef.current = nextIds;
+    }, []);
+
+    // New frontier snapshot → apply immediately.
+    useEffect(() => {
+        frontierRef.current = frontier ?? EMPTY_FRONTIER;
+        applyFrontier();
+    }, [frontier, applyFrontier]);
+
+    // Age the frontier on a light timer so "about to run" drifts into "stuck".
+    useEffect(() => {
+        const id = window.setInterval(applyFrontier, 600);
+        return () => window.clearInterval(id);
+    }, [applyFrontier]);
 
     const getLayoutOptions = (name: 'cose-bilkent' | 'dagre'): any => {
         if (name === 'dagre') {

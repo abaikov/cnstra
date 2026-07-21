@@ -1,43 +1,28 @@
 import { neuron } from '@cnstra/core';
-import { appModelAxon } from '../../controller-layer/AppModelAxon';
 import { db, dbEventQueue } from '../../../model';
 
-export const uiStateNeuron = neuron(appModelAxon).bind(
-    appModelAxon,
-    {
-        devtoolsInit: () => {},
-        appsActive: () => {},
-        appAdded: () => {},
-        appDisconnected: () => {},
-        selectAppClicked: () => {},
-        stimulationBatch: () => {},
-        devtoolsResponseBatch: () => {},
-    }
-);
+/**
+ * Holds no dendrites — it only exists so the collapsible-block UI state lives in
+ * the same data layer. State is driven imperatively via the helpers below.
+ */
+export const uiStateNeuron = neuron({});
 
-// Helper functions to manage response UI state
+// Helpers to manage per-hop collapsible UI state.
 export const responseUIStateHelpers = {
     getExpanded: (responseId: string): boolean => {
-        const state = db.responseUIState.collection.getOneByPk(responseId);
+        const state = db.responseUIState.getOneByPk(responseId);
         return state?.isExpanded ?? false;
     },
 
     setExpanded: (responseId: string, isExpanded: boolean): void => {
-        db.responseUIState.collection.upsertOne({
-            responseId,
-            isExpanded,
-        });
+        db.responseUIState.upsertOne({ responseId, isExpanded });
         dbEventQueue.flush();
     },
 
     toggleExpanded: (responseId: string): boolean => {
-        const currentState =
-            db.responseUIState.collection.getOneByPk(responseId);
-        const newExpanded = !(currentState?.isExpanded ?? false);
-        db.responseUIState.collection.upsertOne({
-            responseId,
-            isExpanded: newExpanded,
-        });
+        const current = db.responseUIState.getOneByPk(responseId);
+        const newExpanded = !(current?.isExpanded ?? false);
+        db.responseUIState.upsertOne({ responseId, isExpanded: newExpanded });
         dbEventQueue.flush();
         return newExpanded;
     },

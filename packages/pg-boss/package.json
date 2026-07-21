@@ -1,0 +1,51 @@
+{
+  "name": "@cnstra/pg-boss",
+  "version": "0.1.0",
+  "description": "pg-boss (Postgres) integration for CNStra: run stimulations as jobs and stream per-hop progress",
+  "keywords": [
+    "cnstra",
+    "pg-boss",
+    "postgres",
+    "queue",
+    "workflow",
+    "orchestration"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test:types": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@cnstra/core": "^2.4.0",
+    "pg-boss": ">=9"
+  },
+  "peerDependenciesMeta": {
+    "pg-boss": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@cnstra/core": "^2.4.0",
+    "tsup": "8.5.1",
+    "typescript": "5.7.2"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,8 +1,9 @@
 import React, { useMemo, useRef, useCallback } from 'react';
-import { db } from '../model';
-import { useSelectEntitiesByIndexKey } from '@oimdb/react';
+import { db, UIHop, TStimulation } from '../model';
+import { useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
 import { JsonViewer } from './JsonViewer';
 import { ResponseDataViewer } from './ResponseDataViewer';
+import type { CNSDTOReplayStartMessage } from '@cnstra/devtools-dto';
 
 type Props = {
     appId: string;
@@ -10,15 +11,34 @@ type Props = {
     cnsId?: string | null;
 };
 
+// An item in the combined list is either a hop (formerly "response") or a
+// stimulation, depending on what data is available for the app.
+type ListItem = UIHop | TStimulation;
+
+const isHop = (item: ListItem): item is UIHop =>
+    'inputCollateralId' in item;
+
+// Resolve a collateral's display name from its id via the collaterals store.
+const resolveCollateralName = (
+    collateralId?: string | null
+): string | undefined =>
+    collateralId ? db.collaterals.getOneByPk(collateralId)?.name : undefined;
+
+// Resolve the originating neuron id for a collateral.
+const resolveCollateralNeuron = (
+    collateralId?: string | null
+): string | undefined =>
+    collateralId ? db.collaterals.getOneByPk(collateralId)?.neuronId : undefined;
+
 // Component for virtual list item
 interface ResponseListItemProps {
     index: number;
     style: React.CSSProperties;
     data: {
-        list: any[];
+        list: ListItem[];
         hasResponses: boolean;
-        stimulationMap: Map<string, any>;
-        traceByStimulation: Map<string, any[]>;
+        stimulationMap: Map<string, TStimulation>;
+        traceByStimulation: Map<string, UIHop[]>;
         wsRef?: React.MutableRefObject<WebSocket | null>;
         handleReplay: (
             stimulationId: string,
@@ -42,9 +62,17 @@ const ResponseListItem: React.FC<ResponseListItemProps> = ({
         handleReplay,
     } = data;
     const item = list[index];
-    const isResponse = hasResponses && 'responseId' in item;
-    const isStimulation = !isResponse && 'stimulationId' in item;
-    const itemId = isResponse ? item.responseId : item.stimulationId;
+    const isResponse = hasResponses && isHop(item);
+    const isStimulation = !isResponse && !isHop(item);
+    const itemId = item.id;
+    // A hop belongs to a replay if its parent stimulation was a replay; a
+    // stimulation is a replay if it has `replayOf`.
+    const parentStim = isHop(item)
+        ? stimulationMap.get(item.stimulationId)
+        : (item as TStimulation);
+    const isReplay = !!parentStim?.replayOf;
+    const itemError = isHop(item) ? item.error : null;
+    const itemHasError = !isHop(item) ? item.hasError : !!itemError;
 
     return (
         <div
@@ -129,9 +157,9 @@ const ResponseListItem: React.FC<ResponseListItemProps> = ({
                                 color: 'var(--text-muted)',
                             }}
                         >
-                            {new Date(item.timestamp).toLocaleTimeString()}
+                            {new Date(item.startedAt).toLocaleTimeString()}
                         </span>
-                        {(item as any).error && (
+                        {itemHasError && (
                             <span
                                 style={{
                                     color: 'var(--text-error)',
@@ -141,9 +169,8 @@ const ResponseListItem: React.FC<ResponseListItemProps> = ({
                                 ⚠️ Error
                             </span>
                         )}
-                        {/* Show replay indicator if stimulationId contains "-replay-" */}
-                        {typeof item.stimulationId === 'string' &&
-                            item.stimulationId.includes('-replay-') && (
+                        {/* Show replay indicator if this is a replay */}
+                        {isReplay && (
                                 <span
                                     style={{
                                         color: 'var(--text-muted)',
@@ -162,12 +189,12 @@ const ResponseListItem: React.FC<ResponseListItemProps> = ({
                 <div
                     style={{
                         fontSize: 'var(--font-size-xs)',
-                        color: (item as any).error
+                        color: itemHasError
                             ? 'var(--text-error)'
                             : 'var(--text-primary)',
                     }}
                 >
-                    {isResponse
+                    {isResponse && isHop(item)
                         ? renderResponse(
                               item,
                               stimulationMap,
@@ -175,7 +202,7 @@ const ResponseListItem: React.FC<ResponseListItemProps> = ({
                               wsRef,
                               handleReplay
                           )
-                        : isStimulation
+                        : isStimulation && !isHop(item)
                         ? renderStimulation(item, wsRef, handleReplay)
                         : 'Unknown item type'}
                 </div>
@@ -186,9 +213,9 @@ const ResponseListItem: React.FC<ResponseListItemProps> = ({
 
 // Helper functions to render response and stimulation content
 const renderResponse = (
-    item: any,
-    stimulationMap: Map<string, any>,
-    traceByStimulation: Map<string, any[]>,
+    item: UIHop,
+    stimulationMap: Map<string, TStimulation>,
+    traceByStimulation: Map<string, UIHop[]>,
     wsRef?: React.MutableRefObject<WebSocket | null>,
     handleReplay?: (
         stimulationId: string,
@@ -197,7 +224,10 @@ const renderResponse = (
     ) => Promise<void>
 ) => {
     const stimulation = stimulationMap.get(item.stimulationId);
-    const trace = traceByStimulation.get(item.stimulationId as any) || [];
+    const trace = traceByStimulation.get(item.stimulationId) || [];
+    const inputCollateralName = resolveCollateralName(item.inputCollateralId);
+    const outputCollateralName = resolveCollateralName(item.outputCollateralId);
+    const isReplay = !!stimulation?.replayOf;
 
     return (
         <>
@@ -228,16 +258,16 @@ const renderResponse = (
                             color: 'var(--text-primary)',
                         }}
                     >
-                        {stimulation.neuronId} → [
-                        {item.inputCollateralName || stimulation.collateralName}
+                        {resolveCollateralNeuron(stimulation.collateralId)} → [
+                        {inputCollateralName ||
+                            resolveCollateralName(stimulation.collateralId)}
                         ]
                     </div>
                 </div>
             )}
 
             {/* Replay indicator badge */}
-            {typeof item.stimulationId === 'string' &&
-                item.stimulationId.includes('-replay-') && (
+            {isReplay && (
                     <div
                         style={{
                             marginBottom: 'var(--spacing-xs)',
@@ -290,8 +320,8 @@ const renderResponse = (
                 >
                     <span style={{ color: 'var(--text-muted)' }}>🔗</span>
                     <span style={{ fontSize: 'var(--font-size-xs)' }}>
-                        {item.inputCollateralName || 'N/A'} →{' '}
-                        {item.outputCollateralName || 'N/A'}
+                        {inputCollateralName || 'N/A'} →{' '}
+                        {outputCollateralName || 'N/A'}
                     </span>
                 </div>
                 {item.error && (
@@ -314,7 +344,7 @@ const renderResponse = (
                 <div style={{ marginTop: 6 }}>
                     <button
                         className="btn-infected"
-                        onClick={() => handleReplay(item.stimulationId as any)}
+                        onClick={() => handleReplay(item.stimulationId)}
                         style={{
                             fontSize: '10px',
                             padding: '4px 6px',
@@ -352,9 +382,13 @@ const renderResponse = (
                             gap: '2px',
                         }}
                     >
-                        {trace.map((hop, idx) => (
+                        {trace.map((hop, idx) => {
+                            const hopOutputName = resolveCollateralName(
+                                hop.outputCollateralId
+                            );
+                            return (
                             <div
-                                key={(hop.responseId as string) || idx}
+                                key={hop.id || idx}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -375,7 +409,7 @@ const renderResponse = (
                                         minWidth: '20px',
                                     }}
                                 >
-                                    {hop.hopIndex ?? idx + 1}.
+                                    {hop.index ?? idx + 1}.
                                 </span>
                                 <span
                                     style={{
@@ -385,7 +419,7 @@ const renderResponse = (
                                 >
                                     {hop.neuronId}
                                 </span>
-                                {hop.outputCollateralName && (
+                                {hopOutputName && (
                                     <>
                                         <span
                                             style={{
@@ -400,7 +434,7 @@ const renderResponse = (
                                                 fontFamily: 'var(--font-mono)',
                                             }}
                                         >
-                                            [{hop.outputCollateralName}]
+                                            [{hopOutputName}]
                                         </span>
                                     </>
                                 )}
@@ -416,11 +450,12 @@ const renderResponse = (
                                     </span>
                                 )}
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
-            {(item.inputPayload || item.outputPayload || item.contexts) && (
+            {(item.inputPayload || item.outputPayload) && (
                 <div
                     style={{
                         marginTop: 'var(--spacing-sm)',
@@ -452,12 +487,10 @@ const renderResponse = (
                             data={{
                                 inputPayload: item.inputPayload,
                                 outputPayload: item.outputPayload,
-                                contexts: item.contexts,
-                                snapshot: (item as any).snapshot,
                             }}
                             title="Response Data"
                             defaultExpanded={false}
-                            responseId={item.responseId}
+                            responseId={item.id}
                         />
                     </div>
                 </div>
@@ -467,7 +500,7 @@ const renderResponse = (
 };
 
 const renderStimulation = (
-    item: any,
+    item: TStimulation,
     wsRef?: React.MutableRefObject<WebSocket | null>,
     handleReplay?: (
         stimulationId: string,
@@ -503,7 +536,8 @@ const renderStimulation = (
                         color: 'var(--text-primary)',
                     }}
                 >
-                    {stim.neuronId} → [{stim.collateralName}]
+                    {resolveCollateralNeuron(stim.collateralId)} → [
+                    {resolveCollateralName(stim.collateralId)}]
                 </div>
             </div>
             <div style={{ marginBottom: 'var(--spacing-sm)' }}>
@@ -533,7 +567,7 @@ const renderStimulation = (
                 >
                     <button
                         className="btn-infected"
-                        onClick={() => handleReplay(stim.stimulationId)}
+                        onClick={() => handleReplay(stim.id)}
                         style={{
                             fontSize: 'var(--font-size-xs)',
                             padding: 'var(--spacing-xs) var(--spacing-sm)',
@@ -566,13 +600,13 @@ const renderStimulation = (
 const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
     const listContainerRef = useRef<HTMLDivElement>(null);
 
-    const responsesRaw = useSelectEntitiesByIndexKey(
+    const responsesRaw = useSelectEntitiesByIndexKeySetBased(
         db.responses,
         db.responses.indexes.appId,
         appId
     );
 
-    const stimulationsRaw = useSelectEntitiesByIndexKey(
+    const stimulationsRaw = useSelectEntitiesByIndexKeySetBased(
         db.stimulations,
         db.stimulations.indexes.appId,
         appId
@@ -590,9 +624,9 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
     // Removed verbose debug logging
     // Create a map of stimulations for quick lookup
     const stimulationMap = React.useMemo(() => {
-        const map = new Map();
+        const map = new Map<string, TStimulation>();
         (stimulations || []).forEach(stim => {
-            map.set(stim.stimulationId, stim);
+            map.set(stim.id, stim);
         });
         return map;
     }, [stimulations]);
@@ -606,8 +640,8 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
         React.useState<string>('');
 
     // Filter and sort: newest first (last responses at top), oldest at bottom
-    const filteredList = React.useMemo(() => {
-        const rawList = hasResponses
+    const filteredList = React.useMemo<ListItem[]>(() => {
+        const rawList: ListItem[] = hasResponses
             ? (responses || []).slice()
             : hasStimulations
             ? (stimulations || []).slice()
@@ -616,9 +650,11 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
         // Filter by input collateral name (partial match)
         if (collateralNameFilter.trim()) {
             const filterLower = collateralNameFilter.toLowerCase().trim();
-            return rawList.filter((item: any) => {
+            return rawList.filter(item => {
                 const inputCollateral =
-                    item.inputCollateralName || item.collateralName || '';
+                    (isHop(item)
+                        ? resolveCollateralName(item.inputCollateralId)
+                        : resolveCollateralName(item.collateralId)) || '';
                 return inputCollateral.toLowerCase().includes(filterLower);
             });
         }
@@ -632,7 +668,7 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
         collateralNameFilter,
     ]);
 
-    const list = filteredList.sort((a, b) => b.timestamp - a.timestamp);
+    const list = filteredList.slice().sort((a, b) => b.startedAt - a.startedAt);
 
     const displayType = hasResponses
         ? 'responses'
@@ -640,6 +676,10 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
         ? 'stimulations'
         : 'responses';
 
+    // TODO: The legacy 'apps:get-replays' / 'apps:replays' request/response has
+    // no equivalent in the new CNSDTO protocol, so this replay-history panel is
+    // effectively degraded — the request is sent but never answered by the new
+    // server. Left in place (untyped) until a protocol query for it exists.
     // Fetch replay history for this app when ws is ready
     React.useEffect(() => {
         if (!wsRef?.current || wsRef.current.readyState !== WebSocket.OPEN)
@@ -672,28 +712,28 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
 
     // Build trace map per stimulationId
     const traceByStimulation = React.useMemo(() => {
-        const map = new Map<string, Array<any>>();
+        const map = new Map<string, UIHop[]>();
         for (const r of responses || []) {
-            const stimId = r.stimulationId as string;
+            const stimId = r.stimulationId;
             const arr = map.get(stimId) || [];
             arr.push(r);
             map.set(stimId, arr);
         }
         for (const [k, arr] of map.entries()) {
-            const hasHop = arr.some(x => typeof x.hopIndex === 'number');
+            const hasHop = arr.some(x => typeof x.index === 'number');
             arr.sort((a, b) => {
                 if (hasHop) {
                     const ah =
-                        typeof a.hopIndex === 'number'
-                            ? a.hopIndex
+                        typeof a.index === 'number'
+                            ? a.index
                             : Number.MAX_SAFE_INTEGER;
                     const bh =
-                        typeof b.hopIndex === 'number'
-                            ? b.hopIndex
+                        typeof b.index === 'number'
+                            ? b.index
                             : Number.MAX_SAFE_INTEGER;
                     if (ah !== bh) return ah - bh;
                 }
-                return a.timestamp - b.timestamp;
+                return a.startedAt - b.startedAt;
             });
         }
         return map;
@@ -717,30 +757,35 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                 return;
             const stim = stimulationMap.get(stimulationId);
             if (!stim) return;
-            const cmd = {
-                type: 'stimulate',
-                stimulationCommandId: `${stimulationId}-replay-${Date.now()}`,
-                appId: appId,
-                cnsId: cnsId || undefined,
-                collateralName: stim.collateralName,
+            // `contexts`, `concurrency` and `allowedNames`(by name) have no
+            // equivalent in the new protocol; only maxHops/timeoutMs/allowedNeuronIds
+            // are supported. `replayDelay` is still applied client-side below.
+            void contexts;
+            const cmd: CNSDTOReplayStartMessage = {
+                type: 'replay.start',
+                replayId: `${stimulationId}-replay-${Date.now()}`,
+                stimulationId,
+                collateralId: stim.collateralId,
                 payload: payload ?? stim.payload,
-                contexts: contexts ?? undefined,
+                appId,
+                cnsId: cnsId || undefined,
                 options: {
-                    maxNeuronHops: replayHops ? Number(replayHops) : 128,
-                    concurrency: replayConcurrency
-                        ? Number(replayConcurrency)
-                        : undefined,
-                    timeoutMs: replayTimeout
-                        ? Number(replayTimeout)
-                        : undefined,
-                    allowedNames: replayAllowed
-                        ? replayAllowed
-                              .split(',')
-                              .map(s => s.trim())
-                              .filter(Boolean)
-                        : undefined,
+                    ...(replayHops
+                        ? { maxHops: Number(replayHops) }
+                        : {}),
+                    ...(replayTimeout
+                        ? { timeoutMs: Number(replayTimeout) }
+                        : {}),
+                    ...(replayAllowed
+                        ? {
+                              allowedNeuronIds: replayAllowed
+                                  .split(',')
+                                  .map(s => s.trim())
+                                  .filter(Boolean),
+                          }
+                        : {}),
                 },
-            } as any;
+            };
             // Wait for ack/nack once
             const waitForAck = new Promise(resolve => {
                 const handler = (ev: MessageEvent) => {
@@ -751,8 +796,8 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                                 : null;
                         if (!msg) return;
                         if (
-                            msg.type === 'stimulate-accepted' ||
-                            msg.type === 'stimulate-rejected'
+                            msg.type === 'replay.accepted' ||
+                            msg.type === 'replay.rejected'
                         ) {
                             wsRef.current?.removeEventListener(
                                 'message',
@@ -769,7 +814,7 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
             wsRef.current.send(JSON.stringify(cmd));
             const ack = (await waitForAck) as any;
             setLastReplayResult(
-                ack?.type === 'stimulate-accepted'
+                ack?.type === 'replay.accepted'
                     ? { ok: true, detail: ack }
                     : { ok: false, detail: ack }
             );
@@ -803,43 +848,34 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                 const msg =
                     typeof ev.data === 'string' ? JSON.parse(ev.data) : null;
                 if (!msg) return;
-                if (msg.type === 'stimulate-accepted') {
+                if (msg.type === 'replay.accepted') {
                     setReplayLog(prev =>
                         prev.concat([
                             {
                                 time: Date.now(),
-                                stimulationId: msg.stimulationCommandId,
+                                stimulationId:
+                                    msg.newStimulationId || msg.replayId,
                                 message: 'Accepted',
                                 level: 'info',
                             },
                         ])
                     );
                 }
-                if (msg.type === 'stimulate-rejected') {
+                if (msg.type === 'replay.rejected') {
                     setReplayLog(prev =>
                         prev.concat([
                             {
                                 time: Date.now(),
-                                stimulationId: msg.stimulationCommandId,
-                                message: String(msg.error || 'Rejected'),
+                                stimulationId: msg.replayId,
+                                message: String(msg.reason || 'Rejected'),
                                 level: 'error',
                             },
                         ])
                     );
                 }
-                if (msg.type === 'stimulation-batch') {
-                    const arr = Array.isArray(msg.stimulations)
-                        ? msg.stimulations
-                        : [];
-                    const lines = arr.map((s: any) => ({
-                        time: s.timestamp,
-                        stimulationId: s.stimulationId,
-                        message: `Hop @ ${s.neuronId} via [${s.collateralName}]`,
-                        level: s.error ? ('error' as const) : ('info' as const),
-                    }));
-                    if (lines.length > 0)
-                        setReplayLog(prev => prev.concat(lines));
-                }
+                // TODO: the old 'stimulation-batch' per-hop log stream has no
+                // equivalent in the new protocol; live hops now arrive via the
+                // normalized `db.responses` store, not this WS log.
             } catch {}
         };
         wsRef.current.addEventListener('message', handler as any);
@@ -868,7 +904,7 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                     }}
                 >
                     {Array.isArray(stimulations)
-                        ? stimulations.filter((s: any) => s?.error).length
+                        ? stimulations.filter(s => s?.hasError).length
                         : 0}{' '}
                     errors
                 </span>
@@ -1080,13 +1116,7 @@ const StimulationsPage: React.FC<Props> = ({ appId, wsRef, cnsId }) => {
                         ref={listContainerRef}
                     >
                         {list.map((item, index) => {
-                            const isResponse =
-                                !!hasResponses && 'responseId' in item;
-                            const isStimulation =
-                                !isResponse && 'stimulationId' in item;
-                            const itemId = isResponse
-                                ? item.responseId
-                                : item.stimulationId;
+                            const itemId = item.id;
 
                             return (
                                 <ResponseListItem

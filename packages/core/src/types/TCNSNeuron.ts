@@ -11,9 +11,14 @@ export type TCNSNeuron<
     concurrency?: number;
     /** Optional per-neuron max processing duration in milliseconds. */
     maxDuration?: number;
+    // TExt is `any` on purpose: a stored neuron erases which ctx extensions its
+    // dendrites were authored with (withGlobal, …), so neurons carrying `ctx.global`
+    // stay assignable to the runtime graph. The extension typing lives on the
+    // authoring side (neuronFactory), where it belongs; the engine only runs them.
     dendrites: TCNSDendrite<
         TContextValue,
         CNSCollateral<unknown>,
-        TAxonType
+        TAxonType,
+        any
     >[];
 };

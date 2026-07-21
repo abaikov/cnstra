@@ -27,12 +27,12 @@ const topology = (appId = 'app', cnsId = 'app:cns'): CNSDTOAppBatchMessage => ({
     }],
 });
 
-const executionStarted = (executionId = 'exec1', appId = 'app', cnsId = 'app:cns'): CNSDTOAppBatchMessage => ({
+const stimulationStarted = (stimulationId = 'exec1', appId = 'app', cnsId = 'app:cns'): CNSDTOAppBatchMessage => ({
     type: 'batch',
     items: [{
-        type: 'execution.started',
-        execution: {
-            id: executionId, cnsId, appId,
+        type: 'stimulation.started',
+        stimulation: {
+            id: stimulationId, cnsId, appId,
             collateralId: `${cnsId}:authNeuron:user-created`,
             payload: { userId: '1' }, startedAt: Date.now(),
             completedAt: null, hopCount: 0, hasError: false, replayOf: null,
@@ -40,12 +40,12 @@ const executionStarted = (executionId = 'exec1', appId = 'app', cnsId = 'app:cns
     }],
 });
 
-const hopAdded = (executionId = 'exec1', index = 0): CNSDTOAppBatchMessage => ({
+const hopAdded = (stimulationId = 'exec1', index = 0): CNSDTOAppBatchMessage => ({
     type: 'batch',
     items: [{
-        type: 'execution.hop',
+        type: 'stimulation.hop',
         hop: {
-            id: `${executionId}:${index}`, executionId, index,
+            id: `${stimulationId}:${index}`, stimulationId, index,
             neuronId: 'app:cns:authNeuron',
             inputCollateralId: 'app:cns:authNeuron:user-created',
             outputCollateralId: 'app:cns:authNeuron:user-authenticated',
@@ -55,11 +55,11 @@ const hopAdded = (executionId = 'exec1', index = 0): CNSDTOAppBatchMessage => ({
     }],
 });
 
-const executionCompleted = (executionId = 'exec1'): CNSDTOAppBatchMessage => ({
+const stimulationCompleted = (stimulationId = 'exec1'): CNSDTOAppBatchMessage => ({
     type: 'batch',
     items: [{
-        type: 'execution.completed',
-        executionId, completedAt: Date.now(), hopCount: 1, hasError: false,
+        type: 'stimulation.completed',
+        stimulationId, completedAt: Date.now(), hopCount: 1, hasError: false,
     }],
 });
 
@@ -114,34 +114,34 @@ describe('CNSDevToolsServer', () => {
         });
     });
 
-    // ─── Execution events ─────────────────────────────────────────────────────
+    // ─── Stimulation events ─────────────────────────────────────────────────────
 
-    describe('execution events', () => {
-        it('stores execution on execution.started', async () => {
+    describe('stimulation events', () => {
+        it('stores stimulation on stimulation.started', async () => {
             const ws = makeWs();
             await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(executionStarted()));
+            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
 
-            const { items } = await repo.getExecutions('app', {});
+            const { items } = await repo.getStimulations('app', {});
             expect(items).toHaveLength(1);
             expect(items[0].id).toBe('exec1');
         });
 
-        it('broadcasts execution.started to UI clients', async () => {
+        it('broadcasts stimulation.started to UI clients', async () => {
             const uiWs = makeWs('ui');
             server.addClient(uiWs as any);
 
             const appWs = makeWs('app');
             await server.handleMessage(appWs as any, JSON.stringify(topology()));
-            await server.handleMessage(appWs as any, JSON.stringify(executionStarted()));
+            await server.handleMessage(appWs as any, JSON.stringify(stimulationStarted()));
 
-            expect(uiWs.messagesOfType('execution.started')).toHaveLength(1);
+            expect(uiWs.messagesOfType('stimulation.started')).toHaveLength(1);
         });
 
-        it('stores hop on execution.hop', async () => {
+        it('stores hop on stimulation.hop', async () => {
             const ws = makeWs();
             await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(executionStarted()));
+            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
             await server.handleMessage(ws as any, JSON.stringify(hopAdded()));
 
             const hops = await repo.getHops('exec1');
@@ -149,26 +149,26 @@ describe('CNSDevToolsServer', () => {
             expect(hops[0].index).toBe(0);
         });
 
-        it('broadcasts execution.hop to UI clients', async () => {
+        it('broadcasts stimulation.hop to UI clients', async () => {
             const uiWs = makeWs('ui');
             server.addClient(uiWs as any);
 
             const ws = makeWs();
             await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(executionStarted()));
+            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
             await server.handleMessage(ws as any, JSON.stringify(hopAdded()));
 
-            expect(uiWs.messagesOfType('execution.hop')).toHaveLength(1);
+            expect(uiWs.messagesOfType('stimulation.hop')).toHaveLength(1);
         });
 
-        it('completes execution on execution.completed', async () => {
+        it('completes stimulation on stimulation.completed', async () => {
             const ws = makeWs();
             await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(executionStarted()));
+            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
             await server.handleMessage(ws as any, JSON.stringify(hopAdded()));
-            await server.handleMessage(ws as any, JSON.stringify(executionCompleted()));
+            await server.handleMessage(ws as any, JSON.stringify(stimulationCompleted()));
 
-            const { items } = await repo.getExecutions('app', {});
+            const { items } = await repo.getStimulations('app', {});
             expect(items[0].completedAt).not.toBeNull();
             expect(items[0].hopCount).toBe(1);
         });
@@ -217,34 +217,34 @@ describe('CNSDevToolsServer', () => {
             expect(result[0].snapshots).toHaveLength(1);
         });
 
-        it('executions.query returns executions with pagination', async () => {
+        it('stimulations.query returns stimulations with pagination', async () => {
             const ws = makeWs();
             await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(executionStarted('e1')));
-            await server.handleMessage(ws as any, JSON.stringify(executionStarted('e2')));
+            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted('e1')));
+            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted('e2')));
 
             const uiWs = makeWs('ui');
             await server.handleMessage(uiWs as any, JSON.stringify({
-                type: 'executions.query', requestId: 'req3',
+                type: 'stimulations.query', requestId: 'req3',
                 appId: 'app', filter: { limit: 10, offset: 0 },
             }));
 
-            const result = uiWs.messagesOfType('executions.result');
+            const result = uiWs.messagesOfType('stimulations.result');
             expect(result[0].requestId).toBe('req3');
             expect(result[0].items).toHaveLength(2);
             expect(result[0].total).toBe(2);
         });
 
-        it('hops.query returns hops for execution', async () => {
+        it('hops.query returns hops for stimulation', async () => {
             const ws = makeWs();
             await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(executionStarted()));
+            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
             await server.handleMessage(ws as any, JSON.stringify(hopAdded('exec1', 0)));
             await server.handleMessage(ws as any, JSON.stringify(hopAdded('exec1', 1)));
 
             const uiWs = makeWs('ui');
             await server.handleMessage(uiWs as any, JSON.stringify({
-                type: 'hops.query', requestId: 'req4', executionId: 'exec1',
+                type: 'hops.query', requestId: 'req4', stimulationId: 'exec1',
             }));
 
             const result = uiWs.messagesOfType('hops.result');
@@ -263,7 +263,7 @@ describe('CNSDevToolsServer', () => {
             const uiWs = makeWs('ui');
             await server.handleMessage(uiWs as any, JSON.stringify({
                 type: 'replay.start',
-                replayId: 'r1', executionId: 'exec1',
+                replayId: 'r1', stimulationId: 'exec1',
                 collateralId: 'app:cns:authNeuron:user-created', payload: {},
                 appId: 'app',
             }));
@@ -278,7 +278,7 @@ describe('CNSDevToolsServer', () => {
             const uiWs = makeWs('ui');
             await server.handleMessage(uiWs as any, JSON.stringify({
                 type: 'replay.start',
-                replayId: 'r1', executionId: 'exec1',
+                replayId: 'r1', stimulationId: 'exec1',
                 collateralId: 'app:cns:authNeuron:user-created',
                 payload: {}, appId: 'nonexistent',
             }));
@@ -367,30 +367,30 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
         expect(repo.getTopology('other')).toHaveLength(0);
     });
 
-    it('saves and gets executions with filter', () => {
+    it('saves and gets stimulations with filter', () => {
         const now = Date.now();
-        repo.saveExecution({ id: 'e1', cnsId: 'app:cns', appId: 'app', collateralId: 'col1', payload: null, startedAt: now, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
-        repo.saveExecution({ id: 'e2', cnsId: 'app:cns', appId: 'app', collateralId: 'col1', payload: null, startedAt: now + 1, completedAt: null, hopCount: 0, hasError: true, replayOf: null });
+        repo.saveStimulation({ id: 'e1', cnsId: 'app:cns', appId: 'app', collateralId: 'col1', payload: null, startedAt: now, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
+        repo.saveStimulation({ id: 'e2', cnsId: 'app:cns', appId: 'app', collateralId: 'col1', payload: null, startedAt: now + 1, completedAt: null, hopCount: 0, hasError: true, replayOf: null });
 
-        const { items: all, total } = repo.getExecutions('app', {});
+        const { items: all, total } = repo.getStimulations('app', {});
         expect(total).toBe(2);
 
-        const { items: errors } = repo.getExecutions('app', { hasError: true });
+        const { items: errors } = repo.getStimulations('app', { hasError: true });
         expect(errors).toHaveLength(1);
         expect(errors[0].id).toBe('e2');
     });
 
-    it('completes execution', () => {
-        repo.saveExecution({ id: 'e1', cnsId: 'c', appId: 'app', collateralId: 'c1', payload: null, startedAt: 1, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
-        repo.completeExecution('e1', Date.now(), 3, false);
-        const { items } = repo.getExecutions('app', {});
+    it('completes stimulation', () => {
+        repo.saveStimulation({ id: 'e1', cnsId: 'c', appId: 'app', collateralId: 'c1', payload: null, startedAt: 1, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
+        repo.completeStimulation('e1', Date.now(), 3, false);
+        const { items } = repo.getStimulations('app', {});
         expect(items[0].hopCount).toBe(3);
         expect(items[0].completedAt).not.toBeNull();
     });
 
     it('saves and gets hops sorted by index', () => {
-        repo.saveHop({ id: 'e1:1', executionId: 'e1', index: 1, neuronId: 'n', inputCollateralId: 'c', outputCollateralId: null, inputPayload: null, outputPayload: null, startedAt: 1, duration: null, error: null });
-        repo.saveHop({ id: 'e1:0', executionId: 'e1', index: 0, neuronId: 'n', inputCollateralId: 'c', outputCollateralId: null, inputPayload: null, outputPayload: null, startedAt: 1, duration: null, error: null });
+        repo.saveHop({ id: 'e1:1', stimulationId: 'e1', index: 1, neuronId: 'n', inputCollateralId: 'c', outputCollateralId: null, inputPayload: null, outputPayload: null, startedAt: 1, duration: null, error: null });
+        repo.saveHop({ id: 'e1:0', stimulationId: 'e1', index: 0, neuronId: 'n', inputCollateralId: 'c', outputCollateralId: null, inputPayload: null, outputPayload: null, startedAt: 1, duration: null, error: null });
 
         const hops = repo.getHops('e1');
         expect(hops[0].index).toBe(0);
@@ -404,20 +404,20 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
         expect(repo.findAppByCns('unknown')).toBeUndefined();
     });
 
-    it('paginates executions', () => {
+    it('paginates stimulations', () => {
         for (let i = 0; i < 10; i++) {
-            repo.saveExecution({ id: `e${i}`, cnsId: 'c', appId: 'app', collateralId: 'c', payload: null, startedAt: i, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
+            repo.saveStimulation({ id: `e${i}`, cnsId: 'c', appId: 'app', collateralId: 'c', payload: null, startedAt: i, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
         }
-        const { items, total } = repo.getExecutions('app', { limit: 3, offset: 0 });
+        const { items, total } = repo.getStimulations('app', { limit: 3, offset: 0 });
         expect(total).toBe(10);
         expect(items).toHaveLength(3);
     });
 
     it('clears all data', () => {
         repo.upsertApp({ id: 'a', name: 'A', version: '1', connectedAt: 1, lastSeenAt: 1 });
-        repo.saveExecution({ id: 'e1', cnsId: 'c', appId: 'a', collateralId: 'c', payload: null, startedAt: 1, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
+        repo.saveStimulation({ id: 'e1', cnsId: 'c', appId: 'a', collateralId: 'c', payload: null, startedAt: 1, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
         repo.clear();
         expect(repo.listApps()).toHaveLength(0);
-        expect(repo.getExecutions('a', {}).total).toBe(0);
+        expect(repo.getStimulations('a', {}).total).toBe(0);
     });
 });

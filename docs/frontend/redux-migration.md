@@ -3,7 +3,7 @@ id: redux-migration
 title: Migrating from Redux to OIMDB
 sidebar_label: Redux Migration
 slug: /frontend/redux-migration
-description: Production-ready Redux adapter for OIMDB that enables seamless integration between OIMDB's reactive in-memory database and Redux state management. Gradually migrate from Redux to OIMDB or use both systems side-by-side with automatic two-way synchronization.
+description: Experimental Redux adapter for OIMDB that enables integration between OIMDB's reactive in-memory database and Redux state management. Gradually migrate from Redux to OIMDB or use both systems side-by-side with automatic two-way synchronization.
 keywords: [Redux migration, Redux adapter, OIMDB Redux, state management migration, Redux to OIMDB, two-way sync, gradual migration, Redux compatibility]
 ---
 
@@ -11,7 +11,7 @@ keywords: [Redux migration, Redux adapter, OIMDB Redux, state management migrati
 
 > **⚠️ Experimental**: This package is experimental. Functionality is not guaranteed and the API may change in future versions. Use at your own risk.
 
-Production-ready Redux adapter for OIMDB that enables seamless integration between OIMDB's reactive in-memory database and Redux state management. This package allows you to gradually migrate from Redux to OIMDB or use both systems side-by-side with automatic two-way synchronization.
+Experimental Redux adapter for OIMDB that enables integration between OIMDB's reactive in-memory database and Redux state management. This package allows you to gradually migrate from Redux to OIMDB or use both systems side-by-side with automatic two-way synchronization.
 
 ## 🚀 Installation
 
@@ -23,7 +23,7 @@ npm install @oimdb/redux-adapter @oimdb/core redux
 
 - **🔄 Two-Way Synchronization**: Automatic sync between OIMDB and Redux in both directions
 
-- **📦 Production Ready**: Battle-tested, optimized for large datasets with efficient change detection
+- **📦 Optimized**: Designed for large datasets with efficient change detection
 
 - **🔄 Gradual Migration**: Integrate OIMDB into existing Redux projects without breaking changes
 

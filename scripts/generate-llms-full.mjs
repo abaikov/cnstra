@@ -43,6 +43,7 @@ const ORDER = [
     'recipes/exhaustive-binding.md',
     'recipes/testing.md',
     'integrations/message-brokers.md',
+    'integrations/pg-boss.md',
     'ecosystem/swift-sdk.md',
     'devtools/overview.md',
     'devtools/integration.md',

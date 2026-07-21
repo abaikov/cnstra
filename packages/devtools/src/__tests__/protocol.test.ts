@@ -121,8 +121,8 @@ describe('Protocol — topology', () => {
     });
 });
 
-describe('Protocol — execution lifecycle', () => {
-    it('first response triggers execution.started + execution.hop', async () => {
+describe('Protocol — stimulation lifecycle', () => {
+    it('first response triggers stimulation.started + stimulation.hop', async () => {
         const { registry } = buildRegistry();
         const transport = new BatchCapture();
         const cns = new MockCNS();
@@ -134,8 +134,8 @@ describe('Protocol — execution lifecycle', () => {
         cns.trigger({ stimulation: stim, outputSignal: { collateral: null, payload: { x: 1 } }, inputSignal: undefined, error: undefined });
         await new Promise(r => setTimeout(r, 0));
 
-        expect(transport.itemsOf('execution.started')).toHaveLength(1);
-        expect(transport.itemsOf('execution.hop')).toHaveLength(1);
+        expect(transport.itemsOf('stimulation.started')).toHaveLength(1);
+        expect(transport.itemsOf('stimulation.hop')).toHaveLength(1);
     });
 
     it('multiple responses on same stim produce multiple hops but one started', async () => {
@@ -152,12 +152,12 @@ describe('Protocol — execution lifecycle', () => {
 
         await new Promise(r => setTimeout(r, 0));
 
-        expect(transport.itemsOf('execution.started')).toHaveLength(1);
-        expect(transport.itemsOf('execution.hop')).toHaveLength(3);
-        expect(transport.itemsOf('execution.hop').map(h => h.hop.index)).toEqual([0, 1, 2]);
+        expect(transport.itemsOf('stimulation.started')).toHaveLength(1);
+        expect(transport.itemsOf('stimulation.hop')).toHaveLength(3);
+        expect(transport.itemsOf('stimulation.hop').map(h => h.hop.index)).toEqual([0, 1, 2]);
     });
 
-    it('all hops share the same executionId', async () => {
+    it('all hops share the same stimulationId', async () => {
         const { registry } = buildRegistry();
         const transport = new BatchCapture();
         const cns = new MockCNS();
@@ -170,12 +170,12 @@ describe('Protocol — execution lifecycle', () => {
 
         await new Promise(r => setTimeout(r, 0));
 
-        const [started] = transport.itemsOf('execution.started');
-        const hops = transport.itemsOf('execution.hop');
-        expect(hops.every(h => h.hop.executionId === started.execution.id)).toBe(true);
+        const [started] = transport.itemsOf('stimulation.started');
+        const hops = transport.itemsOf('stimulation.hop');
+        expect(hops.every(h => h.hop.stimulationId === started.stimulation.id)).toBe(true);
     });
 
-    it('different stimulations get different executionIds', async () => {
+    it('different stimulations get different stimulationIds', async () => {
         const { registry } = buildRegistry();
         const transport = new BatchCapture();
         const cns = new MockCNS();
@@ -189,11 +189,11 @@ describe('Protocol — execution lifecycle', () => {
 
         await new Promise(r => setTimeout(r, 0));
 
-        const [s1, s2] = transport.itemsOf('execution.started');
-        expect(s1.execution.id).not.toBe(s2.execution.id);
+        const [s1, s2] = transport.itemsOf('stimulation.started');
+        expect(s1.stimulation.id).not.toBe(s2.stimulation.id);
     });
 
-    it('sends execution.completed on stimulation resolve', async () => {
+    it('sends stimulation.completed on stimulation resolve', async () => {
         const { registry } = buildRegistry();
         const transport = new BatchCapture();
         const cns = new MockCNS();
@@ -205,12 +205,12 @@ describe('Protocol — execution lifecycle', () => {
         stim.resolve();
         await new Promise(r => setTimeout(r, 10));
 
-        const [completed] = transport.itemsOf('execution.completed');
+        const [completed] = transport.itemsOf('stimulation.completed');
         expect(completed.hasError).toBe(false);
         expect(completed.hopCount).toBe(1);
     });
 
-    it('sends execution.completed with hasError on reject', async () => {
+    it('sends stimulation.completed with hasError on reject', async () => {
         const { registry } = buildRegistry();
         const transport = new BatchCapture();
         const cns = new MockCNS();
@@ -222,7 +222,7 @@ describe('Protocol — execution lifecycle', () => {
         stim.reject(new Error('fail'));
         await new Promise(r => setTimeout(r, 10));
 
-        const [completed] = transport.itemsOf('execution.completed');
+        const [completed] = transport.itemsOf('stimulation.completed');
         expect(completed.hasError).toBe(true);
     });
 
@@ -242,7 +242,7 @@ describe('Protocol — execution lifecycle', () => {
 
         await new Promise(r => setTimeout(r, 0));
 
-        const [hop] = transport.itemsOf('execution.hop');
+        const [hop] = transport.itemsOf('stimulation.hop');
         expect(hop.hop.error).toBe('Error: neuron failed');
     });
 });

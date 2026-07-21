@@ -8,12 +8,18 @@ const args = process.argv.slice(2);
 const workspaces = [];
 let otp;
 let dryRun = false;
+let bumped = false;
 
 for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
     if (arg === '--dry-run') {
         dryRun = true;
+        continue;
+    }
+
+    if (arg === '--bumped' || arg === '--only-bumped') {
+        bumped = true;
         continue;
     }
 
@@ -67,6 +73,38 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const npmRun = script => run(npm, ['run', script, '--if-present']);
 
 run(npm, ['whoami']);
+
+// --bumped: auto-select every public package whose current version is not yet on
+// npm (i.e. it was bumped, or is brand new) and publish only those.
+if (bumped) {
+    if (workspaces.length > 0) {
+        throw new Error('--bumped cannot be combined with --workspace');
+    }
+
+    const packagesDir = new URL('../packages', import.meta.url).pathname;
+    const pkgDirs = readdirSync(packagesDir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => join(packagesDir, d.name, 'package.json'));
+
+    for (const pkgPath of pkgDirs) {
+        let pkg;
+        try { pkg = JSON.parse(readFileSync(pkgPath, 'utf8')); } catch { continue; }
+        if (pkg.private) continue;
+
+        // Empty / mismatched stdout => this exact version is not published => publish it.
+        const result = spawnSync('npm', ['view', `${pkg.name}@${pkg.version}`, 'version'], { encoding: 'utf8' });
+        if (result.stdout.trim() !== pkg.version) {
+            workspaces.push(pkg.name);
+        }
+    }
+
+    if (workspaces.length === 0) {
+        console.log('✓ Nothing to publish — every public package is already on npm at its current version.');
+        process.exit(0);
+    }
+
+    console.log(`Publishing bumped packages:\n${workspaces.map(w => `  ${w}`).join('\n')}\n`);
+}
 
 // Pre-publish check: verify no package tries to overwrite an already-published version
 {

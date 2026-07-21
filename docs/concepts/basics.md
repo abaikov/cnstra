@@ -3,7 +3,7 @@ id: basics
 title: Basics - Core Design Principles
 sidebar_label: Basics
 slug: /concepts/basics
-description: "Learn the fundamental design principles of CNStra: single-process stimulation execution, command pattern architecture with built-in dependency injection, and the separation of concerns between data mutations and reads."
+description: "Learn the fundamental design principles of CNStra: single-process stimulation execution, command pattern architecture with signal-based dependency wiring, and the separation of concerns between data mutations and reads."
 keywords: [basics, fundamentals, design principles, single process, command pattern, dependency injection, data mutations, data reads, domain neurons, architecture basics, CNStra principles]
 ---
 
@@ -26,16 +26,16 @@ For multi-process scenarios, CNStra doesn't prescribe a specific inter-process c
 
 Each CNS instance handles its own stimulations independently, and you orchestrate communication between instances using your preferred mechanism. This flexibility allows you to scale horizontally while maintaining the simplicity and reliability of single-process stimulation execution.
 
-## Command Pattern with Built-in Dependency Injection
+## Command Pattern with Signal-Based Dependency Wiring
 
-CNStra implements a large-scale command pattern where each stimulation is a command that gets processed by many processors (neurons). This architecture provides dependency injection out of the box:
+CNStra implements a large-scale command pattern where each stimulation is a command that gets processed by many processors (neurons). This is not a DI container (there are no lifecycle scopes, constructor injection, or token resolution) — instead, the graph itself wires dependencies implicitly:
 
 - **Stimulations as commands**: When you call `cns.stimulate(signal)`, you're issuing a command that flows through the neuron graph
 - **Multiple processors**: Each neuron that binds to the signal's collateral becomes a processor for that command
 - **Automatic wiring**: The dependency graph is explicit and type-safe—neurons declare their dependencies (dendrites) and outputs (collaterals), and CNStra automatically routes signals between them
-- **No manual DI setup**: You don't need to configure dependency injection containers or manually wire dependencies—the graph structure itself defines the dependencies
+- **No manual wiring**: You don't need to manually connect dependencies—the graph structure itself defines them
 
-This approach combines the benefits of the command pattern (encapsulation, decoupling, extensibility) with automatic dependency resolution through the explicit neuron graph structure.
+This approach combines the benefits of the command pattern (encapsulation, decoupling, extensibility) with automatic signal routing through the explicit neuron graph structure.
 
 ```ts
 // Each stimulation is a command

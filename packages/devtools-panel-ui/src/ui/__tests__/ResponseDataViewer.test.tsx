@@ -27,27 +27,6 @@ describe('ResponseDataViewer', () => {
         expect(screen.getByText('📤 Output Signal')).toBeInTheDocument();
     });
 
-    it('renders with contexts only', () => {
-        const data = {
-            contexts: { user: 'john', session: 'abc123' },
-        };
-        render(<ResponseDataViewer data={data} defaultExpanded={true} />);
-        expect(screen.getByText('📊 Response Data')).toBeInTheDocument();
-        expect(screen.getByText('🧠 Context Storage')).toBeInTheDocument();
-    });
-
-    it('renders with response context storage', () => {
-        const data = {
-            contexts: {
-                before: 'state',
-                after: 'state',
-            },
-        };
-        render(<ResponseDataViewer data={data} defaultExpanded={true} />);
-        expect(screen.getByText('📊 Response Data')).toBeInTheDocument();
-        expect(screen.getByText('🧠 Context Storage')).toBeInTheDocument();
-    });
-
     it('renders with snapshot data', () => {
         const data = {
             snapshot: { memory: 'usage', cpu: 'load' },
@@ -61,14 +40,12 @@ describe('ResponseDataViewer', () => {
         const data = {
             inputPayload: { test: 'input' },
             outputPayload: { test: 'output' },
-            contexts: { before: 'state', after: 'state' },
             snapshot: { memory: 'usage' },
         };
         render(<ResponseDataViewer data={data} defaultExpanded={true} />);
         expect(screen.getByText('📊 Response Data')).toBeInTheDocument();
         expect(screen.getByText('📥 Input Signal')).toBeInTheDocument();
         expect(screen.getByText('📤 Output Signal')).toBeInTheDocument();
-        expect(screen.getByText('🧠 Context Storage')).toBeInTheDocument();
         expect(screen.getByText('📸 Data Snapshot')).toBeInTheDocument();
     });
 

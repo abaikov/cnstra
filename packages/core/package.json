@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/core",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Embeddable workflow/orchestration engine for TypeScript: deterministic runs over a typed neuron graph (in-memory, zero dependencies).",
   "keywords": [
     "neural-network",

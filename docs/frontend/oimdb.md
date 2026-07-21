@@ -23,7 +23,7 @@ Traditional state management approaches like Redux or MobX have limitations:
 OIMDB solves these problems with:
 
 - **Normalized storage**: Entities stored by primary key in Maps (O(1) lookups)
-- **Reactive indexes**: Manual indexes for efficient queries (e.g., "all posts by author")
+- **Reactive indexes**: Set- and array-based indexes for efficient queries (e.g., "all posts by author")
 - **Event coalescing**: Multiple rapid updates to the same entity trigger only one notification
 - **Configurable scheduling**: Choose when events fire (microtask, animationFrame, timeout, immediate)
 
@@ -37,13 +37,13 @@ npm install @oimdb/core
 
 ### Collections: Normalized Entity Storage
 
-Collections store entities by primary key, providing O(1) lookups:
+The canonical entry point is `createOIMCollectionKit`. It wires a collection to an event queue and returns a kit with everything you need — `collection` (reads/writes/subscriptions), `indexFactory` (build indexes), and `select` (selectors). Entities are stored by primary key, providing O(1) lookups:
 
 ```typescript
-import { 
-    OIMReactiveCollection, 
+import {
     OIMEventQueue,
-    OIMEventQueueSchedulerFactory
+    OIMEventQueueSchedulerFactory,
+    createOIMCollectionKit,
 } from '@oimdb/core';
 
 interface User {
@@ -57,56 +57,54 @@ const queue = new OIMEventQueue({
     scheduler: OIMEventQueueSchedulerFactory.createMicrotask()
 });
 
-// Create reactive collection
-const users = new OIMReactiveCollection<User, string>(queue, {
+// Create a collection kit
+const users = createOIMCollectionKit<User, string>(queue, {
     selectPk: (user) => user.id
 });
 
-// CRUD operations
-users.upsertOne({ id: 'user1', name: 'John Doe', email: 'john@example.com' });
-users.upsertMany([
+// CRUD operations go through users.collection
+users.collection.upsertOne({ id: 'user1', name: 'John Doe', email: 'john@example.com' });
+users.collection.upsertMany([
     { id: 'user2', name: 'Jane Smith', email: 'jane@example.com' },
     { id: 'user3', name: 'Bob Wilson', email: 'bob@example.com' }
 ]);
 
 // O(1) lookups
-const user = users.getOneByPk('user1');
-const multipleUsers = users.getManyByPks(['user1', 'user2']);
+const user = users.collection.getOneByPk('user1');
+const multipleUsers = users.collection.getManyByPks(['user1', 'user2']);
 ```
 
 ### Reactive Updates: Key-Specific Subscriptions
 
-Subscribe to changes for specific entities:
+Subscribe directly on the collection to changes for specific entities. Handlers receive no payload — read the current value from the collection when they fire:
 
 ```typescript
 // Subscribe to changes for a specific user
-users.updateEventEmitter.subscribeOnKey('user1', () => {
-    console.log('User1 changed!');
+users.collection.subscribeOnKey('user1', () => {
+    console.log('User1 changed!', users.collection.getOneByPk('user1'));
 });
 
 // Subscribe to changes for multiple users
-users.updateEventEmitter.subscribeOnKeys(['user1', 'user2'], () => {
+users.collection.subscribeOnKeys(['user1', 'user2'], () => {
     console.log('Users changed!');
 });
 
 // Updates trigger notifications
-users.upsertOne({ id: 'user1', name: 'John Updated' });
+users.collection.upsertOne({ id: 'user1', name: 'John Updated' });
 // Notification fires in next microtask
 ```
 
 ### Indexes: Efficient Queries
 
-OIMDB provides two index types optimized for different use cases:
+Indexes are created through the kit's `indexFactory`. OIMDB provides two manual index types optimized for different use cases, plus **derived** indexes that maintain themselves from an entity field.
 
 #### SetBased Indexes: For Incremental Updates
 
 Use when you frequently add/remove individual items:
 
 ```typescript
-import { OIMReactiveIndexManualSetBased } from '@oimdb/core';
-
-// Create Set-based index for user roles
-const userRoleIndex = new OIMReactiveIndexManualSetBased<string, string>(queue);
+// Create a manual Set-based index for user roles
+const userRoleIndex = users.indexFactory.setBasedIndex<string>();
 
 // Build the index
 userRoleIndex.setPks('admin', ['user1']);
@@ -117,7 +115,12 @@ userRoleIndex.addPks('admin', ['user2']); // O(1)
 userRoleIndex.removePks('admin', ['user1']); // O(1)
 
 // Query returns Set<TPk>
-const adminUsers = userRoleIndex.index.getPksByKey('admin'); // Set(['user1', 'user2'])
+const adminUsers = userRoleIndex.getPksByKey('admin'); // Set(['user2'])
+
+// Subscribe to a specific index key
+userRoleIndex.subscribeOnKey('admin', () => {
+    console.log('Admins changed:', userRoleIndex.getPksByKey('admin'));
+});
 ```
 
 #### ArrayBased Indexes: For Full Replacements
@@ -125,16 +128,14 @@ const adminUsers = userRoleIndex.index.getPksByKey('admin'); // Set(['user1', 'u
 Use when you typically replace entire arrays (e.g., ordered lists):
 
 ```typescript
-import { OIMReactiveIndexManualArrayBased } from '@oimdb/core';
-
-// Create Array-based index for deck cards
-const cardsByDeckIndex = new OIMReactiveIndexManualArrayBased<string, string>(queue);
+// Create a manual Array-based index for deck cards
+const cardsByDeckIndex = cards.indexFactory.arrayBasedIndex<string>();
 
 // Set full array (O(1) - direct assignment, no diff computation)
 cardsByDeckIndex.setPks('deck1', ['card1', 'card2', 'card3']);
 
 // Query returns TPk[]
-const deckCards = cardsByDeckIndex.index.getPksByKey('deck1'); // ['card1', 'card2', 'card3']
+const deckCards = cardsByDeckIndex.getPksByKey('deck1'); // ['card1', 'card2', 'card3']
 
 // For ArrayBased, prefer setPks for updates
 cardsByDeckIndex.setPks('deck1', ['card1', 'card2', 'card4']); // Recommended
@@ -145,15 +146,27 @@ cardsByDeckIndex.setPks('deck1', ['card1', 'card2', 'card4']); // Recommended
 - **SetBased**: Frequent add/remove operations, order doesn't matter
 - **ArrayBased**: Full array replacements, need to preserve order/sorting
 
+#### Derived Indexes: Maintained Automatically
+
+When the index key is a field of the entity, use a derived index — it updates itself on every upsert/remove, so you never call `setPks` manually:
+
+```typescript
+// Automatically groups users by their `teamId` field
+const usersByTeam = users.indexFactory.derivedSetIndex((user) => user.teamId);
+
+// Query returns Set<TPk>, always in sync with the collection
+const engineering = usersByTeam.getPksByKey('engineering');
+```
+
 ### Event Coalescing: Performance Optimization
 
 Multiple rapid updates to the same entity are automatically coalesced into a single notification:
 
 ```typescript
 // These three updates...
-users.upsertOne({ id: 'user1', name: 'John' });
-users.upsertOne({ id: 'user1', email: 'john@test.com' });
-users.upsertOne({ id: 'user1', role: 'admin' });
+users.collection.upsertOne({ id: 'user1', name: 'John' });
+users.collection.upsertOne({ id: 'user1', email: 'john@test.com' });
+users.collection.upsertOne({ id: 'user1', name: 'John Doe' });
 
 // ...result in only one notification with the final state
 // This prevents unnecessary re-renders and improves performance
@@ -194,13 +207,13 @@ manualQueue.flush(); // Execute when ready
 
 ### Collections with Indexes
 
-Use `OIMRICollection` to combine collections with indexes:
+A kit already exposes `indexFactory` — create as many indexes as you need and keep references to them:
 
 ```typescript
-import { 
-    OIMRICollection, 
-    OIMReactiveIndexManualSetBased,
-    OIMReactiveIndexManualArrayBased
+import {
+    OIMEventQueue,
+    OIMEventQueueSchedulerFactory,
+    createOIMCollectionKit,
 } from '@oimdb/core';
 
 interface User {
@@ -210,63 +223,65 @@ interface User {
     role: 'admin' | 'user';
 }
 
-// Create indexes
-const teamIndex = new OIMReactiveIndexManualSetBased<string, string>(queue);
-const roleIndex = new OIMReactiveIndexManualArrayBased<string, string>(queue);
+const queue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
 
-// Create collection with indexes
-const users = new OIMRICollection(queue, {
-    collectionOpts: {
-        selectPk: (user: User) => user.id
-    },
-    indexes: {
-        byTeam: teamIndex,
-        byRole: roleIndex
-    }
+// Create the collection kit
+const users = createOIMCollectionKit<User, string>(queue, {
+    selectPk: (user) => user.id,
 });
+
+// Derived index: auto-maintained from the `teamId` field
+const usersByTeam = users.indexFactory.derivedSetIndex((user) => user.teamId);
+// Manual index: you control membership explicitly
+const usersByRole = users.indexFactory.setBasedIndex<string>();
 
 // Subscribe to index changes
-users.indexes.byTeam.updateEventEmitter.subscribeOnKey('engineering', (pks) => {
-    console.log('Engineering team changed:', pks);
+usersByTeam.subscribeOnKey('engineering', () => {
+    console.log('Engineering team changed:', usersByTeam.getPksByKey('engineering'));
 });
 
-// Update indexes manually
-users.indexes.byTeam.setPks('engineering', ['u1', 'u2']);
+// Writing entities keeps the derived index in sync automatically
+users.collection.upsertMany([
+    { id: 'u1', name: 'Ann', teamId: 'engineering', role: 'admin' },
+    { id: 'u2', name: 'Bob', teamId: 'engineering', role: 'user' },
+]);
+
+// Manual index is updated by hand
+usersByRole.setPks('admin', ['u1']);
 ```
 
 ### Custom Entity Updaters
 
-Customize how entities are merged on update:
+By default an upsert replaces the stored entity. To merge instead, pass an `updateEntity` updater. OIMDB ships factories for the common cases, and you can supply your own `(draft, prevEntity) => entity`:
 
 ```typescript
-import { TOIMEntityUpdater } from '@oimdb/core';
+import { createOIMCollectionKit, createMergeEntityUpdater } from '@oimdb/core';
 
-// Deep merge updater
-const deepMergeUpdater: TOIMEntityUpdater<User> = (newEntity, oldEntity) => {
-    const result = { ...oldEntity };
-    
-    for (const [key, value] of Object.entries(newEntity)) {
-        if (value !== undefined) {
-            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                result[key] = deepMergeUpdater(value, result[key] || {});
-            } else {
-                result[key] = value;
-            }
-        }
-    }
-    
-    return result;
-};
-
-// Use custom updater
-const users = new OIMReactiveCollection<User, string>(queue, {
+// Built-in shallow merge: partial upserts merge into the existing entity
+const users = createOIMCollectionKit<User, string>(queue, {
     selectPk: (user) => user.id,
-    updateEntity: deepMergeUpdater
+    updateEntity: createMergeEntityUpdater<User>(),
 });
 
 // Updates merge with existing
-users.upsertOne({ id: 'user1', name: 'John' });
-users.upsertOne({ id: 'user1', email: 'john@example.com' }); // Merges with existing
+users.collection.upsertOne({ id: 'user1', name: 'John' });
+users.collection.upsertOneByPk('user1', { email: 'john@example.com' }); // merges
+
+// Or a custom updater, e.g. a deep merge
+const deepMerge: (draft: Partial<User>, prev: User) => User = (draft, prev) => {
+    const result = { ...prev };
+    for (const [key, value] of Object.entries(draft)) {
+        if (value !== undefined) {
+            (result as any)[key] = value;
+        }
+    }
+    return result;
+};
+
+const usersDeep = createOIMCollectionKit<User, string>(queue, {
+    selectPk: (user) => user.id,
+    updateEntity: deepMerge,
+});
 ```
 
 ## Integration with CNStra
@@ -289,12 +304,11 @@ CNStra provides orchestration for OIMDB, replacing reducers, slices, thunks, and
 
 ```ts
 import { CNS, neuron, collateral } from '@cnstra/core';
-import { OIMEventQueue, OIMEventQueueSchedulerFactory, OIMRICollection, OIMReactiveIndexManualSetBased } from '@oimdb/core';
+import { OIMEventQueue, OIMEventQueueSchedulerFactory, createOIMCollectionKit } from '@oimdb/core';
 
 const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const users = new OIMRICollection(dbEventQueue, {
-  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (u: { id: string }) => u.id }
+export const users = createOIMCollectionKit<{ id: string; name: string }, string>(dbEventQueue, {
+  selectPk: (u) => u.id,
 });
 
 // Define UI/update collateral
@@ -315,11 +329,13 @@ const cns = new CNS([usersNeuron]);
 
 ### React Usage
 
+React hooks take the **reactive collection** (`users.collection`), not the kit:
+
 ```tsx
 import { useSelectEntityByPk } from '@oimdb/react';
 
 function UserName({ id }: { id: string }) {
-  const user = useSelectEntityByPk(users, id) || null;
+  const user = useSelectEntityByPk(users.collection, id) || null;
   return <span>{user?.name ?? ''}</span>;
 }
 ```
@@ -330,28 +346,31 @@ Best practice: each model is updated by its own domain neuron. The controller em
 
 ```ts
 import { collateral, neuron } from '@cnstra/core';
-import { OIMEventQueue, OIMEventQueueSchedulerFactory, OIMRICollection, OIMReactiveIndexManualSetBased } from '@oimdb/core';
+import { OIMEventQueue, OIMEventQueueSchedulerFactory, createOIMCollectionKit } from '@oimdb/core';
+
+type UserEntity = { id: string; name: string };
+type PostEntity = { id: string; title: string; authorId: string };
 
 const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const users = new OIMRICollection(dbEventQueue, {
-  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (u: { id: string }) => u.id },
+export const users = createOIMCollectionKit<UserEntity, string>(dbEventQueue, {
+  selectPk: (u) => u.id,
 });
-export const posts = new OIMRICollection(dbEventQueue, {
-  indexes: { byAuthor: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (p: { id: string }) => p.id },
+export const posts = createOIMCollectionKit<PostEntity, string>(dbEventQueue, {
+  selectPk: (p) => p.id,
 });
+// Derived index: posts grouped by author, kept in sync automatically
+export const postsByAuthor = posts.indexFactory.derivedSetIndex((p) => p.authorId);
 
 // Single incoming signal with both payloads
 const userAndPostUpdated = collateral<{
-  user: { id: string; name: string };
-  post: { id: string; title: string; authorId: string };
+  user: UserEntity;
+  post: PostEntity;
 }>();
 
 // Controller-owned single update signal
 const controllerUpdated = collateral<{
-  user: { id: string; name: string };
-  post: { id: string; title: string; authorId: string };
+  user: UserEntity;
+  post: PostEntity;
 }>();
 
 // Controller receives inbound and emits one outbound
@@ -379,18 +398,19 @@ export const postModel = neuron({}).dendrite({
 });
 ```
 
-React selectors will observe a single batched change after the run completes, not N re-renders during the sequence.
+React selectors will observe a single batched change after the run completes, not N re-renders during the sequence. Index hooks take the **index object** (not a string name):
 
 ```tsx
-import { useSelectEntityByPk, useSelectEntitiesByIndexKey } from '@oimdb/react';
+import { useSelectEntityByPk, useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
 
 function AuthorWithPosts({ authorId }: { authorId: string }) {
-  const user = useSelectEntityByPk(users, authorId) || null;
-  const postsByAuthor = useSelectEntitiesByIndexKey(posts, 'byAuthor', authorId) || [];
+  const user = useSelectEntityByPk(users.collection, authorId) || null;
+  const postsByAuthorList =
+    useSelectEntitiesByIndexKeySetBased(posts.collection, postsByAuthor, authorId) ?? [];
   return (
     <section>
       <h4>{user?.name}</h4>
-      <ul>{postsByAuthor.map(p => <li key={p.id}>{p.title}</li>)}</ul>
+      <ul>{postsByAuthorList.map(p => p && <li key={p.id}>{p.title}</li>)}</ul>
     </section>
   );
 }
@@ -405,29 +425,31 @@ import { CNS, collateral, neuron } from '@cnstra/core';
 import {
   OIMEventQueue,
   OIMEventQueueSchedulerFactory,
-  OIMRICollection,
-  OIMReactiveIndexManualSetBased,
+  createOIMCollectionKit,
 } from '@oimdb/core';
+
+type DeckEntity = { id: string; title: string };
+type CardEntity = { id: string; deckId: string; title: string };
 
 // OIMDB setup
 const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const decks = new OIMRICollection(dbEventQueue, {
-  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (d: { id: string }) => d.id },
+export const decks = createOIMCollectionKit<DeckEntity, string>(dbEventQueue, {
+  selectPk: (d) => d.id,
 });
-export const cards = new OIMRICollection(dbEventQueue, {
-  indexes: { byDeck: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (c: { id: string }) => c.id },
+export const cards = createOIMCollectionKit<CardEntity, string>(dbEventQueue, {
+  selectPk: (c) => c.id,
 });
+// Cards grouped by deck, maintained automatically
+export const cardsByDeck = cards.indexFactory.derivedSetIndex((c) => c.deckId);
 
 // Collaterals
 const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>();
 const controllerCreateDeckForCard = collateral<{ title: string; cardTitle: string }>();
-const controllerCreateCard = collateral<{ deckId: string; cardId: string; title: string }>();
+const controllerCreateCard = collateral<{ deckId: string; title: string }>();
 const deckCreatedForCard = collateral<{ deckId: string; title: string; cardTitle: string }>();
 
 // Services (mocked)
-const generateDeckId = (title: string) => 'deck-' + Math.random().toString(36).slice(2);
+const generateDeckId = () => 'deck-' + Math.random().toString(36).slice(2);
 const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
 
 // Deck neuron: listens controller:deck:createForCard, emits deck:createdForCard, upserts OIMDB
@@ -446,9 +468,7 @@ export const cardNeuron = neuron({}).dendrite({
   response: async (payload) => {
     const cardId = generateCardId();
     cards.collection.upsertOne({ id: cardId, deckId: payload.deckId, title: payload.title });
-    return {
-      card
-    };
+    return undefined;
   },
 });
 
@@ -459,9 +479,9 @@ export const controller = neuron({ controllerCreateDeckForCard, controllerCreate
     collateral: uiCreateCardClick,
     response: (payload, axon) => {
       // Pass cardTitle along with deck creation through payload
-      return axon.controllerCreateDeckForCard.createSignal({ 
+      return axon.controllerCreateDeckForCard.createSignal({
         title: payload.deckTitle,
-        cardTitle: payload.cardTitle 
+        cardTitle: payload.cardTitle
       });
     },
   })
@@ -488,19 +508,19 @@ import { CNS, collateral, neuron } from '@cnstra/core';
 import {
   OIMEventQueue,
   OIMEventQueueSchedulerFactory,
-  OIMRICollection,
-  OIMReactiveIndexManualSetBased,
+  createOIMCollectionKit,
 } from '@oimdb/core';
+
+type DeckEntity = { id: string; title: string };
+type CardEntity = { id: string; deckId: string; title: string };
 
 // OIMDB setup
 const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const decks = new OIMRICollection(dbEventQueue, {
-  indexes: { byId: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (d: { id: string }) => d.id },
+export const decks = createOIMCollectionKit<DeckEntity, string>(dbEventQueue, {
+  selectPk: (d) => d.id,
 });
-export const cards = new OIMRICollection(dbEventQueue, {
-  indexes: { byDeck: new OIMReactiveIndexManualSetBased<string, string>(dbEventQueue) },
-  collectionOpts: { selectPk: (c: { id: string }) => c.id },
+export const cards = createOIMCollectionKit<CardEntity, string>(dbEventQueue, {
+  selectPk: (c) => c.id,
 });
 
 // Collaterals
@@ -508,14 +528,14 @@ const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>()
 const deckCreatedForCard = collateral<{ deckId: string; cardTitle: string }>();
 
 // Services (mocked)
-const generateDeckId = (title: string) => 'deck-' + Math.random().toString(36).slice(2);
+const generateDeckId = () => 'deck-' + Math.random().toString(36).slice(2);
 const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
 
 // Deck neuron: listens to UI click, creates deck, emits deckCreatedForCard
 export const deckNeuron = neuron({ deckCreatedForCard }).dendrite({
   collateral: uiCreateCardClick,
   response: async (payload, axon) => {
-    const deckId = generateDeckId(payload.deckTitle);
+    const deckId = generateDeckId();
     decks.collection.upsertOne({ id: deckId, title: payload.deckTitle });
     return axon.deckCreatedForCard.createSignal({ deckId, cardTitle: payload.cardTitle });
   },
@@ -558,12 +578,12 @@ await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTit
 
 ### Index Performance
 
-**SetBased Indexes** (`OIMReactiveIndexManualSetBased`):
+**SetBased Indexes** (`indexFactory.setBasedIndex()` / `derivedSetIndex()`):
 - Returns `Set<TPk>` for efficient membership checks
 - O(1) add/remove operations
 - Best for frequent incremental updates
 
-**ArrayBased Indexes** (`OIMReactiveIndexManualArrayBased`):
+**ArrayBased Indexes** (`indexFactory.arrayBasedIndex()` / `derivedArrayIndex()`):
 - Returns `TPk[]` for direct array access
 - O(1) `setPks` operation (direct assignment, no diff computation)
 - Best for full array replacements
@@ -573,14 +593,15 @@ await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTit
 
 ### React (@oimdb/react)
 
-The core library integrates seamlessly with React through dedicated hooks:
+The core library integrates seamlessly with React through dedicated hooks. All hooks take the **reactive collection** (`kit.collection`) and, for index queries, the **index object**:
 
 ```typescript
-import { useSelectEntitiesByPks, selectEntityByPk } from '@oimdb/react';
+import { useSelectEntityByPk, useSelectEntitiesByPks } from '@oimdb/react';
 
-// React hooks automatically subscribe to reactive collections
-const user = selectEntityByPk(users, 'user1');
-const teamUsers = useSelectEntitiesByPks(users, userIds);
+// Single entity by primary key
+const user = useSelectEntityByPk(users.collection, 'user1');
+// Many entities by primary keys
+const teamUsers = useSelectEntitiesByPks(users.collection, userIds);
 ```
 
 ### Redux (@oimdb/redux-adapter)
@@ -591,63 +612,56 @@ Migrate from Redux to OIMDB gradually or use both systems side-by-side with auto
 
 ## API Reference
 
-### Core Classes
+### Collection Kit
 
-#### `OIMReactiveCollection<TEntity, TPk>`
+#### `createOIMCollectionKit<TEntity, TPk>(queue, opts?)`
+
+Creates a reactive collection and returns a kit:
+
+```typescript
+const kit = createOIMCollectionKit<TEntity, TPk>(queue: OIMEventQueue, opts?: {
+    selectPk?: (entity: TEntity) => TPk;
+    updateEntity?: (draft: Partial<TEntity>, prevEntity: TEntity) => TEntity;
+});
+// kit = { queue, collection, indexFactory, select }
+```
+
+#### `kit.collection` — `OIMReactiveCollection<TEntity, TPk>`
 
 Reactive collection with automatic change notifications and event coalescing.
 
-**Constructor:**
-```typescript
-new OIMReactiveCollection(queue: OIMEventQueue, opts?: TOIMCollectionOptions<TEntity, TPk>)
-```
-
 **Key Methods:**
-- `upsertOne(entity: TEntity): void` - Insert or update single entity
-- `upsertMany(entities: TEntity[]): void` - Insert or update multiple entities
-- `getOneByPk(pk: TPk): TEntity | undefined` - Get entity by primary key
-- `getManyByPks(pks: readonly TPk[]): Map<TPk, TEntity | undefined>` - Get multiple entities
+- `upsertOne(entity): TOIMEntitySlot` - Insert or update a single entity
+- `upsertOneByPk(pk, partial): TOIMEntitySlot` - Insert or update by primary key
+- `upsertMany(entities): TOIMEntitySlot[]` - Insert or update multiple entities
+- `removeOneByPk(pk): void` / `removeManyByPks(pks): void` - Remove entities
+- `getOneByPk(pk): TEntity | undefined` - Get entity by primary key
+- `getManyByPks(pks): TEntity[]` - Get multiple entities
+- `getAll(): TEntity[]` - Get all entities
+- `subscribeOnKey(pk, handler): () => void` - Subscribe to a single key (handler takes no args)
+- `subscribeOnKeys(pks, handler): () => void` - Subscribe to multiple keys
 
-**Properties:**
-- `updateEventEmitter: OIMUpdateEventEmitter<TPk>` - Key-specific subscriptions
-- `coalescer: OIMUpdateEventCoalescerCollection<TPk>` - Event coalescing
+#### `kit.indexFactory` — `OIMCollectionIndexFactory<TEntity, TPk>`
 
-#### `OIMRICollection<TEntity, TPk, ...>`
+Builds indexes bound to the collection:
 
-Reactive collection with integrated indexing capabilities.
+- `setBasedIndex<TKey>(): OIMReactiveCollectionIndexManualSetBased` - Manual Set-based index
+- `arrayBasedIndex<TKey>(): OIMReactiveCollectionIndexManualArrayBased` - Manual Array-based index
+- `derivedSetIndex<TKey>(selectKey): OIMDerivedCollectionIndexSetBased` - Auto-maintained Set index
+- `derivedArrayIndex<TKey>(selectKey): OIMDerivedCollectionIndexArrayBased` - Auto-maintained Array index
 
-**Constructor:**
-```typescript
-new OIMRICollection(queue: OIMEventQueue, opts: {
-    collectionOpts?: TOIMCollectionOptions<TEntity, TPk>;
-    indexes: TReactiveIndexMap;
-})
-```
+**Index methods** (on the returned index):
+- `getPksByKey(key): Set<TPk> | TPk[]` - Query the index
+- `subscribeOnKey(key, handler): () => void` - Subscribe to a key
+- Manual indexes only: `setPks(key, pks)`, `addPks(key, pks)`, `removePks(key, pks)`, `clear(key?)`
 
-**Properties:**
-- `indexes: TReactiveIndexMap` - Named reactive indexes
+#### `kit.select` — `OIMCollectionSelectors<TEntity, TPk>`
 
-#### `OIMReactiveIndexManualSetBased<TKey, TPk>`
+Composable selectors (each has a `.watch(cb)` method):
+- `byPk(pk)` / `byPks(pks)`
+- `entitiesBySetIndexKey(index, key)` / `entitiesByArrayIndexKey(index, key)`
 
-Reactive Set-based index. Returns `Set<TPk>` for efficient membership checks.
-
-**Methods:**
-- `setPks(key: TKey, pks: readonly TPk[]): void` - Set primary keys (replaces entire Set)
-- `addPks(key: TKey, pks: readonly TPk[]): void` - Add primary keys (O(1))
-- `removePks(key: TKey, pks: readonly TPk[]): void` - Remove primary keys (O(1))
-- `index.getPksByKey(key: TKey): Set<TPk>` - Query index
-
-#### `OIMReactiveIndexManualArrayBased<TKey, TPk>`
-
-Reactive Array-based index. Returns `TPk[]` for direct array access.
-
-**Methods:**
-- `setPks(key: TKey, pks: readonly TPk[]): void` - Set primary keys (O(1), recommended)
-- `addPks(key: TKey, pks: readonly TPk[]): void` - Add primary keys (O(n))
-- `removePks(key: TKey, pks: readonly TPk[]): void` - Remove primary keys (O(n))
-- `index.getPksByKey(key: TKey): TPk[]` - Query index
-
-#### `OIMEventQueue`
+### `OIMEventQueue`
 
 Event processing queue with configurable scheduling.
 
@@ -668,8 +682,6 @@ new OIMEventQueue(options?: TOIMEventQueueOptions)
 Factory for creating different scheduler types:
 
 ```typescript
-// Available types: 'immediate' | 'microtask' | 'timeout' | 'animationFrame'
-
 OIMEventQueueSchedulerFactory.createMicrotask()
 OIMEventQueueSchedulerFactory.createAnimationFrame()
 OIMEventQueueSchedulerFactory.createTimeout(delay?: number)

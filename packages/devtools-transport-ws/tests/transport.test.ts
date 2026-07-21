@@ -20,9 +20,9 @@ const topologyBatch = (): CNSDTOAppBatchMessage => ({
 const hopBatch = (): CNSDTOAppBatchMessage => ({
     type: 'batch',
     items: [{
-        type: 'execution.hop',
+        type: 'stimulation.hop',
         hop: {
-            id: 'exec1:0', executionId: 'exec1', index: 0,
+            id: 'exec1:0', stimulationId: 'exec1', index: 0,
             neuronId: 'app:cns:n', inputCollateralId: 'app:cns:n:col',
             outputCollateralId: null, inputPayload: {}, outputPayload: null,
             startedAt: Date.now(), duration: null, error: null,
@@ -266,7 +266,7 @@ describe('CNSDevToolsTransportWs', () => {
             ws.onmessage?.({ data: JSON.stringify({
                 type: 'replay.start',
                 replayId: 'r1',
-                executionId: 'exec1',
+                stimulationId: 'exec1',
                 collateralId: 'app:cns:n:col',
                 payload: { x: 1 },
             }) } as MessageEvent);
@@ -355,7 +355,7 @@ describe('CNSDevToolsTransportWs', () => {
             const unsub = transport.onReplayStart?.(() => count++) ?? (() => {});
 
             const ws = MockWebSocket.getLatestInstance();
-            const replayMsg = { data: JSON.stringify({ type: 'replay.start', replayId: 'r1', executionId: 'e1', collateralId: 'app:cns:n:col', payload: {} }) };
+            const replayMsg = { data: JSON.stringify({ type: 'replay.start', replayId: 'r1', stimulationId: 'e1', collateralId: 'app:cns:n:col', payload: {} }) };
             ws.onmessage?.(replayMsg as MessageEvent);
             await new Promise(r => setTimeout(r, 10));
             expect(count).toBe(1);

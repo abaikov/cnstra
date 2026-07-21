@@ -15,8 +15,10 @@ export default function Home(): JSX.Element {
                         CNStra
                     </Heading>
                     <p className="hero__subtitle">
-                        Workflow / orchestration engine for building predictable,
-                        type-safe pipelines.
+                        A typed orchestration engine for your app's logic: model
+                        flows as an explicit graph of isolated units — run them
+                        deterministically, trace and resume them, decoupled from
+                        storage and I/O. On the backend and the frontend.
                     </p>
                     {/* removed extra tagline */}
                     <div>
@@ -33,24 +35,27 @@ export default function Home(): JSX.Element {
                 <section className="container margin-vert--lg">
                     <div className="row">
                         <div className="col col--4">
-                            <h3>Composable</h3>
+                            <h3>Isolated units</h3>
                             <p>
-                                Build complex flows from small, testable units
-                                (neurons, signals, queues).
+                                Each neuron owns one responsibility. Change one
+                                and the compiler + graph show exactly what it
+                                affects — no hidden coupling.
                             </p>
                         </div>
                         <div className="col col--4">
-                            <h3>Type-Safe</h3>
+                            <h3>Typed &amp; exhaustive</h3>
                             <p>
-                                First-class TypeScript support across core,
-                                devtools, and React bindings.
+                                Signals are typed collaterals, and the compiler
+                                forces you to handle every one you subscribe to.
+                                You can't ship an incomplete flow.
                             </p>
                         </div>
                         <div className="col col--4">
-                            <h3>Observable</h3>
+                            <h3>Traceable &amp; durable</h3>
                             <p>
-                                Devtools and visual graph help inspect and debug
-                                neuron networks.
+                                Trace and replay every step in devtools — and
+                                persist a running flow to resume it after a
+                                restart.
                             </p>
                         </div>
                     </div>

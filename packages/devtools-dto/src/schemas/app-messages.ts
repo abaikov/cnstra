@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CNSDTOCollateralSchema, CNSDTODendriteSchema, CNSDTOExecutionSchema, CNSDTOHopSchema, CNSDTONeuronSchema } from './entities';
+import { CNSDTOCollateralSchema, CNSDTODendriteSchema, CNSDTOStimulationSchema, CNSDTOHopSchema, CNSDTONeuronSchema } from './entities';
 
 export const CNSDTOTopologyMessageSchema = z.object({
     type: z.literal('topology'),
@@ -13,19 +13,19 @@ export const CNSDTOTopologyMessageSchema = z.object({
     dendrites: z.array(CNSDTODendriteSchema),
 });
 
-export const CNSDTOExecutionStartedMessageSchema = z.object({
-    type: z.literal('execution.started'),
-    execution: CNSDTOExecutionSchema,
+export const CNSDTOStimulationStartedMessageSchema = z.object({
+    type: z.literal('stimulation.started'),
+    stimulation: CNSDTOStimulationSchema,
 });
 
 export const CNSDTOHopAddedMessageSchema = z.object({
-    type: z.literal('execution.hop'),
+    type: z.literal('stimulation.hop'),
     hop: CNSDTOHopSchema,
 });
 
-export const CNSDTOExecutionCompletedMessageSchema = z.object({
-    type: z.literal('execution.completed'),
-    executionId: z.string(),
+export const CNSDTOStimulationCompletedMessageSchema = z.object({
+    type: z.literal('stimulation.completed'),
+    stimulationId: z.string(),
     completedAt: z.number(),
     hopCount: z.number().int().nonnegative(),
     hasError: z.boolean(),
@@ -33,9 +33,9 @@ export const CNSDTOExecutionCompletedMessageSchema = z.object({
 
 export const CNSDTOAppBatchItemSchema = z.discriminatedUnion('type', [
     CNSDTOTopologyMessageSchema,
-    CNSDTOExecutionStartedMessageSchema,
+    CNSDTOStimulationStartedMessageSchema,
     CNSDTOHopAddedMessageSchema,
-    CNSDTOExecutionCompletedMessageSchema,
+    CNSDTOStimulationCompletedMessageSchema,
 ]);
 
 export const CNSDTOAppBatchMessageSchema = z.object({
@@ -44,8 +44,8 @@ export const CNSDTOAppBatchMessageSchema = z.object({
 });
 
 export type CNSDTOTopologyMessage = z.infer<typeof CNSDTOTopologyMessageSchema>;
-export type CNSDTOExecutionStartedMessage = z.infer<typeof CNSDTOExecutionStartedMessageSchema>;
+export type CNSDTOStimulationStartedMessage = z.infer<typeof CNSDTOStimulationStartedMessageSchema>;
 export type CNSDTOHopAddedMessage = z.infer<typeof CNSDTOHopAddedMessageSchema>;
-export type CNSDTOExecutionCompletedMessage = z.infer<typeof CNSDTOExecutionCompletedMessageSchema>;
+export type CNSDTOStimulationCompletedMessage = z.infer<typeof CNSDTOStimulationCompletedMessageSchema>;
 export type CNSDTOAppBatchItem = z.infer<typeof CNSDTOAppBatchItemSchema>;
 export type CNSDTOAppBatchMessage = z.infer<typeof CNSDTOAppBatchMessageSchema>;

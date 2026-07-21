@@ -3,18 +3,18 @@ id: benchmark
 title: React State Management Benchmark - Performance Comparison
 sidebar_label: Benchmark
 slug: /frontend/benchmark
-description: Honest benchmark of Cnstra + OIMDB vs MobX, Effector, Zustand, and Redux Toolkit across three planes — React throughput (production build), the pure data layer, and steady-state memory. Fine-grained stores tie under React; the real divide is fine vs coarse; OIMDB/Cnstra lead the data layer and have the lightest footprint.
+description: Benchmark of Cnstra + OIMDB vs MobX, Effector, Zustand, and Redux Toolkit across three planes — React throughput (production build), the pure data layer, and steady-state memory. In our setup, fine-grained stores tie under React; the main divide is fine vs coarse; OIMDB/Cnstra measured fastest on the data layer and lightest in memory. Numbers are a single-machine snapshot — treat them as directional.
 keywords: [React state management benchmark, performance comparison, Cnstra, OIMDB, MobX, Effector, Zustand, Redux Toolkit, fine-grained reactivity, data layer benchmark]
 ---
 
 ## Overview
 
-We compared **Cnstra + OIMDB** against **MobX**, **Effector**, **Zustand**, and **Redux Toolkit**. The honest summary up front:
+We compared **Cnstra + OIMDB** against **MobX**, **Effector**, **Zustand**, and **Redux Toolkit**. These are our results on one machine with the library versions we tested; read them as directional, not as universal rankings. The summary up front:
 
-- **Among fine-grained (per-key) stores, React's commit cost dominates and they all tie** at ~33–36 µs/update. The 1–3 µs spread between them is **not reproducible** — it's a coin flip.
-- **The reproducible difference is fine-grained vs coarse.** Coarse stores (copy the whole record + re-run all selectors per update) land at 1230–5430 µs/update — **35–160× slower** — and React does *not* hide this.
-- **On the pure data layer (no React), OIMDB/Cnstra are the fastest** (0.25–0.48 µs/update), ~2–3× faster than MobX, while coarse stores are 95–302 µs.
-- **On memory, Cnstra/OIMDB have the lightest footprint** (25.8–28.1 MB steady-state). Atomic Effector is ~3.5× heavier (89.7 MB) — the price of a store + event per entity.
+- **Among fine-grained (per-key) stores, React's commit cost dominates and they effectively tie** at ~33–36 µs/update. The 1–3 µs spread between them did **not reproduce** across our runs — treat it as a coin flip.
+- **The clearest difference we saw is fine-grained vs coarse.** Coarse stores (copy the whole record + re-run all selectors per update) landed at 1230–5430 µs/update — **~35–160× slower** in our runs — and React does *not* hide this.
+- **On the pure data layer (no React), OIMDB/Cnstra measured fastest** (0.25–0.48 µs/update), roughly 2–3× faster than MobX in our runs, while coarse stores were 95–302 µs.
+- **On memory, Cnstra/OIMDB had the lightest footprint we measured** (25.8–28.1 MB steady-state). Atomic Effector was ~3.5× heavier (89.7 MB) — the price of a store + event per entity.
 
 **🔗 [Interactive Benchmark Results](https://abaikov.github.io/cnstra-oimdb-bench/)** | **📦 [Benchmark Source Code](https://github.com/abaikov/cnstra-oimdb-bench)**
 
@@ -43,7 +43,7 @@ The three planes answer different questions, so we report all of them:
 | Zustand (ids-based) | 2,372 | 420 | 1 |
 | Redux Toolkit (ids-based) | 5,430 | 184 | 1 |
 
-The top six (all **fine-grained**) are within noise of each other. The bottom three (all **coarse**) are 35–160× slower — that gap is real and reproducible.
+The top six (all **fine-grained**) are within noise of each other. The bottom three (all **coarse**) are ~35–160× slower — a gap large enough that it held consistently across our runs.
 
 ## Table 2 — Data layer, no React (µs/update)
 
@@ -61,7 +61,7 @@ The top six (all **fine-grained**) are within noise of each other. The bottom th
 | effector record + useStoreMap | 248 |
 | redux dispatch + N selectors | 302 |
 
-This is the only place where fine-grained stores rank honestly — and OIMDB/Cnstra lead. Note that adding the full Cnstra orchestration on top of OIMDB (0.34 → 0.48 µs) is a small, fixed cost, not a multiplier.
+This is the one plane where fine-grained stores separate at all — and OIMDB/Cnstra came out ahead in our runs. Note that adding the full Cnstra orchestration on top of OIMDB (0.34 → 0.48 µs) read as a small, fixed cost, not a multiplier.
 
 ## Table 3 — Steady-state heap, production, after GC (MB, lower is better)
 
@@ -81,7 +81,7 @@ Identical DOM across all adapters (50,162 nodes), so this isolates the store lay
 
 Memory is where the speed trade-offs become visible:
 
-- **Cnstra/OIMDB are the lightest** (25.8–28.1 MB). The in-place updater also avoids per-update allocations, so it's the leanest of all.
+- **Cnstra/OIMDB were the lightest we measured** (25.8–28.1 MB). The in-place updater also avoids per-update allocations, so it was the leanest in this run.
 - **Atomic Effector — 89.7 MB, ~3.5× heavier than anyone else.** That's the cost of a store + event *per entity*: thousands of Effector units. Atomic Effector buys its fast-tier update speed (Table 1/2) **with memory** — name this trade-off explicitly before reaching for it.
 - **MobX deep (37.4 MB) is heavier than MobX ids (31.5 MB)** — deep observables wrap every field (proxies/atoms), so the "native" idiom costs more memory than the normalized one.
 - **Redux / Effector-ids sit at ~38–42 MB.**
@@ -109,7 +109,7 @@ In production React, every **fine-grained** (per-key) store — OIMDB, Cnstra, b
 ### 2. Only two things are distinguishable
 
 - **Fine vs coarse.** Coarse stores (Effector-ids, Zustand, Redux) copy the entire record and re-run all N selectors per update → 1230 / 2372 / 5430 µs, **35–160× slower**. React does **not** hide this.
-- **The data layer (no React).** There the real store speed shows: OIMDB/Cnstra lead (0.25–0.48 µs), ~2–3× faster than MobX (0.67–0.74), and coarse stores are 95–302 µs. This is the one place fine-grained frameworks rank honestly — and OIMDB is ahead.
+- **The data layer (no React).** There the store cost shows: OIMDB/Cnstra measured fastest (0.25–0.48 µs), ~2–3× faster than MobX (0.67–0.74) in our runs, and coarse stores were 95–302 µs. This is the one plane where fine-grained frameworks separate — and OIMDB came out ahead here.
 
 ### 3. Re-renders/update = 1 for everyone
 
@@ -119,7 +119,7 @@ All frameworks are equally precise about React invalidation. The difference is p
 
 - If you're already using a **fine-grained** store (OIMDB/Cnstra, MobX, atomic Effector), don't expect a React-visible speedup from switching between them — React dominates. Choose on ergonomics, architecture, and the data-layer cost (which matters off the render path: workers, sync engines, large in-memory derivations).
 - The decision that **does** move React throughput by orders of magnitude is **fine-grained vs coarse**. Coarse normalization (copy-the-record + re-run-all-selectors) is what costs 35–160×.
-- Cnstra + OIMDB sits in the **top tier under React**, is the **fastest on the data layer**, and has the **lightest memory footprint** — with the orchestration overhead measured as noise.
+- In our setup Cnstra + OIMDB sat in the **top tier under React**, measured **fastest on the data layer**, and had the **lightest memory footprint** — with the orchestration overhead showing up as noise. (One machine, fixed versions — your mileage may vary.)
 - **Watch the memory trade-off.** Granularity isn't free: atomic Effector wins a fast update tier but pays ~3.5× the heap (a unit per entity), and MobX's deep/native idiom costs more memory than its normalized one. Speed, memory, and ergonomics pull in different directions — pick deliberately.
 
 ## Why coarse stores are slow
@@ -131,4 +131,4 @@ Coarse stores (Zustand/Redux/Effector-ids as benchmarked) update a single normal
 - **React plane**: production build (`vite build` + `preview`), `flushSync` per update (no frame floor / no batching across updates), 1500 mounted components, best-of-N with warmup.
 - **Data-layer plane**: no React; 1 subscriber per entity; `notify = 200000` across all adapters to confirm delivery.
 - **Memory plane**: steady-state heap measured after GC in the production build, with an identical DOM (50,162 nodes) across all adapters so the delta reflects the store layer, not the view.
-- Same machine/environment for all adapters; relative differences (especially the fine-vs-coarse gap and the memory spread) are robust across environments. Sub-3 µs differences inside the fine-grained tier are within noise and should not be read as rankings.
+- All adapters ran on the **same single machine and environment**, with the library versions available at the time. We did **not** test across different hardware, OS, browsers, or library versions, so treat the absolute numbers as a snapshot rather than a general result. The large gaps (fine-vs-coarse, the memory spread) are big enough that we'd expect them to hold directionally elsewhere, but we haven't verified that. Sub-3 µs differences inside the fine-grained tier are within noise and should not be read as rankings.

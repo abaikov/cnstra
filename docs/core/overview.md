@@ -3,13 +3,17 @@ id: core-overview
 title: "CNStra: A New Generation of Application Orchestration"
 sidebar_label: CNStra
 slug: /core/overview
-description: Discover CNStra, a new generation of application orchestration that makes flows explicit, traceable, and safe.
-keywords: [CNStra, orchestration, flows, MVC, Redux, state management, explicit flows, traceability, workflows]
+description: CNStra is a single-process orchestration engine for application logic — model flows as an explicit, typed graph of isolated handlers that runs deterministically, is traceable and resumable, and stays decoupled from storage and I/O, on backend and frontend alike.
+keywords: [CNStra, orchestration, orchestration engine, workflow engine, flows, backend, deterministic, traceability, durable execution, exhaustive binding, MVC, Redux, state management]
 ---
 
 # CNStra: A New Generation of Application Orchestration
 
 ![Brain in Grass](/img/brain_in_grass.png)
+
+**In one line:** CNStra is a single-process orchestration engine for your app's *logic*. You model behavior as an explicit, typed graph of small, isolated handlers ("neurons") wired by named signals ("collaterals"). A signal propagates through the graph **deterministically**; every step is **traceable** (and a run can be **persisted and resumed**); and because every connection is a typed edge, the compiler shows you the blast radius of any change. It also gives you the knobs to control *how* a flow runs — concurrency, queues, retries, timeouts, cancellation — and stays **decoupled from storage and I/O**, so the same model runs on the backend and the frontend. It is not a state manager, not an event bus, and not a distributed system.
+
+The rest of this page shows *why* it's shaped this way — starting from where the usual patterns break.
 
 ## 1. MVC — Clean on Paper, Chaotic in Reality
 
@@ -76,7 +80,7 @@ And when business later says:
 
 ## 2. REDUX — MVC Problem Solved... Or Is It?
 
-Anyone who has dealt with a similar task of creating a deck with a card has probably come to roughly the following solution:
+Faced with the same "create a deck with a card" task, most people arrive at roughly this:
 
 ### Redux Toolkit reducers
 
@@ -122,9 +126,9 @@ export const createCardWithDeck =
   };
 ```
 
-In essence, you've recreated MVC: models (reducers) have no idea about the flow context, and the controller (thunk) just calls them sequentially.
+In essence, you've recreated MVC: the models (reducers) know nothing about the flow, and the controller (thunk) just calls them in sequence.
 
-Redux solves the problem of independent model updates well (not like in our example, of course, but when you don't need a flow).
+Redux handles *independent* state updates well — the case where there's no flow to coordinate. Add a flow, though, and you're back to a thunk driving reducers by hand.
 
 But flows? Still invisible.
 
@@ -176,6 +180,8 @@ Let's revisit Deck + Card and see how the same flow can be triggered:
 * from an **onboarding flow** (userEntersApp),
 
 while keeping everything explicit.
+
+> **New to the vocabulary?** In one breath: a **neuron** is an isolated handler, a **collateral** is a named typed signal, a neuron's **axon** is the collaterals it may emit, a **dendrite** binds a handler to an incoming collateral, and **`stimulate`** fires a signal into the graph. See the full nervous-system analogy in the [Introduction](/docs/concepts/intro).
 
 ```ts
 import { CNS, collateral, neuron, withCtx, TCNSSignal } from '../src/index';
@@ -262,12 +268,12 @@ cns.stimulate(
 ```
 
 - Each collateral has a **named, typed identity**.
-- A neuron can only emit signals declared on **its own axon**.
-- This prevents accidental emissions and guarantees explicit wiring.
+- A neuron is expected to emit only signals declared on **its own axon** — a typed convention the compiler and graph make visible, rather than a runtime lock.
+- This prevents accidental emissions and keeps wiring explicit.
 - Even if two flows share logic, they stay **structurally distinct**.
 - Both flows produce the **same deterministic orchestration**, but each carries its **own flow identity**.
 
-This is impossible to achieve in MVC/Redux/Signals with the same compile-time guarantees without building your own CNStra on top.
+You can build the same compile-time guarantees on top of MVC/Redux/Signals using discriminated unions, exhaustive switches, and event schemas — but that essentially means reimplementing CNStra yourself. The value here is having this as one cohesive, ready-made model rather than a hand-assembled one.
 
 ---
 
@@ -316,14 +322,14 @@ You literally **cannot ship** an incomplete flow.
 
 **📊 [View Full Benchmark Report](/docs/frontend/benchmark)** | **🔗 [Interactive Results](https://abaikov.github.io/cnstra-oimdb-bench/)** | **📦 [Source Code](https://github.com/abaikov/cnstra-oimdb-bench)**
 
-The honest picture (measured on three planes — see the full report):
+What we measured on three planes (one machine, fixed library versions — directional, not universal; see the full report):
 
 - **Under React (production build), fine-grained stores tie.** Cnstra + OIMDB, both MobX variants, and atomic Effector all land at ~33–36 µs/update — React's commit cost dominates and the small spread between them is noise.
-- **The reproducible difference is fine-grained vs coarse.** Coarse stores that copy the whole record and re-run all selectors (Effector-ids, Zustand, Redux Toolkit) are **35–160× slower** under React (1230 / 2372 / 5430 µs/update).
-- **On the pure data layer (no React), OIMDB/Cnstra are fastest** — 0.25–0.48 µs/update, ~2–3× faster than MobX, while coarse stores sit at 95–302 µs. The Cnstra orchestration on top of OIMDB is a small fixed cost (≈ noise), not a multiplier.
-- **On memory, Cnstra/OIMDB are the lightest** — 25.8–28.1 MB steady-state heap (in-place is leanest). Atomic Effector is ~3.5× heavier (89.7 MB): a store + event per entity buys update speed with memory.
+- **The clearest difference we saw is fine-grained vs coarse.** Coarse stores that copy the whole record and re-run all selectors (Effector-ids, Zustand, Redux Toolkit) were **~35–160× slower** under React (1230 / 2372 / 5430 µs/update).
+- **On the pure data layer (no React), OIMDB/Cnstra measured fastest** — 0.25–0.48 µs/update, roughly 2–3× faster than MobX in our runs, while coarse stores sat at 95–302 µs. The Cnstra orchestration on top of OIMDB read as a small fixed cost (≈ noise), not a multiplier.
+- **On memory, Cnstra/OIMDB had the lightest footprint we measured** — 25.8–28.1 MB steady-state heap (in-place is leanest). Atomic Effector was ~3.5× heavier (89.7 MB): a store + event per entity buys update speed with memory.
 
-Takeaway: switching between fine-grained stores won't change React throughput (React dominates) — pick on architecture, data-layer cost, and memory. Cnstra + OIMDB is in the top tier under React, leads the data layer, **and** has the lightest footprint.
+Takeaway: switching between fine-grained stores won't change React throughput (React dominates) — pick on architecture, data-layer cost, and memory. In our setup Cnstra + OIMDB sat in the top tier under React, measured fastest on the data layer, **and** had the lightest footprint — though that's a single-machine snapshot, so verify on your own workload.
 
 ---
 
@@ -338,25 +344,25 @@ That's why orchestration rots.
 
 CNStra flips the model:
 
-* state becomes explicit (via OIMDB),
-* flows become explicit (via collaterals),
-* parent/child chains are tracked automatically,
-* compile-time safety eliminates missing handlers,
-* performance rivals handcrafted atomic stores.
+* flows become explicit (a typed graph of collaterals), not implicit call order,
+* parent/child chains are tracked automatically, so runs stay traceable,
+* compile-time exhaustiveness eliminates missing handlers,
+* execution is controllable (concurrency, queues, retries, timeouts) and can be persisted and resumed,
+* state stays in a data layer of your choice (e.g. OIMDB) — CNStra orchestrates, it doesn't store.
 
 This is not Flux 3.0 or "better Redux".
 
-### This is the first explicit orchestration layer designed specifically for the realities of the modern web.
+### An explicit orchestration layer for application logic — decoupled from storage and I/O, on the backend and the frontend alike.
 
 ![Eye](/img/eye.png)
 
-Frontend or backend — same primitives, same guarantees:
+Same primitives, same guarantees, wherever it runs:
 
 * workflows,
 * pipelines,
 * background jobs,
 * domain events,
-* distributed flows.
+* durable, resumable runs.
 
 If you want a deep-dive into:
 

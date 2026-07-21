@@ -31,7 +31,7 @@ export const CNSDTODendriteSchema = z.object({
     appId: z.string(),
 });
 
-export const CNSDTOExecutionSchema = z.object({
+export const CNSDTOStimulationSchema = z.object({
     id: z.string(),
     cnsId: z.string(),
     appId: z.string(),
@@ -46,7 +46,7 @@ export const CNSDTOExecutionSchema = z.object({
 
 export const CNSDTOHopSchema = z.object({
     id: z.string(),
-    executionId: z.string(),
+    stimulationId: z.string(),
     index: z.number().int().nonnegative(),
     neuronId: z.string(),
     inputCollateralId: z.string(),
@@ -62,5 +62,5 @@ export type CNSDTOApp = z.infer<typeof CNSDTOAppSchema>;
 export type CNSDTONeuron = z.infer<typeof CNSDTONeuronSchema>;
 export type CNSDTOCollateral = z.infer<typeof CNSDTOCollateralSchema>;
 export type CNSDTODendrite = z.infer<typeof CNSDTODendriteSchema>;
-export type CNSDTOExecution = z.infer<typeof CNSDTOExecutionSchema>;
+export type CNSDTOStimulation = z.infer<typeof CNSDTOStimulationSchema>;
 export type CNSDTOHop = z.infer<typeof CNSDTOHopSchema>;
