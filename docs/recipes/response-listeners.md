@@ -11,7 +11,7 @@ CNStra lets you observe traversal without polluting domain neurons. There are tw
 - Per‑run: `onResponse` option of `cns.stimulate(...)`
 - Global: `cns.addResponseListener(...)`
 
-Both receive the same response object with `inputSignal`, `outputSignal`, `error`, `ctx`, and `queueLength`.
+Both receive the same response object with `inputSignal`, `outputSignal`, `error`, `ctx`, `queueLength`, `pendingActivations` and `activeActivations`.
 
 ## Per‑run `onResponse`
 Use for ad‑hoc debugging or request‑scoped tracing.
@@ -55,7 +55,16 @@ off();
 - `inputSignal`: when a signal enters the run (including the initial one)
 - `outputSignal`: when a dendrite returns a continuation
 - `error`: when a dendrite throws
-- `queueLength`: current internal work queue length (can be used for backpressure metrics)
+- `queueLength`: every activation the stimulation still owns — `pendingActivations + activeActivations`. Good for backpressure metrics. `queueLength === 0` marks the terminal response, i.e. the stimulation is finished.
+- `pendingActivations`: activations whose dendrite body has not been invoked yet (queued, held, or reserved by an in-progress fan-out). Subscribers parked behind an async listener count here.
+- `activeActivations`: activations whose body was invoked and returned a promise that has not settled.
+
+:::note Looking for a batch boundary?
+`queueLength === 0` tells you the run is over, not that a synchronous batch ended.
+Responses are emitted when an activation *finishes*, but a batch just as often ends
+when one *starts* and goes async. Use [`onDrain`](../core/api.md#batch-boundaries-ondrain)
+to commit or flush at batch boundaries.
+:::
 
 ## Async listeners are a barrier (this is how checkpointing works)
 

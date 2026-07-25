@@ -4,6 +4,7 @@ import type { TCNSOptions } from '../types/TCNSOptions';
 import type { TCNSStimulationOptions } from '../types/TCNSStimulationOptions';
 import type { TCNSSignal } from '../types/TCNSSignal';
 import type { TCNSStimulationResponse } from '../types/TCNSStimulationResponse';
+import type { TCNSStimulationDrain } from '../types/TCNSStimulationDrain';
 import type { CNSNetwork } from '../CNSNetwork';
 import type { CNSStimulation } from '../CNSStimulation';
 import type { CNSCollateral } from '../CNSCollateral';
@@ -25,6 +26,13 @@ export interface ICNS<
             response: TCNSStimulationResponse
         ) => void
     ): () => void;
+
+    /**
+     * Add a global batch-boundary listener applied to all stimulations, called
+     * once at the end of every synchronous turn.
+     * Returns an unsubscribe function.
+     */
+    addDrainListener(listener: (drain: TCNSStimulationDrain) => void): () => void;
 
     stimulate(
         signalOrSignals:

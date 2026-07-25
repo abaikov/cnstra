@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import React from 'react';
 import { useDevtoolsSocket } from './hooks/useDevtoolsSocket';
 import { useAppSelection } from './hooks/useAppSelection';

@@ -202,7 +202,7 @@ const result = await job.waitUntilFinished(queueEvents);
 - `cns.activate()` resumes execution from specific tasks with restored context
 - Progress is saved to Redis via `job.updateProgress()`, so it persists across retries
 
-## Handling Non-Serializable Data in Signals
+## Handling Non-Serializable Data in Signals {#non-serializable-data}
 
 When working with message brokers, signals must be serializable (JSON), but sometimes you need to work with non-serializable data (e.g., blobs, file handles, database connections).
 

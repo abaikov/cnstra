@@ -179,19 +179,18 @@ const stimulation = cns.stimulate(signal, {
 
 ### Errors Not Being Handled
 
-If a dendrite throws an error and you don't handle it, the stimulation might appear stuck.
+If a dendrite throws and **nothing observes the run**, the failure is *silent*: `stimulate()` returns a `CNSStimulation` (not a Promise), the completion Promise is created lazily by `waitUntilComplete()`, and with no response listener the error is caught internally onto `response.error` but never logged, thrown, or even raised as an unhandled rejection. The symptom is usually "no output / nothing happened" (sometimes a run that looks stuck) — not an error in the console.
 
-**Solution**: Always handle errors in `onResponse`:
+**Solution**: observe every run with a global listener, **or** await completion (a dendrite throw rejects `waitUntilComplete()` even with no listener). See [Error Handling](/docs/recipes/error-handling) for the full picture.
 
 ```ts
-const stimulation = cns.stimulate(signal, {
-  onResponse: (r) => {
-    if (r.error) {
-      console.error('Error:', r.error);
-      // Handle or recover
-    }
-  }
+// A) Global listener — surfaces failures from every stimulation (fire-and-forget safe)
+cns.addResponseListener((r) => {
+  if (r.error) console.error('Error:', r.error);
 });
+
+// B) Or await the run and catch its rejection
+await cns.stimulate(signal).waitUntilComplete();
 ```
 
 ## Type Safety Issues

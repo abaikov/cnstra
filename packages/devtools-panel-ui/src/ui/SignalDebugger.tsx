@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import React, { useState, useRef } from 'react';
 import { db, TStimulation } from '../model';
 import { useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';

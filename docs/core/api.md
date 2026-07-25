@@ -166,12 +166,44 @@ Both `onResponse` and global listeners receive the same object:
   inputSignal?: TCNSSignal;    // when a signal is ingested
   outputSignal?: TCNSSignal;   // when a dendrite returns a continuation
   contextValue: Map<object, unknown>; // per-neuron per-stimulation metadata (not business data)
-  queueLength: number;         // current work queue size
+  queueLength: number;         // all activations still owned = pending + active
+  pendingActivations: number;  // body not invoked yet
+  activeActivations: number;   // body invoked, awaiting an unsettled promise
   stimulation: CNSStimulation; // reference to the stimulation instance
   error?: Error;               // when a dendrite throws
   hops?: number;               // present if maxNeuronHops is set
 }
 ```
+
+##### The counters
+
+The unit is an **activation** — one `(neuron, dendrite, signal)` triple. A signal
+produces one activation per subscriber of its collateral.
+
+An activation is *pending* until its dendrite body is invoked, then *active*
+until the promise that body returned settles. A synchronous body passes through
+`active` within a single scheduler iteration and is decremented before its
+response is emitted, so only genuinely asynchronous work is ever observed there.
+Subscribers held behind an async `onResponse` count as **pending**, not active —
+the split is by lifecycle stage, not by "something is being awaited".
+
+`queueLength` counts active work deliberately, the way an AMQP queue counts
+unacknowledged messages in its total; `getAllActivationTasks()` follows the same
+model. So:
+
+```ts
+r.queueLength === 0            // the stimulation is finished
+```
+
+This is the exact condition used internally to settle `waitUntilComplete()`, so
+it holds on the terminal response and nowhere else.
+
+:::caution `queueLength === 0` is not a batch boundary
+A response is emitted when an activation *finishes* — but a synchronous batch
+just as often ends when one *starts* and returns a promise, and no response is
+emitted at that moment. To flush or commit at batch boundaries use
+[`onDrain`](#batch-boundaries-ondrain).
+:::
 
 ### Global response listeners (middleware‑style)
 Use `addResponseListener` to attach cross‑cutting concerns (logging, metrics, tracing) that run for every stimulation.
@@ -192,6 +224,73 @@ const off = cns.addResponseListener((r) => {
 // later
 off();
 ```
+
+### Batch boundaries: `onDrain`
+
+A CNStra run is a sequence of **synchronous turns**. A turn starts when something
+feeds the scheduler — the initial `stimulate()`, a settled neuron body, a settled
+async listener — and ends when nothing more can run without yielding to the event
+loop. `onDrain` fires once at the end of every turn.
+
+```ts
+cns.stimulate(signal, {
+  onDrain: () => store.flush(),                       // batch boundary
+  onResponse: r => { if (r.queueLength === 0) done(); } // stimulation finished
+});
+```
+
+Or once for the whole organism, which is how integrations install themselves:
+
+```ts
+const off = cns.addDrainListener(() => store.flush());
+```
+
+#### Why this cannot be a response
+
+A turn can end in six ways, and a response is emitted in only the first:
+
+1. an activation finished and left the queue empty
+2. the last activation **started** and returned a promise
+3. the stimulation-level `concurrency` limit was reached
+4. the stimulation was aborted
+5. subscribers are parked behind an async `onResponse`
+6. a per-neuron `setConcurrency` gate forced an activation onto a promise
+
+Case 2 is the common one. In `A → async B → C`, the turn ends the moment `B`'s
+body reaches its first `await` — anything `B` wrote synchronously before that
+point is already in the store, but no response has been emitted since `B` was
+scheduled. Without `onDrain` those writes stay uncommitted until `B` settles,
+which is exactly how optimistic updates and loading states get lost.
+
+#### Payload
+
+```ts
+{
+  stimulation: CNSStimulation;
+  queueLength: number;         // pending + active; zero means finished
+  pendingActivations: number;  // non-zero here means BLOCKED
+  activeActivations: number;   // non-zero means another drain is coming
+}
+```
+
+Same counters as on a response, but measured *after* the loop exhausted rather
+than before the work runs. On a response `pendingActivations` is a forecast; on a
+drain it is a fact — a non-zero value can only mean blocked by a concurrency
+limit or by an abort, never "about to run".
+
+#### Notes
+
+- Returns `void`; a returned promise is **not** awaited. There is nothing to gate
+  on — the next turn is started by someone else's promise settling. For async work
+  at a boundary use `onResponse`, which does support promises.
+- A listener that throws is logged and isolated; it cannot derail the stimulation
+  or the other listeners.
+- Re-entrancy is safe. A nested `stimulate()` from inside the callback is a
+  separate stimulation and announces its own boundary inline. Feeding work back
+  into the *same* stimulation via `enqueueTasks()` runs it, but folds it into the
+  turn already closing, so it yields no additional boundary.
+- Abort ends a turn without any further response or drain progress; pair it with
+  `waitUntilComplete().catch(...)` if you need a final commit on that path.
 
 ### `CNSStimulation` methods
 

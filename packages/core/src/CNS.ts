@@ -6,6 +6,7 @@ import { CNSStimulation } from './CNSStimulation';
 import { TCNSSignal } from './types/TCNSSignal';
 import { CNSInstanceNeuronQueue } from './CNSInstanceNeuronQueue';
 import { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
+import { TCNSStimulationDrain } from './types/TCNSStimulationDrain';
 import { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
 import { CNSNetwork } from './CNSNetwork';
 import { ICNS } from './interfaces/ICNS';
@@ -36,6 +37,13 @@ export class CNS<
     > = [];
 
     /**
+     * Global batch-boundary listeners applied to every stimulation.
+     */
+    private readonly globalDrainListeners: Array<
+        (d: TCNSStimulationDrain) => void
+    > = [];
+
+    /**
      * Shared, app/organism-wide value handed to every dendrite as `ctx.global`.
      * Stored untyped (the type is baked into neurons via `neuronFactory().withGlobal<T>()`);
      * CNS is just a passthrough carrier, so injecting it here never touches the hot path.
@@ -61,6 +69,56 @@ export class CNS<
             active = false;
             const idx = this.globalResponseListeners.indexOf(listener);
             if (idx >= 0) this.globalResponseListeners.splice(idx, 1);
+        };
+    }
+
+    /**
+     * Register a listener called once at the end of every synchronous turn of
+     * every stimulation - see {@link TCNSStimulationDrain}. This is how an
+     * integration (a state manager, an in-memory database) installs a single
+     * commit point for the whole organism instead of passing `onDrain` per call.
+     *
+     * Returns an unsubscribe function.
+     */
+    public addDrainListener(
+        listener: (drain: TCNSStimulationDrain) => void
+    ): () => void {
+        this.globalDrainListeners.push(listener);
+        let active = true;
+        return () => {
+            if (!active) return;
+            active = false;
+            const idx = this.globalDrainListeners.indexOf(listener);
+            if (idx >= 0) this.globalDrainListeners.splice(idx, 1);
+        };
+    }
+
+    /**
+     * Fan a drain out to the local and global listeners, or return undefined when
+     * there are none so the stimulation can skip the boundary check entirely.
+     *
+     * Listener errors are isolated: a drain is a notification, and one broken
+     * flush must not stop the others or derail the stimulation that triggered it.
+     */
+    private wrapOnDrain(
+        local?: (drain: TCNSStimulationDrain) => void
+    ): ((drain: TCNSStimulationDrain) => void) | undefined {
+        if (this.globalDrainListeners.length === 0 && !local) return undefined;
+        return (d: TCNSStimulationDrain) => {
+            if (local) {
+                try {
+                    local(d);
+                } catch (error) {
+                    console.error('[CNS] onDrain listener threw', error);
+                }
+            }
+            for (let i = 0; i < this.globalDrainListeners.length; i++) {
+                try {
+                    this.globalDrainListeners[i](d);
+                } catch (error) {
+                    console.error('[CNS] drain listener threw', error);
+                }
+            }
         };
     }
 
@@ -126,7 +184,8 @@ export class CNS<
             this,
             this.instanceNeuronQueue,
             options,
-            wrapped
+            wrapped,
+            this.wrapOnDrain(options?.onDrain)
         );
         stimulation.responseToSignal(signalOrSignals);
         return stimulation;
@@ -144,7 +203,8 @@ export class CNS<
             this,
             this.instanceNeuronQueue,
             options,
-            wrapped
+            wrapped,
+            this.wrapOnDrain(options?.onDrain)
         );
         stimulation.enqueueTasks(tasks);
         return stimulation;

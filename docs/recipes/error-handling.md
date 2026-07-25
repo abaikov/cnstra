@@ -11,7 +11,7 @@ Handle errors gracefully using `onResponse` callbacks (sync or async) and contex
 
 ## Error delivery
 
-Errors are delivered immediately via `onResponse` and also cause `stimulation.waitUntilComplete()` to reject if any response listener (local or global) throws or rejects:
+Errors are delivered immediately via `onResponse`, and they also **fail the run**: `stimulation.waitUntilComplete()` rejects if **any dendrite `response` throws or returns a rejected Promise** (a *failed task*) — or if any response listener (local or global) throws or rejects. A dendrite throw fails the run on its own; you do **not** need a listener for `waitUntilComplete()` to reject.
 
 ```ts
 const stimulation = cns.stimulate(signal, {
@@ -32,7 +32,36 @@ const stimulation = cns.stimulate(signal, {
 await stimulation.waitUntilComplete();
 ```
 
-If you do not await `stimulation.waitUntilComplete()`, the run still proceeds, but rejections from listeners won't be observed by the caller.
+## Fire-and-forget & the lazy completion promise
+
+`cns.stimulate(...)` returns a **`CNSStimulation` object, not a Promise**. The completion Promise is materialized **lazily** — only when you call `stimulation.waitUntilComplete()`. This is a deliberate optimization (allocating a Promise per stimulation is the single most expensive setup cost), but it has a sharp edge:
+
+> ⚠️ **If you fire-and-forget a stimulation (never call `waitUntilComplete()`) and register no response listener, a thrown dendrite error is completely swallowed.** It is caught internally and recorded on `response.error`, but with nothing observing it there is no log, no throw, and **not even an unhandled promise rejection** — the rejecting Promise was never created. (With no listener, the run also skips building the response object entirely, so the error has nowhere to surface.)
+
+```ts
+// ❌ Silent on failure: no listener AND not awaited.
+cns.stimulate(signal); // a throwing dendrite here vanishes without a trace
+```
+
+Make failures visible with **either** of these — pick based on the call site:
+
+```ts
+// A) Global listener — cheapest for fire-and-forget producers (WS streams, queues,
+//    background ingestion). One listener surfaces errors from every stimulation,
+//    so you never have to await individual runs.
+cns.addResponseListener(r => {
+  if (r.error) console.error('[cns] neuron error:', r.error);
+});
+cns.stimulate(signal); // a failure is now logged
+
+// B) Await completion — when the caller owns the run and wants the rejection.
+//    Works even with NO onResponse listener: a dendrite throw becomes a failed
+//    task, and waitUntilComplete() rejects with
+//    "Stimulation completed with N failed task(s)".
+await cns.stimulate(signal).waitUntilComplete();
+```
+
+Rule of thumb: **await `waitUntilComplete()`** when a caller drives a single run and cares about its outcome; register a **global `addResponseListener`** for long-lived, fire-and-forget producers where awaiting each run is impractical. Do at least one — otherwise dendrite failures are invisible.
 
 ## Error recovery with context
 
@@ -114,7 +143,7 @@ Global listeners registered via `addResponseListener` run for every stimulation 
 - Idempotency: design `onResponse` persistence to be idempotent (e.g., upserts, unique keys) so retries are safe.
 - Retry policy: prefer bounded retries with exponential backoff; use context to track attempts; avoid hot loops.
 - Partial failure: emit explicit failure signals from dendrites when business errors occur; reserve thrown errors for exceptional cases.
-- Observability: tag your own run/correlation id (if you have one) and collaterals in logs/metrics; capture queueLength to identify bottlenecks.
+- Observability: tag your own run/correlation id (if you have one) and collaterals in logs/metrics; capture `queueLength` to identify bottlenecks (and split it into `pendingActivations` / `activeActivations` to tell "producing too fast" from "slow bodies" apart).
 - Isolation: keep `onResponse` lightweight; move heavy processing to dedicated neurons/signals when possible.
 - Concurrency: if persisting from `onResponse`, consider batching or a queue to smooth spikes in traffic.
 - Ordering: if ordering matters, include sequence numbers in payloads or serialize writes per run/correlation id you provide.

@@ -1,472 +1,389 @@
-import React, { useMemo, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { db } from '../model';
-import type { TApp } from '../model';
-import type { ConnectionStatus, DevtoolsSocket } from './hooks/useDevtoolsSocket';
+import type { TExoSchema } from '@exodra/core';
+import { bindable, derive } from '@exodra/reactivity';
+import { reactIsland } from '@exodra/react';
+import { combine } from '@oimdb/exodra';
+import type { TExoRouter } from '@exodra/router';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { SignalDebugger } from './SignalDebugger';
-import { ContextStoreMonitor } from './ContextStoreMonitor';
+import { contextStoreMonitor } from './ContextStoreMonitor';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { isStimulationsPath } from '../app/routes';
+import type { DevtoolsSocket } from '../app/controllers/socket';
+import type { AppSelection } from '../app/controllers/selection';
+import type { TApp } from '../model';
 
-// Generate an opaque requestId for the request/response query protocol.
+// Native Exodra port of the sidebar. Its own chrome (title, connected-apps list,
+// connection status, filters, nav buttons) is native and wired straight to the
+// router + controllers; the four heavy panels (PerformanceMonitor, SignalDebugger,
+// ContextStoreMonitor, AnalyticsDashboard) are still React, hosted here as
+// @exodra/react islands until they are ported too.
+
 const genRequestId = (): string =>
     `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-export interface SidebarProps {
-    connectionStatus: ConnectionStatus;
-    connectedApps: TApp[];
-    selectedAppId: string | null;
-    effectiveSelectedAppId: string | null;
-    selectedCnsId: string | null;
-    wsRef: DevtoolsSocket['wsRef'];
-    send: DevtoolsSocket['send'];
-    onSelectApp: (appId: string) => void;
-    onSelectCns: (cnsId: string | null) => void;
-    onRefresh: () => void;
+const ROOT_STYLE =
+    'width:325px;min-width:325px;background:var(--bg-panel);padding:var(--spacing-xl);' +
+    'border-right:2px solid var(--border-infected);overflow-y:auto;' +
+    'box-shadow:inset 0 0 10px var(--shadow-blood)';
+
+const PANEL_WRAP = 'margin-bottom:var(--spacing-md)';
+
+export interface SidebarParams {
+    router: TExoRouter;
+    socket: DevtoolsSocket;
+    selection: AppSelection;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
-    connectionStatus,
-    connectedApps,
-    selectedAppId,
-    effectiveSelectedAppId,
-    selectedCnsId,
-    wsRef,
-    send,
-    onSelectApp,
-    onSelectCns,
-    onRefresh,
-}) => {
-    const navigate = useNavigate();
-    const location = useLocation();
-    const [, setActiveTab] = useState<'topology'>('topology');
-    const [onlyErrors, setOnlyErrors] = useState<boolean>(false);
+export function sidebarView({
+    router,
+    socket,
+    selection,
+}: SidebarParams): TExoSchema {
+    const { connectionStatus } = socket;
+    const {
+        connectedApps,
+        selectedAppId,
+        effectiveSelectedAppId,
+        selectedCnsId,
+        cnsIdsForApp,
+    } = selection;
+    const onlyErrors = bindable(false);
 
-    // CNS list for selected app
-    const cnsIdsForApp = useMemo(() => {
-        if (!selectedAppId) return [] as string[];
-        const pks = (db.cns.indexes.appId.getPksByKey(selectedAppId) ||
-            new Set()) as Set<string>;
-        return Array.from(pks);
-    }, [selectedAppId]);
+    // ── Panel island props (reactive on selection) ───────────────────────────
+    const signalProps = combine([effectiveSelectedAppId, selectedCnsId], () => ({
+        wsRef: socket.wsRef,
+        selectedAppId: effectiveSelectedAppId.getValue(),
+        selectedCnsId: selectedCnsId.getValue() || undefined,
+    }));
+    const appIdProps = combine([effectiveSelectedAppId], () => ({
+        selectedAppId: effectiveSelectedAppId.getValue(),
+    }));
 
-    return (
+    // ── Connected apps list (re-renders on apps set OR selection change) ──────
+    const appCard = (app: TApp, selected: boolean): TExoSchema => (
         <div
-            className="flicker"
-            style={{
-                width: '325px',
-                minWidth: '325px',
-                background: 'var(--bg-panel)',
-                padding: 'var(--spacing-xl)',
-                borderRight: `2px solid var(--border-infected)`,
-                overflowY: 'auto',
-                boxShadow: 'inset 0 0 10px var(--shadow-blood)',
+            static={{
+                class: `pulse-infection ${selected ? 'decay-glow' : ''}`,
+                style:
+                    `background:${selected ? 'var(--flesh-infected)' : 'var(--bg-card)'};` +
+                    'padding:var(--spacing-md);border-radius:var(--radius-sm);' +
+                    'margin-bottom:var(--spacing-sm);' +
+                    `border-left:4px solid ${selected ? 'var(--infection-green)' : 'var(--infection-red)'};` +
+                    `border:2px solid ${selected ? 'var(--border-infected)' : 'var(--border-accent)'};` +
+                    `box-shadow:${selected ? '0 0 15px var(--shadow-infection)' : '0 2px 4px var(--shadow-dark)'};` +
+                    'cursor:pointer;transition:all var(--transition-medium)',
+            }}
+            handlers={{ onClick: () => selection.selectApp(app.id) }}
+        >
+            <div
+                static={{
+                    style: 'font-weight:bold;margin-bottom:var(--spacing-xs);color:var(--text-primary);font-size:var(--font-size-base)',
+                }}
+            >
+                🧠 {app.name}
+            </div>
+            <div
+                static={{
+                    style: 'font-size:var(--font-size-xs);color:var(--text-secondary);font-family:var(--font-primary)',
+                }}
+            >
+                {app.id}
+            </div>
+            <div
+                static={{
+                    style:
+                        `font-size:var(--font-size-xs);color:${selected ? 'var(--infection-green)' : 'var(--text-success)'};` +
+                        'margin-top:var(--spacing-xs)',
+                }}
+            >
+                {selected ? '🎯 MONITORING' : '🟢 CONNECTED'}
+            </div>
+        </div>
+    );
+
+    const emptyCard: TExoSchema = (
+        <div
+            static={{
+                style:
+                    'color:var(--text-muted);font-style:italic;text-align:center;' +
+                    'padding:var(--spacing-xl);background:var(--bg-card);' +
+                    'border-radius:var(--radius-sm);border:1px dashed var(--border-primary)',
             }}
         >
+            📱 No connected applications
+        </div>
+    );
+
+    const appCards = combine([connectedApps, selectedAppId], () => {
+        const apps = connectedApps.getValue();
+        const sel = selectedAppId.getValue();
+        if (!apps.length) return [emptyCard];
+        return apps.map(app => appCard(app, sel === app.id));
+    });
+
+    const appsCount = derive(
+        connectedApps,
+        apps => `📱 CONNECTED APPS (${apps?.length || 0})`
+    );
+
+    // ── Connection status + monitoring block ─────────────────────────────────
+    const statusColor = (s: string): string =>
+        s === 'connected'
+            ? 'var(--text-success)'
+            : s === 'connecting'
+            ? 'var(--text-warning)'
+            : 'var(--text-error)';
+    const dotColor = (s: string): string =>
+        s === 'connected'
+            ? 'var(--infection-green)'
+            : s === 'connecting'
+            ? 'var(--infection-yellow)'
+            : 'var(--infection-red)';
+    const statusLabel = (s: string): string =>
+        s === 'connected'
+            ? '✅ Server Connected'
+            : s === 'connecting'
+            ? '🔄 Connecting...'
+            : '❌ Disconnected';
+
+    const statusBlock = combine(
+        [
+            connectionStatus,
+            selectedAppId,
+            connectedApps,
+            selectedCnsId,
+            cnsIdsForApp,
+            router.location,
+        ],
+        () => {
+            const status = connectionStatus.getValue();
+            const appId = selectedAppId.getValue();
+            const apps = connectedApps.getValue();
+            const cnsIds = cnsIdsForApp.getValue();
+            const monitoredName =
+                apps.find(a => a.id === appId)?.name || appId || '';
+
+            const cnsSelect: TExoSchema | string =
+                appId && cnsIds.length > 1 ? (
+                    <div static={{ style: 'margin-top:6px' }}>
+                        <label static={{ style: 'font-size:10px;color:var(--text-muted)' }}>
+                            CNS Instance:
+                        </label>
+                        <select
+                            static={{
+                                style: 'margin-left:6px;padding:2px 4px;font-size:10px;background:var(--bg-panel);color:var(--text-primary);border:1px solid var(--border-primary)',
+                            }}
+                            handlers={{
+                                onChange: (e: Event) =>
+                                    selection.selectCns(
+                                        (e.target as HTMLSelectElement).value || null
+                                    ),
+                            }}
+                        >
+                            {cnsIds.map(id => (
+                                <option
+                                    static={{
+                                        value: id,
+                                        selected: id === selectedCnsId.getValue(),
+                                    }}
+                                >
+                                    {id}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                ) : (
+                    ''
+                );
+
+            const monitoring: TExoSchema | string = appId ? (
+                <div
+                    static={{
+                        style:
+                            'font-size:var(--font-size-xs);color:var(--infection-green);' +
+                            'margin-bottom:var(--spacing-lg);padding:var(--spacing-xs);' +
+                            'background:var(--bg-secondary);border-radius:var(--radius-sm);' +
+                            'border:1px solid var(--border-infected)',
+                    }}
+                >
+                    🎯 Monitoring: {monitoredName}
+                    {cnsSelect}
+                </div>
+            ) : (
+                ''
+            );
+
+            return (
+                <div>
+                    <h3
+                        static={{
+                            style: 'margin:0 0 var(--spacing-md) 0;font-size:var(--font-size-sm);color:var(--text-muted);letter-spacing:1px',
+                        }}
+                    >
+                        🔗 CONNECTION STATUS
+                    </h3>
+                    <div
+                        static={{
+                            style:
+                                `font-size:var(--font-size-xs);color:${statusColor(status)};` +
+                                'margin-bottom:var(--spacing-xs);display:flex;align-items:center;gap:var(--spacing-xs)',
+                        }}
+                    >
+                        <div
+                            static={{
+                                style: `width:8px;height:8px;border-radius:50%;background-color:${dotColor(status)}`,
+                            }}
+                        />
+                        {statusLabel(status)}
+                    </div>
+                    {monitoring}
+                    {filterAndNav()}
+                </div>
+            );
+        }
+    );
+
+    // ── Filter controls + nav buttons (depend on route + selection) ──────────
+    const filterAndNav = (): TExoSchema => {
+        const loc = router.getLocation();
+        const isStim = isStimulationsPath(loc.pathname);
+        const appId = selectedAppId.getValue();
+        const eff = effectiveSelectedAppId.getValue() || '';
+
+        const navBtnStyle = (active: boolean): string =>
+            'width:100%;font-size:var(--font-size-xs);padding:var(--spacing-sm);' +
+            `background:${active ? 'var(--flesh-infected)' : 'var(--flesh-medium)'};` +
+            `color:${active ? 'var(--text-primary)' : 'var(--text-secondary)'};` +
+            `border-color:${active ? 'var(--infection-green)' : 'var(--border-primary)'};` +
+            `box-shadow:${active ? '0 0 8px var(--infection-green)' : 'none'}`;
+
+        return (
+            <div static={{ style: 'display:flex;flex-direction:column;gap:var(--spacing-sm)' }}>
+                <div
+                    static={{
+                        style: 'border:1px solid var(--border-primary);border-radius:var(--radius-sm);padding:8px;background:var(--bg-card)',
+                    }}
+                >
+                    <div
+                        static={{
+                            style: 'font-size:var(--font-size-xs);color:var(--text-muted);margin-bottom:6px',
+                        }}
+                    >
+                        Stimulation Filters (optional)
+                    </div>
+                    <div static={{ style: 'display:grid;gap:6px' }}>
+                        <label
+                            static={{
+                                style: 'display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-secondary)',
+                            }}
+                        >
+                            <input
+                                static={{ type: 'checkbox' }}
+                                bindable={{ checked: onlyErrors }}
+                                handlers={{
+                                    onChange: (e: Event) =>
+                                        onlyErrors.setValue(
+                                            (e.target as HTMLInputElement).checked
+                                        ),
+                                }}
+                            />
+                            Only errors
+                        </label>
+                        <button
+                            static={{
+                                class: 'btn-infected',
+                                style: 'width:100%;font-size:var(--font-size-xs);padding:6px;background:var(--flesh-medium);color:var(--text-secondary);border-color:var(--border-primary)',
+                            }}
+                            handlers={{
+                                onClick: () => {
+                                    if (!appId) return;
+                                    socket.send({
+                                        type: 'stimulations.query',
+                                        requestId: genRequestId(),
+                                        appId,
+                                        filter: {
+                                            hasError: onlyErrors.getValue() || undefined,
+                                        },
+                                    });
+                                },
+                            }}
+                        >
+                            Apply Filters
+                        </button>
+                    </div>
+                </div>
+                <button
+                    static={{ class: 'btn-infected', style: navBtnStyle(!isStim) }}
+                    handlers={{
+                        onClick: () => {
+                            if (appId) void router.navigate(`/apps/${eff}`);
+                        },
+                    }}
+                >
+                    🗺️ Network Topology
+                </button>
+                {appId
+                    ? (
+                          <button
+                              static={{ class: 'btn-infected', style: navBtnStyle(isStim) }}
+                              handlers={{
+                                  onClick: () =>
+                                      void router.navigate(`/apps/${eff}/stimulations`),
+                              }}
+                          >
+                              ⚡ Stimulations
+                          </button>
+                      )
+                    : ''}
+            </div>
+        );
+    };
+
+    return (
+        <div static={{ class: 'flicker', style: ROOT_STYLE }}>
             <h2
-                style={{
-                    margin: `0 0 var(--spacing-md) 0`,
-                    color: 'var(--text-primary)',
-                    fontSize: 'var(--font-size-xl)',
+                static={{
+                    style: 'margin:0 0 var(--spacing-md) 0;color:var(--text-primary);font-size:var(--font-size-xl)',
                 }}
             >
                 🧠 CNStra DevTools
             </h2>
 
-            {/* Performance Monitor */}
-            <div style={{ marginBottom: 'var(--spacing-md)' }}>
-                <PerformanceMonitor />
-            </div>
+            <div static={{ style: PANEL_WRAP, children: [reactIsland(PerformanceMonitor, {})] }} />
+            <div static={{ style: PANEL_WRAP, children: [reactIsland(SignalDebugger, signalProps)] }} />
+            <div static={{ style: PANEL_WRAP, children: [contextStoreMonitor(effectiveSelectedAppId)] }} />
+            <div static={{ style: 'margin-bottom:var(--spacing-xl)', children: [reactIsland(AnalyticsDashboard, appIdProps)] }} />
 
-            {/* Signal Debugger */}
-            <div style={{ marginBottom: 'var(--spacing-md)' }}>
-                <SignalDebugger
-                    wsRef={wsRef}
-                    selectedAppId={effectiveSelectedAppId}
-                    selectedCnsId={selectedCnsId || undefined}
-                />
-            </div>
-
-            {/* Context Store Monitor */}
-            <div style={{ marginBottom: 'var(--spacing-md)' }}>
-                <ContextStoreMonitor selectedAppId={effectiveSelectedAppId} />
-            </div>
-
-            {/* Analytics Dashboard */}
-            <div style={{ marginBottom: 'var(--spacing-xl)' }}>
-                <AnalyticsDashboard selectedAppId={effectiveSelectedAppId} />
-            </div>
-
-            <div style={{ marginBottom: 'var(--spacing-xl)' }}>
+            <div static={{ style: 'margin-bottom:var(--spacing-xl)' }}>
                 <div
-                    style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 'var(--spacing-md)',
+                    static={{
+                        style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--spacing-md)',
                     }}
                 >
                     <h3
-                        style={{
-                            margin: 0,
-                            fontSize: 'var(--font-size-sm)',
-                            color: 'var(--text-muted)',
-                            letterSpacing: '1px',
+                        static={{
+                            style: 'margin:0;font-size:var(--font-size-sm);color:var(--text-muted);letter-spacing:1px',
                         }}
-                    >
-                        📱 CONNECTED APPS ({connectedApps?.length || 0})
-                    </h3>
+                        bindable={{ textContent: appsCount }}
+                    />
                     <button
-                        onClick={onRefresh}
-                        style={{
-                            background: 'var(--bg-card)',
-                            border: '1px solid var(--border-accent)',
-                            color: 'var(--text-primary)',
-                            padding: 'var(--spacing-xs) var(--spacing-sm)',
-                            borderRadius: 'var(--radius-sm)',
-                            fontSize: 'var(--font-size-xs)',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease',
+                        static={{
+                            style: 'background:var(--bg-card);border:1px solid var(--border-accent);color:var(--text-primary);padding:var(--spacing-xs) var(--spacing-sm);border-radius:var(--radius-sm);font-size:var(--font-size-xs);cursor:pointer;transition:all 0.2s ease',
                         }}
-                        onMouseEnter={e => {
-                            e.currentTarget.style.background =
-                                'var(--flesh-infected)';
-                            e.currentTarget.style.borderColor =
-                                'var(--border-infected)';
-                        }}
-                        onMouseLeave={e => {
-                            e.currentTarget.style.background = 'var(--bg-card)';
-                            e.currentTarget.style.borderColor =
-                                'var(--border-accent)';
+                        handlers={{
+                            onClick: () => {
+                                socket.send({ type: 'apps.query', requestId: genRequestId() });
+                                socket.send({ type: 'topology.query', requestId: genRequestId() });
+                            },
                         }}
                     >
                         🔄 Refresh
                     </button>
                 </div>
-                {connectedApps?.length ? (
-                    connectedApps.map(app => (
-                        <div
-                            key={app.id}
-                            className={`pulse-infection ${
-                                selectedAppId === app.id ? 'decay-glow' : ''
-                            }`}
-                            onClick={() => onSelectApp(app.id)}
-                            style={{
-                                background:
-                                    selectedAppId === app.id
-                                        ? 'var(--flesh-infected)'
-                                        : 'var(--bg-card)',
-                                padding: 'var(--spacing-md)',
-                                borderRadius: 'var(--radius-sm)',
-                                marginBottom: 'var(--spacing-sm)',
-                                borderLeft: `4px solid ${
-                                    selectedAppId === app.id
-                                        ? 'var(--infection-green)'
-                                        : 'var(--infection-red)'
-                                }`,
-                                border: `2px solid ${
-                                    selectedAppId === app.id
-                                        ? 'var(--border-infected)'
-                                        : 'var(--border-accent)'
-                                }`,
-                                boxShadow:
-                                    selectedAppId === app.id
-                                        ? '0 0 15px var(--shadow-infection)'
-                                        : '0 2px 4px var(--shadow-dark)',
-                                cursor: 'pointer',
-                                transition: 'all var(--transition-medium)',
-                            }}
-                        >
-                            <div
-                                style={{
-                                    fontWeight: 'bold',
-                                    marginBottom: 'var(--spacing-xs)',
-                                    color: 'var(--text-primary)',
-                                    fontSize: 'var(--font-size-base)',
-                                }}
-                            >
-                                🧠 {app.name}
-                            </div>
-                            <div
-                                style={{
-                                    fontSize: 'var(--font-size-xs)',
-                                    color: 'var(--text-secondary)',
-                                    fontFamily: 'var(--font-primary)',
-                                }}
-                            >
-                                {app.id}
-                            </div>
-                            <div
-                                style={{
-                                    fontSize: 'var(--font-size-xs)',
-                                    color:
-                                        selectedAppId === app.id
-                                            ? 'var(--infection-green)'
-                                            : 'var(--text-success)',
-                                    marginTop: 'var(--spacing-xs)',
-                                }}
-                            >
-                                {selectedAppId === app.id
-                                    ? '🎯 MONITORING'
-                                    : '🟢 CONNECTED'}
-                            </div>
-                        </div>
-                    ))
-                ) : (
-                    <div
-                        style={{
-                            color: 'var(--text-muted)',
-                            fontStyle: 'italic',
-                            textAlign: 'center',
-                            padding: 'var(--spacing-xl)',
-                            background: 'var(--bg-card)',
-                            borderRadius: 'var(--radius-sm)',
-                            border: `1px dashed var(--border-primary)`,
-                        }}
-                    >
-                        📱 No connected applications
-                    </div>
-                )}
+                <div bindable={{ children: appCards }} />
             </div>
 
-            <div>
-                <h3
-                    style={{
-                        margin: `0 0 var(--spacing-md) 0`,
-                        fontSize: 'var(--font-size-sm)',
-                        color: 'var(--text-muted)',
-                        letterSpacing: '1px',
-                    }}
-                >
-                    🔗 CONNECTION STATUS
-                </h3>
-                <div
-                    style={{
-                        fontSize: 'var(--font-size-xs)',
-                        color:
-                            connectionStatus === 'connected'
-                                ? 'var(--text-success)'
-                                : connectionStatus === 'connecting'
-                                ? 'var(--text-warning)'
-                                : 'var(--text-error)',
-                        marginBottom: 'var(--spacing-xs)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 'var(--spacing-xs)',
-                    }}
-                >
-                    <div
-                        style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor:
-                                connectionStatus === 'connected'
-                                    ? 'var(--infection-green)'
-                                    : connectionStatus === 'connecting'
-                                    ? 'var(--infection-yellow)'
-                                    : 'var(--infection-red)',
-                        }}
-                    />
-                    {connectionStatus === 'connected' && '✅ Server Connected'}
-                    {connectionStatus === 'connecting' && '🔄 Connecting...'}
-                    {connectionStatus === 'disconnected' && '❌ Disconnected'}
-                </div>
-                {selectedAppId && (
-                    <div
-                        style={{
-                            fontSize: 'var(--font-size-xs)',
-                            color: 'var(--infection-green)',
-                            marginBottom: 'var(--spacing-lg)',
-                            padding: 'var(--spacing-xs)',
-                            background: 'var(--bg-secondary)',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--border-infected)',
-                        }}
-                    >
-                        🎯 Monitoring:{' '}
-                        {connectedApps?.find(app => app.id === selectedAppId)
-                            ?.name || selectedAppId}
-                        {cnsIdsForApp.length > 1 && (
-                            <div style={{ marginTop: '6px' }}>
-                                <label
-                                    style={{
-                                        fontSize: '10px',
-                                        color: 'var(--text-muted)',
-                                    }}
-                                >
-                                    CNS Instance:
-                                </label>
-                                <select
-                                    value={selectedCnsId || ''}
-                                    onChange={e =>
-                                        onSelectCns(e.target.value || null)
-                                    }
-                                    style={{
-                                        marginLeft: '6px',
-                                        padding: '2px 4px',
-                                        fontSize: '10px',
-                                        background: 'var(--bg-panel)',
-                                        color: 'var(--text-primary)',
-                                        border: '1px solid var(--border-primary)',
-                                    }}
-                                >
-                                    {cnsIdsForApp.map(id => (
-                                        <option key={id} value={id}>
-                                            {id}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                <div
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 'var(--spacing-sm)',
-                    }}
-                >
-                    {/* Stimulation filter controls */}
-                    <div
-                        style={{
-                            border: `1px solid var(--border-primary)`,
-                            borderRadius: 'var(--radius-sm)',
-                            padding: '8px',
-                            background: 'var(--bg-card)',
-                        }}
-                    >
-                        <div
-                            style={{
-                                fontSize: 'var(--font-size-xs)',
-                                color: 'var(--text-muted)',
-                                marginBottom: 6,
-                            }}
-                        >
-                            Stimulation Filters (optional)
-                        </div>
-                        <div style={{ display: 'grid', gap: 6 }}>
-                            <label
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    fontSize: '10px',
-                                    color: 'var(--text-secondary)',
-                                }}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={onlyErrors}
-                                    onChange={e =>
-                                        setOnlyErrors(e.target.checked)
-                                    }
-                                />
-                                Only errors
-                            </label>
-                            <button
-                                className="btn-infected"
-                                onClick={() => {
-                                    if (!selectedAppId) return;
-                                    send({
-                                        type: 'stimulations.query',
-                                        requestId: genRequestId(),
-                                        appId: selectedAppId,
-                                        filter: {
-                                            hasError: onlyErrors || undefined,
-                                        },
-                                    });
-                                }}
-                                style={{
-                                    width: '100%',
-                                    fontSize: 'var(--font-size-xs)',
-                                    padding: '6px',
-                                    background: 'var(--flesh-medium)',
-                                    color: 'var(--text-secondary)',
-                                    borderColor: 'var(--border-primary)',
-                                }}
-                            >
-                                Apply Filters
-                            </button>
-                        </div>
-                    </div>
-                    <button
-                        className="btn-infected"
-                        onClick={() => {
-                            setActiveTab('topology');
-                            if (selectedAppId) {
-                                navigate(`/apps/${effectiveSelectedAppId || ''}`);
-                            }
-                        }}
-                        style={{
-                            width: '100%',
-                            fontSize: 'var(--font-size-xs)',
-                            padding: 'var(--spacing-sm)',
-                            background: !location.pathname.endsWith(
-                                '/stimulations'
-                            )
-                                ? 'var(--flesh-infected)'
-                                : 'var(--flesh-medium)',
-                            color: !location.pathname.endsWith('/stimulations')
-                                ? 'var(--text-primary)'
-                                : 'var(--text-secondary)',
-                            borderColor: !location.pathname.endsWith(
-                                '/stimulations'
-                            )
-                                ? 'var(--infection-green)'
-                                : 'var(--border-primary)',
-                            boxShadow: !location.pathname.endsWith(
-                                '/stimulations'
-                            )
-                                ? '0 0 8px var(--infection-green)'
-                                : 'none',
-                        }}
-                    >
-                        🗺️ Network Topology
-                    </button>
-                    {selectedAppId && (
-                        <button
-                            className="btn-infected"
-                            onClick={() =>
-                                navigate(
-                                    `/apps/${
-                                        effectiveSelectedAppId || ''
-                                    }/stimulations`
-                                )
-                            }
-                            style={{
-                                width: '100%',
-                                fontSize: 'var(--font-size-xs)',
-                                padding: 'var(--spacing-sm)',
-                                background: location.pathname.endsWith(
-                                    '/stimulations'
-                                )
-                                    ? 'var(--flesh-infected)'
-                                    : 'var(--flesh-medium)',
-                                color: location.pathname.endsWith(
-                                    '/stimulations'
-                                )
-                                    ? 'var(--text-primary)'
-                                    : 'var(--text-secondary)',
-                                borderColor: location.pathname.endsWith(
-                                    '/stimulations'
-                                )
-                                    ? 'var(--infection-green)'
-                                    : 'var(--border-primary)',
-                                boxShadow: location.pathname.endsWith(
-                                    '/stimulations'
-                                )
-                                    ? '0 0 8px var(--infection-green)'
-                                    : 'none',
-                            }}
-                        >
-                            ⚡ Stimulations
-                        </button>
-                    )}
-                </div>
-            </div>
+            <div bindable={{ children: statusBlock }} />
         </div>
     );
-};
+}

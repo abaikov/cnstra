@@ -8,6 +8,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
+    "jsxImportSource": "@exodra/jsx",
     "sourceMap": true,
     "resolveJsonModule": true,
     "baseUrl": ".",

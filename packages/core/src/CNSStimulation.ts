@@ -11,6 +11,7 @@ import { CNS } from './CNS';
 import { ICNS } from './interfaces/ICNS';
 import { TCNSNeuronActivationTaskFailure } from './types/TCNSNeuronActivationTaskFailure';
 import { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
+import { TCNSStimulationDrain } from './types/TCNSStimulationDrain';
 import { CNSCollateral } from './CNSCollateral';
 import { TNCNeuronResponseReturn } from './types/TCNSNeuronResponseReturn';
 import { TCNSAxon } from './types/TCNSAxon';
@@ -70,6 +71,8 @@ class CNSStimulationResponseImpl {
             | TCNSSignal<CNSCollateral<unknown>>
             | undefined,
         public readonly queueLength: number,
+        public readonly pendingActivations: number,
+        public readonly activeActivations: number,
         public readonly hops: number | undefined,
         public readonly error: any
     ) {}
@@ -104,10 +107,20 @@ export class CNSStimulation<
     // Re-entrancy guard for the pump loop.
     private pumping = false;
     private needsPump = false;
+    // Nesting depth of the current synchronous turn. Only the outermost close
+    // announces a drain - see beginTurn/endTurn.
+    private turnDepth = 0;
 
     private readonly neuronVisitMap?: Map<TNeuron, number>;
     private readonly instanceNeuronQueue: CNSInstanceNeuronQueue<TNeuron>;
     private scheduledCount = 0;
+    // Activations belonging to signals of an in-progress array fan-out that have
+    // not been handed to processResponse yet, so the task objects do not exist.
+    // processResponse enqueues synchronously, so the first signal's whole subtree
+    // drains before the second signal is even looked at; without this counter
+    // that subtree's leaf sees an empty queue and reads as "all work done".
+    // Counted in activations, not signals, so every public counter shares a unit.
+    private reservedActivations = 0;
     // Lazily allocated: only needed while subscriber tasks wait for an async
     // onResponse to resolve before being enqueued.
     private pendingTasks?: Set<TCNSNeuronActivationTask<TNeuron>>;
@@ -133,6 +146,13 @@ export class CNSStimulation<
     ) => void | Promise<void>;
 
     /**
+     * The (already wrapped) drain listener, or undefined when there is neither a
+     * local nor any global one. When undefined, endTurn() bails immediately, so a
+     * stimulation with no drain listener pays only the turn depth counter.
+     */
+    private readonly onDrain?: (drain: TCNSStimulationDrain) => void;
+
+    /**
      * Track active SCCs: SCC index -> count of active neurons in that SCC.
      * Only allocated when context auto-cleanup is enabled.
      */
@@ -144,8 +164,10 @@ export class CNSStimulation<
         public readonly options?: TCNSStimulationOptions<TCNSStimulationResponse>,
         onResponse?: (
             response: TCNSStimulationResponse
-        ) => void | Promise<void>
+        ) => void | Promise<void>,
+        onDrain?: (drain: TCNSStimulationDrain) => void
     ) {
+        this.onDrain = onDrain;
         // Keep an externally supplied store eagerly; otherwise defer creation.
         this.ctxStore = options?.ctx;
 
@@ -271,19 +293,32 @@ export class CNSStimulation<
                     cb => {
                         this.activeOperations--;
                         this.activeTasks!.delete(task);
-                        if (typeof cb === 'function') cb();
+                        // One turn spans the callback and the follow-up pump:
+                        // cb() itself enqueues and pumps, so without this the
+                        // drain would be announced twice for one batch.
+                        this.beginTurn();
+                        try {
+                            if (typeof cb === 'function') cb();
 
-                        if (this.qSize > 0 && this.canStartOperation) {
-                            if (this.pumping) this.needsPump = true;
-                            else this.pump();
+                            if (this.qSize > 0 && this.canStartOperation) {
+                                if (this.pumping) this.needsPump = true;
+                                else this.pump();
+                            }
+                        } finally {
+                            this.endTurn();
                         }
                     },
                     err => {
                         this.activeOperations--;
                         this.activeTasks!.delete(task);
-                        if (this.qSize > 0 && this.canStartOperation) {
-                            if (this.pumping) this.needsPump = true;
-                            else this.pump();
+                        this.beginTurn();
+                        try {
+                            if (this.qSize > 0 && this.canStartOperation) {
+                                if (this.pumping) this.needsPump = true;
+                                else this.pump();
+                            }
+                        } finally {
+                            this.endTurn();
                         }
                         throw err; // let it crash "honestly"
                     }
@@ -307,10 +342,60 @@ export class CNSStimulation<
         }
     }
 
+    /**
+     * Open a synchronous turn. Turns nest: a drain is announced only when the
+     * outermost one closes, so an enqueue that happens while the pump is already
+     * running does not produce its own boundary.
+     */
+    private beginTurn(): void {
+        this.turnDepth++;
+    }
+
+    /**
+     * Close a synchronous turn and, if it was the outermost and nothing more can
+     * run without yielding to the event loop, announce the drain.
+     *
+     * This is the only place the synchronous frontier is observable. A response
+     * cannot serve the purpose: responses are emitted when an activation
+     * *finishes*, but a turn just as often ends when one *starts* and returns a
+     * promise - at which point there is nothing left to emit a response from.
+     */
+    private endTurn(): void {
+        if (--this.turnDepth > 0) return;
+        const onDrain = this.onDrain;
+        if (!onDrain) return;
+        // Still mid-pump, or work is runnable right now: not a boundary.
+        if (this.pumping) return;
+        if (this.qSize > 0 && this.canStartOperation) return;
+        // Hold the turn open across the callback so that a stimulate()/
+        // enqueueTasks() call from inside it cannot recurse into another drain.
+        this.turnDepth++;
+        try {
+            onDrain({
+                stimulation: this,
+                queueLength: this.pendingActivations + this.activeOperations,
+                pendingActivations: this.pendingActivations,
+                activeActivations: this.activeOperations,
+            } as TCNSStimulationDrain);
+        } finally {
+            this.turnDepth--;
+        }
+    }
+
+    /**
+     * Activations that exist (or are reserved) but whose dendrite body has not
+     * been invoked yet: sitting in the ring buffer, created and held in
+     * pendingTasks, or reserved by an array fan-out mid-dispatch. Subscribers
+     * parked behind an async onResponse land here too - their body has not run.
+     */
+    private get pendingActivations(): number {
+        return this.qSize + this.scheduledCount + this.reservedActivations;
+    }
+
     private tryResolveCompleted(): void {
         if (this.isCompleted) return;
         const noActive = this.activeOperations === 0;
-        const noPending = this.qSize + this.scheduledCount === 0;
+        const noPending = this.pendingActivations === 0;
         const aborted = !!this.options?.abortSignal?.aborted;
 
         if ((noPending && noActive) || (aborted && noActive && !noPending)) {
@@ -404,10 +489,15 @@ export class CNSStimulation<
     public enqueueTasks(
         tasks: TCNSNeuronActivationTask<TNeuron>[]
     ): void {
-        for (const task of tasks) {
-            this.qEnqueue(task);
+        this.beginTurn();
+        try {
+            for (const task of tasks) {
+                this.qEnqueue(task);
+            }
+            this.tryResolveCompleted();
+        } finally {
+            this.endTurn();
         }
-        this.tryResolveCompleted();
     }
 
     protected get concurrencyEnabled(): boolean {
@@ -547,14 +637,25 @@ export class CNSStimulation<
         }
         if (!subscriber) {
             // Task failed: subscriber not found
+            const error = new Error(`Subscriber not found for activation task`);
             this.pushFailedTask({
                 task: neuronActivationTask,
-                error: new Error(
-                    `Subscriber not found for activation task`
-                ),
+                error,
                 aborted: false,
             });
-            return () => {};
+            // Report it like every other failure. Skipping this left a lookup
+            // failure invisible to listeners, so one in the tail ended the
+            // stimulation without a final response and queueLength never hit 0.
+            // Reported from the thunk, not inline: pump only decrements
+            // activeOperations before invoking what we return.
+            return () => {
+                this.processResponseOrResponses(
+                    undefined,
+                    neuronActivationTask.input,
+                    undefined,
+                    error
+                );
+            };
         }
 
         const neuron = subscriber.neuron;
@@ -617,13 +718,17 @@ export class CNSStimulation<
                         : new Error(String(error)),
                 aborted: isAborted,
             });
-            this.processResponseOrResponses(
-                neuron,
-                inputSignal as any,
-                undefined,
-                error
-            );
-            return () => {};
+            // Deferred to the thunk so the response is built after pump has
+            // decremented activeOperations for this task - otherwise the error
+            // response reports one in-flight operation too many.
+            return () => {
+                this.processResponseOrResponses(
+                    neuron,
+                    inputSignal as any,
+                    undefined,
+                    error
+                );
+            };
         }
 
         const maxDuration = (neuron as any).maxDuration as
@@ -740,8 +845,34 @@ export class CNSStimulation<
                 return;
             }
 
-            for (const signal of outputSignalOrSignals) {
-                this.processResponse(emitter, inputSignal, signal, error);
+            // Reserve the whole fan-out before dispatching any of it. Counted in
+            // activations rather than signals, so pre-resolve each signal's
+            // subscriber count - getSubscribers is a single map lookup. On the
+            // error path processResponse schedules nothing, so nothing is reserved.
+            let perSignal: number[] | undefined;
+            if (!error) {
+                perSignal = new Array<number>(outputSignalOrSignals.length);
+                let reserved = 0;
+                for (let i = 0; i < outputSignalOrSignals.length; i++) {
+                    const c = outputSignalOrSignals[i]?.collateral;
+                    const n = c
+                        ? this.cns.network.getSubscribers(c).length
+                        : 0;
+                    perSignal[i] = n;
+                    reserved += n;
+                }
+                this.reservedActivations += reserved;
+            }
+            // The increment/decrement pair is balanced per level, so a nested
+            // fan-out inside signal[0]'s subtree composes correctly.
+            for (let i = 0; i < outputSignalOrSignals.length; i++) {
+                if (perSignal) this.reservedActivations -= perSignal[i];
+                this.processResponse(
+                    emitter,
+                    inputSignal,
+                    outputSignalOrSignals[i],
+                    error
+                );
             }
             return;
         }
@@ -816,7 +947,9 @@ export class CNSStimulation<
                     this.ctxStore,
                     inputSignal,
                     outputSignal,
-                    this.qSize + this.scheduledCount,
+                    this.pendingActivations + this.activeOperations,
+                    this.pendingActivations,
+                    this.activeOperations,
                     this.options?.maxNeuronHops && emitter
                         ? this.neuronVisitMap?.get(emitter) ?? 0
                         : undefined,
@@ -839,14 +972,30 @@ export class CNSStimulation<
 
         // If onResponse returned a promise, wait for it before enqueuing subscribers
         if (maybePromise && typeof maybePromise.then === 'function') {
+            // These tasks stay in scheduledCount until the listener settles, so
+            // they keep reading as pending activations - correctly: they exist,
+            // and their dendrite body has not been invoked.
             (maybePromise as Promise<void>).then(
                 () => {
-                    for (let i = 0; i < subscriberActivationTasks.length; i++) {
-                        this.scheduledCount--;
-                        this.pendingTasks?.delete(subscriberActivationTasks[i]);
-                        this.qEnqueue(subscriberActivationTasks[i]);
+                    // Resuming from a settled listener starts a fresh turn, the
+                    // same as resuming from a settled neuron body.
+                    this.beginTurn();
+                    try {
+                        for (
+                            let i = 0;
+                            i < subscriberActivationTasks.length;
+                            i++
+                        ) {
+                            this.scheduledCount--;
+                            this.pendingTasks?.delete(
+                                subscriberActivationTasks[i]
+                            );
+                            this.qEnqueue(subscriberActivationTasks[i]);
+                        }
+                        this.tryResolveCompleted();
+                    } finally {
+                        this.endTurn();
                     }
-                    this.tryResolveCompleted();
                 },
                 error => {
                     // Remember the error but don't reject immediately - wait for all tasks to complete
@@ -854,13 +1003,24 @@ export class CNSStimulation<
                         error instanceof Error
                             ? error
                             : new Error(String(error));
-                    // Still enqueue subscribers and continue processing
-                    for (let i = 0; i < subscriberActivationTasks.length; i++) {
-                        this.scheduledCount--;
-                        this.pendingTasks?.delete(subscriberActivationTasks[i]);
-                        this.qEnqueue(subscriberActivationTasks[i]);
+                    this.beginTurn();
+                    try {
+                        // Still enqueue subscribers and continue processing
+                        for (
+                            let i = 0;
+                            i < subscriberActivationTasks.length;
+                            i++
+                        ) {
+                            this.scheduledCount--;
+                            this.pendingTasks?.delete(
+                                subscriberActivationTasks[i]
+                            );
+                            this.qEnqueue(subscriberActivationTasks[i]);
+                        }
+                        this.tryResolveCompleted();
+                    } finally {
+                        this.endTurn();
                     }
-                    this.tryResolveCompleted();
                 }
             );
             return;
@@ -880,17 +1040,29 @@ export class CNSStimulation<
             | TCNSSignal<CNSCollateral<unknown>>
             | TCNSSignal<CNSCollateral<unknown>>[]
     ): void {
-        // Handle array of signals
-        if (Array.isArray(signalOrSignals)) {
-            // For initial stimulation: signals are outputs (to find subscribers)
-            // In onResponse, inputSignal will be undefined for initial stimulation
-            this.processResponseOrResponses(undefined, undefined, signalOrSignals);
-            return;
-        }
+        // The initial dispatch is a turn: everything reachable synchronously from
+        // this signal runs before stimulate() returns, and the drain that follows
+        // is the first batch boundary.
+        this.beginTurn();
+        try {
+            // Handle array of signals
+            if (Array.isArray(signalOrSignals)) {
+                // For initial stimulation: signals are outputs (to find subscribers)
+                // In onResponse, inputSignal will be undefined for initial stimulation
+                this.processResponseOrResponses(
+                    undefined,
+                    undefined,
+                    signalOrSignals
+                );
+                return;
+            }
 
-        // For initial stimulation: signal is the output (to find subscribers)
-        // In onResponse, inputSignal will be undefined for initial stimulation
-        this.processResponse(undefined, undefined, signalOrSignals);
-        this.tryResolveCompleted();
+            // For initial stimulation: signal is the output (to find subscribers)
+            // In onResponse, inputSignal will be undefined for initial stimulation
+            this.processResponse(undefined, undefined, signalOrSignals);
+            this.tryResolveCompleted();
+        } finally {
+            this.endTurn();
+        }
     }
 }

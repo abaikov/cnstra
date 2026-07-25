@@ -174,7 +174,10 @@ Context growth significantly impacts memory usage:
    ctx.set({ user: fullUserObject, history: lotsOfData });
    ```
 
-4. **Monitor and limit queue size** to prevent memory bloat:
+4. **Monitor and limit queue size** to prevent memory bloat. `queueLength`
+   counts every activation the stimulation still owns — both waiting and
+   in flight — so it is the right backpressure signal; split it when you need
+   to know *why* it is high:
    ```ts
    onResponse: (r) => {
      if (r.queueLength > 1000) {
@@ -182,10 +185,16 @@ Context growth significantly impacts memory usage:
        // - Reducing concurrency
        // - Adding backpressure
        // - Investigating slow processing
-       console.warn(`Queue length: ${r.queueLength}`);
+       console.warn(
+         `Queue ${r.queueLength} (${r.pendingActivations} waiting, ` +
+         `${r.activeActivations} in flight)`
+       );
      }
    }
    ```
+   A high `pendingActivations` with a low `activeActivations` means the graph is
+   producing work faster than the concurrency limit lets it start. The reverse
+   means slow neuron bodies.
 
 5. **Set reasonable concurrency limits** to prevent queue buildup:
    ```ts
@@ -384,7 +393,7 @@ Use `onResponse` to log errors without blocking the flow:
 const stimulation = cns.stimulate(signal, {
   onResponse: (r) => {
     if (r.error) logger.error(r.error);
-    if (r.queueLength === 0) logger.info('done');
+    if (r.queueLength === 0) logger.info('done'); // terminal response
   }
 });
 await stimulation.waitUntilComplete();
@@ -419,6 +428,22 @@ const stimulation = cns.stimulate(signal, {
   }
 });
 await stimulation.waitUntilComplete();
+```
+
+To measure the synchronous batches *inside* a run rather than the run as a whole,
+use `onDrain` — it fires once per synchronous turn, so counting drains tells you
+how many times the stimulation had to yield to the event loop:
+
+```ts
+let turns = 0;
+const stimulation = cns.stimulate(signal, {
+  onDrain: (d) => {
+    turns++;
+    if (d.queueLength === 0) {
+      console.log(`Completed in ${Date.now() - start}ms across ${turns} turns`);
+    }
+  }
+});
 ```
 
 Or integrate with your APM/tracing tool (e.g., OpenTelemetry):

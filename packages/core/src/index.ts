@@ -13,6 +13,8 @@ export type { TCNSHandlerContext } from './types/TCNSHandlerContext';
 export type { TCNSSignal } from './types/TCNSSignal';
 export type { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
 export type { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
+export type { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
+export type { TCNSStimulationDrain } from './types/TCNSStimulationDrain';
 export type { TCNSModality } from './types/TCNSModality';
 export type { TCNSAfferentPath } from './types/TCNSAfferentPath';
 export type { TCNSNeuronActivationTaskFailure } from './types/TCNSNeuronActivationTaskFailure';

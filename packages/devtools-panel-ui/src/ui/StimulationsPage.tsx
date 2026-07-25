@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import React, { useMemo, useRef, useCallback } from 'react';
 import { db, UIHop, TStimulation } from '../model';
 import { useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';

@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import React from 'react';
 import { DECAY_ICONS } from './theme-utils';
 
