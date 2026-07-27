@@ -1,13 +1,14 @@
 import type { TExoSchema } from '@exodra/core';
-import { bindable, derive } from '@exodra/reactivity';
-import { reactIsland } from '@exodra/react';
+import { derive } from '@exodra/reactivity';
 import type { TExoRouter } from '@exodra/router';
 import { sidebarView } from '../ui/Sidebar';
 import { topologyView } from '../ui/TopologyView';
-import StimulationsPage from '../ui/StimulationsPage';
-import { isStimulationsPath } from './routes';
+import { durableRunsPage } from '../ui/DurableRunsPage';
+import { isStimulationsPath, isDurablePath } from './routes';
 import type { DevtoolsSocket } from './controllers/socket';
 import type { AppSelection } from './controllers/selection';
+import type { ICNSDurableRunsClient } from '../durable/ICNSDurableRunsClient';
+import { CNSDurableRunsWsClient } from '../durable/CNSDurableRunsWsClient';
 
 // The native Exodra shell: the flex layout that was `AppInner` in the old React
 // App.tsx. The sidebar is now native Exodra; the two heavy main-pane views
@@ -20,40 +21,40 @@ export interface CreateShellParams {
     router: TExoRouter;
     socket: DevtoolsSocket;
     selection: AppSelection;
+    durableClient: ICNSDurableRunsClient;
 }
 
 export function createShell({
     router,
     socket,
     selection,
+    durableClient,
 }: CreateShellParams): TExoSchema {
     const { effectiveSelectedAppId, selectedCnsId } = selection;
 
-    // ── Stimulations pane is still a React island; Topology is native. ───────
-    const stimProps = bindable<{
-        appId: string;
-        wsRef: DevtoolsSocket['wsRef'];
-        cnsId: string | null;
-    }>({
-        appId: effectiveSelectedAppId.getValue() ?? '',
-        wsRef: socket.wsRef,
-        cnsId: selectedCnsId.getValue(),
-    });
-    const refreshMainProps = (): void => {
-        stimProps.setValue({
-            appId: effectiveSelectedAppId.getValue() ?? '',
-            wsRef: socket.wsRef,
-            cnsId: selectedCnsId.getValue(),
-        });
-    };
-    effectiveSelectedAppId.subscribe(refreshMainProps);
-    selectedCnsId.subscribe(refreshMainProps);
-
-    // Build both panes once (stable refs) so switching by route reuses DOM.
+    // Main-pane views are native Exodra. Build once (stable refs) so switching by
+    // route reuses DOM. The durable-runs admin polls only while it is the shown
+    // pane (its onExoMount/onExoUnmount start/stop the poll).
     const topoPane = topologyView(effectiveSelectedAppId);
-    const stimIsland = reactIsland(StimulationsPage, stimProps);
+    // The Stimulations pane is the name-based Stimulation→Attempt→Task view (2b-3),
+    // fed live from the devtools-server's durable store over the SAME socket, scoped
+    // to the selected CNS. Observability only — no Launch; Retry/Clone go over 2b-2.
+    const stimClient = new CNSDurableRunsWsClient(
+        socket,
+        () => selectedCnsId.getValue() ?? undefined
+    );
+    const stimPane = durableRunsPage(stimClient, {
+        canLaunch: false,
+        title: 'Stimulations',
+        icon: '⚡',
+    });
+    const durablePane = durableRunsPage(durableClient);
     const mainChild = derive(router.location, loc =>
-        isStimulationsPath(loc.pathname) ? stimIsland : topoPane
+        isDurablePath(loc.pathname)
+            ? durablePane
+            : isStimulationsPath(loc.pathname)
+              ? stimPane
+              : topoPane
     );
 
     return (

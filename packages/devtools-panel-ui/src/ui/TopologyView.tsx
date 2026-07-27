@@ -1,12 +1,11 @@
 import type { TExoSchema } from '@exodra/core';
 import { bindable, derive } from '@exodra/reactivity';
 import type { TExoBindable } from '@exodra/reactivity';
-import { reactIsland } from '@exodra/react';
-import { combine, readEntitiesByIndexKey } from '@oimdb/exodra';
+import { combine, readEntitiesByIndexKey } from '../exo/oimdb-bind';
 import { db } from '../model';
 import { cnsGraph } from './CNSGraph';
 import { FrontierData, computeFrontier } from './frontier';
-import NeuronDetailsPanel from './NeuronDetailsPanel';
+import { neuronDetailsPanel } from './NeuronDetailsPanel';
 import { emptyGraphPlaceholder } from './EmptyGraphPlaceholder';
 
 // Native Exodra port of the topology view. The container (data selection,
@@ -272,7 +271,9 @@ function buildGraphData({
     return { neurons: graphNeurons, connections: graphConnections };
 }
 
-export function topologyView(appId: TExoBindable<string | null>): TExoSchema {
+export function topologyView(
+    appId: TExoBindable<string | null, string | null>
+): TExoSchema {
     const graphData = bindable<{
         neurons: NeuronData[];
         connections: ConnectionData[];
@@ -428,12 +429,9 @@ export function topologyView(appId: TExoBindable<string | null>): TExoSchema {
     const cnsGraphNode = cnsGraph(graphProps);
 
     // ── NeuronDetailsPanel island (props emit on selection/app change) ───────
-    const panelProps = combine([selectedNeuron, appId], () => ({
-        neuronId: selectedNeuron.getValue()?.id || '',
-        onClose,
-        appId: appId.getValue() || undefined,
-    }));
-    const neuronPanel = reactIsland(NeuronDetailsPanel, panelProps);
+    const neuronIdB = combine([selectedNeuron], () => selectedNeuron.getValue()?.id ?? null);
+    const appIdB = combine([appId], () => appId.getValue() ?? undefined);
+    const neuronPanel = neuronDetailsPanel(neuronIdB, appIdB, onClose);
 
     // Clear-selection button, shown only while a neuron is selected.
     const clearBtn = derive(selectedNeuron, sel =>

@@ -1,4 +1,4 @@
-import { ICNSStimulationContextStore } from './interfaces/ICNSStimulationContextStore';
+import { ICNSStimulationContextStore } from '@cnstra/types';
 
 export class CNSStimulationContextStore implements ICNSStimulationContextStore {
     // Lazily allocated: most stimulations never touch neuron context, so we

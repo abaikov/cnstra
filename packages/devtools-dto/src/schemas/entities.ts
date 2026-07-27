@@ -31,6 +31,12 @@ export const CNSDTODendriteSchema = z.object({
     appId: z.string(),
 });
 
+/**
+ * @deprecated Legacy id-based stimulation DTO. The durable model is **name-based** —
+ * prefer `TCNSStimulationPersisted` / `TCNSStimulationDto` from `@cnstra/persist-dto`
+ * (grouped under a stable `stimulationRunId`). Kept until the devtools stack migrates
+ * off topology ids.
+ */
 export const CNSDTOStimulationSchema = z.object({
     id: z.string(),
     cnsId: z.string(),
@@ -42,8 +48,20 @@ export const CNSDTOStimulationSchema = z.object({
     hopCount: z.number().int().nonnegative(),
     hasError: z.boolean(),
     replayOf: z.string().nullable(),
+    // ── name-based run/attempt identity (expand toward @cnstra/persist-dto) ──
+    /** Stable logical run this stimulation belongs to (heir of the ephemeral `id`). */
+    stimulationRunId: z.string().optional(),
+    /** 1-based attempt within the run. */
+    attemptNumber: z.number().int().positive().optional(),
+    /** Entry collateral by name (replaces the `cnsId:name` `collateralId`). */
+    collateralName: z.string().optional(),
 });
 
+/**
+ * @deprecated Legacy id-based hop DTO. Superseded by the name-based
+ * `TCNSStimulationTaskPersisted` (a settled task with `inputIndex` dedup) in
+ * `@cnstra/persist-dto`.
+ */
 export const CNSDTOHopSchema = z.object({
     id: z.string(),
     stimulationId: z.string(),
@@ -56,6 +74,13 @@ export const CNSDTOHopSchema = z.object({
     startedAt: z.number(),
     duration: z.number().nullable(),
     error: z.string().nullable(),
+    // ── name-based refs (expand toward @cnstra/persist-dto TCNSStimulationTask) ──
+    /** The activated neuron by name (always resolvable — resolve-or-null for now). */
+    neuronName: z.string().nullable().optional(),
+    /** Input (dendrite) collateral by name. */
+    inputCollateralName: z.string().nullable().optional(),
+    /** Output collateral by name. */
+    outputCollateralName: z.string().nullable().optional(),
 });
 
 export type CNSDTOApp = z.infer<typeof CNSDTOAppSchema>;

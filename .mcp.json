@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "oimdb": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/abaikov/work/oimdb/packages/mcp/bin/oimdb-mcp.cjs"
+      ],
+      "env": {}
+    },
+    "cnstra": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "tsx",
+        "/Users/abaikov/work/cnstra/packages/devtools-panel-ui/cns-mcp.ts"
+      ],
+      "env": {}
+    }
+  }
+}

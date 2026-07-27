@@ -1,20 +1,21 @@
+import type { ICNSCollateral } from '@cnstra/types';
 import { CNSStimulationContextStore } from './CNSStimulationContextStore';
-import { ICNSStimulationContextStore } from './interfaces/ICNSStimulationContextStore';
-import { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
-import { TCNSNeuron } from './types/TCNSNeuron';
-import { TCNSDendrite } from './types/TCNSDendrite';
-import { TCNSSubscriber } from './types/TCNSSubscriber';
+import { ICNSStimulationContextStore } from '@cnstra/types';
+import { TCNSStimulationOptions } from '@cnstra/types';
+import { TCNSNeuron } from '@cnstra/types';
+import { TCNSDendrite } from '@cnstra/types';
+import { TCNSSubscriber } from '@cnstra/types';
 import { CNSInstanceNeuronQueue } from './CNSInstanceNeuronQueue';
-import { TCNSSignal } from './types/TCNSSignal';
-import { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
+import { TCNSSignal } from '@cnstra/types';
+import { TCNSNeuronActivationTask } from '@cnstra/types';
 import { CNS } from './CNS';
-import { ICNS } from './interfaces/ICNS';
-import { TCNSNeuronActivationTaskFailure } from './types/TCNSNeuronActivationTaskFailure';
-import { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
-import { TCNSStimulationDrain } from './types/TCNSStimulationDrain';
-import { CNSCollateral } from './CNSCollateral';
-import { TNCNeuronResponseReturn } from './types/TCNSNeuronResponseReturn';
-import { TCNSAxon } from './types/TCNSAxon';
+import { ICNS } from '@cnstra/types';
+import { TCNSNeuronActivationTaskFailure } from '@cnstra/types';
+import { TCNSStimulationResponse } from '@cnstra/types';
+import { TCNSStimulationDrain } from '@cnstra/types';
+
+import { TNCNeuronResponseReturn } from '@cnstra/types';
+import { TCNSAxon } from '@cnstra/types';
 
 /**
  * Internal, non-enumerable cache of the resolved dendrite on activation tasks we
@@ -44,6 +45,13 @@ class CNSDendriteContext {
     get global(): unknown {
         return this.cns.global;
     }
+    // The caller-supplied per-stimulation context (`stimulate(sig, {stimulationContext})`),
+    // the same value on every hop — the environment-agnostic way to correlate logs to a
+    // run (pass `{ stimulationId, attemptNumber }`). Prototype getter like `global`:
+    // zero extra allocation, read only where a handler reaches for it.
+    get stimulationContext(): unknown {
+        return this.stimulation.options?.stimulationContext;
+    }
     get(): unknown {
         return this.stimulation.getContext().get(this.neuron);
     }
@@ -66,15 +74,19 @@ class CNSStimulationResponseImpl {
     constructor(
         public readonly stimulation: CNSStimulation<any, any>,
         private readonly store: ICNSStimulationContextStore | undefined,
-        public readonly inputSignal: TCNSSignal<CNSCollateral<unknown>> | undefined,
+        public readonly inputSignal: TCNSSignal<ICNSCollateral<unknown>> | undefined,
         public readonly outputSignal:
-            | TCNSSignal<CNSCollateral<unknown>>
+            | TCNSSignal<ICNSCollateral<unknown>>
             | undefined,
         public readonly queueLength: number,
         public readonly pendingActivations: number,
         public readonly activeActivations: number,
         public readonly hops: number | undefined,
-        public readonly error: any
+        public readonly error: any,
+        // The neuron that produced this response (present on both success and
+        // throw paths). Lets name-based consumers resolve the task's neuron
+        // reliably instead of guessing via the output collateral's owner.
+        public readonly neuron: TCNSNeuron<any, any> | undefined
     ) {}
 
     get contextValue(): Map<object, unknown> {
@@ -477,6 +489,20 @@ export class CNSStimulation<
     }
 
     /**
+     * The current outstanding frontier — every task that has not completed:
+     * queued, active, and pending (awaiting an async onResponse), plus any
+     * failed/aborted tasks. This is the set to persist for resume: re-activating
+     * it re-runs exactly the not-yet-done work. Safe to call at any point during
+     * a run (for progress) or after it fails.
+     */
+    public getOutstandingTasks(): TCNSNeuronActivationTask<TNeuron>[] {
+        return [
+            ...this.getAllActivationTasks(),
+            ...this.getFailedTasks().map(f => f.task),
+        ];
+    }
+
+    /**
      * Get the context store for this stimulation
      */
     public getContext(): ICNSStimulationContextStore {
@@ -587,7 +613,7 @@ export class CNSStimulation<
 
     protected createSubscriberQueueItem(
         subscriber: TCNSSubscriber<TNeuron, TDendrite>,
-        inputSignal?: TCNSSignal<CNSCollateral<unknown>>
+        inputSignal?: TCNSSignal<ICNSCollateral<unknown>>
     ) {
         if (this.options?.maxNeuronHops) {
             if (
@@ -607,7 +633,7 @@ export class CNSStimulation<
 
         const neuronActivationTask: TCNSNeuronActivationTask<TNeuron> = {
             neuron: subscriber.neuron,
-            dendriteCollateral: subscriber.dendrite.collateral as CNSCollateral<unknown>,
+            dendriteCollateral: subscriber.dendrite.collateral as ICNSCollateral<unknown>,
             input: inputSignal,
         };
         // Cache the resolved subscriber so executeActivationTask can skip the
@@ -688,7 +714,7 @@ export class CNSStimulation<
     private runStarter(
         neuron: TNeuron,
         dendrite: TDendrite,
-        inputSignal: TCNSSignal<CNSCollateral<unknown>> | undefined,
+        inputSignal: TCNSSignal<ICNSCollateral<unknown>> | undefined,
         neuronActivationTask: TCNSNeuronActivationTask<TNeuron>
     ): (() => void) | Promise<() => void> {
         // Mark neuron as active only when we actually start processing (after gate allows it)
@@ -740,8 +766,8 @@ export class CNSStimulation<
             // sync path below never touches these, so building them here
             // would allocate a throwaway Promise on every activation.
             const asPromise: Promise<
-                | TCNSSignal<CNSCollateral<unknown>>
-                | TCNSSignal<CNSCollateral<unknown>>[]
+                | TCNSSignal<ICNSCollateral<unknown>>
+                | TCNSSignal<ICNSCollateral<unknown>>[]
                 | undefined
             > =
                 response instanceof Promise
@@ -751,8 +777,8 @@ export class CNSStimulation<
             const timedPromise =
                 maxDuration && maxDuration > 0
                     ? new Promise<
-                          | TCNSSignal<CNSCollateral<unknown>>
-                          | TCNSSignal<CNSCollateral<unknown>>[]
+                          | TCNSSignal<ICNSCollateral<unknown>>
+                          | TCNSSignal<ICNSCollateral<unknown>>[]
                           | undefined
                       >((resolve, reject) => {
                           const t = setTimeout(() => {
@@ -783,8 +809,8 @@ export class CNSStimulation<
                             neuron,
                             inputSignal as any,
                             signal as
-                                | TCNSSignal<CNSCollateral<unknown>>
-                                | TCNSSignal<CNSCollateral<unknown>>[]
+                                | TCNSSignal<ICNSCollateral<unknown>>
+                                | TCNSSignal<ICNSCollateral<unknown>>[]
                                 | undefined
                         );
                     };
@@ -821,8 +847,8 @@ export class CNSStimulation<
                     neuron,
                     inputSignal as any,
                     response as
-                        | TCNSSignal<CNSCollateral<unknown>>
-                        | TCNSSignal<CNSCollateral<unknown>>[]
+                        | TCNSSignal<ICNSCollateral<unknown>>
+                        | TCNSSignal<ICNSCollateral<unknown>>[]
                         | undefined
                 );
             };
@@ -831,10 +857,10 @@ export class CNSStimulation<
 
     protected processResponseOrResponses(
         emitter: TNeuron | undefined,
-        inputSignal?: TCNSSignal<CNSCollateral<unknown>>,
+        inputSignal?: TCNSSignal<ICNSCollateral<unknown>>,
         outputSignalOrSignals?:
-            | TCNSSignal<CNSCollateral<unknown>>
-            | TCNSSignal<CNSCollateral<unknown>>[],
+            | TCNSSignal<ICNSCollateral<unknown>>
+            | TCNSSignal<ICNSCollateral<unknown>>[],
         error?: any
     ): void {
         // Handle array of signals
@@ -883,8 +909,8 @@ export class CNSStimulation<
 
     protected processResponse(
         emitter: TNeuron | undefined,
-        inputSignal?: TCNSSignal<CNSCollateral<unknown>>,
-        outputSignal?: TCNSSignal<CNSCollateral<unknown>>,
+        inputSignal?: TCNSSignal<ICNSCollateral<unknown>>,
+        outputSignal?: TCNSSignal<ICNSCollateral<unknown>>,
         error?: any
     ): void {
         const collateral = outputSignal?.collateral;
@@ -953,7 +979,8 @@ export class CNSStimulation<
                     this.options?.maxNeuronHops && emitter
                         ? this.neuronVisitMap?.get(emitter) ?? 0
                         : undefined,
-                    error
+                    error,
+                    emitter
                 ) as TCNSStimulationResponse
             );
         } catch (e) {
@@ -1037,8 +1064,8 @@ export class CNSStimulation<
 
     public responseToSignal(
         signalOrSignals:
-            | TCNSSignal<CNSCollateral<unknown>>
-            | TCNSSignal<CNSCollateral<unknown>>[]
+            | TCNSSignal<ICNSCollateral<unknown>>
+            | TCNSSignal<ICNSCollateral<unknown>>[]
     ): void {
         // The initial dispatch is a turn: everything reachable synchronously from
         // this signal runs before stimulate() returns, and the drain that follows

@@ -3,11 +3,11 @@ import {
     collateral,
     neuron,
     withCtx,
-    TCNSSignal,
     afferentPath,
     modality,
     CNSStimulationGate,
 } from '../src/index';
+import type { TCNSSignal } from '@cnstra/types';
 
 const uiAxon = {
     userEntersApp: collateral<{

@@ -10,8 +10,13 @@ export const routes: readonly TExoRoute[] = [
     { path: '/apps', component: noop },
     { path: '/apps/:appId', component: noop },
     { path: '/apps/:appId/stimulations', component: noop },
+    { path: '/durable', component: noop },
 ];
 
 /** True when the current pathname is the stimulations view. */
 export const isStimulationsPath = (pathname: string): boolean =>
     pathname.endsWith('/stimulations');
+
+/** True when the current pathname is the durable-runs admin (app-independent). */
+export const isDurablePath = (pathname: string): boolean =>
+    pathname.startsWith('/durable');

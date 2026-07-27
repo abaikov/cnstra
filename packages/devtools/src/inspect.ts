@@ -1,4 +1,6 @@
-import type { ICNS, TCNSNeuron, CNSCollateral, CNSPersistOptionsRegistry } from '@cnstra/core';
+import type { CNSCollateral } from '@cnstra/core';
+import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+import type { ICNS, TCNSNeuron } from '@cnstra/types';
 
 type AnyNeuron = TCNSNeuron<any, any>;
 type AnyCollateral = CNSCollateral<unknown>;

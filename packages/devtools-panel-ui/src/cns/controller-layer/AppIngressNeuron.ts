@@ -2,17 +2,16 @@ import { neuron } from '@cnstra/core';
 import type { CNSDTOServerMessage } from '@cnstra/devtools-dto';
 import { appModelAxon } from './AppModelAxon';
 import { wsAxon } from '../ws/WsAxon';
-import { db } from '../../model';
-
-/** Resolve a hop's owning app via its parent stimulation (denormalized for indexing). */
-function appIdForStimulation(stimulationId: string): string {
-    return db.stimulations.getOneByPk(stimulationId)?.appId ?? '';
-}
 
 /**
  * Parses the raw WebSocket stream (the server's `CNSDTOServerMessage` protocol)
  * into domain events on `appModelAxon`. It does not touch the database — the
  * data-layer neurons persist the events it emits.
+ *
+ * Stimulation/hop data no longer flows through here: it is polled by
+ * `createDurableIngest` (name-based `cns.stimulations.query`) and translated into
+ * the same `stimulationStarted`/`hopAdded`/`stimulationCompleted` domain events.
+ * This ingress now only handles topology, app lifecycle, and server metrics.
  */
 export const appIngressNeuron = neuron(appModelAxon).bind(wsAxon, {
     open: () => {},
@@ -54,23 +53,6 @@ export const appIngressNeuron = neuron(appModelAxon).bind(wsAxon, {
                     dendrites: msg.dendrites,
                 });
 
-            case 'stimulation.started':
-                return axon.stimulationStarted.createSignal(msg.stimulation);
-
-            case 'stimulation.hop':
-                return axon.hopAdded.createSignal({
-                    ...msg.hop,
-                    appId: appIdForStimulation(msg.hop.stimulationId),
-                });
-
-            case 'stimulation.completed':
-                return axon.stimulationCompleted.createSignal({
-                    stimulationId: msg.stimulationId,
-                    completedAt: msg.completedAt,
-                    hopCount: msg.hopCount,
-                    hasError: msg.hasError,
-                });
-
             case 'server.metrics':
                 return axon.serverMetrics.createSignal({
                     timestamp: msg.timestamp,
@@ -91,19 +73,6 @@ export const appIngressNeuron = neuron(appModelAxon).bind(wsAxon, {
                         neurons: s.neurons,
                         collaterals: s.collaterals,
                         dendrites: s.dendrites,
-                    })
-                );
-
-            case 'stimulations.result':
-                return msg.items.map(s =>
-                    axon.stimulationStarted.createSignal(s)
-                );
-
-            case 'hops.result':
-                return msg.items.map(hop =>
-                    axon.hopAdded.createSignal({
-                        ...hop,
-                        appId: appIdForStimulation(hop.stimulationId),
                     })
                 );
 

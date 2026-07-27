@@ -1,5 +1,5 @@
-import { TCNSSignal } from './types/TCNSSignal';
-import { ICNSCollateral } from './interfaces/ICNSCollateral';
+import { TCNSSignal } from '@cnstra/types';
+import { ICNSCollateral } from '@cnstra/types';
 
 export class CNSCollateral<TPayload> implements ICNSCollateral<TPayload> {
     createSignal(): TCNSSignal<CNSCollateral<TPayload>>;

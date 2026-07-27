@@ -1,44 +1,6 @@
 // Test setup for DevTools Panel UI
 import '@testing-library/jest-dom';
 
-// Mock PixiJS to avoid WebGL issues in tests
-jest.mock('pixi.js', () => ({
-    Application: jest.fn().mockImplementation(() => ({
-        init: jest.fn().mockResolvedValue(undefined),
-        canvas: document.createElement('canvas'),
-        stage: {
-            addChild: jest.fn(),
-        },
-        renderer: {
-            resize: jest.fn(),
-        },
-        destroy: jest.fn(),
-    })),
-    Graphics: jest.fn().mockImplementation(() => ({
-        circle: jest.fn().mockReturnThis(),
-        fill: jest.fn().mockReturnThis(),
-        stroke: jest.fn().mockReturnThis(),
-        moveTo: jest.fn().mockReturnThis(),
-        lineTo: jest.fn().mockReturnThis(),
-        clear: jest.fn().mockReturnThis(),
-        on: jest.fn(),
-        tint: 0xffffff,
-        eventMode: 'static',
-        cursor: 'pointer',
-        x: 0,
-        y: 0,
-    })),
-    Container: jest.fn().mockImplementation(() => ({
-        addChild: jest.fn(),
-        x: 0,
-        y: 0,
-    })),
-    Text: jest.fn().mockImplementation(() => ({
-        x: 0,
-        y: 0,
-    })),
-}));
-
 // Mock WebSocket for tests
 global.WebSocket = jest.fn().mockImplementation(() => ({
     addEventListener: jest.fn(),

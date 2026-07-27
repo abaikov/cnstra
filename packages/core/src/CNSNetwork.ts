@@ -1,7 +1,7 @@
-import { TCNSNeuron } from './types/TCNSNeuron';
-import { TCNSSubscriber } from './types/TCNSSubscriber';
-import { TCNSDendrite } from './types/TCNSDendrite';
-import { CNSCollateral } from './CNSCollateral';
+import type { ICNSCollateral } from '@cnstra/types';
+import { TCNSNeuron } from '@cnstra/types';
+import { TCNSSubscriber } from '@cnstra/types';
+import { TCNSDendrite } from '@cnstra/types';
 
 export class CNSNetwork<
     TNeuron extends TCNSNeuron<any, any>,
@@ -42,11 +42,11 @@ export class CNSNetwork<
      * Built once at construction time.
      */
     private subIndex = new Map<
-        CNSCollateral<unknown>,
+        ICNSCollateral<unknown>,
         TCNSSubscriber<TNeuron, TDendrite>[]
     >();
 
-    private parentNeuronByCollateral = new Map<CNSCollateral<unknown>, TNeuron>();
+    private parentNeuronByCollateral = new Map<ICNSCollateral<unknown>, TNeuron>();
 
     constructor(private readonly neurons: TNeuron[]) {
         // Indexes are needed on the hot path (subscriber/parent lookups), so they
@@ -82,7 +82,7 @@ export class CNSNetwork<
 
                 // Find which neurons listen to this collateral
                 const subscribers = this.subIndex.get(
-                    collateral as CNSCollateral<unknown>
+                    collateral as ICNSCollateral<unknown>
                 );
                 if (subscribers) {
                     for (const { neuron: targetNeuron } of subscribers) {
@@ -319,7 +319,7 @@ export class CNSNetwork<
         this.parentNeuronByCollateral.clear();
         for (const neuron of this.neurons) {
             for (const dendrite of neuron.dendrites) {
-                const key = dendrite.collateral as CNSCollateral<unknown>;
+                const key = dendrite.collateral as ICNSCollateral<unknown>;
                 const arr = this.subIndex.get(key) ?? [];
                 arr.push({ neuron, dendrite: dendrite as TDendrite });
                 this.subIndex.set(
@@ -329,25 +329,25 @@ export class CNSNetwork<
             }
             Object.values(neuron.axon).forEach(collateral => {
                 this.parentNeuronByCollateral.set(
-                    collateral as CNSCollateral<unknown>,
+                    collateral as ICNSCollateral<unknown>,
                     neuron
                 );
             });
         }
     }
 
-    public getParentNeuronByCollateral(collateral: CNSCollateral<unknown>) {
+    public getParentNeuronByCollateral(collateral: ICNSCollateral<unknown>) {
         return this.parentNeuronByCollateral.get(collateral);
     }
 
     // Computed on demand (rarely used): one dendrite per collateral, last wins —
     // preserving the previous index semantics without building it every construct.
     public getDendrites() {
-        const byCollateral = new Map<CNSCollateral<unknown>, TDendrite>();
+        const byCollateral = new Map<ICNSCollateral<unknown>, TDendrite>();
         for (const neuron of this.neurons) {
             for (const dendrite of neuron.dendrites) {
                 byCollateral.set(
-                    dendrite.collateral as CNSCollateral<unknown>,
+                    dendrite.collateral as ICNSCollateral<unknown>,
                     dendrite as TDendrite
                 );
             }
@@ -356,17 +356,17 @@ export class CNSNetwork<
     }
 
     public getCollaterals() {
-        const collaterals = new Set<CNSCollateral<unknown>>();
+        const collaterals = new Set<ICNSCollateral<unknown>>();
         for (const neuron of this.neurons) {
             for (const collateral of Object.values(neuron.axon)) {
-                collaterals.add(collateral as CNSCollateral<unknown>);
+                collaterals.add(collateral as ICNSCollateral<unknown>);
             }
         }
         return Array.from(collaterals);
     }
 
     public getSubscribers(
-        collateral: CNSCollateral<unknown>
+        collateral: ICNSCollateral<unknown>
     ): TCNSSubscriber<TNeuron, TDendrite>[] {
         return this.subIndex.get(collateral) ?? [];
     }

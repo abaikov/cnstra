@@ -1,11 +1,11 @@
 import {
+    CNS,
     collateral,
     neuron,
     neuronFactory,
     withGlobal,
-    createCNS,
-    TCNSSignal,
 } from '../src/index';
+import type { TCNSSignal } from '@cnstra/types';
 
 type TGlobal = { store: { seen: string[] }; now: () => number };
 
@@ -27,10 +27,7 @@ describe('ctx.global (composable factory extension)', () => {
         );
 
         const store = { seen: [] as string[] };
-        const { cns } = createCNS(
-            { worker },
-            { global: { store, now: () => 42 } }
-        );
+        const cns = new CNS([worker], undefined, { store, now: () => 42 });
 
         let seenAt: number | undefined;
         await new Promise<void>(resolve => {
@@ -62,8 +59,8 @@ describe('ctx.global (composable factory extension)', () => {
 
         const storeA = { seen: [] as string[] };
         const storeB = { seen: [] as string[] };
-        const a = createCNS({ worker }, { global: { store: storeA, now: () => 0 } });
-        const b = createCNS({ worker }, { global: { store: storeB, now: () => 0 } });
+        const a = { cns: new CNS([worker], undefined, { store: storeA, now: () => 0 }) };
+        const b = { cns: new CNS([worker], undefined, { store: storeB, now: () => 0 }) };
 
         const run = (cns: typeof a.cns, id: string) =>
             new Promise<void>(resolve => {
@@ -93,7 +90,7 @@ describe('ctx.global (composable factory extension)', () => {
             },
         });
 
-        const { cns } = createCNS({ worker });
+        const cns = new CNS([worker]);
         await new Promise<void>(resolve => {
             cns.stimulate(ping.createSignal({ id: 'a' }) as TCNSSignal<any>, {
                 onResponse: r => {

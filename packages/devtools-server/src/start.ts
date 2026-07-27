@@ -4,7 +4,8 @@ import { join, dirname } from 'path';
 import { createRequire } from 'module';
 import { WebSocketServer, WebSocket } from 'ws';
 import { CNSDevToolsServer } from './index';
-import type { ICNS, TCNSNeuron, CNSPersistOptionsRegistry } from '@cnstra/core';
+import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+import type { ICNS, TCNSNeuron } from '@cnstra/types';
 
 const _require = createRequire(join(process.cwd(), 'package.json'));
 

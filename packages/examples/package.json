@@ -1,0 +1,45 @@
+{
+  "name": "@cnstra/examples",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runnable CNStra examples — durable execution, resume/retry, and queue integrations (pg-boss).",
+  "type": "commonjs",
+  "scripts": {
+    "demo:admin": "tsx src/admin/server.ts",
+    "demo:admin:pgboss": "ADMIN_QUEUE=pgboss tsx src/admin/demo.ts",
+    "demo:admin:bull": "ADMIN_QUEUE=bull tsx src/admin/demo.ts",
+    "demo:panel:bull": "ADMIN_QUEUE=bull tsx src/admin/panel-demo.ts",
+    "demo:panel:pgboss": "ADMIN_QUEUE=pgboss tsx src/admin/panel-demo.ts",
+    "demo:durable": "tsx src/durable-inprocess.ts",
+    "demo:pgboss": "tsx src/pgboss-durable.ts",
+    "demo:bull": "tsx src/bull-durable.ts",
+    "pg:up": "docker compose up -d postgres",
+    "pg:down": "docker compose down -v",
+    "redis:up": "docker compose up -d redis",
+    "redis:down": "docker compose down -v",
+    "test:types": "tsc --noEmit",
+    "demo:pgboss:redis": "tsx src/pgboss-redis-durable.ts",
+    "demo:bull:redis": "tsx src/bull-redis-durable.ts",
+    "demo:pgboss:noprogress": "tsx src/pgboss-noprogress-durable.ts",
+    "demo:admin:pg-store": "ADMIN_STORE=postgres tsx src/admin/server.ts"
+  },
+  "dependencies": {
+    "@cnstra/core": "^2.5.0",
+    "@cnstra/persist": "^0.1.0",
+    "@cnstra/persist-dto": "^0.1.0",
+    "@cnstra/pg-boss": "^0.1.0",
+    "@cnstra/bullmq": "^0.1.0",
+    "@cnstra/factory": "^0.1.0",
+    "@cnstra/progress-redis": "^0.1.0",
+    "@cnstra/persist-postgres": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "pg-boss": ">=9",
+    "bullmq": ">=4",
+    "tsx": "^4.7.0",
+    "typescript": "5.7.2"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT"
+}

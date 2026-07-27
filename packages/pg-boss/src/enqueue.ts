@@ -1,4 +1,5 @@
-import type { CNSCollateral, CNSPersistOptionsRegistry } from '@cnstra/core';
+import type { CNSCollateral } from '@cnstra/core';
+import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import type { IPgBossLike, TCNSStimulationJobData } from './types';
 
 /** Commonly used pg-boss send options (a superset is passed through). */

@@ -1,24 +1,13 @@
 export { CNS } from './CNS';
-export { CNSPersistOptionsRegistry } from './CNSPersistOptionsRegistry';
+// CNSPersistOptionsRegistry + createPersistRegistry moved to @cnstra/persist;
+// createCNS moved to @cnstra/factory (keeps core a pure, dependency-light engine).
 export { CNSCollateral } from './CNSCollateral';
 export { CNSStimulationContextStore } from './CNSStimulationContextStore';
 export { CNSStimulationGate } from './utils/CNSStimulationGate';
 
-export type { ICNS } from './interfaces/ICNS';
-
-export type { TCNSNeuron } from './types/TCNSNeuron';
-export type { TCNSAxon } from './types/TCNSAxon';
-export type { TCNSDendrite } from './types/TCNSDendrite';
-export type { TCNSHandlerContext } from './types/TCNSHandlerContext';
-export type { TCNSSignal } from './types/TCNSSignal';
-export type { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
-export type { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
-export type { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
-export type { TCNSStimulationDrain } from './types/TCNSStimulationDrain';
-export type { TCNSModality } from './types/TCNSModality';
-export type { TCNSAfferentPath } from './types/TCNSAfferentPath';
-export type { TCNSNeuronActivationTaskFailure } from './types/TCNSNeuronActivationTaskFailure';
-export type { TCNSNeuronPersistOptions, TCNSCollateralPersistOptions, TCNSStimulationPersistOptions } from './types/TCNSPersist';
+// Shared types/interfaces now live in @cnstra/types and are NOT re-exported here
+// (intentional clean split — import them from '@cnstra/types' directly).
+// Only types that still physically live in core are exported below.
 export type { TCNSStimulationGateOptions, TCNSStimulationGateSignal } from './utils/CNSStimulationGate';
 
 // Factory
@@ -30,7 +19,5 @@ export {
     withGlobal,
     afferentPath,
     modality,
-    createPersistRegistry,
-    createCNS,
 } from './factory/index';
 export type { TNeuronFactory } from './factory/index';

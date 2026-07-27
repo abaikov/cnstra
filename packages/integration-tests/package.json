@@ -17,7 +17,8 @@
     "mobx": "^6.16.1",
     "redux": "^5.0.1",
     "valtio": "^2.3.2",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "@cnstra/types": "^0.1.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

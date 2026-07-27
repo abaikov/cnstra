@@ -1,4 +1,5 @@
-import { CNS, collateral, withCtx, createPersistRegistry } from '@cnstra/core';
+import { CNS, collateral, withCtx } from '@cnstra/core';
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 // DevTools client is loaded dynamically when enabled
 import { WebSocket as NodeWebSocket, WebSocketServer } from 'ws';
 import { createServer } from 'http';
@@ -820,7 +821,35 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
             '@cnstra/devtools-server-repository-in-memory'
         );
         const repository = new CNSDevToolsServerRepositoryInMemory();
-        devToolsServer = new CNSDevToolsServer(repository);
+
+        // Name-based durable store for the trackStimulations producer path. Defaults to
+        // in-memory; switch to Postgres with ADMIN_STORE=postgres (or a DATABASE_URL).
+        const usePostgres =
+            process.env.ADMIN_STORE === 'postgres' ||
+            !!process.env.DATABASE_URL;
+        let stimulationRepository: any;
+        if (usePostgres) {
+            const { CNSPostgresStimulationRepository } = await import(
+                '@cnstra/persist-postgres'
+            );
+            stimulationRepository = new CNSPostgresStimulationRepository({
+                connectionString:
+                    process.env.DATABASE_URL ||
+                    'postgres://postgres:postgres@localhost:5432/postgres',
+            });
+            console.log('🗄️  Durable stimulation store: Postgres');
+        } else {
+            const { CNSInMemoryStimulationRepository } = await import(
+                '@cnstra/persist'
+            );
+            stimulationRepository = new CNSInMemoryStimulationRepository();
+            console.log('🗄️  Durable stimulation store: in-memory');
+        }
+
+        devToolsServer = new CNSDevToolsServer(
+            repository,
+            stimulationRepository
+        );
         console.log('🔧 DevTools server core is initialized');
 
         // Process buffered messages
@@ -983,7 +1012,7 @@ const cns = new CNS([
     auditNeuron,
 ]);
 
-export const registry = createPersistRegistry({
+export const registry = CNSPersistOptionsRegistryFactory.create({
     authNeuron,
     searchNeuron,
     cartNeuron,
@@ -994,6 +1023,15 @@ export const registry = createPersistRegistry({
     analyticsNeuron,
     auditNeuron,
 });
+
+// Entry collaterals are external triggers — they are no neuron's axon, so the
+// factory (which registers axon collaterals) does not name them. The serializer
+// needs a name for every collateral that can appear in an outstanding frontier,
+// including a stimulation's entry collateral, so register them explicitly.
+registry.registerCollateral('userLogin', userLogin);
+registry.registerCollateral('searchProducts', searchProducts);
+registry.registerCollateral('addToCart', addToCart);
+registry.registerCollateral('checkout', checkout);
 
 // Setup DevTools with WebSocket transport (optional)
 console.log('🔧 DevTools CLIENT enabled:', DEVTOOLS_CLIENT_ENABLED);
@@ -1011,6 +1049,7 @@ if (DEVTOOLS_CLIENT_ENABLED) {
 
     const devtools = new CNSDevTools('ecommerce-app', transport as any, {
         cnsId: 'ecommerce-app:core',
+        trackStimulations: true,
         devToolsInstanceName: 'E-commerce Demo App',
         takeDataSnapshot: () => ({
             timestamp: Date.now(),
@@ -1031,50 +1070,10 @@ if (DEVTOOLS_CLIENT_ENABLED) {
     console.log('🚀 E-commerce CNS app started WITHOUT DevTools CLIENT');
 }
 
-// Real Developer Debugging Experience Guide
-console.log(`
-🚨 ===== CNStra DevTools Debugging Guide ===== 🚨
-
-👨‍💻 REAL DEVELOPER EXPERIENCE: "My neurons show 0 signals!"
-
-🔍 ACTUAL ISSUE DISCOVERED & FIXED:
-The DevTools UI was querying the WRONG DATABASE TABLE!
-
-❌ BEFORE: StimulationsPage queried "db.responses"
-✅ AFTER: StimulationsPage now queries "db.stimulations"
-
-📊 ROOT CAUSE ANALYSIS:
-Looking at the logs above, you can see tons of activity:
-
-🔍 SERVER LOGS show stimulations being received:
-   ✅ "🧠 Server received stimulation: neuronId: ecommerce-app:auth-service"
-   ✅ "🧠 Server received stimulation: neuronId: ecommerce-app:search-service"
-   ✅ "🧠 Server received stimulation: neuronId: ecommerce-app:cart-service"
-
-⚡ BUT UI showed 0 responses because of database table mismatch!
-
-📋 HOW TO DEBUG SIMILAR ISSUES:
-
-Step 1: Check server logs - are stimulations being received?
-Step 2: Open DevTools at http://localhost:8080
-Step 3: Navigate to "⚡ Stimulations" page
-Step 4: If 0 responses despite server activity → check database queries
-Step 5: Verify UI components query correct data tables
-
-🚨 COMMON ISSUE TYPES:
-   ❌ Wrong database table (like we had!)
-   ❌ NeuronId prefix mismatches
-   ❌ Communication failures between server/UI
-   ❌ WebSocket connection issues
-
-🔧 DEBUGGING PROCESS:
-1. Server receiving data? ✅ (check console logs)
-2. Server processing data? ✅ (check processing logs)
-3. UI receiving data? ❌ (was the actual issue!)
-4. UI displaying data? ❌ (consequence of wrong table)
-
-✨ This demonstrates REAL production debugging! 🎯
-`);
+console.log(
+    '🔎 Open DevTools at http://localhost:8080 → "⚡ Stimulations" to watch the ' +
+        'name-based Stimulation → Attempt → Task activity live.'
+);
 
 // Demo realistic e-commerce flows
 async function runDemo() {

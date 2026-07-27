@@ -1,16 +1,16 @@
-import { TCNSNeuron } from './types/TCNSNeuron';
-import { TCNSDendrite } from './types/TCNSDendrite';
-import { TCNSOptions } from './types/TCNSOptions';
-import { TCNSStimulationOptions } from './types/TCNSStimulationOptions';
+import type { ICNSCollateral } from '@cnstra/types';
+import { TCNSNeuron } from '@cnstra/types';
+import { TCNSDendrite } from '@cnstra/types';
+import { TCNSOptions } from '@cnstra/types';
+import { TCNSStimulationOptions } from '@cnstra/types';
 import { CNSStimulation } from './CNSStimulation';
-import { TCNSSignal } from './types/TCNSSignal';
+import { TCNSSignal } from '@cnstra/types';
 import { CNSInstanceNeuronQueue } from './CNSInstanceNeuronQueue';
-import { TCNSStimulationResponse } from './types/TCNSStimulationResponse';
-import { TCNSStimulationDrain } from './types/TCNSStimulationDrain';
-import { TCNSNeuronActivationTask } from './types/TCNSNeuronActivationTask';
+import { TCNSStimulationResponse } from '@cnstra/types';
+import { TCNSStimulationDrain } from '@cnstra/types';
+import { TCNSNeuronActivationTask } from '@cnstra/types';
 import { CNSNetwork } from './CNSNetwork';
-import { ICNS } from './interfaces/ICNS';
-import { CNSCollateral } from './CNSCollateral';
+import { ICNS } from '@cnstra/types';
 
 export class CNS<
     TNeuron extends TCNSNeuron<any, any>,
@@ -175,8 +175,8 @@ export class CNS<
 
     public stimulate(
         signalOrSignals:
-            | TCNSSignal<CNSCollateral<unknown>>
-            | TCNSSignal<CNSCollateral<unknown>>[],
+            | TCNSSignal<ICNSCollateral<unknown>>
+            | TCNSSignal<ICNSCollateral<unknown>>[],
         options?: TCNSStimulationOptions<TCNSStimulationResponse>
     ): CNSStimulation<TNeuron, TDendrite> {
         const wrapped = this.wrapOnResponse(options?.onResponse);

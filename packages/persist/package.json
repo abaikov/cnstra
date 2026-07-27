@@ -1,0 +1,53 @@
+{
+  "name": "@cnstra/persist",
+  "version": "0.1.0",
+  "description": "Persistence layer for CNStra: name<->object registry, durable checkpoint (resume) serialization, and checkpoint repositories. Core-free (depends only on @cnstra/types).",
+  "keywords": [
+    "cnstra",
+    "persist",
+    "registry",
+    "resume",
+    "checkpoint",
+    "durable"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "jest",
+    "test:types": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@cnstra/persist-dto": "^0.1.0",
+    "@cnstra/types": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@cnstra/core": "^2.5.0"
+  },
+  "devDependencies": {
+    "@cnstra/core": "^2.5.0",
+    "@types/jest": "29.5.12",
+    "jest": "29.7.0",
+    "ts-jest": "29.1.2",
+    "tsup": "8.5.1",
+    "typescript": "5.7.2"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

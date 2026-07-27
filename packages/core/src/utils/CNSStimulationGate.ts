@@ -1,15 +1,16 @@
+import type { ICNSCollateral } from '@cnstra/types';
 import type { CNS } from '../CNS';
-import type { CNSCollateral } from '../CNSCollateral';
+
 import type { CNSStimulation } from '../CNSStimulation';
-import type { TCNSDendrite } from '../types/TCNSDendrite';
-import type { TCNSNeuron } from '../types/TCNSNeuron';
-import type { TCNSSignal } from '../types/TCNSSignal';
-import type { TCNSStimulationOptions } from '../types/TCNSStimulationOptions';
-import type { TCNSStimulationResponse } from '../types/TCNSStimulationResponse';
+import type { TCNSDendrite } from '@cnstra/types';
+import type { TCNSNeuron } from '@cnstra/types';
+import type { TCNSSignal } from '@cnstra/types';
+import type { TCNSStimulationOptions } from '@cnstra/types';
+import type { TCNSStimulationResponse } from '@cnstra/types';
 
 export type TCNSStimulationGateSignal =
-    | TCNSSignal<CNSCollateral<unknown>>
-    | TCNSSignal<CNSCollateral<unknown>>[];
+    | TCNSSignal<ICNSCollateral<unknown>>
+    | TCNSSignal<ICNSCollateral<unknown>>[];
 
 export type TCNSStimulationGateOptions<
     TNeuron extends TCNSNeuron<any, any>,

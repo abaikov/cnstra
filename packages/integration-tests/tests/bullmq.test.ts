@@ -1,12 +1,7 @@
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
-import {
-    CNS,
-    CNSStimulationContextStore,
-    withCtx,
-    collateral,
-    type TCNSNeuronActivationTask,
-} from '@cnstra/core';
+import { CNS, CNSStimulationContextStore, withCtx, collateral } from '@cnstra/core';
+import type { TCNSNeuronActivationTask } from '@cnstra/types';
 
 describe('BullMQ Integration Tests', () => {
     let redis: Redis;

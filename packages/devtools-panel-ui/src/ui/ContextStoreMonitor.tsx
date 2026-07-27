@@ -1,7 +1,7 @@
 import type { TExoSchema } from '@exodra/core';
 import { bindable } from '@exodra/reactivity';
 import type { TExoBindable } from '@exodra/reactivity';
-import { combine } from '@oimdb/exodra';
+import { combine } from '../exo/oimdb-bind';
 
 // Native Exodra port. TODO(protocol-migration): the Context Store Monitor was
 // built on the per-response `contexts` map of the old StimulationResponse DTO.
@@ -21,7 +21,7 @@ const EMPTY_STYLE =
     'font-size:var(--font-size-xs);color:var(--text-muted);text-align:center';
 
 export function contextStoreMonitor(
-    selectedAppId: TExoBindable<string | null>
+    selectedAppId: TExoBindable<string | null, string | null>
 ): TExoSchema {
     const isExpanded = bindable(false);
 

@@ -1,6 +1,7 @@
 import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
-import { CNSPersistOptionsRegistry, collateral, withCtx } from '@cnstra/core';
+import { collateral, withCtx } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import type { CNSDTOAppBatchMessage, CNSDTOAppBatchItem } from '@cnstra/devtools-dto';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -121,131 +122,11 @@ describe('Protocol — topology', () => {
     });
 });
 
-describe('Protocol — stimulation lifecycle', () => {
-    it('first response triggers stimulation.started + stimulation.hop', async () => {
-        const { registry } = buildRegistry();
-        const transport = new BatchCapture();
-        const cns = new MockCNS();
-        const stim = makeStim();
-
-        new CNSDevTools('app', transport).registerCNS(cns as any, registry);
-        await new Promise(r => setTimeout(r, 0));
-
-        cns.trigger({ stimulation: stim, outputSignal: { collateral: null, payload: { x: 1 } }, inputSignal: undefined, error: undefined });
-        await new Promise(r => setTimeout(r, 0));
-
-        expect(transport.itemsOf('stimulation.started')).toHaveLength(1);
-        expect(transport.itemsOf('stimulation.hop')).toHaveLength(1);
-    });
-
-    it('multiple responses on same stim produce multiple hops but one started', async () => {
-        const { registry } = buildRegistry();
-        const transport = new BatchCapture();
-        const cns = new MockCNS();
-        const stim = makeStim();
-
-        new CNSDevTools('app', transport).registerCNS(cns as any, registry);
-
-        cns.trigger({ stimulation: stim, outputSignal: { collateral: null, payload: {} }, inputSignal: undefined, error: undefined });
-        cns.trigger({ stimulation: stim, inputSignal: { collateral: null, payload: {} }, outputSignal: { collateral: null, payload: {} }, error: undefined });
-        cns.trigger({ stimulation: stim, inputSignal: { collateral: null, payload: {} }, outputSignal: undefined, error: undefined });
-
-        await new Promise(r => setTimeout(r, 0));
-
-        expect(transport.itemsOf('stimulation.started')).toHaveLength(1);
-        expect(transport.itemsOf('stimulation.hop')).toHaveLength(3);
-        expect(transport.itemsOf('stimulation.hop').map(h => h.hop.index)).toEqual([0, 1, 2]);
-    });
-
-    it('all hops share the same stimulationId', async () => {
-        const { registry } = buildRegistry();
-        const transport = new BatchCapture();
-        const cns = new MockCNS();
-        const stim = makeStim();
-
-        new CNSDevTools('app', transport).registerCNS(cns as any, registry);
-
-        cns.trigger({ stimulation: stim, outputSignal: { collateral: null, payload: {} }, inputSignal: undefined, error: undefined });
-        cns.trigger({ stimulation: stim, inputSignal: { collateral: null, payload: {} }, outputSignal: null, error: undefined });
-
-        await new Promise(r => setTimeout(r, 0));
-
-        const [started] = transport.itemsOf('stimulation.started');
-        const hops = transport.itemsOf('stimulation.hop');
-        expect(hops.every(h => h.hop.stimulationId === started.stimulation.id)).toBe(true);
-    });
-
-    it('different stimulations get different stimulationIds', async () => {
-        const { registry } = buildRegistry();
-        const transport = new BatchCapture();
-        const cns = new MockCNS();
-        const stim1 = makeStim();
-        const stim2 = makeStim();
-
-        new CNSDevTools('app', transport).registerCNS(cns as any, registry);
-
-        cns.trigger({ stimulation: stim1, outputSignal: { collateral: null, payload: {} }, inputSignal: undefined, error: undefined });
-        cns.trigger({ stimulation: stim2, outputSignal: { collateral: null, payload: {} }, inputSignal: undefined, error: undefined });
-
-        await new Promise(r => setTimeout(r, 0));
-
-        const [s1, s2] = transport.itemsOf('stimulation.started');
-        expect(s1.stimulation.id).not.toBe(s2.stimulation.id);
-    });
-
-    it('sends stimulation.completed on stimulation resolve', async () => {
-        const { registry } = buildRegistry();
-        const transport = new BatchCapture();
-        const cns = new MockCNS();
-        const stim = makeStim();
-
-        new CNSDevTools('app', transport).registerCNS(cns as any, registry);
-        cns.trigger({ stimulation: stim, outputSignal: { collateral: null, payload: {} }, inputSignal: undefined, error: undefined });
-
-        stim.resolve();
-        await new Promise(r => setTimeout(r, 10));
-
-        const [completed] = transport.itemsOf('stimulation.completed');
-        expect(completed.hasError).toBe(false);
-        expect(completed.hopCount).toBe(1);
-    });
-
-    it('sends stimulation.completed with hasError on reject', async () => {
-        const { registry } = buildRegistry();
-        const transport = new BatchCapture();
-        const cns = new MockCNS();
-        const stim = makeStim();
-
-        new CNSDevTools('app', transport).registerCNS(cns as any, registry);
-        cns.trigger({ stimulation: stim, outputSignal: { collateral: null, payload: {} }, inputSignal: undefined, error: undefined });
-
-        stim.reject(new Error('fail'));
-        await new Promise(r => setTimeout(r, 10));
-
-        const [completed] = transport.itemsOf('stimulation.completed');
-        expect(completed.hasError).toBe(true);
-    });
-
-    it('records error in hop', async () => {
-        const { registry } = buildRegistry();
-        const transport = new BatchCapture();
-        const cns = new MockCNS();
-        const stim = makeStim();
-
-        new CNSDevTools('app', transport).registerCNS(cns as any, registry);
-        cns.trigger({
-            stimulation: stim,
-            outputSignal: { collateral: null, payload: {} },
-            inputSignal: undefined,
-            error: new Error('neuron failed'),
-        });
-
-        await new Promise(r => setTimeout(r, 0));
-
-        const [hop] = transport.itemsOf('stimulation.hop');
-        expect(hop.hop.error).toBe('Error: neuron failed');
-    });
-});
+// The legacy id-based stimulation lifecycle (stimulation.started/hop/completed)
+// was removed in Phase 2b-4; the name-based emit (cns.stimulation/.attempt/.task)
+// is covered end-to-end by durable-model.test.ts and durable-retry.test.ts against
+// a REAL CNS + persistor (the synthetic MockCNS here can't drive the persistor's
+// neuron/queueLength invariants). Topology + safeValue below remain valid.
 
 describe('Protocol — safe value serialization', () => {
     it('handles circular structures', () => {

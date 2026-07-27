@@ -113,6 +113,10 @@ Where to go next
 
 ![Brain in Grass](/img/brain_in_grass.png)
 
+**In one line:** CNStra is a single-process orchestration engine for your app's *logic*. You model behavior as an explicit, typed graph of small, isolated handlers ("neurons") wired by named signals ("collaterals"). A signal propagates through the graph **deterministically**; every step is **traceable** (and a run can be **persisted and resumed**); and because every connection is a typed edge, the compiler shows you the blast radius of any change. It also gives you the knobs to control *how* a flow runs — concurrency, queues, retries, timeouts, cancellation — and stays **decoupled from storage and I/O**, so the same model runs on the backend and the frontend. It is not a state manager, not an event bus, and not a distributed system.
+
+The rest of this page shows *why* it's shaped this way — starting from where the usual patterns break.
+
 ## 1. MVC — Clean on Paper, Chaotic in Reality
 
 Modern apps are no longer CRUD.
@@ -178,7 +182,7 @@ And when business later says:
 
 ## 2. REDUX — MVC Problem Solved... Or Is It?
 
-Anyone who has dealt with a similar task of creating a deck with a card has probably come to roughly the following solution:
+Faced with the same "create a deck with a card" task, most people arrive at roughly this:
 
 ### Redux Toolkit reducers
 
@@ -224,9 +228,9 @@ export const createCardWithDeck =
   };
 ```
 
-In essence, you've recreated MVC: models (reducers) have no idea about the flow context, and the controller (thunk) just calls them sequentially.
+In essence, you've recreated MVC: the models (reducers) know nothing about the flow, and the controller (thunk) just calls them in sequence.
 
-Redux solves the problem of independent model updates well (not like in our example, of course, but when you don't need a flow).
+Redux handles *independent* state updates well — the case where there's no flow to coordinate. Add a flow, though, and you're back to a thunk driving reducers by hand.
 
 But flows? Still invisible.
 
@@ -278,6 +282,8 @@ Let's revisit Deck + Card and see how the same flow can be triggered:
 * from an **onboarding flow** (userEntersApp),
 
 while keeping everything explicit.
+
+> **New to the vocabulary?** In one breath: a **neuron** is an isolated handler, a **collateral** is a named typed signal, a neuron's **axon** is the collaterals it may emit, a **dendrite** binds a handler to an incoming collateral, and **`stimulate`** fires a signal into the graph. See the full nervous-system analogy in the [Introduction](/docs/concepts/intro).
 
 ```ts
 import { CNS, collateral, neuron, withCtx, TCNSSignal } from '../src/index';
@@ -440,25 +446,25 @@ That's why orchestration rots.
 
 CNStra flips the model:
 
-* state becomes explicit (via OIMDB),
-* flows become explicit (via collaterals),
-* parent/child chains are tracked automatically,
-* compile-time safety eliminates missing handlers,
-* performance rivals handcrafted atomic stores.
+* flows become explicit (a typed graph of collaterals), not implicit call order,
+* parent/child chains are tracked automatically, so runs stay traceable,
+* compile-time exhaustiveness eliminates missing handlers,
+* execution is controllable (concurrency, queues, retries, timeouts) and can be persisted and resumed,
+* state stays in a data layer of your choice (e.g. OIMDB) — CNStra orchestrates, it doesn't store.
 
 This is not Flux 3.0 or "better Redux".
 
-### This is the first explicit orchestration layer designed specifically for the realities of the modern web.
+### An explicit orchestration layer for application logic — decoupled from storage and I/O, on the backend and the frontend alike.
 
 ![Eye](/img/eye.png)
 
-Frontend or backend — same primitives, same guarantees:
+Same primitives, same guarantees, wherever it runs:
 
 * workflows,
 * pipelines,
 * background jobs,
 * domain events,
-* distributed flows.
+* durable, resumable runs.
 
 If you want a deep-dive into:
 
@@ -679,12 +685,44 @@ Both `onResponse` and global listeners receive the same object:
   inputSignal?: TCNSSignal;    // when a signal is ingested
   outputSignal?: TCNSSignal;   // when a dendrite returns a continuation
   contextValue: Map<object, unknown>; // per-neuron per-stimulation metadata (not business data)
-  queueLength: number;         // current work queue size
+  queueLength: number;         // all activations still owned = pending + active
+  pendingActivations: number;  // body not invoked yet
+  activeActivations: number;   // body invoked, awaiting an unsettled promise
   stimulation: CNSStimulation; // reference to the stimulation instance
   error?: Error;               // when a dendrite throws
   hops?: number;               // present if maxNeuronHops is set
 }
 ```
+
+##### The counters
+
+The unit is an **activation** — one `(neuron, dendrite, signal)` triple. A signal
+produces one activation per subscriber of its collateral.
+
+An activation is *pending* until its dendrite body is invoked, then *active*
+until the promise that body returned settles. A synchronous body passes through
+`active` within a single scheduler iteration and is decremented before its
+response is emitted, so only genuinely asynchronous work is ever observed there.
+Subscribers held behind an async `onResponse` count as **pending**, not active —
+the split is by lifecycle stage, not by "something is being awaited".
+
+`queueLength` counts active work deliberately, the way an AMQP queue counts
+unacknowledged messages in its total; `getAllActivationTasks()` follows the same
+model. So:
+
+```ts
+r.queueLength === 0            // the stimulation is finished
+```
+
+This is the exact condition used internally to settle `waitUntilComplete()`, so
+it holds on the terminal response and nowhere else.
+
+:::caution `queueLength === 0` is not a batch boundary
+A response is emitted when an activation *finishes* — but a synchronous batch
+just as often ends when one *starts* and returns a promise, and no response is
+emitted at that moment. To flush or commit at batch boundaries use
+[`onDrain`](#batch-boundaries-ondrain).
+:::
 
 ### Global response listeners (middleware‑style)
 Use `addResponseListener` to attach cross‑cutting concerns (logging, metrics, tracing) that run for every stimulation.
@@ -705,6 +743,73 @@ const off = cns.addResponseListener((r) => {
 // later
 off();
 ```
+
+### Batch boundaries: `onDrain`
+
+A CNStra run is a sequence of **synchronous turns**. A turn starts when something
+feeds the scheduler — the initial `stimulate()`, a settled neuron body, a settled
+async listener — and ends when nothing more can run without yielding to the event
+loop. `onDrain` fires once at the end of every turn.
+
+```ts
+cns.stimulate(signal, {
+  onDrain: () => store.flush(),                       // batch boundary
+  onResponse: r => { if (r.queueLength === 0) done(); } // stimulation finished
+});
+```
+
+Or once for the whole organism, which is how integrations install themselves:
+
+```ts
+const off = cns.addDrainListener(() => store.flush());
+```
+
+#### Why this cannot be a response
+
+A turn can end in six ways, and a response is emitted in only the first:
+
+1. an activation finished and left the queue empty
+2. the last activation **started** and returned a promise
+3. the stimulation-level `concurrency` limit was reached
+4. the stimulation was aborted
+5. subscribers are parked behind an async `onResponse`
+6. a per-neuron `setConcurrency` gate forced an activation onto a promise
+
+Case 2 is the common one. In `A → async B → C`, the turn ends the moment `B`'s
+body reaches its first `await` — anything `B` wrote synchronously before that
+point is already in the store, but no response has been emitted since `B` was
+scheduled. Without `onDrain` those writes stay uncommitted until `B` settles,
+which is exactly how optimistic updates and loading states get lost.
+
+#### Payload
+
+```ts
+{
+  stimulation: CNSStimulation;
+  queueLength: number;         // pending + active; zero means finished
+  pendingActivations: number;  // non-zero here means BLOCKED
+  activeActivations: number;   // non-zero means another drain is coming
+}
+```
+
+Same counters as on a response, but measured *after* the loop exhausted rather
+than before the work runs. On a response `pendingActivations` is a forecast; on a
+drain it is a fact — a non-zero value can only mean blocked by a concurrency
+limit or by an abort, never "about to run".
+
+#### Notes
+
+- Returns `void`; a returned promise is **not** awaited. There is nothing to gate
+  on — the next turn is started by someone else's promise settling. For async work
+  at a boundary use `onResponse`, which does support promises.
+- A listener that throws is logged and isolated; it cannot derail the stimulation
+  or the other listeners.
+- Re-entrancy is safe. A nested `stimulate()` from inside the callback is a
+  separate stimulation and announces its own boundary inline. Feeding work back
+  into the *same* stimulation via `enqueueTasks()` runs it, but folds it into the
+  turn already closing, so it yields no additional boundary.
+- Abort ends a turn without any further response or drain progress; pair it with
+  `waitUntilComplete().catch(...)` if you need a final commit on that path.
 
 ### `CNSStimulation` methods
 
@@ -764,6 +869,7 @@ Notes
 - `modality?: TCNSModality` — optional modality routing for `modalityDendrite`
 - `afferentPath?: TCNSAfferentPath` — optional afferent path selection for `modalityDendrite`
 - `stimulationContext?: object` — optional user-defined bag for listeners/handlers
+- `onDrain?: (drain) => void` — called once at the end of every synchronous turn; the batch boundary for state managers (see [API reference](./api.md#batch-boundaries-ondrain))
 
 ```ts
 const controller = new AbortController();
@@ -771,6 +877,8 @@ const stimulation = cns.stimulate(signal, {
   maxNeuronHops: 10, // optional, disabled by default
   abortSignal: controller.signal,
   onResponse: r => {
+    // queueLength counts pending + in-flight activations, so zero means the
+    // whole stimulation is finished - not merely that a batch ended.
     if (r.queueLength === 0) console.log('done');
   }
 });
@@ -781,7 +889,10 @@ await stimulation.waitUntilComplete();
 
 - Local `onResponse` and all global listeners (added via `addResponseListener`) can be synchronous or asynchronous.
 - They run in parallel for each response. If any throws or returns a rejected Promise, the `stimulation.waitUntilComplete()` Promise rejects.
+- A dendrite `response` that throws or returns a rejected Promise **also** fails the run (a *failed task*) and rejects `waitUntilComplete()` — independent of any listener.
 - If all listeners are synchronous, CNStra does not introduce extra async deferrals for that response.
+
+> ⚠️ `stimulate()` returns a `CNSStimulation`, **not** a Promise — the completion Promise is created lazily by `waitUntilComplete()`. If you neither await it nor register a listener, a failed run is swallowed silently (not even an unhandled rejection). See [Error Handling → Fire-and-forget](/docs/recipes/error-handling).
 
 ```ts
 // Async onResponse example (e.g., persist to DB/Redis)
@@ -3383,7 +3494,10 @@ Context growth significantly impacts memory usage:
    ctx.set({ user: fullUserObject, history: lotsOfData });
    ```
 
-4. **Monitor and limit queue size** to prevent memory bloat:
+4. **Monitor and limit queue size** to prevent memory bloat. `queueLength`
+   counts every activation the stimulation still owns — both waiting and
+   in flight — so it is the right backpressure signal; split it when you need
+   to know *why* it is high:
    ```ts
    onResponse: (r) => {
      if (r.queueLength > 1000) {
@@ -3391,10 +3505,16 @@ Context growth significantly impacts memory usage:
        // - Reducing concurrency
        // - Adding backpressure
        // - Investigating slow processing
-       console.warn(`Queue length: ${r.queueLength}`);
+       console.warn(
+         `Queue ${r.queueLength} (${r.pendingActivations} waiting, ` +
+         `${r.activeActivations} in flight)`
+       );
      }
    }
    ```
+   A high `pendingActivations` with a low `activeActivations` means the graph is
+   producing work faster than the concurrency limit lets it start. The reverse
+   means slow neuron bodies.
 
 5. **Set reasonable concurrency limits** to prevent queue buildup:
    ```ts
@@ -3593,7 +3713,7 @@ Use `onResponse` to log errors without blocking the flow:
 const stimulation = cns.stimulate(signal, {
   onResponse: (r) => {
     if (r.error) logger.error(r.error);
-    if (r.queueLength === 0) logger.info('done');
+    if (r.queueLength === 0) logger.info('done'); // terminal response
   }
 });
 await stimulation.waitUntilComplete();
@@ -3628,6 +3748,22 @@ const stimulation = cns.stimulate(signal, {
   }
 });
 await stimulation.waitUntilComplete();
+```
+
+To measure the synchronous batches *inside* a run rather than the run as a whole,
+use `onDrain` — it fires once per synchronous turn, so counting drains tells you
+how many times the stimulation had to yield to the event loop:
+
+```ts
+let turns = 0;
+const stimulation = cns.stimulate(signal, {
+  onDrain: (d) => {
+    turns++;
+    if (d.queueLength === 0) {
+      console.log(`Completed in ${Date.now() - start}ms across ${turns} turns`);
+    }
+  }
+});
 ```
 
 Or integrate with your APM/tracing tool (e.g., OpenTelemetry):
@@ -3668,7 +3804,7 @@ Create one registry instance and register neurons and collaterals from each file
 
 ```ts
 // src/neurons/registry.ts — create once
-import { CNSPersistOptionsRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
 ```
 
@@ -3816,7 +3952,7 @@ The same registry instance works for both persistence and devtools/AI inspection
 
 ```ts
 // src/neurons/registry.ts
-import { CNSPersistOptionsRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
 
 // src/neurons/deck.ts
@@ -3826,11 +3962,11 @@ registry
     .registerCollateral('importStarted', importStarted);
 ```
 
-For simple projects where all neurons are in one place, `createPersistRegistry` is a convenient shorthand:
+For simple projects where all neurons are in one place, `CNSPersistOptionsRegistryFactory` is a convenient shorthand:
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
-export const registry = createPersistRegistry({ deckNeuron, cardNeuron, uiNeuron });
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron, uiNeuron });
 // equivalent to calling register() for each neuron
 ```
 
@@ -3857,7 +3993,7 @@ The default implementation is an in-memory store. For long-lived sagas or distri
 ## Redis-backed context store
 
 ```ts
-import { ICNSStimulationContextStore } from '@cnstra/core';
+import type { ICNSStimulationContextStore } from '@cnstra/types';
 import { RedisClient } from 'redis';
 
 class RedisContextStore implements ICNSStimulationContextStore {
@@ -4145,19 +4281,18 @@ const stimulation = cns.stimulate(signal, {
 
 ### Errors Not Being Handled
 
-If a dendrite throws an error and you don't handle it, the stimulation might appear stuck.
+If a dendrite throws and **nothing observes the run**, the failure is *silent*: `stimulate()` returns a `CNSStimulation` (not a Promise), the completion Promise is created lazily by `waitUntilComplete()`, and with no response listener the error is caught internally onto `response.error` but never logged, thrown, or even raised as an unhandled rejection. The symptom is usually "no output / nothing happened" (sometimes a run that looks stuck) — not an error in the console.
 
-**Solution**: Always handle errors in `onResponse`:
+**Solution**: observe every run with a global listener, **or** await completion (a dendrite throw rejects `waitUntilComplete()` even with no listener). See [Error Handling](/docs/recipes/error-handling) for the full picture.
 
 ```ts
-const stimulation = cns.stimulate(signal, {
-  onResponse: (r) => {
-    if (r.error) {
-      console.error('Error:', r.error);
-      // Handle or recover
-    }
-  }
+// A) Global listener — surfaces failures from every stimulation (fire-and-forget safe)
+cns.addResponseListener((r) => {
+  if (r.error) console.error('Error:', r.error);
 });
+
+// B) Or await the run and catch its rejection
+await cns.stimulate(signal).waitUntilComplete();
 ```
 
 ## Type Safety Issues
@@ -4449,7 +4584,7 @@ Handle errors gracefully using `onResponse` callbacks (sync or async) and contex
 
 ## Error delivery
 
-Errors are delivered immediately via `onResponse` and also cause `stimulation.waitUntilComplete()` to reject if any response listener (local or global) throws or rejects:
+Errors are delivered immediately via `onResponse`, and they also **fail the run**: `stimulation.waitUntilComplete()` rejects if **any dendrite `response` throws or returns a rejected Promise** (a *failed task*) — or if any response listener (local or global) throws or rejects. A dendrite throw fails the run on its own; you do **not** need a listener for `waitUntilComplete()` to reject.
 
 ```ts
 const stimulation = cns.stimulate(signal, {
@@ -4470,7 +4605,36 @@ const stimulation = cns.stimulate(signal, {
 await stimulation.waitUntilComplete();
 ```
 
-If you do not await `stimulation.waitUntilComplete()`, the run still proceeds, but rejections from listeners won't be observed by the caller.
+## Fire-and-forget & the lazy completion promise
+
+`cns.stimulate(...)` returns a **`CNSStimulation` object, not a Promise**. The completion Promise is materialized **lazily** — only when you call `stimulation.waitUntilComplete()`. This is a deliberate optimization (allocating a Promise per stimulation is the single most expensive setup cost), but it has a sharp edge:
+
+> ⚠️ **If you fire-and-forget a stimulation (never call `waitUntilComplete()`) and register no response listener, a thrown dendrite error is completely swallowed.** It is caught internally and recorded on `response.error`, but with nothing observing it there is no log, no throw, and **not even an unhandled promise rejection** — the rejecting Promise was never created. (With no listener, the run also skips building the response object entirely, so the error has nowhere to surface.)
+
+```ts
+// ❌ Silent on failure: no listener AND not awaited.
+cns.stimulate(signal); // a throwing dendrite here vanishes without a trace
+```
+
+Make failures visible with **either** of these — pick based on the call site:
+
+```ts
+// A) Global listener — cheapest for fire-and-forget producers (WS streams, queues,
+//    background ingestion). One listener surfaces errors from every stimulation,
+//    so you never have to await individual runs.
+cns.addResponseListener(r => {
+  if (r.error) console.error('[cns] neuron error:', r.error);
+});
+cns.stimulate(signal); // a failure is now logged
+
+// B) Await completion — when the caller owns the run and wants the rejection.
+//    Works even with NO onResponse listener: a dendrite throw becomes a failed
+//    task, and waitUntilComplete() rejects with
+//    "Stimulation completed with N failed task(s)".
+await cns.stimulate(signal).waitUntilComplete();
+```
+
+Rule of thumb: **await `waitUntilComplete()`** when a caller drives a single run and cares about its outcome; register a **global `addResponseListener`** for long-lived, fire-and-forget producers where awaiting each run is impractical. Do at least one — otherwise dendrite failures are invisible.
 
 ## Error recovery with context
 
@@ -4552,7 +4716,7 @@ Global listeners registered via `addResponseListener` run for every stimulation 
 - Idempotency: design `onResponse` persistence to be idempotent (e.g., upserts, unique keys) so retries are safe.
 - Retry policy: prefer bounded retries with exponential backoff; use context to track attempts; avoid hot loops.
 - Partial failure: emit explicit failure signals from dendrites when business errors occur; reserve thrown errors for exceptional cases.
-- Observability: tag your own run/correlation id (if you have one) and collaterals in logs/metrics; capture queueLength to identify bottlenecks.
+- Observability: tag your own run/correlation id (if you have one) and collaterals in logs/metrics; capture `queueLength` to identify bottlenecks (and split it into `pendingActivations` / `activeActivations` to tell "producing too fast" from "slow bodies" apart).
 - Isolation: keep `onResponse` lightweight; move heavy processing to dedicated neurons/signals when possible.
 - Concurrency: if persisting from `onResponse`, consider batching or a queue to smooth spikes in traffic.
 - Ordering: if ordering matters, include sequence numbers in payloads or serialize writes per run/correlation id you provide.
@@ -4842,7 +5006,7 @@ CNStra lets you observe traversal without polluting domain neurons. There are tw
 - Per‑run: `onResponse` option of `cns.stimulate(...)`
 - Global: `cns.addResponseListener(...)`
 
-Both receive the same response object with `inputSignal`, `outputSignal`, `error`, `ctx`, and `queueLength`.
+Both receive the same response object with `inputSignal`, `outputSignal`, `error`, `ctx`, `queueLength`, `pendingActivations` and `activeActivations`.
 
 ## Per‑run `onResponse`
 Use for ad‑hoc debugging or request‑scoped tracing.
@@ -4886,7 +5050,16 @@ off();
 - `inputSignal`: when a signal enters the run (including the initial one)
 - `outputSignal`: when a dendrite returns a continuation
 - `error`: when a dendrite throws
-- `queueLength`: current internal work queue length (can be used for backpressure metrics)
+- `queueLength`: every activation the stimulation still owns — `pendingActivations + activeActivations`. Good for backpressure metrics. `queueLength === 0` marks the terminal response, i.e. the stimulation is finished.
+- `pendingActivations`: activations whose dendrite body has not been invoked yet (queued, held, or reserved by an in-progress fan-out). Subscribers parked behind an async listener count here.
+- `activeActivations`: activations whose body was invoked and returned a promise that has not settled.
+
+:::note Looking for a batch boundary?
+`queueLength === 0` tells you the run is over, not that a synchronous batch ended.
+Responses are emitted when an activation *finishes*, but a batch just as often ends
+when one *starts* and goes async. Use [`onDrain`](../core/api.md#batch-boundaries-ondrain)
+to commit or flush at batch boundaries.
+:::
 
 ## Async listeners are a barrier (this is how checkpointing works)
 
@@ -6557,7 +6730,7 @@ const result = await job.waitUntilFinished(queueEvents);
 - `cns.activate()` resumes execution from specific tasks with restored context
 - Progress is saved to Redis via `job.updateProgress()`, so it persists across retries
 
-## Handling Non-Serializable Data in Signals
+## Handling Non-Serializable Data in Signals {#non-serializable-data}
 
 When working with message brokers, signals must be serializable (JSON), but sometimes you need to work with non-serializable data (e.g., blobs, file handles, database connections).
 
@@ -6685,18 +6858,18 @@ CNStra's runtime uses **object identity** for neurons/collaterals and stores con
 The `@cnstra/pg-boss` package packages the pattern below; you can also wire it by hand.
 
 ```bash
-npm install @cnstra/pg-boss @cnstra/core pg-boss
+npm install @cnstra/pg-boss @cnstra/core @cnstra/factory pg-boss
 ```
 
 ## Basic integration
 
 ```ts
 import PgBoss from 'pg-boss';
-import { createCNS } from '@cnstra/core';
+import { CNSFactory } from '@cnstra/factory';
 import { createCNSWorker, enqueueStimulation, stimulationJob } from '@cnstra/pg-boss';
 
 // Build the CNS and a registry from one map so names can't drift
-const { cns, registry } = createCNS({
+const { cns, registry } = CNSFactory.create({
   importUser: importUserNeuron,
   // …other neurons
 });
@@ -6865,7 +7038,7 @@ row/transaction, or you have visibility semantics that clash with pg-boss. Other
 
 ## Tips
 
-- Build `cns` + `registry` together with `createCNS(...)` so names never drift.
+- Build `cns` + `registry` together with `CNSFactory.create(...)` so names never drift.
 - Use pg-boss concurrency/rate limits for backpressure; keep neurons idempotent.
 - Save progress on every hop only if you need a live admin; otherwise checkpoint on errors
   and milestones to reduce write load.
@@ -6988,9 +7161,9 @@ await startDevTools(cns, registry);
 If you don't have a shared registry yet:
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { deckNeuron, cardNeuron } from './neurons';
-const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron });
 ```
 
 Opens the browser automatically. The UI, WebSocket server, and your CNS instance are all wired up in one call.
@@ -7098,7 +7271,7 @@ All devtools packages should be in `devDependencies` only.
 
 # Source: https://cnstra.org/docs/devtools/mcp
 
-`@cnstra/mcp` is an MCP server that gives AI tools (Claude Code, Cursor, VS Code, Windsurf) live access to your neuron graph. It uses the same registry you create with `createPersistRegistry` from '@cnstra/core' — one file, one line.
+`@cnstra/mcp` is an MCP server that gives AI tools (Claude Code, Cursor, VS Code, Windsurf) live access to your neuron graph. It uses the same registry you create with `CNSPersistOptionsRegistryFactory` from `@cnstra/persist` — one file, one line.
 
 Tools exposed:
 - **`cns_get_context`** — START HERE: CNStra concept guide + neuron list
@@ -7122,7 +7295,7 @@ First, create a registry. Two options:
 **Option A — per-file (recommended for larger projects):**
 ```ts
 // src/neurons/registry.ts
-import { CNSPersistOptionsRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
 
 // src/neurons/deck.ts — each neuron registers itself
@@ -7136,10 +7309,10 @@ registry
 **Option B — all at once (simpler for small projects):**
 ```ts
 // src/neurons/registry.ts
-import { createPersistRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { deckNeuron, cardNeuron, uiNeuron } from './index';
 
-export const registry = createPersistRegistry({ deckNeuron, cardNeuron, uiNeuron });
+export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron, uiNeuron });
 ```
 
 Then the MCP entry point:
@@ -7211,7 +7384,7 @@ The server exposes three MCP mechanisms — tools that support any subset will b
 
 AI tools like Claude and Cursor understand your CNStra application much better when they can read the neuron graph and runtime history as plain text — instead of parsing dozens of source files.
 
-`@cnstra/devtools` exports two utilities for this: `dumpCNSGraph` and `CNSHistoryLogger`. Both take a registry created with `createPersistRegistry` — one line, no boilerplate.
+`@cnstra/devtools` exports two utilities for this: `dumpCNSGraph` and `CNSHistoryLogger`. Both take a registry created with `CNSPersistOptionsRegistryFactory` — one line, no boilerplate.
 
 ## Static graph dump
 
@@ -7230,8 +7403,8 @@ writeFileSync('CNS_GRAPH.md', dumpCNSGraph(cns, registry));
 If you don't have a shared registry yet, create one inline:
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
-const registry = createPersistRegistry({ deckNeuron, cardNeuron, uiNeuron });
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron, uiNeuron });
 writeFileSync('CNS_GRAPH.md', dumpCNSGraph(cns, registry));
 ```
 
@@ -7266,12 +7439,12 @@ Run `npm run graph` whenever your neuron structure changes. Commit `CNS_GRAPH.md
 `CNSHistoryLogger` subscribes to a CNS instance and records the stimulation history.
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { CNSHistoryLogger } from '@cnstra/devtools';
 import { cns } from './cns';
 import { deckNeuron, cardNeuron } from './neurons';
 
-const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron });
 
 const logger = new CNSHistoryLogger(cns, registry);
 

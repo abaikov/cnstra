@@ -17,15 +17,17 @@ const topologyBatch = (): CNSDTOAppBatchMessage => ({
     }],
 });
 
-const hopBatch = (): CNSDTOAppBatchMessage => ({
+// A valid non-topology batch item (name-based Task) — used where a test just needs
+// "some batch" that is not the topology one.
+const taskBatch = (): CNSDTOAppBatchMessage => ({
     type: 'batch',
     items: [{
-        type: 'stimulation.hop',
-        hop: {
-            id: 'exec1:0', stimulationId: 'exec1', index: 0,
-            neuronId: 'app:cns:n', inputCollateralId: 'app:cns:n:col',
-            outputCollateralId: null, inputPayload: {}, outputPayload: null,
-            startedAt: Date.now(), duration: null, error: null,
+        type: 'cns.stimulation.task',
+        data: {
+            stimulationAttemptId: 'exec1#1', index: 0,
+            neuronName: 'n', dendriteCollateralName: 'col', inputIndex: 0,
+            output: null, status: 'done', error: null,
+            startedAt: Date.now(), duration: null,
         },
     }],
 });
@@ -57,7 +59,7 @@ describe('CNSDevToolsTransportWs', () => {
             await transport.sendBatch(topologyBatch());
             await new Promise(r => setTimeout(r, 20));
             const count = MockWebSocket.getInstances().length;
-            await transport.sendBatch(hopBatch());
+            await transport.sendBatch(taskBatch());
             expect(MockWebSocket.getInstances().length).toBe(count);
         });
 
@@ -71,7 +73,7 @@ describe('CNSDevToolsTransportWs', () => {
         test('handles concurrent sendBatch calls during initial connection', async () => {
             transport = new CNSDevToolsTransportWs(defaultOpts);
             const p1 = transport.sendBatch(topologyBatch());
-            const p2 = transport.sendBatch(hopBatch());
+            const p2 = transport.sendBatch(taskBatch());
             await Promise.all([p1, p2]);
             expect(transport.isConnected).toBe(true);
         });
@@ -81,7 +83,7 @@ describe('CNSDevToolsTransportWs', () => {
             delete (global as any).WebSocket;
             try {
                 transport = new CNSDevToolsTransportWs({ url: 'ws://x', webSocketImpl: undefined as any });
-                await expect(transport.sendBatch(hopBatch())).rejects.toThrow('No WebSocket implementation');
+                await expect(transport.sendBatch(taskBatch())).rejects.toThrow('No WebSocket implementation');
             } finally {
                 (global as any).WebSocket = orig;
             }
@@ -107,8 +109,8 @@ describe('CNSDevToolsTransportWs', () => {
 
             // Send multiple batches rapidly (before flush)
             void transport.sendBatch(topologyBatch());
-            void transport.sendBatch(hopBatch());
-            void transport.sendBatch(hopBatch());
+            void transport.sendBatch(taskBatch());
+            void transport.sendBatch(taskBatch());
 
             await new Promise(r => setTimeout(r, 30));
 
@@ -127,7 +129,7 @@ describe('CNSDevToolsTransportWs', () => {
             ws.send = jest.fn(() => { throw new Error('send failed'); });
 
             // Should not throw
-            await expect(transport.sendBatch(hopBatch())).resolves.toBeUndefined();
+            await expect(transport.sendBatch(taskBatch())).resolves.toBeUndefined();
         });
     });
 
@@ -233,7 +235,7 @@ describe('CNSDevToolsTransportWs', () => {
 
         test('reconnect with no topology flushes empty queue', async () => {
             transport = new CNSDevToolsTransportWs({ ...defaultOpts, reconnectDelayMs: 10 });
-            await transport.sendBatch(hopBatch()); // no topology → lastTopologyBatch stays undefined
+            await transport.sendBatch(taskBatch()); // no topology → lastTopologyBatch stays undefined
             await new Promise(r => setTimeout(r, 20));
 
             MockWebSocket.getLatestInstance()!.close();
@@ -362,6 +364,68 @@ describe('CNSDevToolsTransportWs', () => {
 
             unsub();
             ws.onmessage?.(replayMsg as MessageEvent);
+            await new Promise(r => setTimeout(r, 10));
+            expect(count).toBe(1);
+        });
+    });
+
+    // ─── Stimulation commands (server → app: retry/clone) ──────────────────────────
+
+    describe('Stimulation Commands', () => {
+        const resumeMsg = {
+            type: 'cns.stimulation.resume',
+            requestId: 'req1',
+            stimulationId: 's1',
+            stimulationAttemptId: 's1#2',
+            attemptNumber: 2,
+            entry: { collateralName: 'c', payload: {} },
+            progress: { tasks: [], context: {} },
+        };
+
+        test('calls onStimulationCommand for cns.stimulation.resume / launch', async () => {
+            transport = new CNSDevToolsTransportWs(defaultOpts);
+            await transport.sendBatch(topologyBatch());
+            await new Promise(r => setTimeout(r, 20));
+
+            let received: any;
+            transport.onStimulationCommand?.(cmd => { received = cmd; });
+
+            const ws = MockWebSocket.getLatestInstance();
+            ws.onmessage?.({ data: JSON.stringify(resumeMsg) } as MessageEvent);
+            await new Promise(r => setTimeout(r, 10));
+            expect(received?.type).toBe('cns.stimulation.resume');
+            expect(received?.stimulationId).toBe('s1');
+        });
+
+        test('warns on invalid stimulation command when consoleLogEnabled', async () => {
+            transport = new CNSDevToolsTransportWs({ ...defaultOpts, consoleLogEnabled: true });
+            await transport.sendBatch(topologyBatch());
+            await new Promise(r => setTimeout(r, 20));
+
+            const ws = MockWebSocket.getLatestInstance();
+            ws.onmessage?.({ data: JSON.stringify({ type: 'cns.stimulation.launch', bad: 'data' }) } as MessageEvent);
+            await new Promise(r => setTimeout(r, 10));
+            expect(console.warn).toHaveBeenCalledWith(
+                expect.stringContaining('[DevTools] Invalid stimulation command:'),
+                expect.any(String),
+            );
+        });
+
+        test('unregisters onStimulationCommand handler', async () => {
+            transport = new CNSDevToolsTransportWs(defaultOpts);
+            await transport.sendBatch(topologyBatch());
+            await new Promise(r => setTimeout(r, 20));
+
+            let count = 0;
+            const unsub = transport.onStimulationCommand?.(() => count++) ?? (() => {});
+            const ws = MockWebSocket.getLatestInstance();
+            const msg = { data: JSON.stringify(resumeMsg) };
+            ws.onmessage?.(msg as MessageEvent);
+            await new Promise(r => setTimeout(r, 10));
+            expect(count).toBe(1);
+
+            unsub();
+            ws.onmessage?.(msg as MessageEvent);
             await new Promise(r => setTimeout(r, 10));
             expect(count).toBe(1);
         });

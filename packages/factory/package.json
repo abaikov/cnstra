@@ -1,0 +1,47 @@
+{
+  "name": "@cnstra/factory",
+  "version": "0.1.0",
+  "description": "Composition helpers for CNStra that combine the engine and the persistence layer — e.g. createCNS() building a CNS plus its CNSPersistOptionsRegistry in one call.",
+  "keywords": [
+    "cnstra",
+    "factory",
+    "createCNS"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test:types": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@cnstra/types": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@cnstra/core": "^2.5.0",
+    "@cnstra/persist": "^0.1.0"
+  },
+  "devDependencies": {
+    "@cnstra/core": "^2.5.0",
+    "@cnstra/persist": "^0.1.0",
+    "tsup": "8.5.1",
+    "typescript": "5.7.2"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

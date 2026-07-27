@@ -12,7 +12,11 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cnstra/types": ["../types/dist/index.d.ts"]
+    }
   },
   "include": [
     "src/**/*.ts",

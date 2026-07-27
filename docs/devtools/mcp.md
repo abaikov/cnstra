@@ -7,7 +7,7 @@ description: Give Claude and Cursor instant understanding of your CNStra neuron 
 keywords: [MCP, Claude, Cursor, AI, neuron graph, Model Context Protocol, cns_get_graph, cns_list_neurons, CNSPersistOptionsRegistry]
 ---
 
-`@cnstra/mcp` is an MCP server that gives AI tools (Claude Code, Cursor, VS Code, Windsurf) live access to your neuron graph. It uses the same registry you create with `createPersistRegistry` from '@cnstra/core' — one file, one line.
+`@cnstra/mcp` is an MCP server that gives AI tools (Claude Code, Cursor, VS Code, Windsurf) live access to your neuron graph. It uses the same registry you create with `CNSPersistOptionsRegistryFactory` from `@cnstra/persist` — one file, one line.
 
 Tools exposed:
 - **`cns_get_context`** — START HERE: CNStra concept guide + neuron list
@@ -31,7 +31,7 @@ First, create a registry. Two options:
 **Option A — per-file (recommended for larger projects):**
 ```ts
 // src/neurons/registry.ts
-import { CNSPersistOptionsRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
 
 // src/neurons/deck.ts — each neuron registers itself
@@ -45,10 +45,10 @@ registry
 **Option B — all at once (simpler for small projects):**
 ```ts
 // src/neurons/registry.ts
-import { createPersistRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { deckNeuron, cardNeuron, uiNeuron } from './index';
 
-export const registry = createPersistRegistry({ deckNeuron, cardNeuron, uiNeuron });
+export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron, uiNeuron });
 ```
 
 Then the MCP entry point:

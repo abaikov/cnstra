@@ -1,15 +1,15 @@
 import { CNS } from '../CNS';
 import { CNSCollateral } from '../CNSCollateral';
-import { CNSPersistOptionsRegistry } from '../CNSPersistOptionsRegistry';
-import { TCNSAxon } from '../types/TCNSAxon';
-import { TCNSOptions } from '../types/TCNSOptions';
-import { TCNSDendrite } from '../types/TCNSDendrite';
-import { TCNSHandlerContext } from '../types/TCNSHandlerContext';
-import { TNCNeuronResponseReturn } from '../types/TCNSNeuronResponseReturn';
-import { TCNSNeuron } from '../types/TCNSNeuron';
-import { TCNSModality } from '../types/TCNSModality';
-import { TCNSAfferentPath } from '../types/TCNSAfferentPath';
-import { TCNSStimulationOptions } from '../types/TCNSStimulationOptions';
+import type { ICNSCollateral } from '@cnstra/types';
+import { TCNSAxon } from '@cnstra/types';
+import { TCNSOptions } from '@cnstra/types';
+import { TCNSDendrite } from '@cnstra/types';
+import { TCNSHandlerContext } from '@cnstra/types';
+import { TNCNeuronResponseReturn } from '@cnstra/types';
+import { TCNSNeuron } from '@cnstra/types';
+import { TCNSModality } from '@cnstra/types';
+import { TCNSAfferentPath } from '@cnstra/types';
+import { TCNSStimulationOptions } from '@cnstra/types';
 
 export const collateral = <TPayload = undefined>() =>
     new CNSCollateral<TPayload>();
@@ -18,9 +18,9 @@ export const collateral = <TPayload = undefined>() =>
 // Uses distributive conditional type to properly extract union, not intersection
 // Works with both arrays and tuples
 type CollateralPayloadUnion<
-    TCollaterals extends readonly CNSCollateral<unknown>[]
+    TCollaterals extends readonly ICNSCollateral<unknown>[]
 > = {
-    [K in keyof TCollaterals]: TCollaterals[K] extends CNSCollateral<infer P>
+    [K in keyof TCollaterals]: TCollaterals[K] extends ICNSCollateral<infer P>
         ? P
         : never;
 }[number];
@@ -35,7 +35,7 @@ type InterNeuronAPI<
     maxDuration?: number;
     dendrites: TCNSDendrite<
         TContextValue,
-        CNSCollateral<unknown>,
+        ICNSCollateral<unknown>,
         TAxonType,
         TGlobal
     >[];
@@ -45,7 +45,7 @@ type InterNeuronAPI<
     setMaxDuration: (
         ms: number | undefined
     ) => InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
-    bind: <TFollowAxon extends Record<string, CNSCollateral<unknown>>>(
+    bind: <TFollowAxon extends Record<string, ICNSCollateral<unknown>>>(
         axon: TFollowAxon,
         dendrites: {
             [K in keyof TFollowAxon]:
@@ -59,10 +59,10 @@ type InterNeuronAPI<
         }
     ) => InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
     dendrite: {
-        <TSenderCollateral extends CNSCollateral<unknown>>(s: {
+        <TSenderCollateral extends ICNSCollateral<unknown>>(s: {
             collateral: TSenderCollateral;
             response: (
-                payload: TSenderCollateral extends CNSCollateral<infer P>
+                payload: TSenderCollateral extends ICNSCollateral<infer P>
                     ? P
                     : never,
                 axon: TAxonType,
@@ -71,8 +71,8 @@ type InterNeuronAPI<
         }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
         <
             TCollaterals extends readonly [
-                CNSCollateral<unknown>,
-                ...CNSCollateral<unknown>[]
+                ICNSCollateral<unknown>,
+                ...ICNSCollateral<unknown>[]
             ]
         >(s: {
             collateral: TCollaterals;
@@ -83,7 +83,7 @@ type InterNeuronAPI<
             ) => TNCNeuronResponseReturn<TAxonType>;
         }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
         <TPayloadUnion>(s: {
-            collateral: CNSCollateral<unknown>[];
+            collateral: ICNSCollateral<unknown>[];
             response: (
                 payload: TPayloadUnion,
                 axon: TAxonType,
@@ -93,20 +93,20 @@ type InterNeuronAPI<
         (
             s: TCNSDendrite<
                 TContextValue,
-                CNSCollateral<unknown>,
+                ICNSCollateral<unknown>,
                 TAxonType,
                 TGlobal
             >
         ): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
     };
     modalityDendrite: {
-        <TSenderCollateral extends CNSCollateral<unknown>, TResult>(s: {
+        <TSenderCollateral extends ICNSCollateral<unknown>, TResult>(s: {
             collateral: TSenderCollateral;
             modality: TCNSModality;
             afferentPaths?: Map<
                 TCNSAfferentPath,
                 (
-                    payload: TSenderCollateral extends CNSCollateral<infer P>
+                    payload: TSenderCollateral extends ICNSCollateral<infer P>
                         ? P
                         : never,
                     axon: TAxonType,
@@ -114,7 +114,7 @@ type InterNeuronAPI<
                 ) => TResult | Promise<TResult>
             >;
             default?: (
-                payload: TSenderCollateral extends CNSCollateral<infer P>
+                payload: TSenderCollateral extends ICNSCollateral<infer P>
                     ? P
                     : never,
                 axon: TAxonType,
@@ -126,14 +126,14 @@ type InterNeuronAPI<
                 ctx: TCNSHandlerContext<TContextValue, TGlobal>
             ) => TNCNeuronResponseReturn<TAxonType>;
         }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
-        <TSenderCollateral extends CNSCollateral<unknown>, TResult>(s: {
+        <TSenderCollateral extends ICNSCollateral<unknown>, TResult>(s: {
             collateral: TSenderCollateral;
             modalities: Array<{
                 modality: TCNSModality;
                 afferentPaths?: Map<
                     TCNSAfferentPath,
                     (
-                        payload: TSenderCollateral extends CNSCollateral<
+                        payload: TSenderCollateral extends ICNSCollateral<
                             infer P
                         >
                             ? P
@@ -143,7 +143,7 @@ type InterNeuronAPI<
                     ) => TResult | Promise<TResult>
                 >;
                 default?: (
-                    payload: TSenderCollateral extends CNSCollateral<infer P>
+                    payload: TSenderCollateral extends ICNSCollateral<infer P>
                         ? P
                         : never,
                     axon: TAxonType,
@@ -151,7 +151,7 @@ type InterNeuronAPI<
                 ) => TResult | Promise<TResult>;
             }>;
             default?: (
-                payload: TSenderCollateral extends CNSCollateral<infer P>
+                payload: TSenderCollateral extends ICNSCollateral<infer P>
                     ? P
                     : never,
                 axon: TAxonType,
@@ -177,14 +177,14 @@ type ExtractResultFromOutput<T> = T extends (
 // Concrete builder
 export const neuron = <
     TContextValue,
-    TProvidedAxon extends Record<string, CNSCollateral<unknown>>,
+    TProvidedAxon extends Record<string, ICNSCollateral<unknown>>,
     TGlobal = unknown
 >(
     axon: TProvidedAxon
 ): InterNeuronAPI<TContextValue, TCNSAxon<TProvidedAxon>, TGlobal> => {
     const dendrites: TCNSDendrite<
         TContextValue,
-        CNSCollateral<unknown>,
+        ICNSCollateral<unknown>,
         TCNSAxon<TProvidedAxon>,
         TGlobal
     >[] = [];
@@ -211,7 +211,7 @@ export const neuron = <
                 dendrites.push(
                     dendrite as TCNSDendrite<
                         TContextValue,
-                        CNSCollateral<unknown>,
+                        ICNSCollateral<unknown>,
                         TCNSAxon<TProvidedAxon>,
                         TGlobal
                     >
@@ -239,7 +239,7 @@ export const neuron = <
                     dendrites.push({
                         collateral,
                         response: s.response,
-                    } as TCNSDendrite<TContextValue, CNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
+                    } as TCNSDendrite<TContextValue, ICNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
                 }
             } else {
                 // Either full dendrite object or shorthand with single collateral
@@ -247,7 +247,7 @@ export const neuron = <
                 dendrites.push(
                     s as TCNSDendrite<
                         TContextValue,
-                        CNSCollateral<unknown>,
+                        ICNSCollateral<unknown>,
                         TCNSAxon<TProvidedAxon>,
                         TGlobal
                     >
@@ -378,7 +378,7 @@ export const neuron = <
             dendrites.push({
                 collateral,
                 response,
-            } as TCNSDendrite<TContextValue, CNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
+            } as TCNSDendrite<TContextValue, ICNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
 
             return api;
         },
@@ -415,7 +415,7 @@ export type TNeuronFactory<TContextValue, TExt = unknown> = {
     withCtx: <T>() => TNeuronFactory<T, TExt>;
     /** Add `{ global: T }` to ctx; the value is injected once at `createCNS`/`new CNS`. */
     withGlobal: <T>() => TNeuronFactory<TContextValue, TExt & { global: T }>;
-    neuron: <TProvidedAxon extends Record<string, CNSCollateral<unknown>>>(
+    neuron: <TProvidedAxon extends Record<string, ICNSCollateral<unknown>>>(
         axon: TProvidedAxon
     ) => InterNeuronAPI<TContextValue, TCNSAxon<TProvidedAxon>, TExt>;
 };
@@ -459,113 +459,4 @@ export const modality = (
     return {
         afferentPaths,
     };
-};
-
-/**
- * Creates a CNSPersistOptionsRegistry from a plain object of named neurons.
- * All axon collaterals of each neuron are registered automatically.
- *
- * Use this for both production persistence and devtools/AI inspection —
- * the same registry serves both purposes.
- *
- * @example
- * // src/neurons/registry.ts
- * import { createPersistRegistry } from '@cnstra/core';
- * import { deckNeuron, cardNeuron } from './index';
- *
- * export const registry = createPersistRegistry({ deckNeuron, cardNeuron });
- */
-type CNSNeuronRegistryEntry<TAxon extends TCNSAxon = TCNSAxon> = {
-    neuron: TCNSNeuron<any, TAxon>;
-    collaterals?: { [K in keyof TAxon]?: string };
-};
-
-type CNSRegistryValue<N extends TCNSNeuron<any, any>> =
-    | N
-    | (N extends TCNSNeuron<any, infer TAxon>
-        ? { neuron: N; collaterals?: { [K in keyof TAxon]?: string } }
-        : never);
-
-/**
- * Creates a CNSPersistOptionsRegistry from a plain object of named neurons.
- * All axon collaterals are registered automatically.
- *
- * @example
- * // Auto names from JS identifiers:
- * export const registry = createPersistRegistry({ deckNeuron, cardNeuron });
- *
- * // Explicit neuron name:
- * export const registry = createPersistRegistry({ 'deck-neuron': deckNeuron });
- *
- * // Explicit collateral names (keys are type-checked against the neuron's axon):
- * export const registry = createPersistRegistry({
- *   'deck-neuron': { neuron: deckNeuron, collaterals: { deckCreated: 'deck-created' } }
- * });
- */
-export const createPersistRegistry = <TMap extends Record<string, TCNSNeuron<any, any>>>(
-    namedNeurons: { [K in keyof TMap]: CNSRegistryValue<TMap[K]> }
-): CNSPersistOptionsRegistry => {
-    const registry = new CNSPersistOptionsRegistry();
-    for (const [name, entry] of Object.entries(namedNeurons)) {
-        const isEntry = 'neuron' in (entry as object) && !('axon' in (entry as object));
-        const neuron = isEntry
-            ? (entry as CNSNeuronRegistryEntry).neuron
-            : entry as TCNSNeuron<any, any>;
-        const colNames = isEntry
-            ? ((entry as CNSNeuronRegistryEntry).collaterals ?? {})
-            : {};
-
-        registry.addNeuron(neuron, { name, neuron });
-        for (const [key, col] of Object.entries(neuron.axon)) {
-            registry.addCollateral(col as CNSCollateral<unknown>, {
-                name: (colNames as Record<string, string>)[key] ?? key,
-                collateral: col as CNSCollateral<unknown>,
-            });
-        }
-    }
-    return registry;
-};
-
-/**
- * Creates a CNS and its CNSPersistOptionsRegistry from a single plain object of
- * named neurons, so the neuron set is listed exactly once.
- *
- * `cns` is the runtime engine; `registry` carries the names used by devtools,
- * mcp and persistence. Both derive from the same map, so they can never drift.
- * If you don't need naming/persistence, just use `new CNS([...])` directly —
- * this factory is purely additive.
- *
- * @example
- * const { cns, registry } = createCNS({
- *   task: createTaskNeuron(store),
- *   comment: createCommentNeuron(store),
- * });
- *
- * // Explicit names / collateral names work exactly like createPersistRegistry:
- * const { cns, registry } = createCNS({
- *   'task-neuron': { neuron: taskNeuron, collaterals: { taskCreated: 'task-created' } },
- * });
- *
- * // Inject the shared `global` once — it surfaces as `ctx.global` in every neuron
- * // (type it once via `neuronFactory().withGlobal<T>()`). Swappable per instance:
- * const { cns } = createCNS(map, { global: { store, now, newId } });
- */
-export const createCNS = <
-    TMap extends Record<string, TCNSNeuron<any, any>>,
-    TGlobal = undefined
->(
-    namedNeurons: { [K in keyof TMap]: CNSRegistryValue<TMap[K]> },
-    options?: TCNSOptions & { global?: TGlobal }
-): {
-    cns: CNS<TCNSNeuron<any, any>>;
-    registry: CNSPersistOptionsRegistry;
-} => {
-    const neurons = Object.values(namedNeurons).map(entry =>
-        entry && typeof entry === 'object' && 'neuron' in (entry as object)
-            ? (entry as CNSNeuronRegistryEntry).neuron
-            : (entry as TCNSNeuron<any, any>)
-    );
-    const cns = new CNS(neurons, options, options?.global);
-    const registry = createPersistRegistry(namedNeurons);
-    return { cns, registry };
 };

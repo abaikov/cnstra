@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 
-// The replay-result banner and replay-history/prefetch UI were removed in the
-// CNSDTO migration; only the per-item "▶️ Replay" action remains. This is a
-// light smoke that it's present on real activity and clicking it doesn't break
-// the view. (The replay's effect surfaces later as a "🔁 Replay" item.)
-test.describe('Stimulations Replay', () => {
-    test('a stimulation exposes a Replay action that can be clicked', async ({
+// The legacy id-based "▶️ Replay" action was replaced by the name-based
+// Retry (resume frontier) / Clone (fresh run from entry) actions on the
+// Stimulation→Attempt→Task view (Phase 2b-2/2b-3). This smoke checks those
+// actions are present on a real run and that invoking one doesn't break the view.
+test.describe('Stimulations retry/clone actions', () => {
+    test('a selected run exposes Retry and Clone, and acting does not break the view', async ({
         page,
     }) => {
         test.setTimeout(90000);
@@ -18,21 +18,17 @@ test.describe('Stimulations Replay', () => {
         });
 
         await page.getByRole('button', { name: '⚡ Stimulations' }).click();
+        await expect(page.getByText(/backend: devtools/)).toBeVisible({
+            timeout: 60000,
+        });
 
-        // Wait for real activity (the demo emits every few seconds).
-        await expect(
-            page.getByText(/Total (responses|stimulations): [1-9]/)
-        ).toBeVisible({ timeout: 60000 });
+        // The demo emits runs; the page auto-selects the latest → its actions show.
+        const cloneBtn = page.getByRole('button', { name: /Clone/ });
+        await expect(cloneBtn).toBeVisible({ timeout: 60000 });
+        await expect(page.getByRole('button', { name: /Retry/ })).toBeVisible();
 
-        const replayBtn = page
-            .getByRole('button', { name: '▶️ Replay' })
-            .first();
-        await expect(replayBtn).toBeVisible({ timeout: 60000 });
-        await replayBtn.click();
-
-        // Replaying must not break the view; the list still renders.
-        await expect(
-            page.getByText(/Total (responses|stimulations):/)
-        ).toBeVisible();
+        // Clone a run — the view must keep rendering (backend line stays).
+        await cloneBtn.click();
+        await expect(page.getByText(/backend: devtools/)).toBeVisible();
     });
 });

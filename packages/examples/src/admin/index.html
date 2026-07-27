@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CNStra · Durable Runs</title>
+<style>
+  @font-face {
+    font-family: 'Px437_IBM_Conv';
+    src: url('/fonts/Px437_IBM_Conv.ttf') format('truetype');
+    font-display: swap;
+  }
+  :root {
+    --bg-primary:#0a0908; --bg-secondary:#1a0e0c; --bg-panel:#1f1412; --bg-card:#261815;
+    --flesh-medium:#5c3832; --flesh-infected:#8b2635;
+    --blood-bright:#8b2635; --pus-green:#5c6b47;
+    --bone-medium:#6b635a; --bone-light:#8b8175; --bone-white:#a39d96;
+    --infection-red:#a83c3c; --infection-yellow:#8b7c3a;
+    --text-primary:#d4cfc7; --text-secondary:#a39d96; --text-muted:#6b635a;
+    --text-success:#7a8b5c; --text-warning:#b89a6a; --text-error:#c85050;
+    --border-primary:#3d2824; --border-accent:#5c3832; --border-infected:#8b2635;
+    --font:'Px437_IBM_Conv','Courier New',monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:var(--bg-primary); color:var(--text-primary);
+    font-family:var(--font); font-size:13px; line-height:1.5;
+    image-rendering:pixelated; -webkit-font-smoothing:none;
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  }
+  header {
+    padding:14px 18px; border-bottom:2px solid var(--border-infected);
+    background:linear-gradient(180deg,var(--bg-secondary),var(--bg-primary));
+    display:flex; align-items:baseline; gap:14px;
+  }
+  header h1 {
+    margin:0; font-size:26px; letter-spacing:2px; color:var(--blood-bright);
+    text-shadow:2px 2px 0 #000, 0 0 12px rgba(139,38,53,.5);
+  }
+  header .sub { color:var(--text-muted); font-size:12px; letter-spacing:1px; }
+  header .spacer { flex:1; }
+  .dot { display:inline-block; width:8px; height:8px; background:var(--pus-green);
+    box-shadow:0 0 8px var(--pus-green); margin-right:6px; vertical-align:middle; }
+  main { flex:1; display:grid; grid-template-columns:340px 1fr; min-height:0; }
+  .roster { border-right:2px solid var(--border-primary); background:var(--bg-secondary);
+    display:flex; flex-direction:column; min-height:0; }
+  .toolbar { padding:12px; border-bottom:1px solid var(--border-primary); display:flex; gap:8px; flex-wrap:wrap; }
+  button {
+    font-family:var(--font); font-size:12px; cursor:pointer;
+    background:var(--bg-card); color:var(--text-primary);
+    border:1px solid var(--border-accent); padding:7px 12px; letter-spacing:1px;
+    text-transform:uppercase; transition:all .1s;
+  }
+  button:hover { border-color:var(--border-infected); color:var(--bone-white); background:var(--flesh-medium); }
+  button.primary { border-color:var(--border-infected); color:var(--bone-white); background:var(--flesh-medium); }
+  button.retry { border-color:var(--infection-yellow); color:var(--text-warning); }
+  button.retry:hover { background:var(--infection-yellow); color:#000; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .runlist { overflow-y:auto; flex:1; }
+  .runrow {
+    padding:11px 12px; border-bottom:1px solid var(--border-primary); cursor:pointer;
+    display:flex; align-items:center; gap:10px;
+  }
+  .runrow:hover { background:var(--bg-panel); }
+  .runrow.sel { background:var(--bg-panel); border-left:3px solid var(--blood-bright); padding-left:9px; }
+  .runrow .rid { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary); font-size:12px; }
+  .badge { font-size:10px; padding:2px 7px; letter-spacing:1px; text-transform:uppercase; border:1px solid; white-space:nowrap; }
+  .b-completed { color:var(--text-success); border-color:var(--pus-green); }
+  .b-failed { color:var(--text-error); border-color:var(--infection-red); background:rgba(168,60,60,.12); }
+  .b-in-progress,.b-pending { color:var(--text-warning); border-color:var(--infection-yellow); }
+  .detail { overflow-y:auto; padding:18px 22px; min-height:0; }
+  .detail .empty { color:var(--text-muted); text-align:center; margin-top:60px; letter-spacing:1px; }
+  .runhead { display:flex; align-items:center; gap:12px; margin-bottom:4px; }
+  .runhead h2 { margin:0; font-size:16px; color:var(--bone-light); letter-spacing:1px; word-break:break-all; }
+  .entry { color:var(--text-muted); font-size:12px; margin-bottom:6px; }
+  .frontier { color:var(--text-warning); font-size:12px; margin-bottom:18px; }
+  .frontier b { color:var(--text-error); }
+  .attempt { border:1px solid var(--border-primary); margin-bottom:14px; background:var(--bg-panel); }
+  .attempt.failed { border-color:var(--border-infected); }
+  .attempt-hd { padding:8px 12px; display:flex; align-items:center; gap:10px;
+    border-bottom:1px solid var(--border-primary); background:var(--bg-card); }
+  .attempt-hd .n { color:var(--bone-white); letter-spacing:1px; }
+  .attempt-hd .hops { color:var(--text-muted); font-size:11px; margin-left:auto; }
+  .task { display:flex; align-items:flex-start; gap:10px; padding:8px 12px; border-bottom:1px dashed var(--border-primary); }
+  .task:last-child { border-bottom:none; }
+  .task .mark { width:16px; text-align:center; }
+  .task.ok .mark { color:var(--text-success); }
+  .task.failed { background:rgba(139,38,53,.10); }
+  .task.failed .mark { color:var(--text-error); }
+  .task .body { flex:1; min-width:0; }
+  .task .nm { color:var(--text-primary); }
+  .task .out { color:var(--text-muted); font-size:12px; }
+  .task .out .col { color:var(--pus-green); }
+  .task .err { color:var(--text-error); font-size:12px; margin-top:3px;
+    border-left:2px solid var(--infection-red); padding-left:8px; }
+  .task .idx { color:var(--text-muted); font-size:11px; }
+  .payload { color:var(--bone-medium); font-size:11px; margin-top:3px; white-space:pre-wrap; word-break:break-word; }
+  .actions { margin-top:16px; display:flex; gap:10px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>CNStra</h1>
+    <span class="sub">DURABLE&nbsp;RUNS&nbsp;·&nbsp;RETRY&nbsp;ADMIN</span>
+    <span class="spacer"></span>
+    <span class="sub">backend:&nbsp;<span id="backend" style="color:var(--text-warning)">…</span></span>
+    <span class="sub"><span class="dot"></span><span id="conn">live</span></span>
+  </header>
+  <main>
+    <section class="roster">
+      <div class="toolbar">
+        <button class="primary" id="launch-fail">Launch (fails)</button>
+        <button id="launch-ok">Launch (ok)</button>
+      </div>
+      <div class="runlist" id="runlist"></div>
+    </section>
+    <section class="detail" id="detail">
+      <div class="empty">select a run</div>
+    </section>
+  </main>
+<script>
+  let runs = [];
+  let selected = null;
+
+  const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const pp = v => { try { return JSON.stringify(v); } catch { return String(v); } };
+
+  async function load() {
+    runs = await (await fetch('/api/runs')).json();
+    if (selected == null && runs.length) selected = runs[runs.length - 1].runId;
+    if (selected != null && !runs.some(r => r.runId === selected))
+      selected = runs.length ? runs[runs.length - 1].runId : null;
+    render();
+  }
+
+  const post = (path, body) => fetch(path, { method:'POST',
+    headers:{'content-type':'application/json'}, body: JSON.stringify(body||{}) });
+  const launch = fail => post('/api/launch', { fail });
+  const retry = runId => post('/api/retry', { runId });
+  const clone = runId => post('/api/clone', { runId });
+
+  function renderRoster() {
+    const el = document.getElementById('runlist');
+    el.innerHTML = runs.map(r => `
+      <div class="runrow ${r.runId===selected?'sel':''}" data-id="${esc(r.runId)}">
+        <span class="rid" title="${esc(r.runId)}">${esc(r.runId)}</span>
+        <span class="badge b-${esc(r.status)}">${esc(r.status)}</span>
+      </div>`).join('') || '<div class="empty" style="margin-top:24px">no runs yet</div>';
+    el.querySelectorAll('.runrow').forEach(row =>
+      row.onclick = () => { selected = row.dataset.id; render(); });
+  }
+
+  function taskHtml(t) {
+    const failed = t.status === 'failed';
+    const out = t.output
+      ? `<span class="out">→ <span class="col">${esc(t.output.collateralName)}</span></span>`
+      : `<span class="out">→ ✗ threw</span>`;
+    const payload = t.output ? `<div class="payload">${esc(pp(t.output.payload))}</div>` : '';
+    const err = t.error ? `<div class="err">⚠ ${esc(t.error)}</div>` : '';
+    return `<div class="task ${failed?'failed':'ok'}">
+      <span class="mark">${failed?'✗':'✓'}</span>
+      <div class="body">
+        <span class="idx">[${t.index}]</span> <span class="nm">${esc(t.neuronName)}</span> ${out}
+        ${payload}${err}
+      </div></div>`;
+  }
+
+  function renderDetail() {
+    const el = document.getElementById('detail');
+    const r = runs.find(x => x.runId === selected);
+    if (!r) { el.innerHTML = '<div class="empty">select a run</div>'; return; }
+    const frontier = r.frontier.length
+      ? `frontier (resumable): <b>${esc(r.frontier.join(', '))}</b>`
+      : 'frontier: — (settled)';
+    const attempts = r.attempts.map(a => `
+      <div class="attempt ${a.status==='failed'?'failed':''}">
+        <div class="attempt-hd">
+          <span class="n">ATTEMPT #${a.attemptNumber}</span>
+          <span class="badge b-${esc(a.status)}">${esc(a.status)}</span>
+          <span class="hops">${a.hopCount} hops</span>
+        </div>
+        ${a.tasks.map(taskHtml).join('')}
+      </div>`).join('');
+    const canRetry = r.status === 'failed';
+    el.innerHTML = `
+      <div class="runhead">
+        <h2>${esc(r.runId)}</h2>
+        <span class="badge b-${esc(r.status)}">${esc(r.status)}</span>
+      </div>
+      <div class="entry">entry: ${esc(r.entry.collateralName)} ← ${esc(pp(r.entry.payload))}</div>
+      <div class="frontier">${frontier}</div>
+      ${attempts}
+      <div class="actions">
+        <button class="retry" id="btn-retry" ${canRetry?'':'disabled'}>Retry (resume frontier)</button>
+        <button id="btn-clone">Clone (fresh run from entry)</button>
+      </div>`;
+    const rbtn = document.getElementById('btn-retry');
+    if (rbtn && canRetry) rbtn.onclick = async () => { rbtn.disabled = true; await retry(r.runId); };
+    const cbtn = document.getElementById('btn-clone');
+    if (cbtn) cbtn.onclick = async () => { cbtn.disabled = true; const res = await (await clone(r.runId)).json(); selected = res.runId; };
+  }
+
+  function render() { renderRoster(); renderDetail(); }
+
+  document.getElementById('launch-fail').onclick = () => launch(true);
+  document.getElementById('launch-ok').onclick = () => launch(false);
+
+  fetch('/api/info').then(r => r.json())
+    .then(i => { document.getElementById('backend').textContent = i.backend; })
+    .catch(() => {});
+
+  const ev = new EventSource('/api/events');
+  ev.addEventListener('update', load);
+  ev.onerror = () => { document.getElementById('conn').textContent = 'reconnecting'; };
+  ev.onopen = () => { document.getElementById('conn').textContent = 'live'; };
+  load();
+</script>
+</body>
+</html>

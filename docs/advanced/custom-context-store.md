@@ -23,7 +23,7 @@ The default implementation is an in-memory store. For long-lived sagas or distri
 ## Redis-backed context store
 
 ```ts
-import { ICNSStimulationContextStore } from '@cnstra/core';
+import type { ICNSStimulationContextStore } from '@cnstra/types';
 import { RedisClient } from 'redis';
 
 class RedisContextStore implements ICNSStimulationContextStore {

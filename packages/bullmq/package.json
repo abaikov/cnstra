@@ -1,0 +1,59 @@
+{
+  "name": "@cnstra/bullmq",
+  "version": "0.1.0",
+  "description": "BullMQ (Redis) integration for CNStra: run stimulations as jobs, resume the failed frontier on retry",
+  "keywords": [
+    "cnstra",
+    "bullmq",
+    "redis",
+    "queue",
+    "workflow",
+    "orchestration"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "jest",
+    "test:types": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@cnstra/core": "^2.4.0",
+    "bullmq": ">=4",
+    "@cnstra/types": "^0.1.0",
+    "@cnstra/persist": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "bullmq": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@cnstra/core": "^2.4.0",
+    "@cnstra/persist": "^0.1.0",
+    "@cnstra/types": "^0.1.0",
+    "@types/jest": "29.5.12",
+    "jest": "29.7.0",
+    "ts-jest": "29.1.2",
+    "tsup": "8.5.1",
+    "typescript": "5.7.2"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

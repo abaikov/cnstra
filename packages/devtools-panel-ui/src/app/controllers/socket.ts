@@ -19,8 +19,7 @@ export interface DevtoolsSocket {
     connectionStatus: TExoWritableBindable<ConnectionStatus>;
     /**
      * Stable ref whose `.current` always points at the live socket (updated on
-     * every reconnect). Shape-compatible with the `React.MutableRefObject` the
-     * StimulationsPage island still expects, so that component needs no edit.
+     * every reconnect). Islands that attach their own `message` listeners read it.
      */
     wsRef: { current: WebSocket | null };
     /** Current live socket, or null when not open. */

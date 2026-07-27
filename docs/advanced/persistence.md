@@ -30,7 +30,7 @@ Create one registry instance and register neurons and collaterals from each file
 
 ```ts
 // src/neurons/registry.ts — create once
-import { CNSPersistOptionsRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
 ```
 
@@ -178,7 +178,7 @@ The same registry instance works for both persistence and devtools/AI inspection
 
 ```ts
 // src/neurons/registry.ts
-import { CNSPersistOptionsRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
 
 // src/neurons/deck.ts
@@ -188,11 +188,11 @@ registry
     .registerCollateral('importStarted', importStarted);
 ```
 
-For simple projects where all neurons are in one place, `createPersistRegistry` is a convenient shorthand:
+For simple projects where all neurons are in one place, `CNSPersistOptionsRegistryFactory` is a convenient shorthand:
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
-export const registry = createPersistRegistry({ deckNeuron, cardNeuron, uiNeuron });
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron, uiNeuron });
 // equivalent to calling register() for each neuron
 ```
 

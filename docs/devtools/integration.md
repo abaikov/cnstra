@@ -31,9 +31,9 @@ await startDevTools(cns, registry);
 If you don't have a shared registry yet:
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { deckNeuron, cardNeuron } from './neurons';
-const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron });
 ```
 
 Opens the browser automatically. The UI, WebSocket server, and your CNS instance are all wired up in one call.

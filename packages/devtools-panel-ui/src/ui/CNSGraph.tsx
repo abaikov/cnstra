@@ -344,9 +344,13 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
         const desiredEdgesMap = new Map(connections.map(e => [edgeId(e), e]));
 
         const currentNodeIds = new Set<string>();
-        cy.nodes().forEach(n => currentNodeIds.add(n.id()));
+        cy.nodes().forEach(n => {
+            currentNodeIds.add(n.id());
+        });
         const currentEdgeIds = new Set<string>();
-        cy.edges().forEach(e => currentEdgeIds.add(e.id()));
+        cy.edges().forEach(e => {
+            currentEdgeIds.add(e.id());
+        });
 
         const nodesToRemove: string[] = [];
         currentNodeIds.forEach(id => {
@@ -444,9 +448,9 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
         });
         lastLayoutName = layoutName.getValue();
 
-        cy.nodes().forEach(n =>
-            n.data('color', colorFor((n.data('stim') as number) || 0))
-        );
+        cy.nodes().forEach(n => {
+            n.data('color', colorFor((n.data('stim') as number) || 0));
+        });
 
         cy.on('tap', 'node', evt => {
             const data = neuronsMap.get(evt.target.id());
@@ -533,8 +537,8 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
                 static={{
                     class: 'cns-graph',
                     style: 'width:100%;height:100%;min-height:400px',
-                    onExoMount: (node: { element: HTMLElement }) =>
-                        initCytoscape(node.element),
+                    onExoMount: (node: { element: unknown }) =>
+                        initCytoscape(node.element as HTMLElement),
                     onExoUnmount: teardown,
                 }}
             />

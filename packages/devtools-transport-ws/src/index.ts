@@ -1,5 +1,9 @@
 import type { ICNSDevToolsTransport } from '@cnstra/devtools';
-import { CNSDTOReplayStartMessageSchema, type CNSDTOAppBatchMessage } from '@cnstra/devtools-dto';
+import {
+    CNSDTOReplayStartMessageSchema,
+    CNSDTOAppCommandSchema,
+    type CNSDTOAppBatchMessage,
+} from '@cnstra/devtools-dto';
 
 export type CNSDevToolsTransportWsOptions = {
     /** WebSocket URL, e.g. ws://localhost:3141 */
@@ -26,6 +30,7 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
     private readonly pendingBatches: CNSDTOAppBatchMessage[] = [];
     private lastTopologyBatch?: CNSDTOAppBatchMessage;
     private onReplayHandler?: (cmd: any) => void;
+    private onCommandHandler?: (cmd: any) => void;
 
     constructor(private readonly opts: CNSDevToolsTransportWsOptions) {}
 
@@ -42,6 +47,11 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
     onReplayStart(handler: (cmd: any) => void): () => void {
         this.onReplayHandler = handler;
         return () => { this.onReplayHandler = undefined; };
+    }
+
+    onStimulationCommand(handler: (cmd: any) => void): () => void {
+        this.onCommandHandler = handler;
+        return () => { this.onCommandHandler = undefined; };
     }
 
     // ─── Connection management ────────────────────────────────────────────────────
@@ -102,6 +112,16 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
                             this.onReplayHandler?.(result.data);
                         } else if (this.opts.consoleLogEnabled) {
                             console.warn('[DevTools] Invalid replay.start message:', result.error.message);
+                        }
+                    } else if (
+                        msg?.type === 'cns.stimulation.resume' ||
+                        msg?.type === 'cns.stimulation.launch'
+                    ) {
+                        const result = CNSDTOAppCommandSchema.safeParse(msg);
+                        if (result.success) {
+                            this.onCommandHandler?.(result.data);
+                        } else if (this.opts.consoleLogEnabled) {
+                            console.warn('[DevTools] Invalid stimulation command:', result.error.message);
                         }
                     }
                 } catch {}

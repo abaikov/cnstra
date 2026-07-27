@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('CNStra DevTools Panel E2E', () => {
-    test('connects to server, shows apps, displays stimulations/responses', async ({
+    test('connects to server, shows apps, displays the name-based Stimulations view', async ({
         page,
     }) => {
         await page.goto('/');
@@ -17,21 +17,21 @@ test.describe('CNStra DevTools Panel E2E', () => {
             timeout: 60000,
         });
 
-        // Open Stimulations tab
-        const stimBtn = page.getByRole('button', { name: '⚡ Stimulations' });
-        await stimBtn.click();
+        // Open the Stimulations tab — now the name-based Stimulation→Attempt→Task
+        // view, fed live from the server's durable store over the socket.
+        await page.getByRole('button', { name: '⚡ Stimulations' }).click();
 
-        // Total counter becomes visible; allow both responses or stimulations
-        await expect(
-            page.getByText(/Total (responses|stimulations):/)
-        ).toBeVisible({ timeout: 60000 });
+        // The page frame is present (unique backend line).
+        await expect(page.getByText(/backend: devtools/)).toBeVisible({
+            timeout: 60000,
+        });
 
-        // The demo emits activity every few seconds. Accept either real items
-        // (a non-zero total) or the empty-state placeholder.
+        // The demo emits stimulations every few seconds. Accept either a real run
+        // (its Clone action surfaces once a run is auto-selected) or the empty state.
         await expect(
             page
-                .getByText(/Total (responses|stimulations): [1-9]/)
-                .or(page.getByText('No Activity Detected'))
+                .getByText('no runs yet')
+                .or(page.getByRole('button', { name: /Clone/ }))
                 .first()
         ).toBeVisible({ timeout: 60000 });
     });

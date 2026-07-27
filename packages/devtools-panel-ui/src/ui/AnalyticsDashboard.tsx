@@ -1,11 +1,17 @@
-/** @jsxImportSource react */
-import React, { useState, useMemo } from 'react';
+import type { TExoSchema } from '@exodra/core';
+import { bindable } from '@exodra/reactivity';
+import type { TExoBindable } from '@exodra/reactivity';
+import {
+    combine,
+    readEntitiesByIndexKey,
+    subscribeEntitiesByIndexKey,
+} from '../exo/oimdb-bind';
 import { db } from '../model';
-import { useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
+import type { TStimulation, TDendrite, UINeuron, UIHop } from '../model';
 
-interface Props {
-    selectedAppId: string | null;
-}
+// Native Exodra port of the analytics panel (was a React island). Data comes from
+// @oimdb/exodra read/subscribe (flush-safe: subscription callbacks only read the db
+// and setValue Exodra bindables — never write to OIMDB); analytics is a pure derive.
 
 interface AnalyticsData {
     totalStimulations: number;
@@ -40,1027 +46,470 @@ interface AnalyticsData {
     };
 }
 
-export const AnalyticsDashboard: React.FC<Props> = ({ selectedAppId }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    const [timeRange, setTimeRange] = useState<
-        '5min' | '1hour' | '24hours' | 'all'
-    >('1hour');
-    const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
+type TimeRange = '5min' | '1hour' | '24hours' | 'all';
 
-    // Get all data for the selected app
-    const allStimulationsRaw = useSelectEntitiesByIndexKeySetBased(
-        db.stimulations,
-        db.stimulations.indexes.appId,
-        selectedAppId || 'dummy-id'
+function computeAnalytics(
+    allStimulations: TStimulation[],
+    allResponses: UIHop[],
+    allNeurons: UINeuron[],
+    allDendrites: TDendrite[],
+    timeRange: TimeRange
+): AnalyticsData | null {
+    if (!allStimulations.length && !allResponses.length && !allNeurons.length)
+        return null;
+
+    const now = Date.now();
+    const timeRanges = {
+        '5min': now - 5 * 60 * 1000,
+        '1hour': now - 60 * 60 * 1000,
+        '24hours': now - 24 * 60 * 60 * 1000,
+    };
+
+    const filteredStimulations =
+        timeRange === 'all'
+            ? allStimulations
+            : allStimulations.filter(s => s.startedAt > timeRanges[timeRange]);
+    const filteredResponses =
+        timeRange === 'all'
+            ? allResponses
+            : allResponses.filter(r => r.startedAt > timeRanges[timeRange]);
+
+    const totalStimulations = filteredStimulations.length;
+    const totalResponses = filteredResponses.length;
+    const totalNeurons = allNeurons.length;
+    const totalConnections = allDendrites.length;
+
+    const responsesWithDuration = filteredResponses.filter(
+        r => r.duration && r.duration > 0
     );
+    const avgResponseTime =
+        responsesWithDuration.length > 0
+            ? responsesWithDuration.reduce(
+                  (sum, r) => sum + (r.duration || 0),
+                  0
+              ) / responsesWithDuration.length
+            : 0;
 
-    const allResponsesRaw = useSelectEntitiesByIndexKeySetBased(
-        db.responses,
-        db.responses.indexes.appId,
-        selectedAppId || 'dummy-id'
-    );
+    const responsesWithErrors = filteredResponses.filter(r => r.error);
+    const errorRate =
+        filteredResponses.length > 0
+            ? (responsesWithErrors.length / filteredResponses.length) * 100
+            : 0;
 
-    const allNeuronsRaw = useSelectEntitiesByIndexKeySetBased(
-        db.neurons,
-        db.neurons.indexes.appId,
-        selectedAppId || 'dummy-id'
-    );
+    const timeRangeSeconds =
+        timeRange === 'all'
+            ? 3600
+            : { '5min': 300, '1hour': 3600, '24hours': 86400 }[timeRange];
+    const throughputMetrics = {
+        stimulationsPerSecond: totalStimulations / timeRangeSeconds,
+        responsesPerSecond: totalResponses / timeRangeSeconds,
+    };
 
-    const allDendritesRaw = useSelectEntitiesByIndexKeySetBased(
-        db.dendrites,
-        db.dendrites.indexes.appId,
-        selectedAppId || 'dummy-id'
-    );
-
-    // Filter out undefined elements
-    const allStimulations = allStimulationsRaw
-        ? allStimulationsRaw.filter(
-              (s): s is NonNullable<typeof s> => s != null
-          )
-        : null;
-
-    const allResponses = allResponsesRaw
-        ? allResponsesRaw.filter((r): r is NonNullable<typeof r> => r != null)
-        : null;
-
-    const allNeurons = allNeuronsRaw
-        ? allNeuronsRaw.filter((n): n is NonNullable<typeof n> => n != null)
-        : null;
-
-    const allDendrites = allDendritesRaw
-        ? allDendritesRaw.filter((d): d is NonNullable<typeof d> => d != null)
-        : null;
-
-    // Calculate comprehensive analytics
-    const analytics = useMemo((): AnalyticsData | null => {
-        if (!allStimulations || !allResponses || !allNeurons || !allDendrites)
-            return null;
-
-        const now = Date.now();
-        const timeRanges = {
-            '5min': now - 5 * 60 * 1000,
-            '1hour': now - 60 * 60 * 1000,
-            '24hours': now - 24 * 60 * 60 * 1000,
-        };
-
-        // Filter data by time range if not 'all'
-        const filteredStimulations =
-            timeRange === 'all'
-                ? allStimulations
-                : allStimulations.filter(
-                      s => s.startedAt > timeRanges[timeRange]
-                  );
-
-        const filteredResponses =
-            timeRange === 'all'
-                ? allResponses
-                : allResponses.filter(r => r.startedAt > timeRanges[timeRange]);
-
-        // Basic metrics
-        const totalStimulations = filteredStimulations.length;
-        const totalResponses = filteredResponses.length;
-        const totalNeurons = allNeurons.length;
-        const totalConnections = allDendrites.length;
-
-        // Response time analysis
-        const responsesWithDuration = filteredResponses.filter(
-            r => r.duration && r.duration > 0
-        );
-        const avgResponseTime =
-            responsesWithDuration.length > 0
-                ? responsesWithDuration.reduce(
-                      (sum, r) => sum + (r.duration || 0),
-                      0
-                  ) / responsesWithDuration.length
-                : 0;
-
-        // Error rate
-        const responsesWithErrors = filteredResponses.filter(r => r.error);
-        const errorRate =
-            filteredResponses.length > 0
-                ? (responsesWithErrors.length / filteredResponses.length) * 100
-                : 0;
-
-        // Throughput metrics (only for time-filtered data)
-        const timeRangeSeconds =
-            timeRange === 'all'
-                ? 3600
-                : {
-                      '5min': 300,
-                      '1hour': 3600,
-                      '24hours': 86400,
-                  }[timeRange];
-
-        const throughputMetrics = {
-            stimulationsPerSecond: totalStimulations / timeRangeSeconds,
-            responsesPerSecond: totalResponses / timeRangeSeconds,
-        };
-
-        // Top performing neurons
-        const neuronStats = new Map<
-            string,
-            {
-                stimulationCount: number;
-                responseTimes: number[];
-                errorCount: number;
-            }
-        >();
-
-        // Stimulations no longer carry neuronId in the new protocol; per-neuron
-        // activity is derived from hops (db.responses / CNSDTOHop), which do.
-        filteredResponses.forEach(resp => {
-            if (!neuronStats.has(resp.neuronId)) {
-                neuronStats.set(resp.neuronId, {
-                    stimulationCount: 0,
-                    responseTimes: [],
-                    errorCount: 0,
-                });
-            }
-            const stats = neuronStats.get(resp.neuronId)!;
-            stats.stimulationCount++;
-            if (resp.duration) {
-                stats.responseTimes.push(resp.duration);
-            }
-            if (resp.error) {
-                stats.errorCount++;
-            }
-        });
-
-        const topPerformingNeurons = Array.from(neuronStats.entries())
-            .map(([neuronId, stats]) => ({
-                neuronId,
-                stimulationCount: stats.stimulationCount,
-                avgResponseTime:
-                    stats.responseTimes.length > 0
-                        ? stats.responseTimes.reduce(
-                              (sum, time) => sum + time,
-                              0
-                          ) / stats.responseTimes.length
-                        : 0,
-                errorCount: stats.errorCount,
-            }))
-            .sort((a, b) => b.stimulationCount - a.stimulationCount)
-            .slice(0, 5);
-
-        // Network complexity analysis — hop counts now come from
-        // CNSDTOStimulation.hopCount.
-        const stimHopCounts = filteredStimulations.map(s => s.hopCount);
-        const maxHops =
-            stimHopCounts.length > 0 ? Math.max(...stimHopCounts) : 0;
-        const avgHops =
-            stimHopCounts.length > 0
-                ? stimHopCounts.reduce((sum, h) => sum + h, 0) /
-                  stimHopCounts.length
-                : 0;
-
-        const hopDistribution = {} as Record<number, number>;
-        stimHopCounts.forEach(h => {
-            hopDistribution[h] = (hopDistribution[h] || 0) + 1;
-        });
-
-        // Time range metrics
-        const getMetricsForTimeRange = (rangeMs: number) => {
-            const cutoff = now - rangeMs;
-            const stimsInRange = allStimulations.filter(
-                s => s.startedAt > cutoff
-            );
-            const respsInRange = allResponses.filter(r => r.startedAt > cutoff);
-            const errorsInRange = respsInRange.filter(r => r.error);
-
-            return {
-                stimulations: stimsInRange.length,
-                responses: respsInRange.length,
-                errors: errorsInRange.length,
-            };
-        };
-
-        const timeRangeMetrics = {
-            last5min: getMetricsForTimeRange(5 * 60 * 1000),
-            last1hour: getMetricsForTimeRange(60 * 60 * 1000),
-            last24hours: getMetricsForTimeRange(24 * 60 * 60 * 1000),
-        };
-
-        return {
-            totalStimulations,
-            totalResponses,
-            totalNeurons,
-            totalConnections,
-            avgResponseTime: Math.round(avgResponseTime * 100) / 100,
-            errorRate: Math.round(errorRate * 100) / 100,
-            throughputMetrics: {
-                stimulationsPerSecond:
-                    Math.round(throughputMetrics.stimulationsPerSecond * 1000) /
-                    1000,
-                responsesPerSecond:
-                    Math.round(throughputMetrics.responsesPerSecond * 1000) /
-                    1000,
-            },
-            topPerformingNeurons,
-            networkComplexity: {
-                maxHops,
-                avgHops: Math.round(avgHops * 100) / 100,
-                hopDistribution,
-            },
-            timeRangeMetrics,
-        };
-    }, [allStimulations, allResponses, allNeurons, allDendrites, timeRange]);
-
-    const handleExportData = () => {
-        if (!analytics || !selectedAppId) return;
-
-        const exportData = {
-            timestamp: new Date().toISOString(),
-            appId: selectedAppId,
-            timeRange,
-            analytics,
-            rawData: {
-                stimulations: allStimulations,
-                responses: allResponses,
-                neurons: allNeurons,
-                dendrites: allDendrites,
-            },
-        };
-
-        if (exportFormat === 'json') {
-            const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-                type: 'application/json',
+    const neuronStats = new Map<
+        string,
+        { stimulationCount: number; responseTimes: number[]; errorCount: number }
+    >();
+    filteredResponses.forEach(resp => {
+        const nid = resp.neuronId ?? '(unknown)';
+        if (!neuronStats.has(nid))
+            neuronStats.set(nid, {
+                stimulationCount: 0,
+                responseTimes: [],
+                errorCount: 0,
             });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `cnstra-analytics-${selectedAppId}-${
-                new Date().toISOString().split('T')[0]
-            }.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } else {
-            // CSV export - simplified format
-            const csvRows = [
-                ['Metric', 'Value'],
-                ['Total Stimulations', analytics.totalStimulations],
-                ['Total Responses', analytics.totalResponses],
-                ['Total Neurons', analytics.totalNeurons],
-                ['Total Connections', analytics.totalConnections],
-                ['Avg Response Time (ms)', analytics.avgResponseTime],
-                ['Error Rate (%)', analytics.errorRate],
-                [
-                    'Stimulations/sec',
-                    analytics.throughputMetrics.stimulationsPerSecond,
-                ],
-                [
-                    'Responses/sec',
-                    analytics.throughputMetrics.responsesPerSecond,
-                ],
-                ['Max Hops', analytics.networkComplexity.maxHops],
-                ['Avg Hops', analytics.networkComplexity.avgHops],
-            ];
+        const stats = neuronStats.get(nid)!;
+        stats.stimulationCount++;
+        if (resp.duration) stats.responseTimes.push(resp.duration);
+        if (resp.error) stats.errorCount++;
+    });
+    const topPerformingNeurons = Array.from(neuronStats.entries())
+        .map(([neuronId, stats]) => ({
+            neuronId,
+            stimulationCount: stats.stimulationCount,
+            avgResponseTime:
+                stats.responseTimes.length > 0
+                    ? stats.responseTimes.reduce((s, t) => s + t, 0) /
+                      stats.responseTimes.length
+                    : 0,
+            errorCount: stats.errorCount,
+        }))
+        .sort((a, b) => b.stimulationCount - a.stimulationCount)
+        .slice(0, 5);
 
-            const csvContent = csvRows.map(row => row.join(',')).join('\n');
-            const blob = new Blob([csvContent], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `cnstra-analytics-${selectedAppId}-${
-                new Date().toISOString().split('T')[0]
-            }.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+    const stimHopCounts = filteredStimulations.map(s => s.hopCount);
+    const maxHops = stimHopCounts.length > 0 ? Math.max(...stimHopCounts) : 0;
+    const avgHops =
+        stimHopCounts.length > 0
+            ? stimHopCounts.reduce((s, h) => s + h, 0) / stimHopCounts.length
+            : 0;
+    const hopDistribution = {} as Record<number, number>;
+    stimHopCounts.forEach(h => {
+        hopDistribution[h] = (hopDistribution[h] || 0) + 1;
+    });
+
+    const metricsFor = (rangeMs: number) => {
+        const cutoff = now - rangeMs;
+        const stimsInRange = allStimulations.filter(s => s.startedAt > cutoff);
+        const respsInRange = allResponses.filter(r => r.startedAt > cutoff);
+        return {
+            stimulations: stimsInRange.length,
+            responses: respsInRange.length,
+            errors: respsInRange.filter(r => r.error).length,
+        };
+    };
+
+    return {
+        totalStimulations,
+        totalResponses,
+        totalNeurons,
+        totalConnections,
+        avgResponseTime: Math.round(avgResponseTime * 100) / 100,
+        errorRate: Math.round(errorRate * 100) / 100,
+        throughputMetrics: {
+            stimulationsPerSecond:
+                Math.round(throughputMetrics.stimulationsPerSecond * 1000) /
+                1000,
+            responsesPerSecond:
+                Math.round(throughputMetrics.responsesPerSecond * 1000) / 1000,
+        },
+        topPerformingNeurons,
+        networkComplexity: {
+            maxHops,
+            avgHops: Math.round(avgHops * 100) / 100,
+            hopDistribution,
+        },
+        timeRangeMetrics: {
+            last5min: metricsFor(5 * 60 * 1000),
+            last1hour: metricsFor(60 * 60 * 1000),
+            last24hours: metricsFor(24 * 60 * 60 * 1000),
+        },
+    };
+}
+
+function downloadBlob(content: string, mime: string, filename: string): void {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// ── styles (string form for Exodra static bucket) ──
+const PANEL =
+    'background:var(--bg-panel);border:2px solid var(--border-infected);border-radius:var(--radius-sm);' +
+    'padding:var(--spacing-sm);font-size:var(--font-size-xs);color:var(--text-primary);' +
+    'font-family:var(--font-primary);box-shadow:0 0 10px var(--shadow-infection);width:100%';
+const EMPTY =
+    'background:var(--bg-panel);border:2px solid var(--border-primary);border-radius:var(--radius-sm);' +
+    'padding:var(--spacing-sm);font-size:var(--font-size-xs);color:var(--text-muted);text-align:center';
+const SECTION = 'border-top:1px solid var(--border-primary);padding-top:var(--spacing-sm)';
+const SECTION_H = 'margin-bottom:var(--spacing-xs);font-size:11px;font-weight:bold';
+const GRID2 =
+    'display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-xs);font-size:10px';
+const MUTED = 'color:var(--text-muted)';
+const SELECT =
+    'padding:2px 4px;font-size:10px;background:var(--bg-secondary);border:1px solid var(--border-primary);' +
+    'border-radius:2px;color:var(--text-primary)';
+
+const metric = (label: string, value: string, color: string): TExoSchema => (
+    <div>
+        <span static={{ style: MUTED }}>{label}</span>
+        <br />
+        <span static={{ style: `color:${color}` }}>{value}</span>
+    </div>
+);
+
+export function analyticsDashboard(
+    selectedAppId: TExoBindable<string | null, string | null>
+): TExoSchema {
+    const isExpanded = bindable(false);
+    const timeRange = bindable<TimeRange>('1hour');
+    const exportFormat = bindable<'json' | 'csv'>('json');
+
+    const stims = bindable<TStimulation[]>([]);
+    const resps = bindable<UIHop[]>([]);
+    const neurons = bindable<UINeuron[]>([]);
+    const dendrites = bindable<TDendrite[]>([]);
+
+    const notNull = <T,>(a: readonly (T | undefined)[]): T[] =>
+        a.filter((x): x is T => x != null);
+
+    let unsubs: Array<() => void> = [];
+    const read = (): void => {
+        const appId = selectedAppId.getValue() || 'dummy-id';
+        stims.setValue(
+            notNull(
+                readEntitiesByIndexKey(
+                    db.stimulations,
+                    db.stimulations.indexes.appId,
+                    appId
+                )
+            )
+        );
+        resps.setValue(
+            notNull(
+                readEntitiesByIndexKey(
+                    db.responses,
+                    db.responses.indexes.appId,
+                    appId
+                )
+            )
+        );
+        neurons.setValue(
+            notNull(
+                readEntitiesByIndexKey(
+                    db.neurons,
+                    db.neurons.indexes.appId,
+                    appId
+                )
+            )
+        );
+        dendrites.setValue(
+            notNull(
+                readEntitiesByIndexKey(
+                    db.dendrites,
+                    db.dendrites.indexes.appId,
+                    appId
+                )
+            )
+        );
+    };
+    const wire = (): void => {
+        for (const u of unsubs) u();
+        unsubs = [];
+        const appId = selectedAppId.getValue() || 'dummy-id';
+        read();
+        unsubs.push(
+            subscribeEntitiesByIndexKey(db.stimulations, db.stimulations.indexes.appId, appId, read),
+            subscribeEntitiesByIndexKey(db.responses, db.responses.indexes.appId, appId, read),
+            subscribeEntitiesByIndexKey(db.neurons, db.neurons.indexes.appId, appId, read),
+            subscribeEntitiesByIndexKey(db.dendrites, db.dendrites.indexes.appId, appId, read)
+        );
+    };
+    selectedAppId.subscribe(wire);
+    wire();
+
+    const analytics = combine(
+        [stims, resps, neurons, dendrites, timeRange],
+        () =>
+            computeAnalytics(
+                stims.getValue(),
+                resps.getValue(),
+                neurons.getValue(),
+                dendrites.getValue(),
+                timeRange.getValue()
+            )
+    );
+
+    const onExport = (): void => {
+        const a = analytics.getValue();
+        const appId = selectedAppId.getValue();
+        if (!a || !appId) return;
+        const day = new Date().toISOString().split('T')[0];
+        if (exportFormat.getValue() === 'json') {
+            downloadBlob(
+                JSON.stringify(
+                    {
+                        timestamp: new Date().toISOString(),
+                        appId,
+                        timeRange: timeRange.getValue(),
+                        analytics: a,
+                        rawData: {
+                            stimulations: stims.getValue(),
+                            responses: resps.getValue(),
+                            neurons: neurons.getValue(),
+                            dendrites: dendrites.getValue(),
+                        },
+                    },
+                    null,
+                    2
+                ),
+                'application/json',
+                `cnstra-analytics-${appId}-${day}.json`
+            );
+        } else {
+            const rows: Array<[string, string | number]> = [
+                ['Metric', 'Value'],
+                ['Total Stimulations', a.totalStimulations],
+                ['Total Responses', a.totalResponses],
+                ['Total Neurons', a.totalNeurons],
+                ['Total Connections', a.totalConnections],
+                ['Avg Response Time (ms)', a.avgResponseTime],
+                ['Error Rate (%)', a.errorRate],
+                ['Stimulations/sec', a.throughputMetrics.stimulationsPerSecond],
+                ['Responses/sec', a.throughputMetrics.responsesPerSecond],
+                ['Max Hops', a.networkComplexity.maxHops],
+                ['Avg Hops', a.networkComplexity.avgHops],
+            ];
+            downloadBlob(
+                rows.map(r => r.join(',')).join('\n'),
+                'text/csv',
+                `cnstra-analytics-${appId}-${day}.csv`
+            );
         }
     };
 
-    if (!selectedAppId) {
-        return (
-            <div
-                style={{
-                    background: 'var(--bg-panel)',
-                    border: '2px solid var(--border-primary)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: 'var(--spacing-sm)',
-                    fontSize: 'var(--font-size-xs)',
-                    color: 'var(--text-muted)',
-                    textAlign: 'center',
-                }}
-            >
-                📊 Select an app to view analytics
-            </div>
-        );
-    }
-
-    return (
-        <div
-            style={{
-                background: 'var(--bg-panel)',
-                border: '2px solid var(--border-infected)',
-                borderRadius: 'var(--radius-sm)',
-                padding: 'var(--spacing-sm)',
-                fontSize: 'var(--font-size-xs)',
-                color: 'var(--text-primary)',
-                fontFamily: 'var(--font-primary)',
-                boxShadow: '0 0 10px var(--shadow-infection)',
-                width: '100%',
-            }}
-        >
-            <div
-                style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: isExpanded ? 'var(--spacing-sm)' : '0',
-                    cursor: 'pointer',
-                }}
-                onClick={() => setIsExpanded(!isExpanded)}
-            >
-                <span style={{ color: 'var(--infection-yellow)' }}>
-                    📊 Analytics Dashboard
-                </span>
-                <span style={{ color: 'var(--text-muted)' }}>
-                    {isExpanded ? '▼' : '▶'}
-                </span>
-            </div>
-
-            {!isExpanded ? (
-                // Compact view
-                <div
-                    style={{
-                        display: 'flex',
-                        gap: 'var(--spacing-xs)',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                    }}
-                >
-                    {analytics && (
-                        <>
-                            <div
-                                key="compact-stims"
-                                style={{ color: 'var(--infection-green)' }}
-                            >
-                                ⚡ {analytics.totalStimulations} stims
-                            </div>
-                            <div
-                                key="compact-resp"
-                                style={{ color: 'var(--infection-blue)' }}
-                            >
-                                📡 {analytics.totalResponses} resp
-                            </div>
-                            <div
-                                key="compact-avg"
-                                style={{ color: 'var(--infection-yellow)' }}
-                            >
-                                ⏱️ {analytics.avgResponseTime}ms avg
-                            </div>
-                            {analytics.errorRate > 0 && (
-                                <div
-                                    key="compact-errors"
-                                    style={{ color: 'var(--infection-red)' }}
-                                >
-                                    ❌ {analytics.errorRate}% errors
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
-            ) : (
-                // Expanded view
-                <div
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 'var(--spacing-sm)',
-                    }}
-                >
-                    {/* Time Range & Export Controls */}
-                    <div
-                        style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            paddingBottom: 'var(--spacing-xs)',
-                            borderBottom: '1px solid var(--border-primary)',
-                        }}
-                    >
-                        <div
-                            style={{
-                                display: 'flex',
-                                gap: 'var(--spacing-xs)',
-                                alignItems: 'center',
-                            }}
-                        >
-                            <label
-                                style={{
-                                    fontSize: '10px',
-                                    color: 'var(--text-muted)',
-                                }}
-                            >
-                                Time Range:
-                            </label>
-                            <select
-                                value={timeRange}
-                                onChange={e =>
-                                    setTimeRange(e.target.value as any)
-                                }
-                                style={{
-                                    padding: '2px 4px',
-                                    fontSize: '10px',
-                                    background: 'var(--bg-secondary)',
-                                    border: '1px solid var(--border-primary)',
-                                    borderRadius: '2px',
-                                    color: 'var(--text-primary)',
-                                }}
-                            >
-                                <option value="5min">Last 5 minutes</option>
-                                <option value="1hour">Last hour</option>
-                                <option value="24hours">Last 24 hours</option>
-                                <option value="all">All time</option>
-                            </select>
-                        </div>
-
-                        <div
-                            style={{
-                                display: 'flex',
-                                gap: 'var(--spacing-xs)',
-                                alignItems: 'center',
-                            }}
-                        >
-                            <select
-                                value={exportFormat}
-                                onChange={e =>
-                                    setExportFormat(e.target.value as any)
-                                }
-                                style={{
-                                    padding: '2px 4px',
-                                    fontSize: '10px',
-                                    background: 'var(--bg-secondary)',
-                                    border: '1px solid var(--border-primary)',
-                                    borderRadius: '2px',
-                                    color: 'var(--text-primary)',
-                                }}
-                            >
-                                <option value="json">JSON</option>
-                                <option value="csv">CSV</option>
-                            </select>
-                            <button
-                                onClick={handleExportData}
-                                disabled={!analytics}
-                                style={{
-                                    padding: '2px 6px',
-                                    fontSize: '10px',
-                                    background: analytics
-                                        ? 'var(--infection-yellow)'
-                                        : 'var(--bg-secondary)',
-                                    color: analytics
-                                        ? 'black'
-                                        : 'var(--text-muted)',
-                                    border: `1px solid ${
-                                        analytics
-                                            ? 'var(--infection-yellow)'
-                                            : 'var(--border-primary)'
-                                    }`,
-                                    borderRadius: '2px',
-                                    cursor: analytics
-                                        ? 'pointer'
-                                        : 'not-allowed',
-                                }}
-                            >
-                                📥 Export
-                            </button>
-                        </div>
-                    </div>
-
-                    {analytics && (
-                        <>
-                            {/* Core Metrics */}
-                            <div>
-                                <div
-                                    style={{
-                                        marginBottom: 'var(--spacing-xs)',
-                                        color: 'var(--infection-yellow)',
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                    }}
-                                >
-                                    📊 Core Metrics ({timeRange})
-                                </div>
-
-                                <div
-                                    style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr',
-                                        gap: 'var(--spacing-xs)',
-                                        fontSize: '10px',
-                                    }}
-                                >
-                                    <div key="stimulations">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            ⚡ Stimulations:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--infection-green)',
-                                            }}
-                                        >
-                                            {analytics.totalStimulations}
-                                        </span>
-                                    </div>
-                                    <div key="responses">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            📡 Responses:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--infection-blue)',
-                                            }}
-                                        >
-                                            {analytics.totalResponses}
-                                        </span>
-                                    </div>
-                                    <div key="neurons">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            🧠 Neurons:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--text-primary)',
-                                            }}
-                                        >
-                                            {analytics.totalNeurons}
-                                        </span>
-                                    </div>
-                                    <div key="connections">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            🔗 Connections:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--text-primary)',
-                                            }}
-                                        >
-                                            {analytics.totalConnections}
-                                        </span>
-                                    </div>
-                                    <div key="avg-response">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            ⏱️ Avg Response:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color:
-                                                    analytics.avgResponseTime >
-                                                    100
-                                                        ? 'var(--infection-red)'
-                                                        : 'var(--infection-green)',
-                                            }}
-                                        >
-                                            {analytics.avgResponseTime}ms
-                                        </span>
-                                    </div>
-                                    <div key="error-rate">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            ❌ Error Rate:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color:
-                                                    analytics.errorRate > 5
-                                                        ? 'var(--infection-red)'
-                                                        : 'var(--infection-green)',
-                                            }}
-                                        >
-                                            {analytics.errorRate}%
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Throughput Metrics */}
-                            <div
-                                style={{
-                                    borderTop:
-                                        '1px solid var(--border-primary)',
-                                    paddingTop: 'var(--spacing-sm)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        marginBottom: 'var(--spacing-xs)',
-                                        color: 'var(--infection-green)',
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                    }}
-                                >
-                                    🚀 Throughput
-                                </div>
-
-                                <div
-                                    style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr',
-                                        gap: 'var(--spacing-xs)',
-                                        fontSize: '10px',
-                                    }}
-                                >
-                                    <div key="stim-per-sec">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            ⚡ Stim/sec:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--infection-green)',
-                                            }}
-                                        >
-                                            {
-                                                analytics.throughputMetrics
-                                                    .stimulationsPerSecond
-                                            }
-                                        </span>
-                                    </div>
-                                    <div key="resp-per-sec">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            📡 Resp/sec:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--infection-blue)',
-                                            }}
-                                        >
-                                            {
-                                                analytics.throughputMetrics
-                                                    .responsesPerSecond
-                                            }
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Top Performing Neurons */}
-                            {analytics.topPerformingNeurons.length > 0 && (
-                                <div
-                                    style={{
-                                        borderTop:
-                                            '1px solid var(--border-primary)',
-                                        paddingTop: 'var(--spacing-sm)',
-                                    }}
-                                >
-                                    <div
-                                        style={{
-                                            marginBottom: 'var(--spacing-xs)',
-                                            color: 'var(--infection-blue)',
-                                            fontSize: '11px',
-                                            fontWeight: 'bold',
-                                        }}
-                                    >
-                                        🏆 Top Performing Neurons
-                                    </div>
-
-                                    <div
-                                        style={{
-                                            maxHeight: '100px',
-                                            overflowY: 'auto',
-                                        }}
-                                    >
-                                        {analytics.topPerformingNeurons.map(
-                                            (neuron, index) => (
-                                                <div
-                                                    key={neuron.neuronId}
-                                                    style={{
-                                                        background:
-                                                            'var(--bg-secondary)',
-                                                        border: '1px solid var(--border-primary)',
-                                                        borderRadius: '2px',
-                                                        padding: '4px',
-                                                        marginBottom: '2px',
-                                                        fontSize: '9px',
-                                                    }}
-                                                >
-                                                    <div
-                                                        style={{
-                                                            display: 'flex',
-                                                            justifyContent:
-                                                                'space-between',
-                                                            alignItems:
-                                                                'center',
-                                                        }}
-                                                    >
-                                                        <span
-                                                            style={{
-                                                                color: 'var(--infection-green)',
-                                                            }}
-                                                        >
-                                                            #{index + 1}{' '}
-                                                            {neuron.neuronId}
-                                                        </span>
-                                                        <span
-                                                            style={{
-                                                                color: 'var(--text-muted)',
-                                                            }}
-                                                        >
-                                                            {
-                                                                neuron.stimulationCount
-                                                            }{' '}
-                                                            stims
-                                                        </span>
-                                                    </div>
-                                                    <div
-                                                        style={{
-                                                            color: 'var(--text-muted)',
-                                                        }}
-                                                    >
-                                                        avg:{' '}
-                                                        {neuron.avgResponseTime.toFixed(
-                                                            1
-                                                        )}
-                                                        ms | errors:{' '}
-                                                        {neuron.errorCount}
-                                                    </div>
-                                                </div>
-                                            )
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Network Complexity */}
-                            <div
-                                style={{
-                                    borderTop:
-                                        '1px solid var(--border-primary)',
-                                    paddingTop: 'var(--spacing-sm)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        marginBottom: 'var(--spacing-xs)',
-                                        color: 'var(--infection-red)',
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                    }}
-                                >
-                                    🕸️ Network Complexity
-                                </div>
-
-                                <div
-                                    style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr',
-                                        gap: 'var(--spacing-xs)',
-                                        fontSize: '10px',
-                                    }}
-                                >
-                                    <div key="max-hops">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            🎭 Max Hops:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--infection-red)',
-                                            }}
-                                        >
-                                            {
-                                                analytics.networkComplexity
-                                                    .maxHops
-                                            }
-                                        </span>
-                                    </div>
-                                    <div key="avg-hops">
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            📊 Avg Hops:
-                                        </span>
-                                        <br />
-                                        <span
-                                            style={{
-                                                color: 'var(--infection-yellow)',
-                                            }}
-                                        >
-                                            {
-                                                analytics.networkComplexity
-                                                    .avgHops
-                                            }
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {Object.keys(
-                                    analytics.networkComplexity.hopDistribution
-                                ).length > 0 && (
-                                    <div
-                                        style={{
-                                            marginTop: 'var(--spacing-xs)',
-                                        }}
-                                    >
-                                        <div
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                                fontSize: '9px',
-                                                marginBottom: '2px',
-                                            }}
-                                        >
-                                            Hop Distribution:
-                                        </div>
-                                        <div
-                                            style={{
-                                                fontSize: '8px',
-                                                color: 'var(--text-secondary)',
-                                            }}
-                                        >
-                                            {Object.entries(
-                                                analytics.networkComplexity
-                                                    .hopDistribution
-                                            )
-                                                .map(
-                                                    ([hops, count]) =>
-                                                        `${hops}h:${count}`
-                                                )
-                                                .join(' | ')}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Time Range Summary */}
-                            <div
-                                style={{
-                                    borderTop:
-                                        '1px solid var(--border-primary)',
-                                    paddingTop: 'var(--spacing-sm)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        marginBottom: 'var(--spacing-xs)',
-                                        color: 'var(--infection-blue)',
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                    }}
-                                >
-                                    ⏰ Time Range Summary
-                                </div>
-
-                                <div style={{ fontSize: '9px' }}>
-                                    <div
-                                        style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            marginBottom: '2px',
-                                        }}
-                                    >
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            Last 5min:
-                                        </span>
-                                        <span
-                                            style={{
-                                                color: 'var(--text-primary)',
-                                            }}
-                                        >
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last5min.stimulations
-                                            }
-                                            s |
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last5min.responses
-                                            }
-                                            r |
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last5min.errors
-                                            }
-                                            e
-                                        </span>
-                                    </div>
-                                    <div
-                                        style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            marginBottom: '2px',
-                                        }}
-                                    >
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            Last hour:
-                                        </span>
-                                        <span
-                                            style={{
-                                                color: 'var(--text-primary)',
-                                            }}
-                                        >
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last1hour.stimulations
-                                            }
-                                            s |
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last1hour.responses
-                                            }
-                                            r |
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last1hour.errors
-                                            }
-                                            e
-                                        </span>
-                                    </div>
-                                    <div
-                                        style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                        }}
-                                    >
-                                        <span
-                                            style={{
-                                                color: 'var(--text-muted)',
-                                            }}
-                                        >
-                                            Last 24h:
-                                        </span>
-                                        <span
-                                            style={{
-                                                color: 'var(--text-primary)',
-                                            }}
-                                        >
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last24hours.stimulations
-                                            }
-                                            s |
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last24hours.responses
-                                            }
-                                            r |
-                                            {
-                                                analytics.timeRangeMetrics
-                                                    .last24hours.errors
-                                            }
-                                            e
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
+    const compact = (a: AnalyticsData | null): TExoSchema => (
+        <div static={{ style: 'display:flex;gap:var(--spacing-xs);align-items:center;flex-wrap:wrap' }}>
+            {a
+                ? [
+                      <div static={{ style: 'color:var(--infection-green)' }}>⚡ {String(a.totalStimulations)} stims</div>,
+                      <div static={{ style: 'color:var(--infection-blue)' }}>📡 {String(a.totalResponses)} resp</div>,
+                      <div static={{ style: 'color:var(--infection-yellow)' }}>⏱️ {String(a.avgResponseTime)}ms avg</div>,
+                      ...(a.errorRate > 0
+                          ? [<div static={{ style: 'color:var(--infection-red)' }}>❌ {String(a.errorRate)}% errors</div>]
+                          : []),
+                  ]
+                : []}
         </div>
     );
-};
+
+    const controls = (): TExoSchema => {
+        const tr = timeRange.getValue();
+        const fmt = exportFormat.getValue();
+        const opt = (v: string, txt: string, cur: string): TExoSchema => (
+            <option static={{ value: v, selected: v === cur }}>{txt}</option>
+        );
+        return (
+            <div static={{ style: 'display:flex;justify-content:space-between;align-items:center;padding-bottom:var(--spacing-xs);border-bottom:1px solid var(--border-primary)' }}>
+                <div static={{ style: 'display:flex;gap:var(--spacing-xs);align-items:center' }}>
+                    <label static={{ style: 'font-size:10px;color:var(--text-muted)' }}>Time Range:</label>
+                    <select
+                        static={{ style: SELECT }}
+                        handlers={{ onChange: (e: Event) => timeRange.setValue((e.target as HTMLSelectElement).value as TimeRange) }}
+                    >
+                        {opt('5min', 'Last 5 minutes', tr)}
+                        {opt('1hour', 'Last hour', tr)}
+                        {opt('24hours', 'Last 24 hours', tr)}
+                        {opt('all', 'All time', tr)}
+                    </select>
+                </div>
+                <div static={{ style: 'display:flex;gap:var(--spacing-xs);align-items:center' }}>
+                    <select
+                        static={{ style: SELECT }}
+                        handlers={{ onChange: (e: Event) => exportFormat.setValue((e.target as HTMLSelectElement).value as 'json' | 'csv') }}
+                    >
+                        {opt('json', 'JSON', fmt)}
+                        {opt('csv', 'CSV', fmt)}
+                    </select>
+                    <button
+                        static={{ style: 'padding:2px 6px;font-size:10px;background:var(--infection-yellow);color:black;border:1px solid var(--infection-yellow);border-radius:2px;cursor:pointer' }}
+                        handlers={{ onClick: onExport }}
+                    >
+                        📥 Export
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const expanded = (a: AnalyticsData | null): TExoSchema => (
+        <div static={{ style: 'display:flex;flex-direction:column;gap:var(--spacing-sm)' }}>
+            {controls()}
+            {a
+                ? [
+                      // Core metrics
+                      <div>
+                          <div static={{ style: `${SECTION_H};color:var(--infection-yellow)` }}>📊 Core Metrics ({timeRange.getValue()})</div>
+                          <div static={{ style: GRID2 }}>
+                              {metric('⚡ Stimulations:', String(a.totalStimulations), 'var(--infection-green)')}
+                              {metric('📡 Responses:', String(a.totalResponses), 'var(--infection-blue)')}
+                              {metric('🧠 Neurons:', String(a.totalNeurons), 'var(--text-primary)')}
+                              {metric('🔗 Connections:', String(a.totalConnections), 'var(--text-primary)')}
+                              {metric('⏱️ Avg Response:', `${a.avgResponseTime}ms`, a.avgResponseTime > 100 ? 'var(--infection-red)' : 'var(--infection-green)')}
+                              {metric('❌ Error Rate:', `${a.errorRate}%`, a.errorRate > 5 ? 'var(--infection-red)' : 'var(--infection-green)')}
+                          </div>
+                      </div>,
+                      // Throughput
+                      <div static={{ style: SECTION }}>
+                          <div static={{ style: `${SECTION_H};color:var(--infection-green)` }}>🚀 Throughput</div>
+                          <div static={{ style: GRID2 }}>
+                              {metric('⚡ Stim/sec:', String(a.throughputMetrics.stimulationsPerSecond), 'var(--infection-green)')}
+                              {metric('📡 Resp/sec:', String(a.throughputMetrics.responsesPerSecond), 'var(--infection-blue)')}
+                          </div>
+                      </div>,
+                      // Top neurons
+                      ...(a.topPerformingNeurons.length > 0
+                          ? [
+                                <div static={{ style: SECTION }}>
+                                    <div static={{ style: `${SECTION_H};color:var(--infection-blue)` }}>🏆 Top Performing Neurons</div>
+                                    <div static={{ style: 'max-height:100px;overflow-y:auto' }}>
+                                        {a.topPerformingNeurons.map((n, i) => (
+                                            <div static={{ style: 'background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:2px;padding:4px;margin-bottom:2px;font-size:9px' }}>
+                                                <div static={{ style: 'display:flex;justify-content:space-between;align-items:center' }}>
+                                                    <span static={{ style: 'color:var(--infection-green)' }}>#{String(i + 1)} {n.neuronId}</span>
+                                                    <span static={{ style: MUTED }}>{String(n.stimulationCount)} stims</span>
+                                                </div>
+                                                <div static={{ style: MUTED }}>avg: {n.avgResponseTime.toFixed(1)}ms | errors: {String(n.errorCount)}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>,
+                            ]
+                          : []),
+                      // Network complexity
+                      <div static={{ style: SECTION }}>
+                          <div static={{ style: `${SECTION_H};color:var(--infection-red)` }}>🕸️ Network Complexity</div>
+                          <div static={{ style: GRID2 }}>
+                              {metric('🎭 Max Hops:', String(a.networkComplexity.maxHops), 'var(--infection-red)')}
+                              {metric('📊 Avg Hops:', String(a.networkComplexity.avgHops), 'var(--infection-yellow)')}
+                          </div>
+                          {Object.keys(a.networkComplexity.hopDistribution).length > 0 ? (
+                              <div static={{ style: 'margin-top:var(--spacing-xs)' }}>
+                                  <div static={{ style: `${MUTED};font-size:9px;margin-bottom:2px` }}>Hop Distribution:</div>
+                                  <div static={{ style: 'font-size:8px;color:var(--text-secondary)' }}>
+                                      {Object.entries(a.networkComplexity.hopDistribution).map(([hops, count]) => `${hops}h:${count}`).join(' | ')}
+                                  </div>
+                              </div>
+                          ) : (
+                              <div />
+                          )}
+                      </div>,
+                      // Time range summary
+                      <div static={{ style: SECTION }}>
+                          <div static={{ style: `${SECTION_H};color:var(--infection-blue)` }}>⏰ Time Range Summary</div>
+                          <div static={{ style: 'font-size:9px' }}>
+                              {(
+                                  [
+                                      ['Last 5min:', a.timeRangeMetrics.last5min],
+                                      ['Last hour:', a.timeRangeMetrics.last1hour],
+                                      ['Last 24h:', a.timeRangeMetrics.last24hours],
+                                  ] as const
+                              ).map(([label, m]) => (
+                                  <div static={{ style: 'display:flex;justify-content:space-between;margin-bottom:2px' }}>
+                                      <span static={{ style: MUTED }}>{label}</span>
+                                      <span static={{ style: 'color:var(--text-primary)' }}>{String(m.stimulations)}s | {String(m.responses)}r | {String(m.errors)}e</span>
+                                  </div>
+                              ))}
+                          </div>
+                      </div>,
+                  ]
+                : []}
+        </div>
+    );
+
+    const panel = (expandedNow: boolean, a: AnalyticsData | null): TExoSchema => (
+        <div static={{ style: PANEL }}>
+            <div
+                static={{ style: `display:flex;justify-content:space-between;align-items:center;margin-bottom:${expandedNow ? 'var(--spacing-sm)' : '0'};cursor:pointer` }}
+                handlers={{ onClick: () => isExpanded.setValue(!isExpanded.getValue()) }}
+            >
+                <span static={{ style: 'color:var(--infection-yellow)' }}>📊 Analytics Dashboard</span>
+                <span static={{ style: MUTED }}>{expandedNow ? '▼' : '▶'}</span>
+            </div>
+            {expandedNow ? expanded(a) : compact(a)}
+        </div>
+    );
+
+    const content = combine([selectedAppId, isExpanded, analytics], () =>
+        selectedAppId.getValue()
+            ? panel(isExpanded.getValue(), analytics.getValue())
+            : <div static={{ style: EMPTY }}>📊 Select an app to view analytics</div>
+    );
+
+    return <div bindable={{ children: content }} />;
+}

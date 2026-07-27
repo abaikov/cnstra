@@ -5,13 +5,12 @@
 
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { db, dbEventQueue } from '../../model';
-import type {
-    CNSDTOHop,
-    CNSDTOServerMessage,
-    CNSDTOStimulation,
-} from '@cnstra/devtools-dto';
+import type { CNSDTOServerMessage } from '@cnstra/devtools-dto';
 import { mainCNS } from '../../cns';
 import { wsAxon } from '../../cns/ws/WsAxon';
+import { appModelAxon } from '../../cns/controller-layer/AppModelAxon';
+import { translateRunView } from '../../durable/translateRunView';
+import type { TCNSDurableRunView } from '../../durable/TCNSDurableRunView';
 
 // Deterministic: await the whole ingest → data-layer chain, then flush the queue.
 const feed = async (msg: CNSDTOServerMessage) => {
@@ -105,61 +104,94 @@ describe('WebSocket → CNS → OIMDB Integration', () => {
         ).toBe(2);
     });
 
-    it('stores a stimulation and its hops, indexed by stimulation and app', async () => {
+    it('translates a name-based run view into stimulation + hops in OIMDB (2b-4 ingest)', async () => {
         await feed(connectMsg());
 
-        const stimulation: CNSDTOStimulation = {
-            id: 'stim-1',
+        // A name-based run view (the shape polled via `cns.stimulations.query`),
+        // scoped to this cns, with one completed attempt of two tasks.
+        const run: TCNSDurableRunView = {
+            runId: 'stim-1',
+            status: 'completed',
+            scopeName: CNS_ID,
+            entry: { collateralName: 'request', payload: { n: 1 } },
+            frontier: [],
+            attempts: [
+                {
+                    attemptNumber: 1,
+                    status: 'completed',
+                    hopCount: 2,
+                    startedAt: Date.now() - 100,
+                    completedAt: Date.now(),
+                    tasks: [
+                        {
+                            index: 0,
+                            neuronName: 'api',
+                            dendriteCollateralName: 'request',
+                            status: 'done',
+                            output: { collateralName: 'request', payload: { n: 1 } },
+                            error: null,
+                            startedAt: Date.now() - 100,
+                            duration: 1,
+                        },
+                        {
+                            index: 1,
+                            neuronName: 'worker',
+                            dendriteCollateralName: 'request',
+                            status: 'done',
+                            output: { collateralName: 'done', payload: { ok: true } },
+                            error: null,
+                            startedAt: Date.now() - 50,
+                            duration: 2,
+                        },
+                    ],
+                },
+            ],
+        };
+
+        // The ingest's translation step: name → the panel's id-shaped entities.
+        const collateralIdByName = new Map(
+            db.collaterals.getAll().filter(c => c.cnsId === CNS_ID).map(c => [c.name, c.id])
+        );
+        const { stimulation, hops } = translateRunView(run, {
             cnsId: CNS_ID,
             appId: APP,
-            collateralId: `${CNS_ID}:api:request`,
-            payload: { n: 1 },
-            startedAt: Date.now(),
-            completedAt: null,
-            hopCount: 0,
-            hasError: false,
-            replayOf: null,
-        };
-        await feed({ type: 'stimulation.started', stimulation });
-
-        const hop = (index: number): CNSDTOHop => ({
-            id: `stim-1:${index}`,
-            stimulationId: 'stim-1',
-            index,
-            neuronId: `${CNS_ID}:worker`,
-            inputCollateralId: `${CNS_ID}:api:request`,
-            outputCollateralId: `${CNS_ID}:worker:done`,
-            inputPayload: { n: 1 },
-            outputPayload: { ok: true },
-            startedAt: Date.now(),
-            duration: 2,
-            error: null,
+            collateralIdByName: name => collateralIdByName.get(name),
         });
-        await feed({ type: 'stimulation.hop', hop: hop(0) });
-        await feed({ type: 'stimulation.hop', hop: hop(1) });
 
-        // Stimulation stored.
+        // ids reconstruct against the topology exactly.
+        expect(stimulation.id).toBe('stim-1');
+        expect(stimulation.collateralId).toBe(`${CNS_ID}:api:request`);
+        expect(hops.map(h => h.neuronId)).toEqual([
+            `${CNS_ID}:api`,
+            `${CNS_ID}:worker`,
+        ]);
+        expect(hops[1].outputCollateralId).toBe(`${CNS_ID}:worker:done`);
+
+        // Feed them through the same data-layer the ingest uses.
+        mainCNS.stimulate(appModelAxon.stimulationStarted.createSignal(stimulation));
+        for (const hop of hops) {
+            mainCNS.stimulate(appModelAxon.hopAdded.createSignal(hop));
+        }
+        mainCNS.stimulate(
+            appModelAxon.stimulationCompleted.createSignal({
+                stimulationId: stimulation.id,
+                completedAt: stimulation.completedAt!,
+                hopCount: stimulation.hopCount,
+                hasError: stimulation.hasError,
+            })
+        );
+        dbEventQueue.flush();
+
+        // Stimulation + hops stored, indexed by stimulation and app.
         expect(db.stimulations.getOneByPk('stim-1')?.appId).toBe(APP);
-
-        // Hops stored, with appId denormalized from the parent stimulation.
-        const hops = db.responses.getAll();
-        expect(hops.length).toBe(2);
-        expect(hops.every(h => h.appId === APP)).toBe(true);
-
-        // Indexed by stimulation and by app.
+        const stored = db.responses.getAll();
+        expect(stored.length).toBe(2);
+        expect(stored.every(h => h.appId === APP)).toBe(true);
         expect(
             db.responses.indexes.stimulationId.getPksByKey('stim-1').size
         ).toBe(2);
         expect(db.responses.indexes.appId.getPksByKey(APP).size).toBe(2);
 
-        // Completion patch applies.
-        await feed({
-            type: 'stimulation.completed',
-            stimulationId: 'stim-1',
-            completedAt: Date.now(),
-            hopCount: 2,
-            hasError: false,
-        });
         const done = db.stimulations.getOneByPk('stim-1');
         expect(done?.completedAt).not.toBeNull();
         expect(done?.hopCount).toBe(2);

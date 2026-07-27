@@ -1,13 +1,12 @@
 import type { TExoSchema } from '@exodra/core';
 import { bindable, derive } from '@exodra/reactivity';
-import { reactIsland } from '@exodra/react';
-import { combine } from '@oimdb/exodra';
+import { combine } from '../exo/oimdb-bind';
 import type { TExoRouter } from '@exodra/router';
-import { PerformanceMonitor } from './PerformanceMonitor';
-import { SignalDebugger } from './SignalDebugger';
+import { performanceMonitor } from './PerformanceMonitor';
+import { signalDebugger } from './SignalDebugger';
 import { contextStoreMonitor } from './ContextStoreMonitor';
-import { AnalyticsDashboard } from './AnalyticsDashboard';
-import { isStimulationsPath } from '../app/routes';
+import { analyticsDashboard } from './AnalyticsDashboard';
+import { isStimulationsPath, isDurablePath } from '../app/routes';
 import type { DevtoolsSocket } from '../app/controllers/socket';
 import type { AppSelection } from '../app/controllers/selection';
 import type { TApp } from '../model';
@@ -47,17 +46,8 @@ export function sidebarView({
         selectedCnsId,
         cnsIdsForApp,
     } = selection;
-    const onlyErrors = bindable(false);
 
     // ── Panel island props (reactive on selection) ───────────────────────────
-    const signalProps = combine([effectiveSelectedAppId, selectedCnsId], () => ({
-        wsRef: socket.wsRef,
-        selectedAppId: effectiveSelectedAppId.getValue(),
-        selectedCnsId: selectedCnsId.getValue() || undefined,
-    }));
-    const appIdProps = combine([effectiveSelectedAppId], () => ({
-        selectedAppId: effectiveSelectedAppId.getValue(),
-    }));
 
     // ── Connected apps list (re-renders on apps set OR selection change) ──────
     const appCard = (app: TApp, selected: boolean): TExoSchema => (
@@ -247,6 +237,7 @@ export function sidebarView({
     const filterAndNav = (): TExoSchema => {
         const loc = router.getLocation();
         const isStim = isStimulationsPath(loc.pathname);
+        const isDurable = isDurablePath(loc.pathname);
         const appId = selectedAppId.getValue();
         const eff = effectiveSelectedAppId.getValue() || '';
 
@@ -259,61 +250,8 @@ export function sidebarView({
 
         return (
             <div static={{ style: 'display:flex;flex-direction:column;gap:var(--spacing-sm)' }}>
-                <div
-                    static={{
-                        style: 'border:1px solid var(--border-primary);border-radius:var(--radius-sm);padding:8px;background:var(--bg-card)',
-                    }}
-                >
-                    <div
-                        static={{
-                            style: 'font-size:var(--font-size-xs);color:var(--text-muted);margin-bottom:6px',
-                        }}
-                    >
-                        Stimulation Filters (optional)
-                    </div>
-                    <div static={{ style: 'display:grid;gap:6px' }}>
-                        <label
-                            static={{
-                                style: 'display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-secondary)',
-                            }}
-                        >
-                            <input
-                                static={{ type: 'checkbox' }}
-                                bindable={{ checked: onlyErrors }}
-                                handlers={{
-                                    onChange: (e: Event) =>
-                                        onlyErrors.setValue(
-                                            (e.target as HTMLInputElement).checked
-                                        ),
-                                }}
-                            />
-                            Only errors
-                        </label>
-                        <button
-                            static={{
-                                class: 'btn-infected',
-                                style: 'width:100%;font-size:var(--font-size-xs);padding:6px;background:var(--flesh-medium);color:var(--text-secondary);border-color:var(--border-primary)',
-                            }}
-                            handlers={{
-                                onClick: () => {
-                                    if (!appId) return;
-                                    socket.send({
-                                        type: 'stimulations.query',
-                                        requestId: genRequestId(),
-                                        appId,
-                                        filter: {
-                                            hasError: onlyErrors.getValue() || undefined,
-                                        },
-                                    });
-                                },
-                            }}
-                        >
-                            Apply Filters
-                        </button>
-                    </div>
-                </div>
                 <button
-                    static={{ class: 'btn-infected', style: navBtnStyle(!isStim) }}
+                    static={{ class: 'btn-infected', style: navBtnStyle(!isStim && !isDurable) }}
                     handlers={{
                         onClick: () => {
                             if (appId) void router.navigate(`/apps/${eff}`);
@@ -321,6 +259,12 @@ export function sidebarView({
                     }}
                 >
                     🗺️ Network Topology
+                </button>
+                <button
+                    static={{ class: 'btn-infected', style: navBtnStyle(isDurable) }}
+                    handlers={{ onClick: () => void router.navigate('/durable') }}
+                >
+                    💀 Durable Runs
                 </button>
                 {appId
                     ? (
@@ -349,10 +293,10 @@ export function sidebarView({
                 🧠 CNStra DevTools
             </h2>
 
-            <div static={{ style: PANEL_WRAP, children: [reactIsland(PerformanceMonitor, {})] }} />
-            <div static={{ style: PANEL_WRAP, children: [reactIsland(SignalDebugger, signalProps)] }} />
+            <div static={{ style: PANEL_WRAP, children: [performanceMonitor()] }} />
+            <div static={{ style: PANEL_WRAP, children: [signalDebugger(socket, effectiveSelectedAppId, selectedCnsId)] }} />
             <div static={{ style: PANEL_WRAP, children: [contextStoreMonitor(effectiveSelectedAppId)] }} />
-            <div static={{ style: 'margin-bottom:var(--spacing-xl)', children: [reactIsland(AnalyticsDashboard, appIdProps)] }} />
+            <div static={{ style: 'margin-bottom:var(--spacing-xl)', children: [analyticsDashboard(effectiveSelectedAppId)] }} />
 
             <div static={{ style: 'margin-bottom:var(--spacing-xl)' }}>
                 <div

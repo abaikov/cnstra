@@ -19,8 +19,8 @@
   "build": "./electron-builder.config.js",
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "dependencies": {
-    "@cnstra/devtools-server": "^1.1.0",
-    "@cnstra/devtools-server-repository-in-memory": "^1.1.0",
+    "@cnstra/devtools-server": "^2.0.0",
+    "@cnstra/devtools-server-repository-in-memory": "^2.0.0",
     "cross-env": "7.0.3",
     "ws": "8.18.0"
   },

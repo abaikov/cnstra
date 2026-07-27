@@ -12,5 +12,8 @@ export default {
     '!tests/**/*.ts',
   ],
   moduleDirectories: ['node_modules', 'src'],
+  moduleNameMapper: {
+    '^@cnstra/types$': '<rootDir>/../types/src/index.ts',
+  },
   roots: ['<rootDir>/src', '<rootDir>/tests']
 };

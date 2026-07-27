@@ -15,10 +15,9 @@ export default function Home(): JSX.Element {
                         CNStra
                     </Heading>
                     <p className="hero__subtitle">
-                        A typed orchestration engine for your app's logic: model
-                        flows as an explicit graph of isolated units — run them
-                        deterministically, trace and resume them, decoupled from
-                        storage and I/O. On the backend and the frontend.
+                        A nervous system for your app — typed, single-process
+                        orchestration with explicit wiring and exhaustive
+                        bindings.
                     </p>
                     {/* removed extra tagline */}
                     <div>

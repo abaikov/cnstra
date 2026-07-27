@@ -2,11 +2,10 @@ import {
     CNSDTOApp,
     CNSDTOAppBatchMessageSchema,
     CNSDTOClientMessageSchema,
-    CNSDTOStimulation,
-    CNSDTOStimulationFilter,
-    CNSDTOHop,
     CNSDTOTopologyMessage,
 } from '@cnstra/devtools-dto';
+import type { ICNSStimulationRepository } from '@cnstra/persist';
+import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 import { WebSocket } from 'ws';
 
 // ─── Repository interface ─────────────────────────────────────────────────────
@@ -21,23 +20,6 @@ export interface ICNSDevToolsServerRepository {
     // Topology
     saveTopology(snapshot: CNSDTOTopologySnapshot): void | Promise<void>;
     getTopology(cnsId?: string): CNSDTOTopologySnapshot[] | Promise<CNSDTOTopologySnapshot[]>;
-
-    // Stimulations
-    saveStimulation(stimulation: CNSDTOStimulation): void | Promise<void>;
-    completeStimulation(
-        stimulationId: string,
-        completedAt: number,
-        hopCount: number,
-        hasError: boolean
-    ): void | Promise<void>;
-    getStimulations(
-        appId: string,
-        filter: CNSDTOStimulationFilter
-    ): { items: CNSDTOStimulation[]; total: number } | Promise<{ items: CNSDTOStimulation[]; total: number }>;
-
-    // Hops
-    saveHop(hop: CNSDTOHop): void | Promise<void>;
-    getHops(stimulationId: string): CNSDTOHop[] | Promise<CNSDTOHop[]>;
 
     // CNS ↔ App mapping
     addCnsToApp(appId: string, cnsId: string): void | Promise<void>;
@@ -59,7 +41,19 @@ export class CNSDevToolsServer {
     private lastCpuUsage = process.cpuUsage();
     private lastCpuTime = Date.now();
 
-    constructor(private readonly repository: ICNSDevToolsServerRepository) {}
+    /**
+     * Name-based durable store (Stimulation/Attempt/Task). Written from the three
+     * `cns.stimulation*` batch items the producer emits when `trackStimulations` is on.
+     * Defaults to in-memory; the example-app can inject a Postgres store.
+     */
+    private readonly stimulationRepository: ICNSStimulationRepository;
+
+    constructor(
+        private readonly repository: ICNSDevToolsServerRepository,
+        stimulationRepository: ICNSStimulationRepository = new CNSInMemoryStimulationRepository()
+    ) {
+        this.stimulationRepository = stimulationRepository;
+    }
 
     // ─── Message entry point ─────────────────────────────────────────────────
 
@@ -104,16 +98,80 @@ export class CNSDevToolsServer {
             case 'topology.query':
                 await this.handleTopologyQuery(ws, msg.requestId, msg.cnsId, msg.appId);
                 break;
-            case 'stimulations.query':
-                await this.handleStimulationsQuery(ws, msg);
-                break;
-            case 'hops.query':
-                await this.handleHopsQuery(ws, msg);
-                break;
             case 'replay.start':
                 await this.handleReplayStart(ws, msg);
                 break;
+            case 'stimulation.retry':
+                await this.handleStimulationRetry(ws, msg);
+                break;
+            case 'stimulation.clone':
+                await this.handleStimulationClone(ws, msg);
+                break;
+            case 'cns.stimulations.query':
+                await this.handleRunsQuery(ws, msg);
+                break;
         }
+    }
+
+    /**
+     * Name-based observability (Phase 2b-3): project the durable
+     * `ICNSStimulationRepository` into the run/attempt/task roster the panel
+     * renders. This replaces the legacy id-based `stimulations.query`/`hops.query`.
+     */
+    private async handleRunsQuery(ws: WebSocket, msg: any): Promise<void> {
+        const stims = await this.stimulationRepository.listStimulations(
+            msg.scopeName ? { scopeName: msg.scopeName } : undefined
+        );
+        const runs = [];
+        for (const stim of stims) {
+            const attempts = await this.stimulationRepository.getAttempts(
+                stim.stimulationId
+            );
+            const attemptViews = [];
+            for (const a of attempts) {
+                const tasks = await this.stimulationRepository.getTasks(
+                    a.stimulationAttemptId
+                );
+                attemptViews.push({
+                    attemptNumber: a.attemptNumber,
+                    status: a.status,
+                    hopCount: a.hopCount,
+                    startedAt: a.startedAt,
+                    completedAt: a.completedAt ?? null,
+                    tasks: tasks.map(t => ({
+                        index: t.index,
+                        neuronName: t.neuronName,
+                        dendriteCollateralName: t.dendriteCollateralName,
+                        status: t.status,
+                        output: t.output
+                            ? {
+                                  collateralName: t.output.collateralName,
+                                  payload: t.output.payload,
+                              }
+                            : null,
+                        error: t.error ?? null,
+                        startedAt: t.startedAt,
+                        duration: t.duration ?? null,
+                    })),
+                });
+            }
+            runs.push({
+                runId: stim.stimulationId,
+                status: stim.status,
+                scopeName: stim.scopeName,
+                entry: {
+                    collateralName: stim.entry.collateralName,
+                    payload: stim.entry.payload,
+                },
+                frontier: stim.progress.tasks.map(t => t.neuronName),
+                attempts: attemptViews,
+            });
+        }
+        this.send(ws, {
+            type: 'cns.stimulations.result',
+            requestId: msg.requestId,
+            runs,
+        });
     }
 
     addClient(ws: WebSocket): void {
@@ -142,16 +200,22 @@ export class CNSDevToolsServer {
             case 'topology':
                 await this.handleTopology(ws, item);
                 break;
-            case 'stimulation.started':
-                await this.handleStimulationStarted(ws, item.stimulation);
+            // ── Name-based durable model ──
+            case 'cns.stimulation':
+                await this.stimulationRepository.saveStimulation(item.data);
                 break;
-            case 'stimulation.hop':
-                await this.handleStimulationHop(item.hop);
+            case 'cns.stimulation.attempt':
+                await this.stimulationRepository.saveAttempt(item.data);
                 break;
-            case 'stimulation.completed':
-                await this.handleStimulationCompleted(item);
+            case 'cns.stimulation.task':
+                await this.stimulationRepository.appendTask(item.data);
                 break;
         }
+    }
+
+    /** The name-based durable store, for tests/integrations that want to read it back. */
+    getStimulationRepository(): ICNSStimulationRepository {
+        return this.stimulationRepository;
     }
 
     private async handleTopology(ws: WebSocket, msg: any): Promise<void> {
@@ -187,40 +251,6 @@ export class CNSDevToolsServer {
         this.broadcastRaw(JSON.stringify(topologyBroadcast));
     }
 
-    private async handleStimulationStarted(ws: WebSocket, stimulation: CNSDTOStimulation): Promise<void> {
-        // Update lastSeenAt for the app
-        const appId = this.appSockets.get(ws);
-        if (appId) {
-            const apps = await this.repository.listApps();
-            const app = apps.find(a => a.id === appId);
-            if (app) await this.repository.upsertApp({ ...app, lastSeenAt: Date.now() });
-        }
-
-        await this.repository.saveStimulation(stimulation);
-        this.broadcast({ type: 'stimulation.started', stimulation });
-    }
-
-    private async handleStimulationHop(hop: CNSDTOHop): Promise<void> {
-        await this.repository.saveHop(hop);
-        this.broadcast({ type: 'stimulation.hop', hop });
-    }
-
-    private async handleStimulationCompleted(item: any): Promise<void> {
-        await this.repository.completeStimulation(
-            item.stimulationId,
-            item.completedAt,
-            item.hopCount,
-            item.hasError
-        );
-        this.broadcast({
-            type: 'stimulation.completed',
-            stimulationId: item.stimulationId,
-            completedAt: item.completedAt,
-            hopCount: item.hopCount,
-            hasError: item.hasError,
-        });
-    }
-
     // ─── UI client query handlers ─────────────────────────────────────────────
 
     private async handleClientConnect(ws: WebSocket): Promise<void> {
@@ -249,29 +279,6 @@ export class CNSDevToolsServer {
         this.send(ws, { type: 'topology.result', requestId, snapshots });
     }
 
-    private async handleStimulationsQuery(ws: WebSocket, msg: any): Promise<void> {
-        const appId = msg.appId ?? (msg.cnsId ? await this.repository.findAppByCns(msg.cnsId) : undefined);
-
-        if (!appId) {
-            this.send(ws, { type: 'stimulations.result', requestId: msg.requestId, items: [], total: 0, offset: 0 });
-            return;
-        }
-
-        const { items, total } = await this.repository.getStimulations(appId, msg.filter ?? {});
-        this.send(ws, {
-            type: 'stimulations.result',
-            requestId: msg.requestId,
-            items,
-            total,
-            offset: msg.filter?.offset ?? 0,
-        });
-    }
-
-    private async handleHopsQuery(ws: WebSocket, msg: any): Promise<void> {
-        const items = await this.repository.getHops(msg.stimulationId);
-        this.send(ws, { type: 'hops.result', requestId: msg.requestId, items });
-    }
-
     private async handleReplayStart(ws: WebSocket, msg: any): Promise<void> {
         const appId = msg.appId ?? (msg.cnsId ? await this.repository.findAppByCns(msg.cnsId) : undefined);
         const appSockets = appId ? this.appWsByAppId.get(appId) : undefined;
@@ -285,6 +292,108 @@ export class CNSDevToolsServer {
         this.send(ws, { type: 'replay.accepted', replayId: msg.replayId, newStimulationId });
 
         const payload = JSON.stringify(msg);
+        for (const appWs of appSockets) {
+            try { appWs.send(payload); } catch {}
+        }
+    }
+
+    // ─── Durable actions (retry / clone), Phase 2b-2 ──────────────────────────────
+    //
+    // The UI's request is thin (a stimulationId). The CNS + name→ref registry live in
+    // the APP, so the server can't execute it: it ENRICHES from the durable store (the
+    // stored entry + progress + a server-assigned attempt identity) and forwards a
+    // resume/launch command to the owning app, routed by scopeName (= the cns id).
+
+    /** Resolve the app that owns a stimulation's scope, or reject if unreachable. */
+    private async resolveScopeApp(
+        scopeName: string | undefined
+    ): Promise<Set<WebSocket> | undefined> {
+        const appId = scopeName
+            ? await this.repository.findAppByCns(scopeName)
+            : undefined;
+        const sockets = appId ? this.appWsByAppId.get(appId) : undefined;
+        return sockets && sockets.size > 0 ? sockets : undefined;
+    }
+
+    private async handleStimulationRetry(ws: WebSocket, msg: any): Promise<void> {
+        const reject = (reason: string) =>
+            this.send(ws, {
+                type: 'stimulation.retry.rejected',
+                requestId: msg.requestId,
+                stimulationId: msg.stimulationId,
+                reason,
+            });
+
+        const stim = await this.stimulationRepository.getStimulation(msg.stimulationId);
+        if (!stim) return reject('unknown stimulation');
+        if (stim.progress.tasks.length === 0)
+            return reject('nothing to resume (empty frontier)');
+
+        const appSockets = await this.resolveScopeApp(stim.scopeName);
+        if (!appSockets) return reject('app not connected');
+
+        const attempts = await this.stimulationRepository.getAttempts(msg.stimulationId);
+        const nextAttempt = attempts.length + 1;
+        const stimulationAttemptId = `${msg.stimulationId}#${nextAttempt}`;
+
+        this.send(ws, {
+            type: 'stimulation.retry.accepted',
+            requestId: msg.requestId,
+            stimulationId: msg.stimulationId,
+            newStimulationAttemptId: stimulationAttemptId,
+        });
+
+        const payload = JSON.stringify({
+            type: 'cns.stimulation.resume',
+            requestId: msg.requestId,
+            scopeName: stim.scopeName,
+            stimulationId: msg.stimulationId,
+            stimulationAttemptId,
+            attemptNumber: nextAttempt,
+            entry: stim.entry,
+            progress: stim.progress,
+            options: msg.options,
+        });
+        for (const appWs of appSockets) {
+            try { appWs.send(payload); } catch {}
+        }
+    }
+
+    private async handleStimulationClone(ws: WebSocket, msg: any): Promise<void> {
+        const reject = (reason: string) =>
+            this.send(ws, {
+                type: 'stimulation.clone.rejected',
+                requestId: msg.requestId,
+                stimulationId: msg.stimulationId,
+                reason,
+            });
+
+        const stim = await this.stimulationRepository.getStimulation(msg.stimulationId);
+        if (!stim) return reject('unknown stimulation');
+
+        const appSockets = await this.resolveScopeApp(stim.scopeName);
+        if (!appSockets) return reject('app not connected');
+
+        const newStimulationId = `${msg.stimulationId}-clone-${Date.now()}`;
+        const stimulationAttemptId = `${newStimulationId}#1`;
+
+        this.send(ws, {
+            type: 'stimulation.clone.accepted',
+            requestId: msg.requestId,
+            stimulationId: msg.stimulationId,
+            newStimulationId,
+            newStimulationAttemptId: stimulationAttemptId,
+        });
+
+        const payload = JSON.stringify({
+            type: 'cns.stimulation.launch',
+            requestId: msg.requestId,
+            scopeName: stim.scopeName,
+            stimulationId: newStimulationId,
+            stimulationAttemptId,
+            entry: stim.entry,
+            options: msg.options,
+        });
         for (const appWs of appSockets) {
             try { appWs.send(payload); } catch {}
         }

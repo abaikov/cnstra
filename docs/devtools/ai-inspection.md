@@ -9,7 +9,7 @@ keywords: [AI, Claude, Cursor, graph, inspection, neuron graph, CNS graph, histo
 
 AI tools like Claude and Cursor understand your CNStra application much better when they can read the neuron graph and runtime history as plain text — instead of parsing dozens of source files.
 
-`@cnstra/devtools` exports two utilities for this: `dumpCNSGraph` and `CNSHistoryLogger`. Both take a registry created with `createPersistRegistry` — one line, no boilerplate.
+`@cnstra/devtools` exports two utilities for this: `dumpCNSGraph` and `CNSHistoryLogger`. Both take a registry created with `CNSPersistOptionsRegistryFactory` — one line, no boilerplate.
 
 ## Static graph dump
 
@@ -28,8 +28,8 @@ writeFileSync('CNS_GRAPH.md', dumpCNSGraph(cns, registry));
 If you don't have a shared registry yet, create one inline:
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
-const registry = createPersistRegistry({ deckNeuron, cardNeuron, uiNeuron });
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron, uiNeuron });
 writeFileSync('CNS_GRAPH.md', dumpCNSGraph(cns, registry));
 ```
 
@@ -64,12 +64,12 @@ Run `npm run graph` whenever your neuron structure changes. Commit `CNS_GRAPH.md
 `CNSHistoryLogger` subscribes to a CNS instance and records the stimulation history.
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { CNSHistoryLogger } from '@cnstra/devtools';
 import { cns } from './cns';
 import { deckNeuron, cardNeuron } from './neurons';
 
-const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron });
 
 const logger = new CNSHistoryLogger(cns, registry);
 

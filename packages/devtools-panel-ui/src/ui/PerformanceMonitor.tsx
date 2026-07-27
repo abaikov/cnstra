@@ -1,27 +1,30 @@
-/** @jsxImportSource react */
-import React, { useState, useEffect } from 'react';
+import type { TExoSchema } from '@exodra/core';
+import { bindable } from '@exodra/reactivity';
+import { combine } from '../exo/oimdb-bind';
 import { db } from '../model';
 
-interface PerformanceMetrics {
-    memoryUsage: {
-        used: number;
-        total: number;
-        percentage: number;
-    };
+// Native Exodra port of the React <PerformanceMonitor> island (the last one). The
+// 2s sampling interval lives in onExoMount/onExoUnmount (was useEffect); metrics +
+// rolling history are bindables; the panel is a reactive region.
+// NOTE: sparklines use declarative <svg><polyline> — if Exodra's JSX runtime doesn't
+// namespace SVG they won't draw (verify via e2e); the numeric metrics don't depend on it.
+
+interface CnsMetrics {
+    stimulationsPerSecond: number;
+    avgResponseTime: number;
+    avgHopCount: number;
+    activeNeurons: number;
+    totalConnections: number;
+    queueUtilization: number;
+    errorRate: number;
+}
+interface Metrics {
+    memoryUsage: { used: number; total: number; percentage: number };
     renderTime: number;
     timestamp: number;
-    cnsMetrics: {
-        stimulationsPerSecond: number;
-        avgResponseTime: number;
-        avgHopCount: number;
-        activeNeurons: number;
-        totalConnections: number;
-        queueUtilization: number;
-        errorRate: number;
-    };
+    cnsMetrics: CnsMetrics;
 }
-
-interface PerformanceHistory {
+interface History {
     memory: number[];
     timestamps: number[];
     stimulationsPerSecond: number[];
@@ -30,858 +33,205 @@ interface PerformanceHistory {
     errorRate: number[];
 }
 
-export const PerformanceMonitor: React.FC = () => {
-    const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
-    const [history, setHistory] = useState<PerformanceHistory>({
-        memory: [],
-        timestamps: [],
-        stimulationsPerSecond: [],
-        responseTime: [],
-        hopCount: [],
-        errorRate: [],
-    });
-    const [isExpanded, setIsExpanded] = useState(false);
-    const [lastMetricsTime, setLastMetricsTime] = useState(Date.now());
-    const [lastStimulationCount, setLastStimulationCount] = useState(0);
+const statusColor = (v: number, warning: number, danger: number): string =>
+    v >= danger
+        ? 'var(--infection-red)'
+        : v >= warning
+          ? 'var(--infection-yellow)'
+          : 'var(--infection-green)';
 
-    // Hook into CNStra data
-    const allResponses = db.responses.getAll();
-    const allStimulations = db.stimulations.getAll();
-    const allNeurons = db.neurons.getAll();
-    const allDendrites = db.dendrites.getAll();
+const emptyHistory = (): History => ({
+    memory: [],
+    timestamps: [],
+    stimulationsPerSecond: [],
+    responseTime: [],
+    hopCount: [],
+    errorRate: [],
+});
 
-    // Calculate CNStra-specific metrics
-    const getCNSMetrics = () => {
-        const now = Date.now();
-        const timeDiff = (now - lastMetricsTime) / 1000; // seconds
+export function performanceMonitor(): TExoSchema {
+    const metricsB = bindable<Metrics | null>(null);
+    const historyB = bindable<History>(emptyHistory());
+    const isExpandedB = bindable(false);
 
-        // Calculate stimulations per second
-        const currentStimulationCount = allStimulations.length;
-        const newStimulations = currentStimulationCount - lastStimulationCount;
-        const stimulationsPerSecond =
-            timeDiff > 0 ? newStimulations / timeDiff : 0;
+    let lastMetricsTime = Date.now();
+    let lastStimulationCount = 0;
+    let timer: ReturnType<typeof setInterval> | undefined;
 
-        // Calculate average response time
-        const recentResponses = allResponses.filter(
-            r => r.duration && r.duration > 0
-        );
-        const avgResponseTime =
-            recentResponses.length > 0
-                ? recentResponses.reduce(
-                      (sum, r) => sum + (r.duration || 0),
-                      0
-                  ) / recentResponses.length
-                : 0;
-
-        // Average hop count per stimulation (now available via
-        // CNSDTOStimulation.hopCount).
-        const avgHopCount =
-            allStimulations.length > 0
-                ? allStimulations.reduce((sum, s) => sum + s.hopCount, 0) /
-                  allStimulations.length
-                : 0;
-
-        // Count active neurons (neurons with recent activity). Stimulations no
-        // longer carry neuronId in the new protocol, so derive activity from
-        // hops (db.responses / CNSDTOHop), which do.
-        const recentTime = now - 5000; // last 5 seconds
-        const recentHops = allResponses.filter(r => r.startedAt > recentTime);
-        const activeNeuronIds = new Set(recentHops.map(r => r.neuronId));
-        const activeNeurons = activeNeuronIds.size;
-
-        // Count total connections (unique collateral -> dendrite pairs)
-        const totalConnections = allDendrites.length;
-
-        // Calculate queue utilization (not available in StimulationResponse DTO)
-        const queueUtilization = 0;
-
-        // Calculate error rate
-        const responsesWithErrors = allResponses.filter(r => r.error);
-        const errorRate =
-            allResponses.length > 0
-                ? (responsesWithErrors.length / allResponses.length) * 100
-                : 0;
-
-        return {
-            stimulationsPerSecond:
-                Math.round(stimulationsPerSecond * 100) / 100,
-            avgResponseTime: Math.round(avgResponseTime * 100) / 100,
-            avgHopCount: Math.round(avgHopCount * 100) / 100,
-            activeNeurons,
-            totalConnections,
-            queueUtilization: Math.round(queueUtilization * 100) / 100,
-            errorRate: Math.round(errorRate * 100) / 100,
-        };
-    };
-
-    // Calculate memory usage
-    const getMemoryUsage = (): PerformanceMetrics['memoryUsage'] => {
+    const memUsage = (): Metrics['memoryUsage'] => {
         if ('memory' in performance) {
-            const memory = (performance as any).memory;
-            const used = memory.usedJSHeapSize;
-            const total = memory.totalJSHeapSize;
+            const m = (performance as unknown as { memory: { usedJSHeapSize: number; totalJSHeapSize: number } }).memory;
+            const used = m.usedJSHeapSize;
+            const total = m.totalJSHeapSize;
             return {
-                used: Math.round((used / 1024 / 1024) * 100) / 100, // MB
-                total: Math.round((total / 1024 / 1024) * 100) / 100, // MB
-                percentage: Math.round((used / total) * 100),
+                used: Math.round((used / 1024 / 1024) * 100) / 100,
+                total: Math.round((total / 1024 / 1024) * 100) / 100,
+                percentage: total ? Math.round((used / total) * 100) : 0,
             };
         }
         return { used: 0, total: 0, percentage: 0 };
     };
 
-    // Update metrics periodically
-    useEffect(() => {
-        const updateMetrics = () => {
-            const startTime = performance.now();
-
-            const memoryUsage = getMemoryUsage();
-            const cnsMetrics = getCNSMetrics();
-            const renderTime = performance.now() - startTime;
-
-            const newMetrics: PerformanceMetrics = {
-                memoryUsage,
-                renderTime,
-                timestamp: Date.now(),
-                cnsMetrics,
-            };
-
-            setMetrics(newMetrics);
-
-            // Update tracking variables
-            setLastMetricsTime(Date.now());
-            setLastStimulationCount(allStimulations.length);
-
-            // Update history (keep last 60 data points)
-            setHistory(prev => {
-                const maxPoints = 60;
-                const newHistory = {
-                    memory: [...prev.memory, memoryUsage.percentage].slice(
-                        -maxPoints
-                    ),
-                    timestamps: [
-                        ...prev.timestamps,
-                        newMetrics.timestamp,
-                    ].slice(-maxPoints),
-                    stimulationsPerSecond: [
-                        ...prev.stimulationsPerSecond,
-                        cnsMetrics.stimulationsPerSecond,
-                    ].slice(-maxPoints),
-                    responseTime: [
-                        ...prev.responseTime,
-                        cnsMetrics.avgResponseTime,
-                    ].slice(-maxPoints),
-                    hopCount: [...prev.hopCount, cnsMetrics.avgHopCount].slice(
-                        -maxPoints
-                    ),
-                    errorRate: [...prev.errorRate, cnsMetrics.errorRate].slice(
-                        -maxPoints
-                    ),
-                };
-                return newHistory;
-            });
+    const cns = (): CnsMetrics => {
+        const responses = db.responses.getAll();
+        const stimulations = db.stimulations.getAll();
+        const dendrites = db.dendrites.getAll();
+        const now = Date.now();
+        const timeDiff = (now - lastMetricsTime) / 1000;
+        const newStims = stimulations.length - lastStimulationCount;
+        const stimulationsPerSecond = timeDiff > 0 ? newStims / timeDiff : 0;
+        const withDur = responses.filter(r => r.duration && r.duration > 0);
+        const avgResponseTime = withDur.length
+            ? withDur.reduce((s, r) => s + (r.duration || 0), 0) / withDur.length
+            : 0;
+        const avgHopCount = stimulations.length
+            ? stimulations.reduce((s, x) => s + x.hopCount, 0) / stimulations.length
+            : 0;
+        const recentHops = responses.filter(r => r.startedAt > now - 5000);
+        const activeNeurons = new Set(recentHops.map(r => r.neuronId)).size;
+        const withErr = responses.filter(r => r.error);
+        const errorRate = responses.length ? (withErr.length / responses.length) * 100 : 0;
+        const round2 = (n: number): number => Math.round(n * 100) / 100;
+        return {
+            stimulationsPerSecond: round2(stimulationsPerSecond),
+            avgResponseTime: round2(avgResponseTime),
+            avgHopCount: round2(avgHopCount),
+            activeNeurons,
+            totalConnections: dendrites.length,
+            queueUtilization: 0,
+            errorRate: round2(errorRate),
         };
-
-        const interval = setInterval(updateMetrics, 2000); // Update every 2 seconds
-        updateMetrics(); // Initial update
-
-        return () => clearInterval(interval);
-    }, []);
-
-    if (!metrics) return null;
-
-    const getStatusColor = (
-        value: number,
-        thresholds: { warning: number; danger: number }
-    ) => {
-        if (value >= thresholds.danger) return 'var(--infection-red)';
-        if (value >= thresholds.warning) return 'var(--infection-yellow)';
-        return 'var(--infection-green)';
     };
 
-    const memoryColor = getStatusColor(metrics.memoryUsage.percentage, {
-        warning: 70,
-        danger: 90,
-    });
+    const update = (): void => {
+        const start = performance.now();
+        const memoryUsage = memUsage();
+        const cnsMetrics = cns();
+        const m: Metrics = {
+            memoryUsage,
+            renderTime: performance.now() - start,
+            timestamp: Date.now(),
+            cnsMetrics,
+        };
+        metricsB.setValue(m);
+        lastMetricsTime = Date.now();
+        lastStimulationCount = db.stimulations.getAll().length;
+        const prev = historyB.getValue();
+        const MAX = 60;
+        historyB.setValue({
+            memory: [...prev.memory, memoryUsage.percentage].slice(-MAX),
+            timestamps: [...prev.timestamps, m.timestamp].slice(-MAX),
+            stimulationsPerSecond: [...prev.stimulationsPerSecond, cnsMetrics.stimulationsPerSecond].slice(-MAX),
+            responseTime: [...prev.responseTime, cnsMetrics.avgResponseTime].slice(-MAX),
+            hopCount: [...prev.hopCount, cnsMetrics.avgHopCount].slice(-MAX),
+            errorRate: [...prev.errorRate, cnsMetrics.errorRate].slice(-MAX),
+        });
+    };
+
+    const cell = (label: string, value: string, color: string): TExoSchema => (
+        <div>
+            <span static={{ style: 'color:var(--text-muted)' }}>{label}</span>
+            <br />
+            <span static={{ style: `color:${color}` }}>{value}</span>
+        </div>
+    );
+
+    const sparkline = (label: string, data: number[], color: string, latest: string): TExoSchema => {
+        const max = Math.max(...data, 1);
+        const points = data
+            .map((v, i) => `${(i / Math.max(data.length - 1, 1)) * 100},${15 - (v / max) * 15}`)
+            .join(' ');
+        // Exodra JSX has no SVG element types/runtime; build the sparkline SVG
+        // imperatively via innerHTML (the HTML parser namespaces <svg> correctly).
+        // stroke via style so the CSS var resolves.
+        const svg = `<svg width="100%" height="100%" style="position:absolute"><polyline fill="none" style="stroke:${color};stroke-width:1" points="${points}"/></svg>`;
+        return (
+            <div>
+                <div static={{ style: 'margin-bottom:var(--spacing-xs);color:var(--text-muted);font-size:10px;display:flex;justify-content:space-between' }}>
+                    <span>📈 {label} (last {String(data.length)}s)</span>
+                    <span static={{ style: `color:${color}` }}>{latest}</span>
+                </div>
+                <div static={{ style: 'height:15px;background:var(--bg-secondary);border-radius:2px;position:relative;overflow:hidden', onExoMount: (n: { element: unknown }) => { (n.element as HTMLElement).innerHTML = svg; } }} />
+            </div>
+        );
+    };
+
+    const compact = (m: Metrics): TExoSchema => {
+        const server = db.serverMetrics.getAll().slice(-1)[0] as
+            | { cpuPercent: number; rssMB: number }
+            | undefined;
+        return (
+            <div static={{ style: 'display:flex;gap:var(--spacing-xs);align-items:center;flex-wrap:wrap' }}>
+                <div static={{ style: `color:${statusColor(m.memoryUsage.percentage, 70, 90)}` }}>🧠 {String(m.memoryUsage.percentage)}%</div>
+                <div static={{ style: 'color:var(--infection-green)' }}>⚡ {String(m.cnsMetrics.stimulationsPerSecond)}/s</div>
+                <div static={{ style: 'color:var(--infection-blue)' }}>🎯 {String(m.cnsMetrics.activeNeurons)}n</div>
+                {server ? <div static={{ style: `color:${server.cpuPercent > 70 ? 'var(--infection-red)' : 'var(--infection-green)'}` }}>🖥️ {server.cpuPercent.toFixed(1)}% CPU</div> : <div />}
+                {server ? <div static={{ style: `color:${server.rssMB > 500 ? 'var(--infection-red)' : server.rssMB > 200 ? 'var(--infection-yellow)' : 'var(--infection-blue)'}` }}>💾 {server.rssMB.toFixed(0)}MB</div> : <div />}
+                {m.cnsMetrics.errorRate > 0 ? <div static={{ style: 'color:var(--infection-red)' }}>❌ {String(m.cnsMetrics.errorRate)}%</div> : <div />}
+            </div>
+        );
+    };
+
+    const expanded = (m: Metrics, h: History): TExoSchema => {
+        const memColor = statusColor(m.memoryUsage.percentage, 70, 90);
+        const cm = m.cnsMetrics;
+        const last = (a: number[]): string => (a.length ? a[a.length - 1].toFixed(1) : '0');
+        return (
+            <div static={{ style: 'display:flex;flex-direction:column;gap:var(--spacing-sm)' }}>
+                <div>
+                    <div static={{ style: 'display:flex;justify-content:space-between;margin-bottom:var(--spacing-xs)' }}>
+                        <span>🧠 Memory</span>
+                        <span static={{ style: `color:${memColor}` }}>{String(m.memoryUsage.used)}MB / {String(m.memoryUsage.total)}MB</span>
+                    </div>
+                    <div static={{ style: 'width:100%;height:4px;background:var(--bg-secondary);border-radius:2px;overflow:hidden' }}>
+                        <div static={{ style: `width:${m.memoryUsage.percentage}%;height:100%;background:${memColor};transition:width 0.3s ease` }} />
+                    </div>
+                    <div static={{ style: 'text-align:center;color:var(--text-muted);margin-top:2px' }}>{String(m.memoryUsage.percentage)}%</div>
+                </div>
+
+                <div static={{ style: 'border-top:1px solid var(--border-infected);padding-top:var(--spacing-sm)' }}>
+                    <div static={{ style: 'margin-bottom:var(--spacing-sm);color:var(--infection-green);font-size:11px;font-weight:bold' }}>🧠 CNStra Metrics</div>
+                    <div static={{ style: 'display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-xs);font-size:10px' }}>
+                        {cell('⚡ Stimulations/s:', String(cm.stimulationsPerSecond), 'var(--infection-green)')}
+                        {cell('🎯 Active Neurons:', String(cm.activeNeurons), 'var(--infection-blue)')}
+                        {cell('⏱️ Avg Response:', `${cm.avgResponseTime}ms`, cm.avgResponseTime > 100 ? 'var(--infection-red)' : 'var(--infection-green)')}
+                        {cell('🔗 Connections:', String(cm.totalConnections), 'var(--text-primary)')}
+                        {cell('🎭 Avg Hops:', String(cm.avgHopCount), cm.avgHopCount > 3 ? 'var(--infection-yellow)' : 'var(--infection-green)')}
+                        {cell('📊 Queue Util:', String(cm.queueUtilization), cm.queueUtilization > 10 ? 'var(--infection-red)' : 'var(--infection-green)')}
+                    </div>
+                    {cm.errorRate > 0 ? <div static={{ style: 'margin-top:var(--spacing-xs);padding:var(--spacing-xs);background:var(--infection-red);border-radius:2px;font-size:10px;color:white' }}>❌ Error Rate: {String(cm.errorRate)}%</div> : <div />}
+                </div>
+
+                {h.stimulationsPerSecond.length > 1 ? sparkline('Stimulations Trend', h.stimulationsPerSecond, 'var(--infection-green)', `${last(h.stimulationsPerSecond)}/s`) : <div />}
+                {h.memory.length > 1 ? sparkline('Memory Trend', h.memory, memColor, `${last(h.memory)}%`) : <div />}
+                {h.responseTime.length > 1 ? sparkline('Response Time', h.responseTime, 'var(--infection-yellow)', `${last(h.responseTime)}ms`) : <div />}
+                {h.errorRate.length > 1 ? sparkline('Error Rate', h.errorRate, 'var(--infection-red)', `${last(h.errorRate)}%`) : <div />}
+            </div>
+        );
+    };
+
+    const render = (): TExoSchema => {
+        const m = metricsB.getValue();
+        if (!m) return <div />;
+        const expandedNow = isExpandedB.getValue();
+        return (
+            <div static={{ style: 'background:var(--bg-panel);border:2px solid var(--border-infected);border-radius:var(--radius-sm);padding:var(--spacing-sm);font-size:var(--font-size-xs);color:var(--text-primary);font-family:var(--font-primary);box-shadow:0 0 10px var(--shadow-infection);width:100%' }}>
+                <div
+                    static={{ style: `display:flex;justify-content:space-between;align-items:center;margin-bottom:${expandedNow ? 'var(--spacing-sm)' : '0'};cursor:pointer` }}
+                    handlers={{ onClick: () => isExpandedB.setValue(!isExpandedB.getValue()) }}
+                >
+                    <span static={{ style: 'color:var(--infection-green)' }}>📊 Performance</span>
+                    <span static={{ style: 'color:var(--text-muted)' }}>{expandedNow ? '▼' : '▶'}</span>
+                </div>
+                {expandedNow ? expanded(m, historyB.getValue()) : compact(m)}
+            </div>
+        );
+    };
 
     return (
         <div
-            style={{
-                background: 'var(--bg-panel)',
-                border: '2px solid var(--border-infected)',
-                borderRadius: 'var(--radius-sm)',
-                padding: 'var(--spacing-sm)',
-                fontSize: 'var(--font-size-xs)',
-                color: 'var(--text-primary)',
-                fontFamily: 'var(--font-primary)',
-                boxShadow: '0 0 10px var(--shadow-infection)',
-                width: '100%',
-                transition: 'all var(--transition-medium)',
-            }}
-        >
-            <div
-                style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: isExpanded ? 'var(--spacing-sm)' : '0',
-                    cursor: 'pointer',
-                }}
-                onClick={() => setIsExpanded(!isExpanded)}
-            >
-                <span style={{ color: 'var(--infection-green)' }}>
-                    📊 Performance
-                </span>
-                <span style={{ color: 'var(--text-muted)' }}>
-                    {isExpanded ? '▼' : '▶'}
-                </span>
-            </div>
-
-            {!isExpanded ? (
-                // Compact view
-                <div
-                    style={{
-                        display: 'flex',
-                        gap: 'var(--spacing-xs)',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                    }}
-                >
-                    <div style={{ color: memoryColor }}>
-                        🧠 {metrics.memoryUsage.percentage}%
-                    </div>
-                    <div style={{ color: 'var(--infection-green)' }}>
-                        ⚡ {metrics.cnsMetrics.stimulationsPerSecond}/s
-                    </div>
-                    <div style={{ color: 'var(--infection-blue)' }}>
-                        🎯 {metrics.cnsMetrics.activeNeurons}n
-                    </div>
-                    {/* server metrics compact: show latest CPU and memory if present */}
-                    {(() => {
-                        const latest = db.serverMetrics
-                            .getAll()
-                            .slice(-1)[0] as any;
-                        return latest ? (
-                            <>
-                                <div
-                                    style={{
-                                        color:
-                                            latest.cpuPercent > 70
-                                                ? 'var(--infection-red)'
-                                                : 'var(--infection-green)',
-                                    }}
-                                >
-                                    🖥️ {latest.cpuPercent.toFixed(1)}% CPU
-                                </div>
-                                <div
-                                    style={{
-                                        color:
-                                            latest.rssMB > 500
-                                                ? 'var(--infection-red)'
-                                                : latest.rssMB > 200
-                                                ? 'var(--infection-yellow)'
-                                                : 'var(--infection-blue)',
-                                    }}
-                                >
-                                    💾 {latest.rssMB.toFixed(0)}MB
-                                </div>
-                            </>
-                        ) : null;
-                    })()}
-                    {metrics.cnsMetrics.errorRate > 0 && (
-                        <div style={{ color: 'var(--infection-red)' }}>
-                            ❌ {metrics.cnsMetrics.errorRate}%
-                        </div>
-                    )}
-                </div>
-            ) : (
-                // Expanded view
-                <div
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 'var(--spacing-sm)',
-                    }}
-                >
-                    {/* Memory Usage */}
-                    <div>
-                        <div
-                            style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                marginBottom: 'var(--spacing-xs)',
-                            }}
-                        >
-                            <span>🧠 Memory</span>
-                            <span style={{ color: memoryColor }}>
-                                {metrics.memoryUsage.used}MB /{' '}
-                                {metrics.memoryUsage.total}MB
-                            </span>
-                        </div>
-                        <div
-                            style={{
-                                width: '100%',
-                                height: '4px',
-                                background: 'var(--bg-secondary)',
-                                borderRadius: '2px',
-                                overflow: 'hidden',
-                            }}
-                        >
-                            <div
-                                style={{
-                                    width: `${metrics.memoryUsage.percentage}%`,
-                                    height: '100%',
-                                    background: memoryColor,
-                                    transition: 'width 0.3s ease',
-                                }}
-                            />
-                        </div>
-                        <div
-                            style={{
-                                textAlign: 'center',
-                                color: 'var(--text-muted)',
-                                marginTop: '2px',
-                            }}
-                        >
-                            {metrics.memoryUsage.percentage}%
-                        </div>
-                    </div>
-
-                    {/* CNStra Network Metrics */}
-                    <div
-                        style={{
-                            borderTop: '1px solid var(--border-infected)',
-                            paddingTop: 'var(--spacing-sm)',
-                        }}
-                    >
-                        <div
-                            style={{
-                                marginBottom: 'var(--spacing-sm)',
-                                color: 'var(--infection-green)',
-                                fontSize: '11px',
-                                fontWeight: 'bold',
-                            }}
-                        >
-                            🧠 CNStra Metrics
-                        </div>
-
-                        <div
-                            style={{
-                                display: 'grid',
-                                gridTemplateColumns: '1fr 1fr',
-                                gap: 'var(--spacing-xs)',
-                                fontSize: '10px',
-                            }}
-                        >
-                            <div>
-                                <span style={{ color: 'var(--text-muted)' }}>
-                                    ⚡ Stimulations/s:
-                                </span>
-                                <br />
-                                <span
-                                    style={{ color: 'var(--infection-green)' }}
-                                >
-                                    {metrics.cnsMetrics.stimulationsPerSecond}
-                                </span>
-                            </div>
-                            <div>
-                                <span style={{ color: 'var(--text-muted)' }}>
-                                    🎯 Active Neurons:
-                                </span>
-                                <br />
-                                <span
-                                    style={{ color: 'var(--infection-blue)' }}
-                                >
-                                    {metrics.cnsMetrics.activeNeurons}
-                                </span>
-                            </div>
-                            <div>
-                                <span style={{ color: 'var(--text-muted)' }}>
-                                    ⏱️ Avg Response:
-                                </span>
-                                <br />
-                                <span
-                                    style={{
-                                        color:
-                                            metrics.cnsMetrics.avgResponseTime >
-                                            100
-                                                ? 'var(--infection-red)'
-                                                : 'var(--infection-green)',
-                                    }}
-                                >
-                                    {metrics.cnsMetrics.avgResponseTime}ms
-                                </span>
-                            </div>
-                            <div>
-                                <span style={{ color: 'var(--text-muted)' }}>
-                                    🔗 Connections:
-                                </span>
-                                <br />
-                                <span style={{ color: 'var(--text-primary)' }}>
-                                    {metrics.cnsMetrics.totalConnections}
-                                </span>
-                            </div>
-                            <div>
-                                <span style={{ color: 'var(--text-muted)' }}>
-                                    🎭 Avg Hops:
-                                </span>
-                                <br />
-                                <span
-                                    style={{
-                                        color:
-                                            metrics.cnsMetrics.avgHopCount > 3
-                                                ? 'var(--infection-yellow)'
-                                                : 'var(--infection-green)',
-                                    }}
-                                >
-                                    {metrics.cnsMetrics.avgHopCount}
-                                </span>
-                            </div>
-                            <div>
-                                <span style={{ color: 'var(--text-muted)' }}>
-                                    📊 Queue Util:
-                                </span>
-                                <br />
-                                <span
-                                    style={{
-                                        color:
-                                            metrics.cnsMetrics
-                                                .queueUtilization > 10
-                                                ? 'var(--infection-red)'
-                                                : 'var(--infection-green)',
-                                    }}
-                                >
-                                    {metrics.cnsMetrics.queueUtilization}
-                                </span>
-                            </div>
-                        </div>
-
-                        {metrics.cnsMetrics.errorRate > 0 && (
-                            <div
-                                style={{
-                                    marginTop: 'var(--spacing-xs)',
-                                    padding: 'var(--spacing-xs)',
-                                    background: 'var(--infection-red)',
-                                    borderRadius: '2px',
-                                    fontSize: '10px',
-                                    color: 'white',
-                                }}
-                            >
-                                ❌ Error Rate: {metrics.cnsMetrics.errorRate}%
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Mini charts for CNStra trends */}
-                    {history.stimulationsPerSecond.length > 1 && (
-                        <div>
-                            <div
-                                style={{
-                                    marginBottom: 'var(--spacing-xs)',
-                                    color: 'var(--text-muted)',
-                                    fontSize: '10px',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                }}
-                            >
-                                <span>
-                                    📈 Stimulations Trend (last{' '}
-                                    {history.stimulationsPerSecond.length}s)
-                                </span>
-                                <span
-                                    style={{ color: 'var(--infection-green)' }}
-                                >
-                                    {history.stimulationsPerSecond[
-                                        history.stimulationsPerSecond.length - 1
-                                    ].toFixed(1)}
-                                    /s
-                                </span>
-                            </div>
-                            <div
-                                style={{
-                                    height: '15px',
-                                    background: 'var(--bg-secondary)',
-                                    borderRadius: '2px',
-                                    position: 'relative',
-                                    overflow: 'hidden',
-                                }}
-                            >
-                                <svg
-                                    width="100%"
-                                    height="100%"
-                                    style={{ position: 'absolute' }}
-                                >
-                                    <polyline
-                                        fill="none"
-                                        stroke="var(--infection-green)"
-                                        strokeWidth="1"
-                                        points={history.stimulationsPerSecond
-                                            .map((value, index) => {
-                                                const maxValue = Math.max(
-                                                    ...history.stimulationsPerSecond,
-                                                    1
-                                                );
-                                                return `${
-                                                    (index /
-                                                        (history
-                                                            .stimulationsPerSecond
-                                                            .length -
-                                                            1)) *
-                                                    100
-                                                },${
-                                                    15 - (value / maxValue) * 15
-                                                }`;
-                                            })
-                                            .join(' ')}
-                                    />
-                                </svg>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Mini chart for memory trend */}
-                    {history.memory.length > 1 && (
-                        <div>
-                            <div
-                                style={{
-                                    marginBottom: 'var(--spacing-xs)',
-                                    color: 'var(--text-muted)',
-                                    fontSize: '10px',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                }}
-                            >
-                                <span>
-                                    📈 Memory Trend (last{' '}
-                                    {history.memory.length}s)
-                                </span>
-                                <span style={{ color: memoryColor }}>
-                                    {history.memory[
-                                        history.memory.length - 1
-                                    ].toFixed(1)}
-                                    %
-                                </span>
-                            </div>
-                            <div
-                                style={{
-                                    height: '15px',
-                                    background: 'var(--bg-secondary)',
-                                    borderRadius: '2px',
-                                    position: 'relative',
-                                    overflow: 'hidden',
-                                }}
-                            >
-                                <svg
-                                    width="100%"
-                                    height="100%"
-                                    style={{ position: 'absolute' }}
-                                >
-                                    <polyline
-                                        fill="none"
-                                        stroke={memoryColor}
-                                        strokeWidth="1"
-                                        points={history.memory
-                                            .map(
-                                                (value, index) =>
-                                                    `${
-                                                        (index /
-                                                            (history.memory
-                                                                .length -
-                                                                1)) *
-                                                        100
-                                                    },${
-                                                        15 - (value / 100) * 15
-                                                    }`
-                                            )
-                                            .join(' ')}
-                                    />
-                                </svg>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Server metrics timeline */}
-                    <div
-                        style={{
-                            borderTop: '1px solid var(--border-infected)',
-                            paddingTop: 'var(--spacing-sm)',
-                        }}
-                    >
-                        <div
-                            style={{
-                                marginBottom: 'var(--spacing-xs)',
-                                color: 'var(--infection-green)',
-                                fontSize: '11px',
-                                fontWeight: 'bold',
-                            }}
-                        >
-                            🖥️ Server Metrics (last 30s)
-                        </div>
-                        {(() => {
-                            const points = db.serverMetrics
-                                .getAll()
-                                .slice(-30) as any[];
-                            if (points.length === 0)
-                                return (
-                                    <div
-                                        style={{
-                                            color: 'var(--text-muted)',
-                                            fontSize: '10px',
-                                        }}
-                                    >
-                                        No server metrics
-                                    </div>
-                                );
-
-                            const latest = points[points.length - 1];
-                            const cpuMax = Math.max(
-                                ...points.map(p => p.cpuPercent),
-                                1
-                            );
-                            const rssMax = Math.max(
-                                ...points.map(p => p.rssMB),
-                                1
-                            );
-                            const heapMax = Math.max(
-                                ...points.map(p => p.heapUsedMB),
-                                1
-                            );
-
-                            return (
-                                <div style={{ display: 'grid', gap: '8px' }}>
-                                    {/* CPU Usage */}
-                                    <div>
-                                        <div
-                                            style={{
-                                                fontSize: '10px',
-                                                color: 'var(--text-muted)',
-                                                marginBottom: '4px',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                            }}
-                                        >
-                                            <span>CPU%</span>
-                                            <span
-                                                style={{
-                                                    color: 'var(--infection-green)',
-                                                }}
-                                            >
-                                                {latest.cpuPercent.toFixed(1)}%
-                                            </span>
-                                        </div>
-                                        <div
-                                            style={{
-                                                height: '20px',
-                                                background:
-                                                    'var(--bg-secondary)',
-                                                borderRadius: '2px',
-                                                position: 'relative',
-                                                overflow: 'hidden',
-                                            }}
-                                        >
-                                            <svg
-                                                width="100%"
-                                                height="100%"
-                                                style={{ position: 'absolute' }}
-                                            >
-                                                <polyline
-                                                    fill="none"
-                                                    stroke="var(--infection-green)"
-                                                    strokeWidth="1"
-                                                    points={points
-                                                        .map(
-                                                            (p, i) =>
-                                                                `${
-                                                                    (i /
-                                                                        (points.length -
-                                                                            1)) *
-                                                                    100
-                                                                },${
-                                                                    20 -
-                                                                    (p.cpuPercent /
-                                                                        Math.max(
-                                                                            cpuMax,
-                                                                            100
-                                                                        )) *
-                                                                        20
-                                                                }`
-                                                        )
-                                                        .join(' ')}
-                                                />
-                                            </svg>
-                                        </div>
-                                    </div>
-
-                                    {/* RSS Memory */}
-                                    <div>
-                                        <div
-                                            style={{
-                                                fontSize: '10px',
-                                                color: 'var(--text-muted)',
-                                                marginBottom: '4px',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                            }}
-                                        >
-                                            <span>RSS Memory</span>
-                                            <span
-                                                style={{
-                                                    color: 'var(--infection-blue)',
-                                                }}
-                                            >
-                                                {latest.rssMB.toFixed(1)}MB
-                                            </span>
-                                        </div>
-                                        <div
-                                            style={{
-                                                height: '20px',
-                                                background:
-                                                    'var(--bg-secondary)',
-                                                borderRadius: '2px',
-                                                position: 'relative',
-                                                overflow: 'hidden',
-                                            }}
-                                        >
-                                            <svg
-                                                width="100%"
-                                                height="100%"
-                                                style={{ position: 'absolute' }}
-                                            >
-                                                <polyline
-                                                    fill="none"
-                                                    stroke="var(--infection-blue)"
-                                                    strokeWidth="1"
-                                                    points={points
-                                                        .map(
-                                                            (p, i) =>
-                                                                `${
-                                                                    (i /
-                                                                        (points.length -
-                                                                            1)) *
-                                                                    100
-                                                                },${
-                                                                    20 -
-                                                                    (p.rssMB /
-                                                                        rssMax) *
-                                                                        20
-                                                                }`
-                                                        )
-                                                        .join(' ')}
-                                                />
-                                            </svg>
-                                        </div>
-                                    </div>
-
-                                    {/* Heap Memory */}
-                                    <div>
-                                        <div
-                                            style={{
-                                                fontSize: '10px',
-                                                color: 'var(--text-muted)',
-                                                marginBottom: '4px',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                            }}
-                                        >
-                                            <span>Heap Used</span>
-                                            <span
-                                                style={{
-                                                    color: 'var(--infection-yellow)',
-                                                }}
-                                            >
-                                                {latest.heapUsedMB.toFixed(1)}MB
-                                            </span>
-                                        </div>
-                                        <div
-                                            style={{
-                                                height: '20px',
-                                                background:
-                                                    'var(--bg-secondary)',
-                                                borderRadius: '2px',
-                                                position: 'relative',
-                                                overflow: 'hidden',
-                                            }}
-                                        >
-                                            <svg
-                                                width="100%"
-                                                height="100%"
-                                                style={{ position: 'absolute' }}
-                                            >
-                                                <polyline
-                                                    fill="none"
-                                                    stroke="var(--infection-yellow)"
-                                                    strokeWidth="1"
-                                                    points={points
-                                                        .map(
-                                                            (p, i) =>
-                                                                `${
-                                                                    (i /
-                                                                        (points.length -
-                                                                            1)) *
-                                                                    100
-                                                                },${
-                                                                    20 -
-                                                                    (p.heapUsedMB /
-                                                                        heapMax) *
-                                                                        20
-                                                                }`
-                                                        )
-                                                        .join(' ')}
-                                                />
-                                            </svg>
-                                        </div>
-                                    </div>
-
-                                    {/* Additional server metrics */}
-                                    <div
-                                        style={{
-                                            display: 'grid',
-                                            gridTemplateColumns: '1fr 1fr',
-                                            gap: '4px',
-                                            fontSize: '9px',
-                                            color: 'var(--text-muted)',
-                                            marginTop: '4px',
-                                        }}
-                                    >
-                                        <div>
-                                            <span>Heap Total:</span>
-                                            <br />
-                                            <span
-                                                style={{
-                                                    color: 'var(--text-primary)',
-                                                }}
-                                            >
-                                                {latest.heapTotalMB.toFixed(1)}
-                                                MB
-                                            </span>
-                                        </div>
-                                        {/* TODO(protocol-migration): externalMB
-                                            was dropped from the server metrics
-                                            payload in the new protocol; cell
-                                            removed rather than fabricated. */}
-                                    </div>
-                                </div>
-                            );
-                        })()}
-                    </div>
-
-                    {/* Additional info */}
-                    <div
-                        style={{
-                            borderTop: '1px solid var(--border-primary)',
-                            paddingTop: 'var(--spacing-xs)',
-                            fontSize: '10px',
-                            color: 'var(--text-muted)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                        }}
-                    >
-                        <span>
-                            🕒 Render: {metrics.renderTime.toFixed(2)}ms
-                        </span>
-                        <span>📊 DevTools UI</span>
-                    </div>
-                </div>
-            )}
-        </div>
+            static={{ onExoMount: () => { update(); timer = setInterval(update, 2000); }, onExoUnmount: () => { if (timer) clearInterval(timer); } }}
+            bindable={{ children: combine([metricsB, historyB, isExpandedB], render) }}
+        />
     );
-};
+}

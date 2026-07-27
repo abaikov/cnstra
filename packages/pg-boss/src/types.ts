@@ -10,6 +10,8 @@ export interface IPgBossJob<TData = unknown> {
     id: string;
     name: string;
     data: TData;
+    /** 0-based retry count (pg-boss `Job.retryCount`); drives the attempt number. */
+    retryCount?: number;
 }
 
 export interface IPgBossLike {
@@ -39,45 +41,6 @@ export interface TCNSStimulationJobData {
     payload: unknown;
     /** Optional per-run cap on neuron hops. */
     maxNeuronHops?: number;
-}
-
-/** One per-hop progress record (mirrors the devtools `CNSDTOHop` shape). */
-export interface TCNSHopRecord {
-    jobId: string;
-    index: number;
-    neuronName: string | null;
-    inputCollateral: string | null;
-    outputCollateral: string | null;
-    inputPayload: unknown;
-    outputPayload: unknown;
-    error: string | null;
-    at: number;
-}
-
-/** Lifecycle record for one stimulation (one job). */
-export interface TCNSStimulationLifecycle {
-    jobId: string;
-    collateralName: string;
-    payload: unknown;
-    status: 'running' | 'completed' | 'failed';
-    startedAt: number;
-    completedAt?: number;
-    hopCount: number;
-    error?: string;
-}
-
-/**
- * Where progress is written (Postgres, OIMDB, logs, …).
- *
- * If `onHop` returns a Promise, CNStra waits for it **before enqueuing the next
- * hop** — i.e. each step is durably committed before the flow advances. This is
- * the per-hop checkpoint barrier that makes an admin/progress view truthful
- * across restarts.
- */
-export interface ICNSProgressSink {
-    onStarted?(rec: TCNSStimulationLifecycle): void | Promise<void>;
-    onHop?(rec: TCNSHopRecord): void | Promise<void>;
-    onCompleted?(rec: TCNSStimulationLifecycle): void | Promise<void>;
 }
 
 /** Structural view of the response passed to `onResponse` (not exported by core). */

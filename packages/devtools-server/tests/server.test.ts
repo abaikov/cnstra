@@ -27,42 +27,6 @@ const topology = (appId = 'app', cnsId = 'app:cns'): CNSDTOAppBatchMessage => ({
     }],
 });
 
-const stimulationStarted = (stimulationId = 'exec1', appId = 'app', cnsId = 'app:cns'): CNSDTOAppBatchMessage => ({
-    type: 'batch',
-    items: [{
-        type: 'stimulation.started',
-        stimulation: {
-            id: stimulationId, cnsId, appId,
-            collateralId: `${cnsId}:authNeuron:user-created`,
-            payload: { userId: '1' }, startedAt: Date.now(),
-            completedAt: null, hopCount: 0, hasError: false, replayOf: null,
-        },
-    }],
-});
-
-const hopAdded = (stimulationId = 'exec1', index = 0): CNSDTOAppBatchMessage => ({
-    type: 'batch',
-    items: [{
-        type: 'stimulation.hop',
-        hop: {
-            id: `${stimulationId}:${index}`, stimulationId, index,
-            neuronId: 'app:cns:authNeuron',
-            inputCollateralId: 'app:cns:authNeuron:user-created',
-            outputCollateralId: 'app:cns:authNeuron:user-authenticated',
-            inputPayload: { userId: '1' }, outputPayload: { token: 'abc' },
-            startedAt: Date.now(), duration: null, error: null,
-        },
-    }],
-});
-
-const stimulationCompleted = (stimulationId = 'exec1'): CNSDTOAppBatchMessage => ({
-    type: 'batch',
-    items: [{
-        type: 'stimulation.completed',
-        stimulationId, completedAt: Date.now(), hopCount: 1, hasError: false,
-    }],
-});
-
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('CNSDevToolsServer', () => {
@@ -114,66 +78,6 @@ describe('CNSDevToolsServer', () => {
         });
     });
 
-    // ─── Stimulation events ─────────────────────────────────────────────────────
-
-    describe('stimulation events', () => {
-        it('stores stimulation on stimulation.started', async () => {
-            const ws = makeWs();
-            await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
-
-            const { items } = await repo.getStimulations('app', {});
-            expect(items).toHaveLength(1);
-            expect(items[0].id).toBe('exec1');
-        });
-
-        it('broadcasts stimulation.started to UI clients', async () => {
-            const uiWs = makeWs('ui');
-            server.addClient(uiWs as any);
-
-            const appWs = makeWs('app');
-            await server.handleMessage(appWs as any, JSON.stringify(topology()));
-            await server.handleMessage(appWs as any, JSON.stringify(stimulationStarted()));
-
-            expect(uiWs.messagesOfType('stimulation.started')).toHaveLength(1);
-        });
-
-        it('stores hop on stimulation.hop', async () => {
-            const ws = makeWs();
-            await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
-            await server.handleMessage(ws as any, JSON.stringify(hopAdded()));
-
-            const hops = await repo.getHops('exec1');
-            expect(hops).toHaveLength(1);
-            expect(hops[0].index).toBe(0);
-        });
-
-        it('broadcasts stimulation.hop to UI clients', async () => {
-            const uiWs = makeWs('ui');
-            server.addClient(uiWs as any);
-
-            const ws = makeWs();
-            await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
-            await server.handleMessage(ws as any, JSON.stringify(hopAdded()));
-
-            expect(uiWs.messagesOfType('stimulation.hop')).toHaveLength(1);
-        });
-
-        it('completes stimulation on stimulation.completed', async () => {
-            const ws = makeWs();
-            await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
-            await server.handleMessage(ws as any, JSON.stringify(hopAdded()));
-            await server.handleMessage(ws as any, JSON.stringify(stimulationCompleted()));
-
-            const { items } = await repo.getStimulations('app', {});
-            expect(items[0].completedAt).not.toBeNull();
-            expect(items[0].hopCount).toBe(1);
-        });
-    });
-
     // ─── UI client queries ────────────────────────────────────────────────────
 
     describe('UI client queries', () => {
@@ -215,41 +119,6 @@ describe('CNSDevToolsServer', () => {
             const result = uiWs.messagesOfType('topology.result');
             expect(result[0].requestId).toBe('req2');
             expect(result[0].snapshots).toHaveLength(1);
-        });
-
-        it('stimulations.query returns stimulations with pagination', async () => {
-            const ws = makeWs();
-            await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted('e1')));
-            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted('e2')));
-
-            const uiWs = makeWs('ui');
-            await server.handleMessage(uiWs as any, JSON.stringify({
-                type: 'stimulations.query', requestId: 'req3',
-                appId: 'app', filter: { limit: 10, offset: 0 },
-            }));
-
-            const result = uiWs.messagesOfType('stimulations.result');
-            expect(result[0].requestId).toBe('req3');
-            expect(result[0].items).toHaveLength(2);
-            expect(result[0].total).toBe(2);
-        });
-
-        it('hops.query returns hops for stimulation', async () => {
-            const ws = makeWs();
-            await server.handleMessage(ws as any, JSON.stringify(topology()));
-            await server.handleMessage(ws as any, JSON.stringify(stimulationStarted()));
-            await server.handleMessage(ws as any, JSON.stringify(hopAdded('exec1', 0)));
-            await server.handleMessage(ws as any, JSON.stringify(hopAdded('exec1', 1)));
-
-            const uiWs = makeWs('ui');
-            await server.handleMessage(uiWs as any, JSON.stringify({
-                type: 'hops.query', requestId: 'req4', stimulationId: 'exec1',
-            }));
-
-            const result = uiWs.messagesOfType('hops.result');
-            expect(result[0].requestId).toBe('req4');
-            expect(result[0].items).toHaveLength(2);
         });
     });
 
@@ -367,36 +236,6 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
         expect(repo.getTopology('other')).toHaveLength(0);
     });
 
-    it('saves and gets stimulations with filter', () => {
-        const now = Date.now();
-        repo.saveStimulation({ id: 'e1', cnsId: 'app:cns', appId: 'app', collateralId: 'col1', payload: null, startedAt: now, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
-        repo.saveStimulation({ id: 'e2', cnsId: 'app:cns', appId: 'app', collateralId: 'col1', payload: null, startedAt: now + 1, completedAt: null, hopCount: 0, hasError: true, replayOf: null });
-
-        const { items: all, total } = repo.getStimulations('app', {});
-        expect(total).toBe(2);
-
-        const { items: errors } = repo.getStimulations('app', { hasError: true });
-        expect(errors).toHaveLength(1);
-        expect(errors[0].id).toBe('e2');
-    });
-
-    it('completes stimulation', () => {
-        repo.saveStimulation({ id: 'e1', cnsId: 'c', appId: 'app', collateralId: 'c1', payload: null, startedAt: 1, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
-        repo.completeStimulation('e1', Date.now(), 3, false);
-        const { items } = repo.getStimulations('app', {});
-        expect(items[0].hopCount).toBe(3);
-        expect(items[0].completedAt).not.toBeNull();
-    });
-
-    it('saves and gets hops sorted by index', () => {
-        repo.saveHop({ id: 'e1:1', stimulationId: 'e1', index: 1, neuronId: 'n', inputCollateralId: 'c', outputCollateralId: null, inputPayload: null, outputPayload: null, startedAt: 1, duration: null, error: null });
-        repo.saveHop({ id: 'e1:0', stimulationId: 'e1', index: 0, neuronId: 'n', inputCollateralId: 'c', outputCollateralId: null, inputPayload: null, outputPayload: null, startedAt: 1, duration: null, error: null });
-
-        const hops = repo.getHops('e1');
-        expect(hops[0].index).toBe(0);
-        expect(hops[1].index).toBe(1);
-    });
-
     it('maps cns to app bidirectionally', () => {
         repo.addCnsToApp('app1', 'app1:cns');
         expect(repo.getCnsByApp('app1')).toContain('app1:cns');
@@ -404,20 +243,11 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
         expect(repo.findAppByCns('unknown')).toBeUndefined();
     });
 
-    it('paginates stimulations', () => {
-        for (let i = 0; i < 10; i++) {
-            repo.saveStimulation({ id: `e${i}`, cnsId: 'c', appId: 'app', collateralId: 'c', payload: null, startedAt: i, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
-        }
-        const { items, total } = repo.getStimulations('app', { limit: 3, offset: 0 });
-        expect(total).toBe(10);
-        expect(items).toHaveLength(3);
-    });
-
     it('clears all data', () => {
         repo.upsertApp({ id: 'a', name: 'A', version: '1', connectedAt: 1, lastSeenAt: 1 });
-        repo.saveStimulation({ id: 'e1', cnsId: 'c', appId: 'a', collateralId: 'c', payload: null, startedAt: 1, completedAt: null, hopCount: 0, hasError: false, replayOf: null });
+        repo.saveTopology({ cnsId: 'a:cns', appId: 'a', appName: 'A', version: '1', timestamp: 1, neurons: [], collaterals: [], dendrites: [] });
         repo.clear();
         expect(repo.listApps()).toHaveLength(0);
-        expect(repo.getStimulations('a', {}).total).toBe(0);
+        expect(repo.getTopology()).toHaveLength(0);
     });
 });

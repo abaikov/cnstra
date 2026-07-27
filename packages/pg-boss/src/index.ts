@@ -8,8 +8,5 @@ export type {
     IPgBossLike,
     IPgBossJob,
     TCNSStimulationJobData,
-    TCNSHopRecord,
-    TCNSStimulationLifecycle,
-    ICNSProgressSink,
     ICNSResponseLike,
 } from './types';

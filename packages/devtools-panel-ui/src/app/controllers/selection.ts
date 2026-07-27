@@ -11,7 +11,7 @@ import {
     subscribeEntitiesByIndexKey,
     readPksByIndexKey,
     subscribePksByIndexKey,
-} from '@oimdb/exodra';
+} from '../../exo/oimdb-bind';
 
 // Framework-agnostic port of the old `useAppSelection` React hook: owns the
 // app / CNS selection state machine. All state that was React `useState` is now
@@ -20,17 +20,6 @@ import {
 
 const genRequestId = (): string =>
     `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-const debounce = <T extends (...args: never[]) => void>(
-    fn: T,
-    delay: number
-): ((...args: Parameters<T>) => void) => {
-    let timer: ReturnType<typeof setTimeout>;
-    return (...args: Parameters<T>) => {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn(...args), delay);
-    };
-};
 
 export interface AppSelection {
     connectedApps: TExoWritableBindable<TApp[]>;
@@ -96,33 +85,17 @@ export function createAppSelection({
         effectiveSelectedAppId.setValue(next);
     };
 
+    // Stimulations are no longer pulled per-app here — `createDurableIngest` polls
+    // the name-based store (`cns.stimulations.query`) for all scopes. Only topology
+    // is requested on selection.
     const requestTopologyAndStimulations = (appId: string): void => {
         send({ type: 'topology.query', requestId: genRequestId(), appId });
-        send({
-            type: 'stimulations.query',
-            requestId: genRequestId(),
-            appId,
-            filter: { limit: 1000 },
-        });
     };
-
-    const debouncedRequestStimulations = debounce((apps: readonly TApp[]) => {
-        if (!apps.length) return;
-        for (const app of apps) {
-            send({
-                type: 'stimulations.query',
-                requestId: genRequestId(),
-                appId: app.id,
-                filter: { limit: 1000 },
-            });
-        }
-    }, 1000);
 
     // ── React to the connected-apps set ──────────────────────────────────────
     const onAppsChanged = (): void => {
         const apps = readApps();
         connectedApps.setValue(apps);
-        if (apps.length) debouncedRequestStimulations(apps);
 
         // Auto-select the first app when nothing is selected yet.
         recomputeEffective();

@@ -1,227 +1,84 @@
-/** @jsxImportSource react */
-import React, { useState } from 'react';
-import { JsonViewer } from './JsonViewer';
-import { safeStringify } from '../utils/safeJson';
+import type { TExoSchema } from '@exodra/core';
+import { bindable } from '@exodra/reactivity';
+import { combine, readEntityByPk, subscribeEntityByPk } from '../exo/oimdb-bind';
 import { db } from '../model';
-import { useSelectEntityByPk } from '@oimdb/react';
 import { responseUIStateHelpers } from '../cns/data-layer/ui-state/UIStateNeuron';
+import { jsonView } from './json-view';
 
-interface ResponseDataViewerProps {
-    data: {
-        inputPayload?: unknown;
-        outputPayload?: unknown;
-        // TODO: the new CNSDTO protocol has no per-hop `contexts`; section removed.
-        snapshot?: unknown;
-    };
-    title?: string;
-    defaultExpanded?: boolean;
-    responseId?: string; // Optional responseId for persistent state
-}
+// Native Exodra port of the React <ResponseDataViewer>. Shows a response's
+// input/output payloads (via jsonView) in a collapsible card. Expand state persists
+// per `responseId` through db.responseUIState (toggled via the CNS data layer);
+// without a responseId it uses a local bindable.
 
-export const ResponseDataViewer: React.FC<ResponseDataViewerProps> = ({
-    data,
-    title = 'Response Data',
-    defaultExpanded = false,
-    responseId,
-}) => {
-    // Hooks must be called unconditionally; the result is ignored without responseId.
-    const uiState = useSelectEntityByPk(db.responseUIState, responseId ?? '');
+type Data = {
+    inputPayload?: unknown;
+    outputPayload?: unknown;
+    snapshot?: unknown;
+};
+type Opts = { title?: string; defaultExpanded?: boolean; responseId?: string };
 
-    // Local state for cases without responseId
-    const [localExpanded, setLocalExpanded] = useState(defaultExpanded);
+const SECTION =
+    'border:1px solid var(--border-accent);border-radius:var(--radius-xs);padding:var(--spacing-xs);background:var(--bg-primary)';
+const SECTION_H =
+    'font-size:var(--font-size-xs);font-weight:bold;color:var(--text-secondary);margin-bottom:var(--spacing-xs);display:flex;align-items:center;gap:var(--spacing-xs)';
 
-    const isExpanded = responseId
-        ? uiState?.isExpanded ?? defaultExpanded
-        : localExpanded;
-
-    const handleToggle = () => {
-        if (responseId) {
-            responseUIStateHelpers.toggleExpanded(responseId);
-        } else {
-            setLocalExpanded(!localExpanded);
-        }
-    };
+export function responseDataViewer(data: Data, opts: Opts = {}): TExoSchema {
+    const title = opts.title ?? 'Response Data';
+    const defaultExpanded = opts.defaultExpanded ?? false;
+    const responseId = opts.responseId;
 
     const hasData =
         data.inputPayload !== undefined ||
         data.outputPayload !== undefined ||
         data.snapshot !== undefined;
+    if (!hasData)
+        return <div static={{ style: 'font-family:var(--font-mono);font-size:var(--font-size-xs);color:var(--text-muted);font-style:italic;padding:var(--spacing-sm)' }}>No data available</div>;
 
-    // Use outputPayload for output signal
-    const outputPayload = data.outputPayload;
-
-    if (!hasData) {
-        return (
-            <div
-                style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--font-size-xs)',
-                    color: 'var(--text-muted)',
-                    fontStyle: 'italic',
-                    padding: 'var(--spacing-sm)',
-                }}
-            >
-                No data available
-            </div>
-        );
+    const expandedB = bindable(defaultExpanded);
+    if (responseId) {
+        const sync = (): void => {
+            const s = readEntityByPk(db.responseUIState, responseId) as
+                | { isExpanded?: boolean }
+                | undefined;
+            expandedB.setValue(s?.isExpanded ?? defaultExpanded);
+        };
+        sync();
+        subscribeEntityByPk(db.responseUIState, responseId, sync);
     }
+    const toggle = (): void => {
+        if (responseId) responseUIStateHelpers.toggleExpanded(responseId);
+        else expandedB.setValue(!expandedB.getValue());
+    };
 
-    return (
-        <div
-            style={{
-                border: '1px solid var(--border-primary)',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--bg-card)',
-                overflow: 'hidden',
-            }}
-        >
-            {/* Header */}
+    const payloadSection = (icon: string, payload: unknown): TExoSchema => (
+        <div static={{ style: SECTION }}>
+            <div static={{ style: SECTION_H }}>{icon}</div>
+            {jsonView(payload, { maxHeight: '200px' })}
+        </div>
+    );
+
+    const body = (expanded: boolean): TExoSchema => (
+        <div static={{ style: 'border:1px solid var(--border-primary);border-radius:var(--radius-sm);background:var(--bg-card);overflow:hidden' }}>
             <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 'var(--spacing-sm)',
-                    background: 'var(--bg-secondary)',
-                    borderBottom: '1px solid var(--border-primary)',
-                    cursor: 'pointer',
-                }}
-                onClick={handleToggle}
+                static={{ style: 'display:flex;align-items:center;justify-content:space-between;padding:var(--spacing-sm);background:var(--bg-secondary);border-bottom:1px solid var(--border-primary);cursor:pointer' }}
+                handlers={{ onClick: toggle }}
             >
-                <div
-                    style={{
-                        fontSize: 'var(--font-size-sm)',
-                        fontWeight: 'bold',
-                        color: 'var(--text-primary)',
-                    }}
-                >
-                    📊 {title}
-                </div>
-                <div
-                    style={{
-                        fontSize: 'var(--font-size-xs)',
-                        color: 'var(--text-muted)',
-                        transform: isExpanded
-                            ? 'rotate(180deg)'
-                            : 'rotate(0deg)',
-                        transition: 'transform 0.2s ease',
-                    }}
-                >
-                    ▼
-                </div>
+                <div static={{ style: 'font-size:var(--font-size-sm);font-weight:bold;color:var(--text-primary)' }}>📊 {title}</div>
+                <div static={{ style: `font-size:var(--font-size-xs);color:var(--text-muted);transform:${expanded ? 'rotate(180deg)' : 'rotate(0deg)'};transition:transform 0.2s ease` }}>▼</div>
             </div>
-
-            {/* Content */}
-            {isExpanded && (
-                <div style={{ padding: 'var(--spacing-sm)' }}>
-                    <div
-                        style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 'var(--spacing-sm)',
-                        }}
-                    >
-                        {/* Input Signal */}
-                        {data.inputPayload !== undefined && (
-                            <div
-                                style={{
-                                    border: '1px solid var(--border-accent)',
-                                    borderRadius: 'var(--radius-xs)',
-                                    padding: 'var(--spacing-xs)',
-                                    background: 'var(--bg-primary)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        fontSize: 'var(--font-size-xs)',
-                                        fontWeight: 'bold',
-                                        color: 'var(--text-secondary)',
-                                        marginBottom: 'var(--spacing-xs)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 'var(--spacing-xs)',
-                                    }}
-                                >
-                                    📥 Input Signal
-                                </div>
-                                <JsonViewer
-                                    data={data.inputPayload}
-                                    title=""
-                                    defaultExpanded={false}
-                                    maxHeight="200px"
-                                />
-                            </div>
-                        )}
-
-                        {/* Output Signal */}
-                        {outputPayload !== undefined && (
-                            <div
-                                style={{
-                                    border: '1px solid var(--border-accent)',
-                                    borderRadius: 'var(--radius-xs)',
-                                    padding: 'var(--spacing-xs)',
-                                    background: 'var(--bg-primary)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        fontSize: 'var(--font-size-xs)',
-                                        fontWeight: 'bold',
-                                        color: 'var(--text-secondary)',
-                                        marginBottom: 'var(--spacing-xs)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 'var(--spacing-xs)',
-                                    }}
-                                >
-                                    📤 Output Signal
-                                </div>
-                                <JsonViewer
-                                    data={outputPayload}
-                                    title=""
-                                    defaultExpanded={false}
-                                    maxHeight="200px"
-                                />
-                            </div>
-                        )}
-
-                        {/* TODO: Context Storage section removed — the new CNSDTO
-                            protocol carries no per-hop `contexts`. */}
-
-                        {/* Data Snapshot */}
-                        {data.snapshot !== undefined && (
-                            <div
-                                style={{
-                                    border: '1px solid var(--border-accent)',
-                                    borderRadius: 'var(--radius-xs)',
-                                    padding: 'var(--spacing-xs)',
-                                    background: 'var(--bg-primary)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        fontSize: 'var(--font-size-xs)',
-                                        fontWeight: 'bold',
-                                        color: 'var(--text-secondary)',
-                                        marginBottom: 'var(--spacing-xs)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 'var(--spacing-xs)',
-                                    }}
-                                >
-                                    📸 Data Snapshot
-                                </div>
-                                <JsonViewer
-                                    data={data.snapshot}
-                                    title=""
-                                    defaultExpanded={false}
-                                    maxHeight="400px"
-                                />
-                            </div>
-                        )}
+            {expanded ? (
+                <div static={{ style: 'padding:var(--spacing-sm)' }}>
+                    <div static={{ style: 'display:flex;flex-direction:column;gap:var(--spacing-sm)' }}>
+                        {data.inputPayload !== undefined ? payloadSection('📥 Input Signal', data.inputPayload) : <div />}
+                        {data.outputPayload !== undefined ? payloadSection('📤 Output Signal', data.outputPayload) : <div />}
+                        {data.snapshot !== undefined ? payloadSection('📸 Data Snapshot', data.snapshot) : <div />}
                     </div>
                 </div>
+            ) : (
+                <div />
             )}
         </div>
     );
-};
+
+    return <div bindable={{ children: combine([expandedB], () => body(expandedB.getValue())) }} />;
+}
