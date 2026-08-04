@@ -2,6 +2,7 @@ export { buildAttemptId, buildCloneId } from './ids';
 export * from './schemas/entities';
 export * from './schemas/app-messages';
 export * from './schemas/app-commands';
+export * from './schemas/signal';
 export * from './schemas/stimulation-view';
 export * from './schemas/stimulations-query';
 export * from './schemas/client-messages';

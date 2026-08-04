@@ -8,6 +8,7 @@ import type {
     TCNSStimulationViewDTO,
     TCNSStimulationFilter,
     TCNSStimulationTask,
+    TCNSStimulationAttempt,
 } from '@cnstra/devtools-dto';
 import { buildAttemptId, buildCloneId } from '@cnstra/devtools-dto';
 import type {
@@ -131,6 +132,9 @@ export class CNSDevToolsServer {
             case 'cns.stimulations.facets':
                 await this.handleStimulationsFacets(ws, msg);
                 break;
+            case 'cns.stimulations.snapshot':
+                await this.handleStimulationsSnapshot(ws, msg);
+                break;
             case 'cns.stimulation.detail':
                 await this.handleStimulationDetail(ws, msg);
                 break;
@@ -212,6 +216,42 @@ export class CNSDevToolsServer {
         this.send(ws, {
             type: 'cns.stimulation.detail.result',
             requestId: msg.requestId,
+            attempts,
+            tasks,
+        });
+    }
+
+    /**
+     * The topology/signal views' bulk feed: a bounded, newest-first set of runs as
+     * FLAT buckets (stimulations + attempts + tasks) the panel joins client-side by
+     * id. Replaces the retired nested `cns.stimulations.query` tree — same data, no
+     * server-side join, no client-side flatten.
+     */
+    private async handleStimulationsSnapshot(
+        ws: WebSocket,
+        msg: any
+    ): Promise<void> {
+        const filter = this.toRosterFilter(msg.scopeName, msg.filter);
+        const store = this.stimulationRepository;
+        const limit = typeof msg.limit === 'number' ? msg.limit : 200;
+        const page = supportsRosterQuery(store)
+            ? await store.queryRoster(filter, { limit })
+            : keysetPage(
+                  (await loadRosterEntries(store, filter)).map(e => e.row),
+                  { limit }
+              );
+        const attempts: TCNSStimulationAttempt[] = [];
+        const tasks: TCNSStimulationTask[] = [];
+        for (const row of page.rows) {
+            const as = await store.getAttempts(row.stimulationId);
+            attempts.push(...as);
+            for (const a of as)
+                tasks.push(...(await store.getTasks(a.stimulationAttemptId)));
+        }
+        this.send(ws, {
+            type: 'cns.stimulations.snapshot.result',
+            requestId: msg.requestId,
+            stimulations: page.rows,
             attempts,
             tasks,
         });

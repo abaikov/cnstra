@@ -1,23 +1,12 @@
 import { z } from 'zod';
-import type { TCNSSignalJSON } from '@cnstra/persist-dto';
+import { CNSSignalJSONSchema } from './signal';
 
 /**
- * The name-based observability view of one stimulation: its status + resumable
- * frontier + full attempt/task history (the waterfall). This is the server's
- * projection of the durable `ICNSStimulationRepository` (Stimulation → Attempt →
- * Task, all by name) into the shape the panel renders, keyed by the stable
- * `stimulationId`. The same panel UI renders both the WS observability stream and
- * the HTTP admin.
+ * DEPRECATED (retiring): the nested observability view of one stimulation. Replaced
+ * by the flat-bucket explorer protocol (`cns.stimulations.list`/`.snapshot`/
+ * `.detail`). Kept only until the last consumer (the legacy Stimulations page) is
+ * removed. The canonical signal leaf now lives in `./signal`.
  */
-/**
- * Wire validator for the canonical signal leaf. Its inferred type IS
- * `TCNSSignalJSON` (persist-dto) — the ONE signal shape shared by the durable
- * model, this wire view, and the panel. No parallel `…ViewDTO` signal type.
- */
-export const CNSSignalJSONSchema: z.ZodType<TCNSSignalJSON> = z.object({
-    collateralName: z.string(),
-    payload: z.unknown(),
-});
 
 /**
  * One neuron step (task) of an attempt, by name — the server's denormalized

@@ -69,19 +69,23 @@ function installFakeWebSocket() {
             if (i >= 0) a.splice(i, 1);
         }
         send(data?: string) {
-            // Answer the durable-ingest poll from the test-provided stimulation fixture.
+            // Answer the stimulation-ingest poll from the test-provided snapshot buckets.
             let m: any;
             try {
                 m = JSON.parse(String(data));
             } catch {
                 return; // client.connect / apps.query / topology.query — ignore
             }
-            if (m && m.type === 'cns.stimulations.query') {
-                const stimulations = (window as any).__cnsStimulations || [];
+            if (m && m.type === 'cns.stimulations.snapshot') {
+                const snap = (window as any).__cnsSnapshot || {
+                    stimulations: [],
+                    attempts: [],
+                    tasks: [],
+                };
                 const reply = {
-                    type: 'cns.stimulations.result',
+                    type: 'cns.stimulations.snapshot.result',
                     requestId: m.requestId,
-                    stimulations,
+                    ...snap,
                 };
                 setTimeout(() => this.emit(JSON.stringify(reply)), 0);
             }
@@ -146,41 +150,51 @@ test('a stalled hop makes its subscriber neuron turn "stuck" (frontier = 3)', as
         },
     };
 
-    // One *running* name-based stimulation snapshot (the poll reply). `scopeName` MUST be
-    // the cnsId so translateStimulationView reconstructs ids against the topology above,
-    // and status 'running' makes the stimulation in-flight (completedAt: null) —
-    // required for a live frontier. The single task: neuron `api` outputs the
-    // `request` collateral, which `worker` subscribes to (dendrite) but never
-    // stimulations — so `worker` is the frontier node. Its `startedAt` is 10s in the past
-    // so the frontier ages straight to "stuck" on the next poll tick.
-    const stimulation = {
-        stimulationId: 'stimulation-1',
-        status: 'running',
-        scopeName: CNS_ID,
-        entry: { collateralName: 'request', payload: { n: 1 } },
-        frontier: ['worker'],
-        attempts: [
+    // One *running* stimulation as FLAT snapshot buckets (the poll reply). `scopeName`
+    // MUST be the cnsId so the graph resolves names→topology ids, and status 'running'
+    // (completedAt: null) makes it in-flight — required for a live frontier. The single
+    // task: neuron `api` outputs the `request` collateral, which `worker` subscribes to
+    // (dendrite) but never runs — so `worker` is the frontier node. Its `startedAt` is
+    // 10s in the past so the frontier ages straight to "stuck" on the next poll tick.
+    const snapshot = {
+        stimulations: [
             {
-                attemptNumber: 1,
+                stimulationId: 'stimulation-1',
+                scopeName: CNS_ID,
+                entry: { collateralName: 'request', payload: { n: 1 } },
                 status: 'running',
-                hopCount: 1,
                 startedAt: now - 10000,
                 completedAt: null,
-                tasks: [
-                    {
-                        index: 0,
-                        neuronName: 'api',
-                        dendriteCollateralName: 'request',
-                        status: 'completed',
-                        output: {
-                            collateralName: 'request',
-                            payload: { ok: true },
-                        },
-                        error: null,
-                        startedAt: now - 10000,
-                        duration: 2,
-                    },
-                ],
+                hopCount: 1,
+                hasError: false,
+            },
+        ],
+        attempts: [
+            {
+                stimulationAttemptId: 'stimulation-1#1',
+                stimulationId: 'stimulation-1',
+                attemptNumber: 1,
+                status: 'running',
+                startedAt: now - 10000,
+                completedAt: null,
+                hopCount: 1,
+                hasError: false,
+                replayOf: null,
+                entry: [{ collateralName: 'request', payload: { n: 1 } }],
+            },
+        ],
+        tasks: [
+            {
+                stimulationAttemptId: 'stimulation-1#1',
+                index: 0,
+                neuronName: 'api',
+                dendriteCollateralName: 'request',
+                inputIndex: 0,
+                output: { collateralName: 'request', payload: { ok: true } },
+                status: 'done',
+                error: null,
+                startedAt: now - 10000,
+                duration: 2,
             },
         ],
     };
@@ -196,11 +210,11 @@ test('a stalled hop makes its subscriber neuron turn "stuck" (frontier = 3)', as
     await page.locator('.cns-graph').waitFor({ state: 'visible' });
     await page.waitForFunction(() => Boolean((window as any).__cnsCy));
 
-    // Publish the stimulation fixture the fake WS serves on the next `cns.stimulations.query`
-    // poll (durableIngest polls every 2s; the assertion below waits it out).
-    await page.evaluate(r => {
-        (window as any).__cnsStimulations = [r];
-    }, stimulation);
+    // Publish the snapshot the fake WS serves on the next `cns.stimulations.snapshot`
+    // poll (stimulationIngest polls every 2s; the assertion below waits it out).
+    await page.evaluate(s => {
+        (window as any).__cnsSnapshot = s;
+    }, snapshot);
 
     const frontierOf = (id: string) =>
         page.evaluate(nid => {

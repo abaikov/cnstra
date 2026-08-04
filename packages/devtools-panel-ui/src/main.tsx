@@ -10,7 +10,7 @@ import { createHashHistory } from './exo/hash-history';
 import { routes } from './app/routes';
 import { createDevtoolsSocket } from './app/controllers/socket';
 import { createAppSelection } from './app/controllers/selection';
-import { createDurableIngest } from './app/controllers/durableIngest';
+import { createStimulationIngest } from './app/controllers/stimulationIngest';
 import { createShell } from './app/shell';
 import { CNSDurableStimulationsHttpClient } from './durable/CNSDurableStimulationsHttpClient';
 
@@ -40,7 +40,7 @@ if (root) {
     // The panel's stimulation/hop data now comes from the name-based durable store
     // (polled), translated into the id-shaped OIMDB the graph/analytics/details/
     // performance views read. This is the sole stimulation ingest (2b-4).
-    createDurableIngest(socket);
+    createStimulationIngest(socket);
 
     // The durable-runs admin is a separate POLLING service (not the WS stream);
     // its base URL is overridable like the WS one.

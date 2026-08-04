@@ -9,7 +9,7 @@ import { wsAxon } from '../ws/WsAxon';
  * data-layer neurons persist the events it emits.
  *
  * Stimulation/hop data no longer flows through here: it is polled by
- * `createDurableIngest` (name-based `cns.stimulations.query`) and translated into
+ * `createStimulationIngest` (bucket `cns.stimulations.snapshot`) and translated into
  * the same `stimulationStarted`/`hopAdded`/`stimulationCompleted` domain events.
  * This ingress now only handles topology, app lifecycle, and server metrics.
  */

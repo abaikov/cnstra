@@ -10,6 +10,7 @@ import type {
 type Extends<A, _B extends A> = true;
 import { CNSTopologyMessageDTOSchema } from './app-messages';
 import { CNSStimulationViewDTOSchema } from './stimulation-view';
+import { CNSStimulationsSnapshotResultSchema } from './stimulations-query';
 
 /**
  * Name-based observability result (Phase 2b-3): the run/attempt/task roster the
@@ -132,6 +133,7 @@ export const CNSServerMessageDTOSchema = z.discriminatedUnion('type', [
     CNSStimulationCloneAcceptedDTOSchema,
     CNSStimulationCloneRejectedDTOSchema,
     CNSStimulationsResultDTOSchema,
+    CNSStimulationsSnapshotResultSchema,
 ]);
 
 export type TCNSAppConnectedBroadcastDTO = z.infer<typeof CNSAppConnectedBroadcastDTOSchema>;

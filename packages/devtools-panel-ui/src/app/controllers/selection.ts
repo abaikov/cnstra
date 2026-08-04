@@ -85,7 +85,7 @@ export function createAppSelection({
         effectiveSelectedAppId.setValue(next);
     };
 
-    // Stimulations are no longer pulled per-app here — `createDurableIngest` polls
+    // Stimulations are no longer pulled per-app here — `createStimulationIngest` polls
     // the name-based store (`cns.stimulations.query`) for all scopes. Only topology
     // is requested on selection.
     const requestTopologyAndStimulations = (appId: string): void => {

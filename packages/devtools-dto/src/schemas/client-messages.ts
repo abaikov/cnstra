@@ -7,6 +7,7 @@ import {
     CNSStimulationsListRequestSchema,
     CNSStimulationsFacetsRequestSchema,
     CNSStimulationDetailRequestSchema,
+    CNSStimulationsSnapshotRequestSchema,
 } from './stimulations-query';
 
 /** Compile-time guard: a validated message must satisfy the canonical persist-dto type. */
@@ -94,6 +95,7 @@ export const CNSClientMessageDTOSchema = z.discriminatedUnion('type', [
     CNSStimulationsListRequestSchema,
     CNSStimulationsFacetsRequestSchema,
     CNSStimulationDetailRequestSchema,
+    CNSStimulationsSnapshotRequestSchema,
     CNSReplayStartMessageDTOSchema,
     CNSStimulationRetryMessageDTOSchema,
     CNSStimulationCloneMessageDTOSchema,

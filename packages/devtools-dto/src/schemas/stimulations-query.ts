@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CNSSignalJSONSchema } from './stimulation-view';
+import { CNSSignalJSONSchema } from './signal';
 
 /**
  * The DevTools "explorer" protocol — normalized BUCKETS, not a join-tree. Each
@@ -150,6 +150,33 @@ export const CNSStimulationsFacetsResultSchema = z.object({
 });
 export type TCNSStimulationsFacetsResult = z.infer<
     typeof CNSStimulationsFacetsResultSchema
+>;
+
+// ─── snapshot request/result (the whole bounded set → flat buckets) ───────────
+// Replaces the retired nested `cns.stimulations.query` (TCNSStimulationViewDTO
+// tree): the panel's topology/signal views poll this ONE call and join the flat
+// stimulations/attempts/tasks buckets client-side by id — no server-side tree.
+export const CNSStimulationsSnapshotRequestSchema = z.object({
+    type: z.literal('cns.stimulations.snapshot'),
+    requestId: z.string(),
+    scopeName: z.string().optional(),
+    filter: CNSStimulationFilterSchema.optional(),
+    /** Cap the number of (newest) runs pulled — bounds the payload. */
+    limit: z.number().optional(),
+});
+export type TCNSStimulationsSnapshotRequest = z.infer<
+    typeof CNSStimulationsSnapshotRequestSchema
+>;
+
+export const CNSStimulationsSnapshotResultSchema = z.object({
+    type: z.literal('cns.stimulations.snapshot.result'),
+    requestId: z.string(),
+    stimulations: z.array(CNSStimulationRowDTOSchema),
+    attempts: z.array(CNSStimulationAttemptDTOSchema),
+    tasks: z.array(CNSStimulationTaskDTOSchema),
+});
+export type TCNSStimulationsSnapshotResult = z.infer<
+    typeof CNSStimulationsSnapshotResultSchema
 >;
 
 // ─── detail request/result (one run → attempts + tasks buckets) ───────────────
