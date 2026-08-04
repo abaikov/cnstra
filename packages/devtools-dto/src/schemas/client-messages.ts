@@ -3,6 +3,11 @@ import type {
     TCNSStimulationRetryRequest,
     TCNSStimulationCloneRequest,
 } from '@cnstra/persist-dto';
+import {
+    CNSStimulationsListRequestSchema,
+    CNSStimulationsFacetsRequestSchema,
+    CNSStimulationDetailRequestSchema,
+} from './stimulations-query';
 
 /** Compile-time guard: a validated message must satisfy the canonical persist-dto type. */
 type Extends<A, _B extends A> = true;
@@ -86,6 +91,9 @@ export const CNSClientMessageDTOSchema = z.discriminatedUnion('type', [
     CNSAppsQueryDTOSchema,
     CNSTopologyQueryDTOSchema,
     CNSStimulationsQueryDTOSchema,
+    CNSStimulationsListRequestSchema,
+    CNSStimulationsFacetsRequestSchema,
+    CNSStimulationDetailRequestSchema,
     CNSReplayStartMessageDTOSchema,
     CNSStimulationRetryMessageDTOSchema,
     CNSStimulationCloneMessageDTOSchema,

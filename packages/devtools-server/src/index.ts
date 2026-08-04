@@ -4,7 +4,12 @@ import {
     CNSClientMessageDTOSchema,
     TCNSTopologyMessageDTO,
 } from '@cnstra/devtools-dto';
-import type { TCNSStimulationViewDTO } from '@cnstra/devtools-dto';
+import type {
+    TCNSStimulationViewDTO,
+    TCNSStimulationFilter,
+    TCNSStimulationRowDTO,
+    TCNSStimulationTask,
+} from '@cnstra/devtools-dto';
 import { buildAttemptId, buildCloneId } from '@cnstra/devtools-dto';
 import type { ICNSStimulationRepository } from '@cnstra/persist';
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
@@ -112,7 +117,164 @@ export class CNSDevToolsServer {
             case 'cns.stimulations.query':
                 await this.handleStimulationsQuery(ws, msg);
                 break;
+            case 'cns.stimulations.list':
+                await this.handleStimulationsList(ws, msg);
+                break;
+            case 'cns.stimulations.facets':
+                await this.handleStimulationsFacets(ws, msg);
+                break;
+            case 'cns.stimulation.detail':
+                await this.handleStimulationDetail(ws, msg);
+                break;
         }
+    }
+
+    /**
+     * Explorer protocol (bucket-shaped). Compute the roster rows: durable state minus
+     * `progress`, plus envelope summaries derived from the run's attempts.
+     * NOTE (v1): filter/sort/paginate/facet run HERE over the repository's list.
+     * TODO(pushdown): move the filter+keyset+GROUP BY into ICNSStimulationRepository
+     * (SQL) for true scale — the wire contract stays identical.
+     */
+    private async computeRows(
+        scopeName: string | undefined,
+        filter: TCNSStimulationFilter | undefined
+    ): Promise<TCNSStimulationRowDTO[]> {
+        const stims = await this.stimulationRepository.listStimulations(
+            scopeName ? { scopeName } : undefined
+        );
+        const rows: TCNSStimulationRowDTO[] = [];
+        for (const s of stims) {
+            const attempts = await this.stimulationRepository.getAttempts(
+                s.stimulationId
+            );
+            const startedAt = attempts.length
+                ? Math.min(...attempts.map(a => a.startedAt))
+                : 0;
+            const last = attempts[attempts.length - 1];
+            const completedAt =
+                s.status === 'running' ? null : last?.completedAt ?? null;
+            const hopCount = attempts.reduce((n, a) => n + a.hopCount, 0);
+            rows.push({
+                stimulationId: s.stimulationId,
+                scopeName: s.scopeName,
+                entry: s.entry,
+                status: s.status,
+                startedAt,
+                completedAt,
+                hopCount,
+                hasError: s.status === 'failed',
+            });
+        }
+        const f = filter ?? {};
+        const matched = rows.filter(
+            r =>
+                (f.status === undefined || r.status === f.status) &&
+                (f.entryCollateralName === undefined ||
+                    r.entry.collateralName === f.entryCollateralName) &&
+                (f.text === undefined ||
+                    r.stimulationId
+                        .toLowerCase()
+                        .includes(f.text.toLowerCase())) &&
+                (f.since === undefined || r.startedAt >= f.since) &&
+                (f.until === undefined || r.startedAt <= f.until)
+        );
+        // Newest first, tie-broken by id (stable keyset order).
+        matched.sort(
+            (a, b) =>
+                b.startedAt - a.startedAt ||
+                (a.stimulationId < b.stimulationId ? 1 : -1)
+        );
+        return matched;
+    }
+
+    private async handleStimulationsList(
+        ws: WebSocket,
+        msg: any
+    ): Promise<void> {
+        const rows = await this.computeRows(msg.scopeName, msg.filter);
+        const limit = typeof msg.limit === 'number' ? msg.limit : 50;
+        // Keyset cursor = `${startedAt}|${stimulationId}` (base64). Page = rows after it.
+        let start = 0;
+        if (typeof msg.cursor === 'string' && msg.cursor) {
+            const decoded = Buffer.from(msg.cursor, 'base64').toString('utf8');
+            const idx = rows.findIndex(
+                r => `${r.startedAt}|${r.stimulationId}` === decoded
+            );
+            if (idx >= 0) start = idx + 1;
+        }
+        const page = rows.slice(start, start + limit);
+        const lastRow = page[page.length - 1];
+        const hasMore = start + limit < rows.length;
+        const nextCursor =
+            hasMore && lastRow
+                ? Buffer.from(
+                      `${lastRow.startedAt}|${lastRow.stimulationId}`,
+                      'utf8'
+                  ).toString('base64')
+                : null;
+        this.send(ws, {
+            type: 'cns.stimulations.list.result',
+            requestId: msg.requestId,
+            stimulations: page,
+            nextCursor,
+            total: rows.length,
+        });
+    }
+
+    private async handleStimulationsFacets(
+        ws: WebSocket,
+        msg: any
+    ): Promise<void> {
+        const rows = await this.computeRows(msg.scopeName, msg.filter);
+        const tally = <K extends string>(
+            keyOf: (r: TCNSStimulationRowDTO) => K
+        ): { key: K; count: number }[] => {
+            const m = new Map<K, number>();
+            for (const r of rows) {
+                const k = keyOf(r);
+                m.set(k, (m.get(k) ?? 0) + 1);
+            }
+            return [...m.entries()]
+                .map(([key, count]) => ({ key, count }))
+                .sort((a, b) => b.count - a.count);
+        };
+        this.send(ws, {
+            type: 'cns.stimulations.facets.result',
+            requestId: msg.requestId,
+            facets: {
+                byEntryCollateral: tally(r => r.entry.collateralName).map(x => ({
+                    name: x.key,
+                    count: x.count,
+                })),
+                byStatus: tally(r => r.status).map(x => ({
+                    status: x.key,
+                    count: x.count,
+                })),
+            },
+        });
+    }
+
+    private async handleStimulationDetail(
+        ws: WebSocket,
+        msg: any
+    ): Promise<void> {
+        const attempts = await this.stimulationRepository.getAttempts(
+            msg.stimulationId
+        );
+        const tasks: TCNSStimulationTask[] = [];
+        for (const a of attempts) {
+            const ts = await this.stimulationRepository.getTasks(
+                a.stimulationAttemptId
+            );
+            tasks.push(...ts);
+        }
+        this.send(ws, {
+            type: 'cns.stimulation.detail.result',
+            requestId: msg.requestId,
+            attempts,
+            tasks,
+        });
     }
 
     /**
