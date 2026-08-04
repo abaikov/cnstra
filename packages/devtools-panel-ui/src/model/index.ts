@@ -84,9 +84,10 @@ export type TCNSHopState = TCNSStimulationTaskViewDTO & {
     startedAt: number;
 };
 
-// A CNS instance is not a DTO entity; the panel synthesizes one per (appId, cnsId)
-// from topology messages (an app can host several CNS).
-export type TCNSState = { cnsId: string; appId: TCNSAppId };
+// The identity of a CNS instance — which cns, in which app. Not a DTO entity; the
+// panel synthesizes one per (appId, cnsId) from topology messages (an app can host
+// several CNS).
+export type TCNSIdentity = { cnsId: string; appId: TCNSAppId };
 
 export type TCNSServerMetrics = {
     timestamp: number;
@@ -228,9 +229,9 @@ export const db = {
         new OIMCollectionStoreTrieDriven<TCNSDendriteDTO>()
     ),
 
-    cns: collectionWith<TCNSState, string, {
+    cns: collectionWith<TCNSIdentity, string, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCNSState, string>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSIdentity, string>>['indexFactory']['derivedSetIndex']
         >;
     }>(
         cns => cns.cnsId,
