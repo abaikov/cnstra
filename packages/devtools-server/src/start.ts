@@ -4,7 +4,10 @@ import { join, dirname } from 'path';
 import { createRequire } from 'module';
 import { WebSocketServer, WebSocket } from 'ws';
 import { CNSDevToolsServer } from './index';
-import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+import type {
+    CNSPersistOptionsRegistry,
+    ICNSStimulationRepository,
+} from '@cnstra/persist';
 import type { ICNS, TCNSNeuron } from '@cnstra/types';
 
 const _require = createRequire(join(process.cwd(), 'package.json'));
@@ -58,6 +61,15 @@ export type StartDevToolsOptions = {
     /** App ID shown in DevTools. Default: 'app' */
     appId?: string;
     consoleLogEnabled?: boolean;
+    /**
+     * The canonical name-based Stimulation → Attempt → Task store the Explorer
+     * reads its runs / facets / waterfall from. Pass the SAME instance you give a
+     * pg-boss / BullMQ worker as its `observe` store, and every job run shows up
+     * in the Explorer live (one process, shared memory). Use a
+     * `CNSPostgresStimulationRepository` to keep history across restarts, or omit
+     * for a fresh ephemeral in-memory store.
+     */
+    stimulationRepository?: ICNSStimulationRepository;
 };
 
 export type DevToolsHandle = {
@@ -104,7 +116,10 @@ export async function startDevTools(
     const { CNSDevToolsServerRepositoryInMemory } = await import(
         '@cnstra/devtools-server-repository-in-memory'
     );
-    const dtServer = new CNSDevToolsServer(new CNSDevToolsServerRepositoryInMemory());
+    const dtServer = new CNSDevToolsServer(
+        new CNSDevToolsServerRepositoryInMemory(),
+        options.stimulationRepository
+    );
 
     wss.on('connection', (ws) => {
         ws.on('message', async (data) => {

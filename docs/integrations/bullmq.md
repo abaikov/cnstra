@@ -106,6 +106,18 @@ const runs = await history.listStimulations(); // roster for an admin screen
 > history across restarts, use `CNSPostgresStimulationRepository`. The DevTools panel renders
 > this model directly — see [Durable Runs](/docs/devtools/durable-runs).
 
+**See it live in the Explorer.** Hand that same `history` store to `startDevTools` and every job the
+worker processes shows up in the 🔎 Explorer — filterable by job type (entry collateral) or neuron,
+each run drilling into its attempt/task waterfall. One shared store, no bespoke UI:
+
+```ts
+import { startDevTools } from '@cnstra/devtools-server';
+
+await startDevTools(cns, registry, { stimulationRepository: history });
+createCNSWorker({ Worker, cns, registry, queue: 'cns', connection, observe: history });
+// → open the printed URL → 🔎 Explorer. Separate process? Point both at one Postgres store instead.
+```
+
 ## Non-serializable data in signals {#non-serializable-data}
 
 Queue payloads must be JSON. Keep blobs/handles/streams in-process: a "controller" neuron holds

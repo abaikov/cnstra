@@ -183,16 +183,24 @@ To **keep** it across restarts, use `CNSPostgresStimulationRepository` from
 relational run/attempt/task tables (`cnstra-persist-postgres migrate`, or auto-created), so there is
 no schema to write yourself.
 
-> **Shortcut — the DevTools panel as a persistent admin.** The CNStra DevTools already render this
-> exact model (💀 Durable Runs · ⚡ Stimulations). Inject the same durable store into the server and
-> the panel becomes a restart-surviving admin view — no bespoke UI:
+> **Shortcut — the DevTools Explorer as a persistent admin.** The CNStra DevTools already render this
+> exact model (🔎 Explorer · 💀 Durable Runs · ⚡ Stimulations). Hand the same `observe` store to
+> `startDevTools` and every job the worker processes shows up live in the Explorer — filterable by job
+> type (entry collateral) or neuron, with a per-run attempt/task waterfall — no bespoke UI:
 > ```ts
-> import { CNSDevToolsServer } from '@cnstra/devtools-server';
-> import { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
-> const store = new CNSPostgresStimulationRepository({ connectionString: DATABASE_URL });
-> // 2nd arg = the name-based Stimulation/Attempt/Task store the panel queries:
-> const server = new CNSDevToolsServer(appTopologyRepo, store);
+> import { startDevTools } from '@cnstra/devtools-server';
+> import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
+> // keep it across restarts: import { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
+>
+> const history = new CNSInMemoryStimulationRepository(); // or the Postgres store above
+>
+> // Serves the panel UI + live topology, and reads runs from the SAME store the worker writes to:
+> await startDevTools(cns, registry, { stimulationRepository: history });
+> await createCNSWorker({ boss, cns, registry, queue: 'cns', observe: history });
+> // → open the printed URL, hit the 🔎 Explorer tab: 20 job types = 20 entry-collateral facets.
 > ```
+> Running the DevTools server in a separate process instead? Point both at one
+> `CNSPostgresStimulationRepository` (same `connectionString`) — the store is the shared channel.
 
 The three admin screens fall straight out of the model — and are what the panel already renders:
 
