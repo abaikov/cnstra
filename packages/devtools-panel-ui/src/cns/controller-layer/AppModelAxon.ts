@@ -8,11 +8,11 @@ import type {
 import type {
     TCNSStimulationState,
     TCNSHopState,
-    TServerMetrics,
+    TCNSServerMetrics,
 } from '../../model';
 
 /** A topology snapshot for one CNS of one app (from `app.connected` / `topology*`). */
-export type TTopologySnapshot = {
+export type TCNSTopologySnapshot = {
     cnsId: string;
     appId: string;
     neurons: TCNSNeuronDTO[];
@@ -21,7 +21,7 @@ export type TTopologySnapshot = {
 };
 
 /** Stimulation completion patch (from `stimulation.completed`). */
-export type TStimulationCompletion = {
+export type TCNSStimulationCompletion = {
     stimulationId: string;
     completedAt: number;
     hopCount: number;
@@ -36,11 +36,11 @@ export type TStimulationCompletion = {
 export const appModelAxon = {
     appUpserted: collateral<TCNSAppDTO>(),
     appDisconnected: collateral<{ appId: string }>(),
-    topologyReceived: collateral<TTopologySnapshot>(),
+    topologyReceived: collateral<TCNSTopologySnapshot>(),
     stimulationStarted: collateral<TCNSStimulationState>(),
-    stimulationCompleted: collateral<TStimulationCompletion>(),
+    stimulationCompleted: collateral<TCNSStimulationCompletion>(),
     hopAdded: collateral<TCNSHopState>(),
-    serverMetrics: collateral<TServerMetrics>(),
+    serverMetrics: collateral<TCNSServerMetrics>(),
     // UI action: user picked an app in the list.
     selectAppClicked: collateral<{ appId: string }>(),
 };

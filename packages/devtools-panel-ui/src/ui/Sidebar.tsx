@@ -9,7 +9,7 @@ import { analyticsDashboard } from './AnalyticsDashboard';
 import { isStimulationsPath, isDurablePath } from '../app/routes';
 import type { DevtoolsSocket } from '../app/controllers/socket';
 import type { AppSelection } from '../app/controllers/selection';
-import type { TApp } from '../model';
+import type { TCNSAppDTO } from '../model';
 
 // Native Exodra port of the sidebar. Its own chrome (title, connected-apps list,
 // connection status, filters, nav buttons) is native and wired straight to the
@@ -50,7 +50,7 @@ export function sidebarView({
     // ── Panel island props (reactive on selection) ───────────────────────────
 
     // ── Connected apps list (re-renders on apps set OR selection change) ──────
-    const appCard = (app: TApp, selected: boolean): TExoSchema => (
+    const appCard = (app: TCNSAppDTO, selected: boolean): TExoSchema => (
         <div
             static={{
                 class: `pulse-infection ${selected ? 'decay-glow' : ''}`,

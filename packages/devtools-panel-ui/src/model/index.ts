@@ -27,24 +27,25 @@ import type {
     TCNSStimulationTaskViewDTO,
 } from '@cnstra/devtools-dto';
 
-// ─── Domain types (aliases over the DTO — one source of truth) ────────────────
+// ─── Domain types ─────────────────────────────────────────────────────────────
+// Topology entities ARE the wire DTOs verbatim — re-exported so panel code imports
+// them from one place. The panel adds only composite-pk aliases + derived types.
+export type {
+    TCNSAppDTO,
+    TCNSNeuronDTO,
+    TCNSCollateralDTO,
+    TCNSDendriteDTO,
+} from '@cnstra/devtools-dto';
 
-export type TApp = TCNSAppDTO;
-export type TAppId = string;
-export type TNeuron = TCNSNeuronDTO;
+export type TCNSAppId = string;
 /** Composite pk `[cnsId, name]` — names are unique per cns (trie-backed). */
-export type TNeuronPk = TOIMKeyPath;
-/** The panel's stored neuron entity (currently 1:1 with the topology DTO — activity
- *  is derived on the fly, not stored, so there is no extra denormalized field). */
-export type UINeuron = TNeuron;
-export type TCollateral = TCNSCollateralDTO;
+export type TCNSNeuronPk = TOIMKeyPath;
 /** Composite pk `[cnsId, name]`. */
-export type TCollateralPk = TOIMKeyPath;
-export type TDendrite = TCNSDendriteDTO;
+export type TCNSCollateralPk = TOIMKeyPath;
 /** Composite pk `[cnsId, neuronName, collateralName]`. */
-export type TDendritePk = TOIMKeyPath;
-export type TStimulationId = string;
-export type THopId = string;
+export type TCNSDendritePk = TOIMKeyPath;
+export type TCNSStimulationId = string;
+export type TCNSHopId = string;
 /**
  * The panel's stored stimulation row — INHERITED from the backend observability
  * view (`TCNSStimulationViewDTO`, by name) via `Omit`, minus the nested attempts
@@ -59,7 +60,7 @@ export type TCNSStimulationState = Omit<
     'attempts' | 'scopeName'
 > & {
     scopeName: string;
-    appId: TAppId;
+    appId: TCNSAppId;
     startedAt: number;
     completedAt: number | null;
     hopCount: number;
@@ -72,10 +73,10 @@ export type TCNSStimulationState = Omit<
  * (composed from real ids/indices, NOT derived from any name).
  */
 export type TCNSHopState = TCNSStimulationTaskViewDTO & {
-    id: THopId;
-    stimulationId: TStimulationId;
+    id: TCNSHopId;
+    stimulationId: TCNSStimulationId;
     attemptNumber: number;
-    appId: TAppId;
+    appId: TCNSAppId;
     /** CNS scope (= cnsId) — used to resolve names→topology nodes at the graph boundary. */
     scopeName: string;
     /** Always set at ingest (falls back to the stimulation's start) — narrows the
@@ -85,9 +86,9 @@ export type TCNSHopState = TCNSStimulationTaskViewDTO & {
 
 // A CNS instance is not a DTO entity; the panel synthesizes one per (appId, cnsId)
 // from topology messages (an app can host several CNS).
-export type TCns = { cnsId: string; appId: TAppId };
+export type TCNSState = { cnsId: string; appId: TCNSAppId };
 
-export type TServerMetrics = {
+export type TCNSServerMetrics = {
     timestamp: number;
     rssMB: number;
     heapUsedMB: number;
@@ -97,11 +98,11 @@ export type TServerMetrics = {
 
 // ─── Derived graph data (panel-local, computed from base entities) ────────────
 
-export type TGraphLayoutPk = `${string}::${string}`;
-export type TGraphEdgePk = `${string}::${string}->${string}::${string}`;
+export type TCNSGraphLayoutPk = `${string}::${string}`;
+export type TCNSGraphEdgePk = `${string}::${string}->${string}::${string}`;
 
-export type TGraphLayout = {
-    appId: TAppId;
+export type TCNSGraphLayout = {
+    appId: TCNSAppId;
     /** Graph node key `${cnsId}:${name}`, built at render — not a stored id. */
     neuronId: string;
     x: number;
@@ -109,8 +110,8 @@ export type TGraphLayout = {
     stimulationCount: number;
 };
 
-export type TGraphEdge = {
-    appId: TAppId;
+export type TCNSGraphEdge = {
+    appId: TCNSAppId;
     /** Graph node keys `${cnsId}:${name}`. */
     from: string;
     to: string;
@@ -119,8 +120,8 @@ export type TGraphEdge = {
 };
 
 // UI state for response/hop collapsible blocks.
-export type TResponseUIState = {
-    responseId: THopId;
+export type TCNSResponseUIState = {
+    responseId: TCNSHopId;
     isExpanded: boolean;
 };
 
@@ -167,40 +168,40 @@ function collectionWith<
 // ─── Collections ──────────────────────────────────────────────────────────────
 
 export const db = {
-    apps: collectionWith<TApp, TAppId, {
+    apps: collectionWith<TCNSAppDTO, TCNSAppId, {
         all: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TApp, TAppId>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSAppDTO, TCNSAppId>>['indexFactory']['derivedSetIndex']
         >;
-        selected: OIMReactiveIndexManualSetBased<'selected', TAppId>;
+        selected: OIMReactiveIndexManualSetBased<'selected', TCNSAppId>;
     }>(
         app => app.id,
         factory => ({
             all: factory.derivedSetIndex(() => ['all']),
-            selected: new OIMReactiveIndexManualSetBased<'selected', TAppId>(
+            selected: new OIMReactiveIndexManualSetBased<'selected', TCNSAppId>(
                 dbEventQueue
             ),
         })
     ),
 
-    neurons: collectionWith<UINeuron, TNeuronPk, {
+    neurons: collectionWith<TCNSNeuronDTO, TCNSNeuronPk, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<UINeuron, TNeuronPk>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSNeuronDTO, TCNSNeuronPk>>['indexFactory']['derivedSetIndex']
         >;
     }>(
-        neuron => [neuron.cnsId, neuron.name] as TNeuronPk,
+        neuron => [neuron.cnsId, neuron.name] as TCNSNeuronPk,
         factory => ({ appId: factory.derivedSetIndex(n => [n.appId]) }),
-        new OIMCollectionStoreTrieDriven<UINeuron>()
+        new OIMCollectionStoreTrieDriven<TCNSNeuronDTO>()
     ),
 
-    collaterals: collectionWith<TCollateral, TCollateralPk, {
+    collaterals: collectionWith<TCNSCollateralDTO, TCNSCollateralPk, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCollateral, TCollateralPk>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSCollateralDTO, TCNSCollateralPk>>['indexFactory']['derivedSetIndex']
         >;
         ownerNeuronName: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCollateral, TCollateralPk>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSCollateralDTO, TCNSCollateralPk>>['indexFactory']['derivedSetIndex']
         >;
     }>(
-        collateral => [collateral.cnsId, collateral.name] as TCollateralPk,
+        collateral => [collateral.cnsId, collateral.name] as TCNSCollateralPk,
         factory => ({
             appId: factory.derivedSetIndex(c => [c.appId]),
             // Entry collaterals (no owner) are simply absent from this index.
@@ -208,37 +209,37 @@ export const db = {
                 c.ownerNeuronName ? [c.ownerNeuronName] : []
             ),
         }),
-        new OIMCollectionStoreTrieDriven<TCollateral>()
+        new OIMCollectionStoreTrieDriven<TCNSCollateralDTO>()
     ),
 
-    dendrites: collectionWith<TDendrite, TDendritePk, {
+    dendrites: collectionWith<TCNSDendriteDTO, TCNSDendritePk, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TDendrite, TDendritePk>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSDendriteDTO, TCNSDendritePk>>['indexFactory']['derivedSetIndex']
         >;
         neuronName: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TDendrite, TDendritePk>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSDendriteDTO, TCNSDendritePk>>['indexFactory']['derivedSetIndex']
         >;
     }>(
-        dendrite => [dendrite.cnsId, dendrite.neuronName, dendrite.collateralName] as TDendritePk,
+        dendrite => [dendrite.cnsId, dendrite.neuronName, dendrite.collateralName] as TCNSDendritePk,
         factory => ({
             appId: factory.derivedSetIndex(d => [d.appId]),
             neuronName: factory.derivedSetIndex(d => [d.neuronName]),
         }),
-        new OIMCollectionStoreTrieDriven<TDendrite>()
+        new OIMCollectionStoreTrieDriven<TCNSDendriteDTO>()
     ),
 
-    cns: collectionWith<TCns, string, {
+    cns: collectionWith<TCNSState, string, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCns, string>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSState, string>>['indexFactory']['derivedSetIndex']
         >;
     }>(
         cns => cns.cnsId,
         factory => ({ appId: factory.derivedSetIndex(c => [c.appId]) })
     ),
 
-    stimulations: collectionWith<TCNSStimulationState, TStimulationId, {
+    stimulations: collectionWith<TCNSStimulationState, TCNSStimulationId, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCNSStimulationState, TStimulationId>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSStimulationState, TCNSStimulationId>>['indexFactory']['derivedSetIndex']
         >;
     }>(
         stimulation => stimulation.stimulationId,
@@ -246,12 +247,12 @@ export const db = {
     ),
 
     // Hops (formerly "responses"): the per-neuron steps of a stimulation.
-    responses: collectionWith<TCNSHopState, THopId, {
+    responses: collectionWith<TCNSHopState, TCNSHopId, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCNSHopState, THopId>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSHopState, TCNSHopId>>['indexFactory']['derivedSetIndex']
         >;
         stimulationId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCNSHopState, THopId>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSHopState, TCNSHopId>>['indexFactory']['derivedSetIndex']
         >;
     }>(
         hop => hop.id,
@@ -261,37 +262,37 @@ export const db = {
         })
     ),
 
-    graphLayouts: collectionWith<TGraphLayout, TGraphLayoutPk, {
+    graphLayouts: collectionWith<TCNSGraphLayout, TCNSGraphLayoutPk, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TGraphLayout, TGraphLayoutPk>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSGraphLayout, TCNSGraphLayoutPk>>['indexFactory']['derivedSetIndex']
         >;
     }>(
-        layout => `${layout.appId}::${layout.neuronId}` as TGraphLayoutPk,
+        layout => `${layout.appId}::${layout.neuronId}` as TCNSGraphLayoutPk,
         factory => ({ appId: factory.derivedSetIndex(l => [l.appId]) })
     ),
 
-    graphEdges: collectionWith<TGraphEdge, TGraphEdgePk, {
+    graphEdges: collectionWith<TCNSGraphEdge, TCNSGraphEdgePk, {
         appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TGraphEdge, TGraphEdgePk>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSGraphEdge, TCNSGraphEdgePk>>['indexFactory']['derivedSetIndex']
         >;
     }>(
         edge =>
             `${edge.appId}::${edge.from}->${edge.to}::${
                 edge.label || ''
-            }` as TGraphEdgePk,
+            }` as TCNSGraphEdgePk,
         factory => ({ appId: factory.derivedSetIndex(e => [e.appId]) })
     ),
 
-    serverMetrics: collectionWith<TServerMetrics, `${number}`, {
+    serverMetrics: collectionWith<TCNSServerMetrics, `${number}`, {
         all: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TServerMetrics, `${number}`>>['indexFactory']['derivedSetIndex']
+            ReturnType<typeof createOIMCollectionKit<TCNSServerMetrics, `${number}`>>['indexFactory']['derivedSetIndex']
         >;
     }>(
         metrics => `${metrics.timestamp}` as `${number}`,
         factory => ({ all: factory.derivedSetIndex(() => ['all']) })
     ),
 
-    responseUIState: collectionWith<TResponseUIState, THopId, Record<string, never>>(
+    responseUIState: collectionWith<TCNSResponseUIState, TCNSHopId, Record<string, never>>(
         state => state.responseId,
         () => ({})
     ),

@@ -5,7 +5,7 @@ import type { TCNSClientMessageDTO } from '@cnstra/devtools-dto';
 import { mainCNS } from '../../cns';
 import { appModelAxon } from '../../cns/controller-layer/AppModelAxon';
 import { db } from '../../model';
-import type { TApp } from '../../model';
+import type { TCNSAppDTO } from '../../model';
 import {
     readEntitiesByIndexKey,
     subscribeEntitiesByIndexKey,
@@ -22,7 +22,7 @@ const genRequestId = (): string =>
     `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export interface AppSelection {
-    connectedApps: TExoWritableBindable<TApp[]>;
+    connectedApps: TExoWritableBindable<TCNSAppDTO[]>;
     selectedAppId: TExoWritableBindable<string | null>;
     selectedCnsId: TExoWritableBindable<string | null>;
     effectiveSelectedAppId: TExoWritableBindable<string | null>;
@@ -52,7 +52,7 @@ export function createAppSelection({
     router,
     send,
 }: CreateAppSelectionParams): AppSelection {
-    const connectedApps = bindable<TApp[]>([]);
+    const connectedApps = bindable<TCNSAppDTO[]>([]);
     const selectedAppId = bindable<string | null>(null);
     const selectedCnsId = bindable<string | null>(null);
     const effectiveSelectedAppId = bindable<string | null>(null);
@@ -60,9 +60,9 @@ export function createAppSelection({
 
     const unsubs: Array<() => void> = [];
 
-    const readApps = (): TApp[] =>
+    const readApps = (): TCNSAppDTO[] =>
         readEntitiesByIndexKey(db.apps, db.apps.indexes.all, 'all').filter(
-            (a): a is TApp => a != null
+            (a): a is TCNSAppDTO => a != null
         );
 
     const readSelectedPk = (): string | null =>

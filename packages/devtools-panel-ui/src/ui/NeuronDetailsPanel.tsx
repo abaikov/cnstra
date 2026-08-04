@@ -12,7 +12,7 @@ import { notNull, fmtTime, nodeKey } from '../utils/format';
 import { DECAY_ICONS } from './theme-utils';
 import { jsonView } from './json-view';
 import { db } from '../model';
-import type { TDendrite, UINeuron, TCNSHopState } from '../model';
+import type { TCNSDendriteDTO, TCNSNeuronDTO, TCNSHopState } from '../model';
 
 // Native Exodra port of the React <NeuronDetailsPanel> island. A fixed side overlay
 // shown while a neuron is selected. Data comes from @oimdb/exodra read/subscribe
@@ -61,8 +61,8 @@ export function neuronDetailsPanel(
     appIdB: TExoBindable<string | undefined>,
     onClose: () => void
 ): TExoSchema {
-    const neuronB = bindable<UINeuron | undefined>(undefined);
-    const dendritesB = bindable<TDendrite[]>([]);
+    const neuronB = bindable<TCNSNeuronDTO | undefined>(undefined);
+    const dendritesB = bindable<TCNSDendriteDTO[]>([]);
     const responsesB = bindable<TCNSHopState[]>([]);
 
     let unsubs: Array<() => void> = [];
@@ -72,7 +72,7 @@ export function neuronDetailsPanel(
         neuronB.setValue(
             ref
                 ? (readEntityByPk(db.neurons, [ref.cnsId, ref.name]) as
-                      | UINeuron
+                      | TCNSNeuronDTO
                       | undefined)
                 : undefined
         );
@@ -137,7 +137,7 @@ export function neuronDetailsPanel(
         </div>
     );
 
-    const dendriteBlock = (dendrite: TDendrite, responses: TCNSHopState[]): TExoSchema => {
+    const dendriteBlock = (dendrite: TCNSDendriteDTO, responses: TCNSHopState[]): TExoSchema => {
         const dName = dendrite.collateralName;
         const dendriteResponses = responses.filter(
             r => r.dendriteCollateralName === dName
@@ -162,8 +162,8 @@ export function neuronDetailsPanel(
     };
 
     const render = (
-        neuron: UINeuron | undefined,
-        dendrites: TDendrite[],
+        neuron: TCNSNeuronDTO | undefined,
+        dendrites: TCNSDendriteDTO[],
         responses: TCNSHopState[]
     ): TExoSchema => {
         if (!neuron) return <div />;
