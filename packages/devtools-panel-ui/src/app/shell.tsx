@@ -4,11 +4,14 @@ import type { TExoRouter } from '@exodra/router';
 import { sidebarView } from '../ui/Sidebar';
 import { topologyView } from '../ui/TopologyView';
 import { stimulationsPage } from '../ui/StimulationsPage';
-import { isStimulationsPath, isDurablePath } from './routes';
+import { isStimulationsPath, isDurablePath, isExplorerPath } from './routes';
 import type { DevtoolsSocket } from './controllers/socket';
 import type { AppSelection } from './controllers/selection';
 import type { ICNSDurableStimulationsClient } from '../durable/ICNSDurableStimulationsClient';
 import { CNSDurableStimulationsWsClient } from '../durable/CNSDurableStimulationsWsClient';
+import { CNSExplorerWsClient } from '../explorer/explorerClient';
+import { createExplorerController } from '../explorer/explorerController';
+import { explorerPage } from '../explorer/ExplorerPage';
 
 // The native Exodra shell: the flex layout that was `AppInner` in the old React
 // App.tsx. The sidebar is now native Exodra; the two heavy main-pane views
@@ -49,12 +52,26 @@ export function createShell({
         icon: '⚡',
     });
     const durablePane = stimulationsPage(durableClient);
+    // Faceted explorer (bucket protocol): scale-first roster + facets + waterfall,
+    // its query-state ⇄ the URL so slices are shareable.
+    const explorerCtrl = createExplorerController(
+        new CNSExplorerWsClient(socket),
+        {
+            readSearch: () =>
+                typeof window !== 'undefined' ? window.location.search : '',
+            writeSearch: s =>
+                void router.navigate('/explorer' + (s ? `?${s}` : '')),
+        }
+    );
+    const explorerPane = explorerPage(explorerCtrl);
     const mainChild = derive(router.location, loc =>
-        isDurablePath(loc.pathname)
-            ? durablePane
-            : isStimulationsPath(loc.pathname)
-              ? stimPane
-              : topoPane
+        isExplorerPath(loc.pathname)
+            ? explorerPane
+            : isDurablePath(loc.pathname)
+              ? durablePane
+              : isStimulationsPath(loc.pathname)
+                ? stimPane
+                : topoPane
     );
 
     return (
