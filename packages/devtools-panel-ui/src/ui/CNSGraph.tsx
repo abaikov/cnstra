@@ -301,6 +301,8 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
     let intervalId = 0;
     let unsubProps: () => void = () => {};
     let unsubLayout: () => void = () => {};
+    let resizeObserver: ResizeObserver | null = null;
+    let frontierRunning = false;
 
     const layoutName = bindable<LayoutName>('cose-bilkent');
     const initial = props.getValue();
@@ -437,6 +439,7 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
     // ── Lifecycle: init cytoscape into the container element on mount ─────────
     const initCytoscape = (container: HTMLElement): void => {
         const p = props.getValue();
+        hasFit = false; // fresh instance (re-mount) must re-fit once sized
         clickHandler = p.onNeuronClick;
         neuronsMap = new Map(p.neurons.map(n => [n.id, n]));
         frontierData = p.frontier ?? EMPTY_FRONTIER;
@@ -475,7 +478,10 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
         } catch {}
 
         applyFrontier();
-        intervalId = window.setInterval(applyFrontier, 600);
+        if (!frontierRunning) {
+            intervalId = window.setInterval(applyFrontier, 600);
+            frontierRunning = true;
+        }
 
         // React to new props (graph data / frontier / click handler).
         unsubProps = props.subscribe(() => {
@@ -491,19 +497,38 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
             const cur = props.getValue();
             incrementalUpdate(cur.neurons, cur.connections);
         });
+
+        // Keep the viewport in sync with the container. A tab switch re-mounts into
+        // a container that can be 0-sized for a frame; without a resize() cytoscape
+        // renders blank and never recovers. The observer also covers window/panel
+        // resizes. Fit once, the first time the container actually has a size.
+        const syncSize = (): void => {
+            if (!cy || container.clientWidth === 0 || container.clientHeight === 0)
+                return;
+            cy.resize();
+            if (!hasFit) {
+                cy.fit(undefined, 30);
+                hasFit = true;
+            }
+            // Re-shown after a tab switch: resume the frontier pulse.
+            if (!frontierRunning) {
+                intervalId = window.setInterval(applyFrontier, 600);
+                frontierRunning = true;
+            }
+        };
+        requestAnimationFrame(syncSize);
+        resizeObserver = new ResizeObserver(syncSize);
+        resizeObserver.observe(container);
     };
 
+    // The pane is a reused singleton — the shell builds it once and re-attaches it on
+    // a tab switch, and Exodra does NOT re-fire onExoMount on re-attach. So destroying
+    // cytoscape here would leave the graph permanently blank on the way back. On hide
+    // we therefore only PAUSE the frontier pulse; cytoscape, its subscriptions and the
+    // ResizeObserver stay alive, and the observer re-fits the viewport on re-show.
     const teardown = (): void => {
         window.clearInterval(intervalId);
-        unsubProps();
-        unsubLayout();
-        if (cy) {
-            cy.destroy();
-            cy = null;
-        }
-        try {
-            (window as any).__cnsCy = null;
-        } catch {}
+        frontierRunning = false;
     };
 
     // ── Controls ─────────────────────────────────────────────────────────────
