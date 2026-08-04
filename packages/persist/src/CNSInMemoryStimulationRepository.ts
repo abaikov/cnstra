@@ -1,9 +1,18 @@
 import type { ICNSStimulationRepository } from './interfaces/ICNSStimulationRepository';
+import type { ICNSStimulationRosterQuery } from './interfaces/ICNSStimulationRosterQuery';
 import type {
     TCNSStimulationState,
     TCNSStimulationAttempt,
     TCNSStimulationTask,
+    TCNSStimulationRosterFilter,
+    TCNSStimulationRosterPage,
+    TCNSStimulationRosterFacets,
 } from '@cnstra/persist-dto';
+import {
+    loadRosterEntries,
+    keysetPage,
+    computeRosterFacets,
+} from './CNSStimulationRosterCompute';
 
 /**
  * Bounds for the in-memory store — WITHOUT one it grows forever (every run's
@@ -41,7 +50,7 @@ export type TCNSInMemoryStimulationRepositoryOptions = {
  * not leak. With no options it is unbounded (fine for tests, NOT for a long-running app).
  */
 export class CNSInMemoryStimulationRepository
-    implements ICNSStimulationRepository
+    implements ICNSStimulationRepository, ICNSStimulationRosterQuery
 {
     private readonly stimulations = new Map<string, TCNSStimulationState>();
     private readonly attempts = new Map<
@@ -118,6 +127,27 @@ export class CNSInMemoryStimulationRepository
 
     async delete(stimulationId: string): Promise<void> {
         this.purge(stimulationId);
+    }
+
+    // ── roster query capability (the reference derivation, over itself) ──
+
+    async queryRoster(
+        filter: TCNSStimulationRosterFilter,
+        opts: { cursor?: string; limit: number }
+    ): Promise<TCNSStimulationRosterPage> {
+        const entries = await loadRosterEntries(this, filter);
+        return keysetPage(
+            entries.map(e => e.row),
+            opts
+        );
+    }
+
+    async queryFacets(
+        filter: TCNSStimulationRosterFilter,
+        opts?: { metricPath?: string }
+    ): Promise<TCNSStimulationRosterFacets> {
+        const entries = await loadRosterEntries(this, filter);
+        return computeRosterFacets(entries, opts);
     }
 
     // ── bounds ──

@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS ${p}stimulation_attempt (
     UNIQUE (stimulation_id, attempt_number)
 );
 CREATE INDEX IF NOT EXISTS ${p}stimulation_attempt_idx ON ${p}stimulation_attempt (stimulation_id, attempt_number);
+-- roster query: MIN(started_at)/keyset ordering per run.
+CREATE INDEX IF NOT EXISTS ${p}stimulation_attempt_started_idx ON ${p}stimulation_attempt (stimulation_id, started_at);
 
 -- NOTE: no FK on stimulation_attempt_id — the persistor streams settled tasks
 -- (appendTask) as hops complete, BEFORE the attempt marker is flushed (saveAttempt),
@@ -92,6 +94,8 @@ CREATE TABLE IF NOT EXISTS ${p}task (
     duration int,
     PRIMARY KEY (stimulation_attempt_id, "index")
 );
+-- roster neurons lens: DISTINCT neuron_name per attempt / neuronName filter.
+CREATE INDEX IF NOT EXISTS ${p}task_neuron_idx ON ${p}task (neuron_name);
 `;
 }
 

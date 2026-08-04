@@ -11,7 +11,12 @@
  * by attemptNumber, getTasks by index, delete cascades).
  */
 import { Pool } from 'pg';
-import type { ICNSStimulationRepository } from '@cnstra/persist';
+import type {
+    ICNSStimulationRepository,
+    ICNSStimulationRosterQuery,
+    TCNSRosterEntry,
+} from '@cnstra/persist';
+import { computeRosterFacets, encodeRosterCursor } from '@cnstra/persist';
 import type {
     TCNSStimulationState,
     TCNSStimulationAttempt,
@@ -21,6 +26,10 @@ import type {
     TCNSSignalJSON,
     ECNSStimulationStatus,
     ECNSStimulationTaskStatus,
+    TCNSStimulationRosterFilter,
+    TCNSStimulationRosterRow,
+    TCNSStimulationRosterPage,
+    TCNSStimulationRosterFacets,
 } from '@cnstra/persist-dto';
 import {
     DEFAULT_PREFIX,
@@ -46,7 +55,7 @@ const num = (v: unknown): number => Number(v);
 const numOrNull = (v: unknown): number | null => (v == null ? null : Number(v));
 
 export class CNSPostgresStimulationRepository
-    implements ICNSStimulationRepository
+    implements ICNSStimulationRepository, ICNSStimulationRosterQuery
 {
     private readonly db: IPgQueryable;
     private readonly pool?: Pool;
@@ -313,6 +322,129 @@ export class CNSPostgresStimulationRepository
         return (res.rows as TTaskRow[]).map(rowToTask);
     }
 
+    // ── roster query capability (filter + keyset + facets pushed into SQL) ──
+
+    /**
+     * Derive every filtered roster row in one CTE: `startedAt` = MIN(attempt),
+     * `completedAt` = the latest attempt's, `hopCount` = SUM, `hasError` from
+     * status, and the DISTINCT activated neuron names (for the neurons lens +
+     * filter). Newest-first (`startedAt DESC, stimulationId DESC`) so the keyset
+     * cursor is stable. `limit` is applied only when paginating (roster); facets
+     * pull the whole filtered set.
+     */
+    private async selectRoster(
+        filter: TCNSStimulationRosterFilter,
+        opts?: { cursor?: string; limit?: number }
+    ): Promise<{ entries: TCNSRosterEntry[]; total: number }> {
+        await this.ensure();
+        const { p } = this;
+        // Decode the keyset cursor → the (startedAt, stimulationId) to page past.
+        let curStarted: number | null = null;
+        let curId: string | null = null;
+        if (opts?.cursor) {
+            const [ts, id] = Buffer.from(opts.cursor, 'base64')
+                .toString('utf8')
+                .split('|');
+            curStarted = Number(ts);
+            curId = id ?? '';
+        }
+        const params: unknown[] = [
+            filter.scopeName ?? null,
+            filter.status ?? null,
+            filter.entryCollateralName ?? null,
+            filter.neuronName ?? null,
+            filter.text ? filter.text.toLowerCase() : null,
+            filter.since ?? null,
+            filter.until ?? null,
+            curStarted,
+            curId,
+        ];
+        const limitClause =
+            opts?.limit != null ? ` LIMIT ${Math.max(0, opts.limit | 0)}` : '';
+        const sql = `
+            WITH agg AS (
+                SELECT a.stimulation_id,
+                       MIN(a.started_at) AS started_at,
+                       SUM(a.hop_count)  AS hop_count,
+                       (ARRAY_AGG(a.completed_at ORDER BY a.attempt_number DESC))[1] AS last_completed_at
+                FROM ${p}stimulation_attempt a
+                GROUP BY a.stimulation_id
+            ),
+            neu AS (
+                SELECT ta.stimulation_id,
+                       ARRAY_AGG(DISTINCT t.neuron_name) AS neurons
+                FROM ${p}task t
+                JOIN ${p}stimulation_attempt ta
+                     ON ta.stimulation_attempt_id = t.stimulation_attempt_id
+                GROUP BY ta.stimulation_id
+            ),
+            roster AS (
+                SELECT s.stimulation_id, s.entry, s.status, s.scope_name,
+                       COALESCE(agg.started_at, 0) AS started_at,
+                       CASE WHEN s.status = 'running' THEN NULL
+                            ELSE agg.last_completed_at END AS completed_at,
+                       COALESCE(agg.hop_count, 0) AS hop_count,
+                       (s.status = 'failed') AS has_error,
+                       COALESCE(neu.neurons, ARRAY[]::text[]) AS neurons
+                FROM ${p}stimulation s
+                LEFT JOIN agg ON agg.stimulation_id = s.stimulation_id
+                LEFT JOIN neu ON neu.stimulation_id = s.stimulation_id
+            )
+            SELECT *, COUNT(*) OVER() AS total_count FROM roster
+            WHERE ($1::text IS NULL OR scope_name = $1)
+              AND ($2::text IS NULL OR status = $2)
+              AND ($3::text IS NULL OR entry->>'collateralName' = $3)
+              AND ($4::text IS NULL OR $4 = ANY(neurons))
+              AND ($5::text IS NULL OR lower(stimulation_id) LIKE '%'||$5||'%')
+              AND ($6::bigint IS NULL OR started_at >= $6)
+              AND ($7::bigint IS NULL OR started_at <= $7)
+              AND ($8::bigint IS NULL OR (started_at, stimulation_id) < ($8, $9))
+            ORDER BY started_at DESC, stimulation_id DESC${limitClause}`;
+        const res = await this.db.query(sql, params);
+        const rows = res.rows as TRosterRow[];
+        const total = rows.length ? Number(rows[0].total_count) : 0;
+        const entries: TCNSRosterEntry[] = rows.map(r => ({
+            row: {
+                stimulationId: r.stimulation_id,
+                scopeName: r.scope_name ?? undefined,
+                entry: r.entry as TCNSSignalJSON,
+                status: r.status,
+                startedAt: Number(r.started_at),
+                completedAt: r.completed_at == null ? null : Number(r.completed_at),
+                hopCount: Number(r.hop_count),
+                hasError: r.has_error,
+            },
+            neurons: r.neurons ?? [],
+        }));
+        return { entries, total };
+    }
+
+    async queryRoster(
+        filter: TCNSStimulationRosterFilter,
+        opts: { cursor?: string; limit: number }
+    ): Promise<TCNSStimulationRosterPage> {
+        const { entries, total } = await this.selectRoster(filter, opts);
+        const rows: TCNSStimulationRosterRow[] = entries.map(e => e.row);
+        const lastRow = rows[rows.length - 1];
+        // A full page implies there may be more; the window `total` is authoritative.
+        const hasMore = rows.length >= opts.limit && rows.length < total;
+        return {
+            rows,
+            nextCursor: hasMore && lastRow ? encodeRosterCursor(lastRow) : null,
+            total,
+        };
+    }
+
+    async queryFacets(
+        filter: TCNSStimulationRosterFilter,
+        opts?: { metricPath?: string }
+    ): Promise<TCNSStimulationRosterFacets> {
+        // Filter is pushed into SQL; the small GROUP-BY tally + histogram reuse the
+        // shared reference aggregation so counts match the in-memory store exactly.
+        const { entries } = await this.selectRoster(filter);
+        return computeRosterFacets(entries, opts);
+    }
+
     // ── lifecycle ──
 
     async delete(stimulationId: string): Promise<void> {
@@ -437,6 +569,19 @@ type TTaskRow = {
     error: string | null;
     started_at: string | number;
     duration: number | null;
+};
+/** One roster CTE row (see `selectRoster`), with the window total attached. */
+type TRosterRow = {
+    stimulation_id: string;
+    entry: unknown;
+    status: string;
+    scope_name: string | null;
+    started_at: string | number;
+    completed_at: string | number | null;
+    hop_count: string | number;
+    has_error: boolean;
+    neurons: string[] | null;
+    total_count: string | number;
 };
 
 function rowToAttempt(a: TAttemptRow): TCNSStimulationAttempt {

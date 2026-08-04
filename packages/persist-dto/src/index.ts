@@ -17,6 +17,16 @@ export type { TCNSStimulationState } from './types/TCNSStimulationState';
 export type { TCNSStimulationAttempt } from './types/TCNSStimulationAttempt';
 export type { TCNSStimulationTask } from './types/TCNSStimulationTask';
 
+// ── roster query contract (retry-UI filter / keyset / GROUP BY pushdown) ──
+export type {
+    TCNSStimulationRosterFilter,
+    TCNSStimulationRosterRow,
+    TCNSStimulationRosterPage,
+    TCNSStimulationRosterCountBucket,
+    TCNSStimulationRosterTimeBucket,
+    TCNSStimulationRosterFacets,
+} from './types/TCNSStimulationRoster';
+
 // ── wire actions: retry / clone (panel ↔ server) ──
 export type { TCNSStimulationActionOptions } from './messages/TCNSStimulationActionOptions';
 export type { TCNSStimulationRetryRequest } from './messages/TCNSStimulationRetryRequest';

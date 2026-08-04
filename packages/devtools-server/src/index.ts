@@ -7,24 +7,21 @@ import {
 import type {
     TCNSStimulationViewDTO,
     TCNSStimulationFilter,
-    TCNSStimulationRowDTO,
     TCNSStimulationTask,
-    TCNSStimulationTimeBucket,
 } from '@cnstra/devtools-dto';
 import { buildAttemptId, buildCloneId } from '@cnstra/devtools-dto';
-import type { ICNSStimulationRepository } from '@cnstra/persist';
-import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
+import type {
+    ICNSStimulationRepository,
+    TCNSStimulationRosterFilter,
+} from '@cnstra/persist';
+import {
+    CNSInMemoryStimulationRepository,
+    supportsRosterQuery,
+    loadRosterEntries,
+    keysetPage,
+    computeRosterFacets,
+} from '@cnstra/persist';
 import { WebSocket } from 'ws';
-
-/** Resolve a dot-path (`a.b.c`) into a payload; returns undefined on any miss. */
-function resolvePath(obj: unknown, path: string): unknown {
-    let cur: unknown = obj;
-    for (const key of path.split('.')) {
-        if (cur == null || typeof cur !== 'object') return undefined;
-        cur = (cur as Record<string, unknown>)[key];
-    }
-    return cur;
-}
 
 // ─── Repository interface ─────────────────────────────────────────────────────
 
@@ -141,110 +138,42 @@ export class CNSDevToolsServer {
     }
 
     /**
-     * Explorer protocol (bucket-shaped). Compute the roster rows: durable state minus
+     * Explorer protocol (bucket-shaped). The roster row = durable state minus
      * `progress`, plus envelope summaries derived from the run's attempts.
-     * NOTE (v1): filter/sort/paginate/facet run HERE over the repository's list.
-     * TODO(pushdown): move the filter+keyset+GROUP BY into ICNSStimulationRepository
-     * (SQL) for true scale — the wire contract stays identical.
+     *
+     * Pushdown: if the store implements `ICNSStimulationRosterQuery` (e.g. the
+     * Postgres store), the filter + keyset + GROUP BY run INSIDE it (SQL). Else we
+     * fall back to the shared reference derivation over the reader — identical
+     * results, only the work moves. Roster shapes are structurally the wire DTOs,
+     * so no mapping is needed at the boundary.
      */
-    private async computeRows(
+    private toRosterFilter(
         scopeName: string | undefined,
         filter: TCNSStimulationFilter | undefined
-    ): Promise<{ row: TCNSStimulationRowDTO; neurons: string[] }[]> {
-        const stims = await this.stimulationRepository.listStimulations(
-            scopeName ? { scopeName } : undefined
-        );
-        const enriched: { row: TCNSStimulationRowDTO; neurons: string[] }[] = [];
-        for (const s of stims) {
-            const attempts = await this.stimulationRepository.getAttempts(
-                s.stimulationId
-            );
-            const startedAt = attempts.length
-                ? Math.min(...attempts.map(a => a.startedAt))
-                : 0;
-            const last = attempts[attempts.length - 1];
-            const completedAt =
-                s.status === 'running' ? null : last?.completedAt ?? null;
-            const hopCount = attempts.reduce((n, a) => n + a.hopCount, 0);
-            // Neuron names this run activated (for the neurons lens + filter).
-            const neurons = new Set<string>();
-            for (const a of attempts) {
-                const tasks = await this.stimulationRepository.getTasks(
-                    a.stimulationAttemptId
-                );
-                for (const t of tasks) neurons.add(t.neuronName);
-            }
-            enriched.push({
-                row: {
-                    stimulationId: s.stimulationId,
-                    scopeName: s.scopeName,
-                    entry: s.entry,
-                    status: s.status,
-                    startedAt,
-                    completedAt,
-                    hopCount,
-                    hasError: s.status === 'failed',
-                },
-                neurons: [...neurons],
-            });
-        }
-        const f = filter ?? {};
-        const matched = enriched.filter(
-            ({ row: r, neurons }) =>
-                (f.status === undefined || r.status === f.status) &&
-                (f.entryCollateralName === undefined ||
-                    r.entry.collateralName === f.entryCollateralName) &&
-                (f.neuronName === undefined ||
-                    neurons.includes(f.neuronName)) &&
-                (f.text === undefined ||
-                    r.stimulationId
-                        .toLowerCase()
-                        .includes(f.text.toLowerCase())) &&
-                (f.since === undefined || r.startedAt >= f.since) &&
-                (f.until === undefined || r.startedAt <= f.until)
-        );
-        // Newest first, tie-broken by id (stable keyset order).
-        matched.sort(
-            (a, b) =>
-                b.row.startedAt - a.row.startedAt ||
-                (a.row.stimulationId < b.row.stimulationId ? 1 : -1)
-        );
-        return matched;
+    ): TCNSStimulationRosterFilter {
+        return { ...(filter ?? {}), ...(scopeName ? { scopeName } : {}) };
     }
 
     private async handleStimulationsList(
         ws: WebSocket,
         msg: any
     ): Promise<void> {
-        const rows = (await this.computeRows(msg.scopeName, msg.filter)).map(
-            e => e.row
-        );
+        const filter = this.toRosterFilter(msg.scopeName, msg.filter);
         const limit = typeof msg.limit === 'number' ? msg.limit : 50;
-        // Keyset cursor = `${startedAt}|${stimulationId}` (base64). Page = rows after it.
-        let start = 0;
-        if (typeof msg.cursor === 'string' && msg.cursor) {
-            const decoded = Buffer.from(msg.cursor, 'base64').toString('utf8');
-            const idx = rows.findIndex(
-                r => `${r.startedAt}|${r.stimulationId}` === decoded
-            );
-            if (idx >= 0) start = idx + 1;
-        }
-        const page = rows.slice(start, start + limit);
-        const lastRow = page[page.length - 1];
-        const hasMore = start + limit < rows.length;
-        const nextCursor =
-            hasMore && lastRow
-                ? Buffer.from(
-                      `${lastRow.startedAt}|${lastRow.stimulationId}`,
-                      'utf8'
-                  ).toString('base64')
-                : null;
+        const opts = { cursor: msg.cursor, limit };
+        const store = this.stimulationRepository;
+        const page = supportsRosterQuery(store)
+            ? await store.queryRoster(filter, opts)
+            : keysetPage(
+                  (await loadRosterEntries(store, filter)).map(e => e.row),
+                  opts
+              );
         this.send(ws, {
             type: 'cns.stimulations.list.result',
             requestId: msg.requestId,
-            stimulations: page,
-            nextCursor,
-            total: rows.length,
+            stimulations: page.rows,
+            nextCursor: page.nextCursor,
+            total: page.total,
         });
     }
 
@@ -252,70 +181,18 @@ export class CNSDevToolsServer {
         ws: WebSocket,
         msg: any
     ): Promise<void> {
-        const enriched = await this.computeRows(msg.scopeName, msg.filter);
-        const rows = enriched.map(e => e.row);
-        const tally = (values: string[]): { key: string; count: number }[] => {
-            const m = new Map<string, number>();
-            for (const v of values) m.set(v, (m.get(v) ?? 0) + 1);
-            return [...m.entries()]
-                .map(([key, count]) => ({ key, count }))
-                .sort((a, b) => b.count - a.count);
-        };
+        const filter = this.toRosterFilter(msg.scopeName, msg.filter);
+        const store = this.stimulationRepository;
+        const facets = supportsRosterQuery(store)
+            ? await store.queryFacets(filter, { metricPath: msg.metricPath })
+            : computeRosterFacets(await loadRosterEntries(store, filter), {
+                  metricPath: msg.metricPath,
+              });
         this.send(ws, {
             type: 'cns.stimulations.facets.result',
             requestId: msg.requestId,
-            facets: {
-                byEntryCollateral: tally(
-                    rows.map(r => r.entry.collateralName)
-                ).map(x => ({ name: x.key, count: x.count })),
-                byStatus: tally(rows.map(r => r.status)).map(x => ({
-                    status: x.key,
-                    count: x.count,
-                })),
-                // Each run contributes each activated neuron once (distinct per run).
-                byNeuron: tally(enriched.flatMap(e => e.neurons)).map(x => ({
-                    name: x.key,
-                    count: x.count,
-                })),
-                byTime: this.buildTimeHistogram(rows, msg.metricPath),
-            },
+            facets,
         });
-    }
-
-    /**
-     * Bucket the filtered rows into a fixed number of time buckets → the Chart
-     * view's throughput histogram (run counts by lifecycle state). When a
-     * `metricPath` is given, each bucket also sums that numeric field out of the
-     * run's entry payload (the "pages processed" board).
-     */
-    private buildTimeHistogram(
-        rows: TCNSStimulationRowDTO[],
-        metricPath?: string
-    ): TCNSStimulationTimeBucket[] {
-        if (rows.length === 0) return [];
-        const BUCKETS = 40;
-        const times = rows.map(r => r.startedAt);
-        const min = Math.min(...times);
-        const max = Math.max(...times);
-        const size = Math.max(1, Math.ceil((max - min) / BUCKETS) || 1);
-        const byBucket = new Map<number, TCNSStimulationTimeBucket>();
-        for (const r of rows) {
-            const tsBucket = min + Math.floor((r.startedAt - min) / size) * size;
-            let b = byBucket.get(tsBucket);
-            if (!b) {
-                b = { tsBucket, completed: 0, failed: 0, running: 0 };
-                byBucket.set(tsBucket, b);
-            }
-            if (r.status === 'completed') b.completed++;
-            else if (r.status === 'failed') b.failed++;
-            else b.running++;
-            if (metricPath) {
-                const v = resolvePath(r.entry.payload, metricPath);
-                if (typeof v === 'number' && Number.isFinite(v))
-                    b.metric = (b.metric ?? 0) + v;
-            }
-        }
-        return [...byBucket.values()].sort((a, b) => a.tsBucket - b.tsBucket);
     }
 
     private async handleStimulationDetail(
