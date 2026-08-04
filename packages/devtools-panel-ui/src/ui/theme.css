@@ -14,51 +14,51 @@
 :root {
   /* === NERV NEON COLORS === */
   /* Main background colors — cool indigo-black, not warm blood */
-  --bg-primary: #07070d;           /* Deep terminal night */
-  --bg-secondary: #0d0d16;         /* Slightly lifted panel ground */
-  --bg-tertiary: #15152a;          /* Raised surface */
-  --bg-panel: #111120;             /* Panels */
-  --bg-card: #16162a;              /* Cards */
+  --bg-primary: #181818;           /* Deep terminal night */
+  --bg-secondary: #1e1e1e;         /* Slightly lifted panel ground */
+  --bg-tertiary: #2a2a2a;          /* Raised surface */
+  --bg-panel: #202020;             /* Panels */
+  --bg-card: #262626;              /* Cards */
   /* Structure — cool slate/violet (was "flesh") */
-  --flesh-dark: #20203a;           /* Dark structural */
-  --flesh-medium: #2e2b52;         /* Medium structural */
-  --flesh-light: #413c78;          /* Light structural */
-  --flesh-infected: #7a5cff;       /* Eva-violet strong accent */
+  --flesh-dark: #303030;           /* Dark structural */
+  --flesh-medium: #3c3c3c;         /* Medium structural */
+  --flesh-light: #4e4e4e;          /* Light structural */
+  --flesh-infected: #b486f6;       /* Eva-violet strong accent */
   /* Alert / magenta family (was "blood") */
-  --blood-dark: #3a1030;           /* Deep magenta */
-  --blood-medium: #b3379a;         /* Magenta */
-  --blood-bright: #ff3b6b;         /* Neon red-pink alert */
-  --pus-yellow: #ffe34d;           /* Acid yellow (MAGI) */
-  --pus-green: #4dffa6;            /* Neon green */
+  --blood-dark: #2e2420;           /* Deep magenta */
+  --blood-medium: #9c685c;         /* Magenta */
+  --blood-bright: #cf6f63;         /* Neon red-pink alert */
+  --pus-yellow: #c8b148;           /* Acid yellow (MAGI) */
+  --pus-green: #b3e053;            /* Neon green */
   /* Bone / cool near-whites */
-  --bone-dark: #4c476a;            /* Dim */
-  --bone-medium: #7b749e;          /* Muted */
-  --bone-light: #b3add0;           /* Secondary */
-  --bone-white: #e7e4f5;           /* Primary */
+  --bone-dark: #4e4f4e;            /* Dim */
+  --bone-medium: #8d8d8c;          /* Muted */
+  --bone-light: #afa9a6;           /* Secondary */
+  --bone-white: #f9f9f6;           /* Primary */
   /* Accent set — the neon pops */
-  --infection-red: #ff3b6b;        /* Error / alert */
-  --infection-green: #4dffa6;      /* Success */
-  --infection-purple: #a970ff;     /* Eva violet */
-  --infection-yellow: #ffe34d;     /* Warning / MAGI */
-  --infection-cyan: #3fe6ff;       /* Info / links (голубой) */
-  --infection-pink: #ff6ad5;       /* Highlight pop */
+  --infection-red: #cf6f63;        /* Error / alert */
+  --infection-green: #b3e053;      /* Success */
+  --infection-purple: #c9a6f8;     /* Eva violet */
+  --infection-yellow: #c8b148;     /* Warning / MAGI */
+  --infection-cyan: #52a7c9;       /* Info / links (голубой) */
+  --infection-pink: #d98fd0;       /* Highlight pop */
   /* Text colors */
-  --text-primary: #e7e4f5;         /* Primary — cool bone-white */
-  --text-secondary: #b3add0;       /* Secondary */
-  --text-muted: #7b749e;           /* Muted */
-  --text-accent: #3fe6ff;          /* Accent — cyan links */
-  --text-success: #4dffa6;         /* Success — neon green */
-  --text-warning: #ffe34d;         /* Warning — acid yellow */
-  --text-error: #ff3b6b;           /* Error — neon red-pink */
+  --text-primary: #f9f9f6;         /* Primary — cool bone-white */
+  --text-secondary: #afa9a6;       /* Secondary */
+  --text-muted: #8d8d8c;           /* Muted */
+  --text-accent: #52a7c9;          /* Accent — cyan links */
+  --text-success: #b3e053;         /* Success — neon green */
+  --text-warning: #c8b148;         /* Warning — acid yellow */
+  --text-error: #cf6f63;           /* Error — neon red-pink */
   /* Borders and dividers */
-  --border-primary: #242240;       /* Primary borders */
-  --border-secondary: #16162a;     /* Secondary borders */
-  --border-accent: #3a3568;        /* Accent borders */
-  --border-infected: #7a5cff;      /* Strong frame — Eva violet */
+  --border-primary: #333333;       /* Primary borders */
+  --border-secondary: #262626;     /* Secondary borders */
+  --border-accent: #454545;        /* Accent borders */
+  --border-infected: #b486f6;      /* Strong frame — Eva violet */
   /* Neon glows */
-  --shadow-dark: rgba(5, 5, 12, 0.8);
-  --shadow-blood: rgba(122, 92, 255, 0.30);      /* violet bloom */
-  --shadow-infection: rgba(63, 230, 255, 0.35);  /* cyan bloom */
+  --shadow-dark: rgba(15, 15, 15, 0.8);
+  --shadow-blood: rgba(180, 134, 246, 0.30);      /* violet bloom */
+  --shadow-infection: rgba(65, 143, 174, 0.35);  /* cyan bloom */
   --shadow-bone: rgba(179, 173, 208, 0.2);
   /* === FONTS === */
   --font-primary: 'Px437_IBM_Conv', 'Courier New', monospace;

@@ -80,16 +80,16 @@ const buildLabel = (n: NeuronData): string => {
 // Neon activity ramp: dim slate → blue → cyan → green → yellow → magenta (hottest).
 const colorFor = (stim: number): string =>
     stim === 0
-        ? '#4c476a'
+        ? '#4e4f4e'
         : stim < 5
-        ? '#3f6fd6'
+        ? '#418fae'
         : stim < 15
-        ? '#3fe6ff'
+        ? '#52a7c9'
         : stim < 30
-        ? '#4dffa6'
+        ? '#b3e053'
         : stim < 50
-        ? '#ffe34d'
-        : '#ff6ad5';
+        ? '#c8b148'
+        : '#d98fd0';
 
 const edgeId = (e: ConnectionData): string =>
     `${e.from}->${e.to}::${e.label || ''}`;
@@ -163,45 +163,45 @@ const GRAPH_STYLE: any = [
             'font-family': 'Px437_IBM_Conv, monospace',
             'font-size': '13',
             'font-weight': 'bold',
-            color: '#e7e4f5',
-            'text-outline-color': '#07070d',
+            color: '#f9f9f6',
+            'text-outline-color': '#181818',
             'text-outline-width': '3',
             'text-valign': 'center',
             'text-halign': 'center',
             width: 'mapData(stim, 0, 50, 180, 280)',
             height: 'mapData(stim, 0, 50, 80, 120)',
             'border-width': '3',
-            'border-color': '#2a2648',
+            'border-color': '#333333',
             shape: 'round-rectangle',
             padding: '16',
-            'overlay-color': '#7a5cff',
+            'overlay-color': '#b486f6',
             'overlay-opacity': '0',
             'text-wrap': 'wrap',
             'text-max-width': '240',
             'line-height': '1.4',
         },
     },
-    { selector: 'node[type = "input"]', style: { 'border-color': '#00c853' } },
-    { selector: 'node[type = "output"]', style: { 'border-color': '#ff3b6b' } },
+    { selector: 'node[type = "input"]', style: { 'border-color': '#b3e053' } },
+    { selector: 'node[type = "output"]', style: { 'border-color': '#cf6f63' } },
     {
         selector: 'edge',
         style: {
             'curve-style': 'bezier',
-            'line-color': '#4a4680',
+            'line-color': '#4a4a4a',
             width: 'mapData(stim, 0, 50, 2, 8)',
             opacity: 0.9,
             'target-arrow-shape': 'triangle',
-            'target-arrow-color': '#4a4680',
+            'target-arrow-color': '#4a4a4a',
             'arrow-scale': '1.5',
             'arrow-fill': 'filled',
             label: 'data(label)',
             'font-family': 'Px437_IBM_Conv, monospace',
             'font-size': '11',
             'font-weight': 'bold',
-            color: '#e7e4f5',
-            'text-outline-color': '#07070d',
+            color: '#f9f9f6',
+            'text-outline-color': '#181818',
             'text-outline-width': '2',
-            'text-background-color': '#07070d',
+            'text-background-color': '#181818',
             'text-background-opacity': '0.95',
             'text-background-padding': '4',
             'text-rotation': 'autorotate',
@@ -212,41 +212,41 @@ const GRAPH_STYLE: any = [
         selector: 'node:selected',
         style: {
             'border-width': '3',
-            'border-color': '#7a5cff',
+            'border-color': '#b486f6',
             'overlay-opacity': '0.06',
         },
     },
     {
         selector: 'edge:selected',
         style: {
-            'line-color': '#7a5cff',
-            'target-arrow-color': '#7a5cff',
+            'line-color': '#b486f6',
+            'target-arrow-color': '#b486f6',
             width: '6',
         },
     },
     {
         selector: '.highlighted',
         style: {
-            'border-color': '#7a5cff',
-            'line-color': '#7a5cff',
-            'target-arrow-color': '#7a5cff',
+            'border-color': '#b486f6',
+            'line-color': '#b486f6',
+            'target-arrow-color': '#b486f6',
             opacity: 1,
         },
     },
     {
         selector: 'node[frontier = 1]',
         style: {
-            'border-color': '#00e5ff',
+            'border-color': '#418fae',
             'border-width': '6',
-            'overlay-color': '#00e5ff',
+            'overlay-color': '#418fae',
             'overlay-opacity': '0.12',
         },
     },
     {
         selector: 'edge[frontier = 1]',
         style: {
-            'line-color': '#00e5ff',
-            'target-arrow-color': '#00e5ff',
+            'line-color': '#418fae',
+            'target-arrow-color': '#418fae',
             width: '6',
             opacity: 1,
         },
@@ -254,17 +254,17 @@ const GRAPH_STYLE: any = [
     {
         selector: 'node[frontier = 2]',
         style: {
-            'border-color': '#ffe34d',
+            'border-color': '#c8b148',
             'border-width': '7',
-            'overlay-color': '#ffe34d',
+            'overlay-color': '#c8b148',
             'overlay-opacity': '0.16',
         },
     },
     {
         selector: 'edge[frontier = 2]',
         style: {
-            'line-color': '#ffe34d',
-            'target-arrow-color': '#ffe34d',
+            'line-color': '#c8b148',
+            'target-arrow-color': '#c8b148',
             width: '6',
             opacity: 1,
         },
@@ -272,17 +272,17 @@ const GRAPH_STYLE: any = [
     {
         selector: 'node[frontier = 3]',
         style: {
-            'border-color': '#ff3b6b',
+            'border-color': '#cf6f63',
             'border-width': '9',
-            'overlay-color': '#ff3b6b',
+            'overlay-color': '#cf6f63',
             'overlay-opacity': '0.24',
         },
     },
     {
         selector: 'edge[frontier = 3]',
         style: {
-            'line-color': '#ff3b6b',
-            'target-arrow-color': '#ff3b6b',
+            'line-color': '#cf6f63',
+            'target-arrow-color': '#cf6f63',
             width: '8',
             opacity: 1,
         },
@@ -548,12 +548,12 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
 
             <div static={{ class: 'cns-graph-legend' }}>
                 <h3>Legend</h3>
-                {legendItem('#4c476a', 'Inactive')}
-                {legendItem('#3f6fd6', 'Low activity')}
-                {legendItem('#3fe6ff', 'Medium')}
-                {legendItem('#4dffa6', 'High')}
-                {legendItem('#ff6ad5', 'Very high')}
-                {legendItem('#4a4680', 'Edge thickness = response volume')}
+                {legendItem('#4e4f4e', 'Inactive')}
+                {legendItem('#418fae', 'Low activity')}
+                {legendItem('#52a7c9', 'Medium')}
+                {legendItem('#b3e053', 'High')}
+                {legendItem('#d98fd0', 'Very high')}
+                {legendItem('#4a4a4a', 'Edge thickness = response volume')}
             </div>
 
             <div static={{ class: 'cns-graph-controls' }}>

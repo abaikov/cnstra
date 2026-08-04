@@ -8,28 +8,28 @@
 .dur {
   /* NERV Neon: cool indigo-black base + Eva-violet chrome + neon accents.
      Errors stay red (--red); the brand/frame accent (--blood) is now violet. */
-  --bg: #07070d;
-  --bg2: #0d0d16;
-  --panel: #111120;
-  --card: #16162a;
-  --sunk: #0a0a12;
-  --flesh-dk: #20203a;
-  --flesh: #2e2b52;
-  --flesh-lt: #413c78;
-  --blood-dk: #241a4a;
-  --blood: #7a5cff;      /* brand/frame accent → Eva violet */
-  --blood-lt: #a970ff;
-  --pus-green: #4dffa6;  /* neon green */
-  --pus-yellow: #ffe34d; /* acid yellow (MAGI) */
-  --bone-dk: #4c476a;
-  --bone-md: #7b749e;
-  --bone-lt: #b3add0;
-  --bone: #e7e4f5;
-  --red: #ff3b6b;        /* neon red-pink error */
-  --amber: #ffe34d;      /* headers/labels → acid yellow */
-  --cyan: #3fe6ff;       /* info / links (голубой) */
-  --pink: #ff6ad5;       /* highlight pop */
-  --edge: #05050c;
+  --bg: #181818;
+  --bg2: #1e1e1e;
+  --panel: #202020;
+  --card: #262626;
+  --sunk: #141414;
+  --flesh-dk: #303030;
+  --flesh: #3c3c3c;
+  --flesh-lt: #4e4e4e;
+  --blood-dk: #2e2420;
+  --blood: #b486f6;      /* brand/frame accent → Eva violet */
+  --blood-lt: #c9a6f8;
+  --pus-green: #b3e053;  /* neon green */
+  --pus-yellow: #c8b148; /* acid yellow (MAGI) */
+  --bone-dk: #4e4f4e;
+  --bone-md: #8d8d8c;
+  --bone-lt: #afa9a6;
+  --bone: #f9f9f6;
+  --red: #cf6f63;        /* neon red-pink error */
+  --amber: #c8b148;      /* headers/labels → acid yellow */
+  --cyan: #52a7c9;       /* info / links (голубой) */
+  --pink: #d98fd0;       /* highlight pop */
+  --edge: #121212;
   --mono: var(--font-primary, 'Px437_IBM_Conv', ui-monospace, Menlo, monospace);
 
   position: relative;
@@ -116,7 +116,7 @@
 }
 .dur .hdr h1 .brain {
   font-size: 20px;
-  filter: saturate(1) drop-shadow(0 0 6px rgba(122, 92, 255, 0.6));
+  filter: saturate(1) drop-shadow(0 0 6px rgba(180, 134, 246, 0.6));
 }
 .dur .hdr h1 b {
   color: var(--blood-lt);
@@ -181,7 +181,7 @@
 }
 .dur .btn.primary {
   background: var(--blood);
-  color: #efeaf7;
+  color: #f9f9f6;
 }
 .dur .btn.primary:hover {
   background: var(--red);
@@ -189,7 +189,7 @@
 }
 .dur .btn:disabled {
   color: var(--bone-md);
-  background: #171528;
+  background: #2a2a2a;
   cursor: not-allowed;
   opacity: 0.75;
   box-shadow: inset 1px 1px 0 #000;
@@ -202,7 +202,7 @@
   margin-top: 3px;
 }
 .dur .btn.primary .k {
-  color: #c9b3e0;
+  color: #c9a6f8;
 }
 
 /* two-column body */
@@ -264,7 +264,7 @@
 }
 .dur .strow.sel {
   box-shadow: 0 0 0 2px var(--amber);
-  background: #1c1830;
+  background: #2e2e2e;
 }
 .dur .strow .stripe {
   align-self: stretch;
@@ -295,7 +295,7 @@
   letter-spacing: 1px;
   padding: 3px 6px;
   border: 1px solid var(--edge);
-  color: #07070d;
+  color: #181818;
   white-space: nowrap;
 }
 .dur .stripe.f,
@@ -326,7 +326,7 @@
 .dur .rtitle .rid {
   font-size: 15px;
   color: var(--cyan);
-  text-shadow: 0 0 6px rgba(63, 230, 255, 0.35);
+  text-shadow: 0 0 6px rgba(65, 143, 174, 0.35);
   word-break: break-all;
 }
 .dur .entry {
@@ -342,8 +342,8 @@
 }
 .dur .reject {
   padding: 9px 12px;
-  background: #1a0f22;
-  color: #e6a9d0;
+  background: #2a1f1a;
+  color: #c99a8f;
   font-size: 12px;
   box-shadow: inset 3px 0 0 var(--red);
 }
@@ -353,7 +353,7 @@
 }
 .dur .frontier {
   padding: 9px 12px;
-  background: #1c1a08;
+  background: #2a2812;
   color: var(--pus-yellow);
   font-size: 12px;
   letter-spacing: 0.4px;
@@ -386,7 +386,7 @@
   filter: brightness(1.3);
 }
 .dur .step.sel {
-  background: #1c1830;
+  background: #2e2e2e;
   box-shadow: inset 0 0 0 2px var(--amber);
 }
 .dur .step .n {
@@ -427,7 +427,7 @@
   background: var(--sunk);
 }
 .dur .hop:nth-child(odd) {
-  background: #120e1e;
+  background: #242424;
 }
 .dur .hop:hover {
   filter: brightness(1.3);
@@ -469,14 +469,14 @@
   color: var(--bone-md);
 }
 .dur .hop.err {
-  background: linear-gradient(90deg, #2a0b1e, #160a1a);
+  background: linear-gradient(90deg, #2e2420, #1e1814);
   box-shadow: inset 3px 0 0 var(--red);
 }
 .dur .hop.err .nn {
   color: var(--blood-lt);
 }
 .dur .hop.err .flow {
-  color: #d99ac9;
+  color: #c99a8f;
 }
 .dur .payload {
   grid-column: 2 / -1;
@@ -488,7 +488,7 @@
 }
 .dur .errline {
   grid-column: 2 / -1;
-  color: #e6a8cf;
+  color: #d0a8b8;
   font-size: 12px;
   margin-top: 3px;
   box-shadow: inset 3px 0 0 var(--red);
@@ -505,8 +505,8 @@
   letter-spacing: 1.5px;
   background: repeating-linear-gradient(
     45deg,
-    #100c1c 0 10px,
-    #0c0a16 10px 20px
+    #1c1c1c 0 10px,
+    #161616 10px 20px
   );
 }
 .dur .placeholder b {
