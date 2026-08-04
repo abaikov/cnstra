@@ -1,6 +1,7 @@
 import type { ICNSDurableStimulationsClient } from './ICNSDurableStimulationsClient';
 import type { TCNSStimulationViewDTO } from '@cnstra/devtools-dto';
 import type { DevtoolsSocket } from '../app/controllers/socket';
+import { socketRequest } from './socketRequest';
 
 /**
  * WS-backed durable-runs client (Phase 2b-3): reads the name-based
@@ -15,68 +16,15 @@ import type { DevtoolsSocket } from '../app/controllers/socket';
 const genId = (): string =>
     `dr-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const TIMEOUT_MS = 5000;
-
 export class CNSDurableStimulationsWsClient implements ICNSDurableStimulationsClient {
     constructor(
         private readonly socket: DevtoolsSocket,
         private readonly getScopeName: () => string | undefined
     ) {}
 
-    /** Send a message and resolve when a reply carrying the same requestId arrives. */
-    private request<T>(
-        message: Record<string, unknown> & { requestId: string },
-        onReply: (
-            msg: any,
-            resolve: (v: T) => void,
-            reject: (e: Error) => void
-        ) => void
-    ): Promise<T> {
-        return new Promise<T>((resolve, reject) => {
-            const ws = this.socket.getSocket();
-            if (!ws) return reject(new Error('devtools socket is not open'));
-
-            let settled = false;
-            const cleanup = () => {
-                ws.removeEventListener('message', onMsg);
-                clearTimeout(timer);
-            };
-            const done = (fn: () => void) => {
-                if (settled) return;
-                settled = true;
-                cleanup();
-                fn();
-            };
-            const onMsg = (ev: MessageEvent) => {
-                let m: any;
-                try {
-                    m = JSON.parse(
-                        typeof ev.data === 'string' ? ev.data : String(ev.data)
-                    );
-                } catch {
-                    return;
-                }
-                if (!m || m.requestId !== message.requestId) return;
-                onReply(
-                    m,
-                    v => done(() => resolve(v)),
-                    e => done(() => reject(e))
-                );
-            };
-            const timer = setTimeout(
-                () => done(() => reject(new Error('devtools request timed out'))),
-                TIMEOUT_MS
-            );
-
-            ws.addEventListener('message', onMsg);
-            if (!this.socket.send(message as never)) {
-                done(() => reject(new Error('devtools socket send failed')));
-            }
-        });
-    }
-
     async listStimulations(): Promise<TCNSStimulationViewDTO[]> {
-        return this.request<TCNSStimulationViewDTO[]>(
+        return socketRequest<TCNSStimulationViewDTO[]>(
+            this.socket,
             {
                 type: 'cns.stimulations.query',
                 requestId: genId(),
@@ -98,7 +46,8 @@ export class CNSDurableStimulationsWsClient implements ICNSDurableStimulationsCl
     }
 
     async retry(stimulationId: string): Promise<void> {
-        await this.request<void>(
+        await socketRequest<void>(
+            this.socket,
             {
                 type: 'stimulation.retry',
                 requestId: genId(),
@@ -113,7 +62,8 @@ export class CNSDurableStimulationsWsClient implements ICNSDurableStimulationsCl
     }
 
     async clone(stimulationId: string): Promise<string> {
-        return this.request<string>(
+        return socketRequest<string>(
+            this.socket,
             {
                 type: 'stimulation.clone',
                 requestId: genId(),
