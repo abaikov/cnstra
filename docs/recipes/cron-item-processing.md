@@ -79,7 +79,7 @@ import { CNSDevToolsServer } from '@cnstra/devtools-server';
 const server = new CNSDevToolsServer(appTopologyRepo, runStore);
 ```
 
-Open the panel → **⚡ Stimulations** / **💀 Resumable Runs**: each row is `import:123`, and you see
+Open the panel → **⚡ Stimulations** / **💀 Stimulations**: each row is `import:123`, and you see
 it go `running → completed / failed` with the neuron-by-neuron waterfall (and a **Retry** on the
 resumable frontier of a failed one). Refresh is a ~2s poll — near-live.
 

@@ -184,7 +184,7 @@ relational run/attempt/task tables (`cnstra-persist-postgres migrate`, or auto-c
 no schema to write yourself.
 
 > **Shortcut — the DevTools Explorer as a persistent admin.** The CNStra DevTools already render this
-> exact model (🔎 Explorer · 💀 Resumable Runs · ⚡ Stimulations). Hand the same `observe` store to
+> exact model (🔎 Explorer · 💀 Stimulations · ⚡ Stimulations). Hand the same `observe` store to
 > `startDevTools` and every job the worker processes shows up live in the Explorer — filterable by job
 > type (entry collateral) or neuron, with a per-run attempt/task waterfall — no bespoke UI:
 > ```ts

@@ -1,5 +1,5 @@
 /**
- * Reusable, transport-thin HTTP handler for the resumable-runs admin.
+ * Reusable, transport-thin HTTP handler for the stimulations admin.
  *
  * The admin is a POLLING surface, not a push one: resumable runs change on a button
  * press (launch / retry / clone), not in a stream, so a client just re-reads

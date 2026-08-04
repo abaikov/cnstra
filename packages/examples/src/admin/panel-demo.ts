@@ -12,7 +12,7 @@
  *     WS server (topology + the name-based ⚡ Stimulations stream).
  *
  * Open http://localhost:8080:
- *   • 💀 Resumable Runs → the broker-backed runs from :4545 (the panel polls it by
+ *   • 💀 Stimulations → the broker-backed runs from :4545 (the panel polls it by
  *     default) — Launch a run, watch it fail, Retry to resume the frontier.
  *   • ⚡ Stimulations → example-app's own e-commerce CNS, live (name-based).
  *

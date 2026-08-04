@@ -104,7 +104,7 @@ await pgStore.deleteStale(7 * 24 * 60 * 60 * 1000);
 ## Retry & clone
 
 Given a run's history you get two admin actions for free (this is what the DevTools
-[Resumable Runs](../devtools/resumable-runs.md) panel does):
+[Stimulations](../devtools/stimulations.md) panel does):
 
 - **Retry** — resume the outstanding **frontier** as a new attempt; only the unfinished
   branch re-runs, with its context.
@@ -138,6 +138,6 @@ durability stays on the worker path only if you attach it per-call, which the wo
 - [Log correlation](../recipes/log-correlation.md) — tag logs with the `stimulationId` /
   `attemptNumber` (the workers fill it automatically).
 - [Persistence & Resume](./persistence.md) — the underlying frontier-serialization primitive.
-- [DevTools → Resumable Runs](../devtools/resumable-runs.md) — the panel that renders this model.
+- [DevTools → Stimulations](../devtools/stimulations.md) — the panel that renders this model.
 - [Cron item processing](../recipes/cron-item-processing.md) — a run per DB item, visible in the admin by item id.
 - [pg-boss](../integrations/pg-boss.md) / [BullMQ](../integrations/bullmq.md) — the worker integrations.

@@ -104,7 +104,7 @@ const runs = await history.listStimulations(); // roster for an admin screen
 > OOM a long-running worker — see
 > [Resumable execution → bounds](/docs/advanced/resumable-execution#bound-in-memory). To keep the
 > history across restarts, use `CNSPostgresStimulationRepository`. The DevTools panel renders
-> this model directly — see [Resumable Runs](/docs/devtools/resumable-runs).
+> this model directly — see [Stimulations](/docs/devtools/stimulations).
 
 **See it live in the Explorer.** Hand that same `history` store to `startDevTools` and every job the
 worker processes shows up in the 🔎 Explorer — filterable by job type (entry collateral) or neuron,
