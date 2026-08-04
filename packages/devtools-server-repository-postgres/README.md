@@ -3,7 +3,7 @@
 > **⚠️ Experimental**: API may change.
 
 PostgreSQL persistence for the [CNStra](https://cnstra.org) DevTools server. A drop-in,
-durable replacement for `@cnstra/devtools-server-repository-in-memory`: same
+resumable replacement for `@cnstra/devtools-server-repository-in-memory`: same
 `ICNSDevToolsServerRepository` contract, but apps, topology, **stimulations and per-hop
 history survive restarts** — the foundation for an admin/history panel.
 

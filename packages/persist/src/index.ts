@@ -30,7 +30,7 @@ export type { TCNSNeuronRegistryEntry } from './types/TCNSNeuronRegistryEntry';
 export type { TCNSProgressRecorderOptions } from './types/TCNSProgressRecorderOptions';
 export type { TCNSDebouncedProgressRecordingStrategyOptions } from './types/TCNSDebouncedProgressRecordingStrategyOptions';
 
-// ── durable-execution stimulation/attempt/task model — canonical types live in
+// ── resumable-execution stimulation/attempt/task model — canonical types live in
 //    @cnstra/persist-dto; re-exported here for convenience ──
 export type {
     TCNSSignalJSON,

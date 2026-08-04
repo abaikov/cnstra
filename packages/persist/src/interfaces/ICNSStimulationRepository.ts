@@ -50,8 +50,8 @@ export interface ICNSStimulationReader {
 }
 
 /**
- * Durable store for the stimulation/attempt/task model — the full read+write seam
- * (in-memory, Postgres, "inside the queue job", …), so the durable-execution layer
+ * Resumable store for the stimulation/attempt/task model — the full read+write seam
+ * (in-memory, Postgres, "inside the queue job", …), so the resumable-execution layer
  * never depends on a particular database or queue. Composed from the segregated
  * {@link ICNSStimulationWriter} + {@link ICNSStimulationReader}; record lifecycle
  * (creation, TTL, cleanup) is the integration's concern — e.g. `delete` tied to a

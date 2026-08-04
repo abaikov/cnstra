@@ -14,7 +14,7 @@ import { CNSSignalJSONSchema } from './signal';
  */
 
 // ─── Row DTO: the roster's flat list row ──────────────────────────────────────
-// = the durable state WITHOUT `progress` (resume state the list never needs), PLUS
+// = the resumable state WITHOUT `progress` (resume state the list never needs), PLUS
 // the storage-envelope summaries the canonical `TCNSStimulationState` deliberately
 // excludes (see its doc). Server-computed from the run's attempts at query time —
 // one query-result projection, not a parallel entity family.

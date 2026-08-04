@@ -9,7 +9,7 @@ import type { TCNSAppBatchItemDTO } from '@cnstra/devtools-dto';
 /**
  * Producer-side {@link ICNSStimulationWriter} that turns every write from a
  * {@link CNSStimulationPersistor} into a name-based batch item and enqueues it on the
- * devtools transport. This is how the devtools emit the SAME durable run/attempt/task
+ * devtools transport. This is how the devtools emit the SAME resumable run/attempt/task
  * model used for resume — no bespoke id/inputIndex logic in the devtools.
  *
  * It is WRITE-ONLY by construction: implementing only `ICNSStimulationWriter` means

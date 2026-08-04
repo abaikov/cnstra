@@ -37,7 +37,7 @@ If you’re searching for a “workflow engine / orchestrator”, you’ve proba
 
 ## CNStra vs “distributed workflow engines”
 
-Temporal / Conductor / Zeebe are typically **durable, distributed systems** with their own operational surface area (clusters, persistence, scaling model).
+Temporal / Conductor / Zeebe are typically **resumable, distributed systems** with their own operational surface area (clusters, persistence, scaling model).
 
 With CNStra, you start from:
 - **Embeddability** (library, not a platform)
@@ -57,7 +57,7 @@ And you *add durability* when you need it:
 | Durability out of the box | In-memory (bring your own persistence) | Built-in persistence |
 | Operations overhead | Low | Medium–high |
 | TypeScript-first | **Yes** | Varies (SDKs / DSLs) |
-| Great for | Jobs/sync/ETL/sagas inside your services | Cross-service durable workflows |
+| Great for | Jobs/sync/ETL/sagas inside your services | Cross-service resumable workflows |
 
 ## Not either/or — CNStra is an adapter over the engine underneath
 
@@ -73,11 +73,11 @@ Because those seams are interfaces, the **execution backend is swappable without
 flow**. The same graph runs:
 
 - **in-memory** (embedded, zero infra) for dev, sync request handling, or ETL inside a service;
-- on **pg-boss** (Postgres) or **BullMQ** (Redis) for durable jobs + retry/backoff + frontier
+- on **pg-boss** (Postgres) or **BullMQ** (Redis) for resumable jobs + retry/backoff + frontier
   resume — you change the worker wiring, not the neurons;
 - and, in principle, on a **distributed engine like Temporal/Zeebe** via an adapter that maps
-  those same seams onto its durable execution — so CNStra becomes the **typed orchestration
-  layer on top**, and the heavy durable engine is an implementation detail you can adopt (or
+  those same seams onto its resumable execution — so CNStra becomes the **typed orchestration
+  layer on top**, and the heavy resumable engine is an implementation detail you can adopt (or
   drop) later.
 
 So the practical move is often **CNStra + X**, not **CNStra or X**: start embedded, grow into a
@@ -87,7 +87,7 @@ yet; the seams are what make it a wrapper rather than a rewrite.)
 
 ## A practical mental model
 
-- If you need **durable, distributed workflows spanning many services** with “always-on” history and replay semantics: start with Temporal/Zeebe/Conductor — or drive them through CNStra as the typed layer on top.
+- If you need **resumable, distributed workflows spanning many services** with “always-on” history and replay semantics: start with Temporal/Zeebe/Conductor — or drive them through CNStra as the typed layer on top.
 - If you need **clean orchestration inside a Node.js service/worker** (and you want it **explicit, deterministic, type-safe**) and you’re happy to compose with queues/persistence: CNStra is a strong fit, and you can move the backend under it later without a rewrite.
 
 Next:

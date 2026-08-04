@@ -1,8 +1,8 @@
 {
   "name": "@cnstra/persist-dto",
   "version": "0.1.0",
-  "description": "Canonical, name-based data model for CNStra durable execution: run/stimulation/task DTOs (emit) and persisted entities, plus the frontier progress DTO. Zero-runtime types shared by @cnstra/persist and the devtools.",
-  "keywords": ["cnstra", "persist", "dto", "durable", "stimulation", "run"],
+  "description": "Canonical, name-based data model for CNStra resumable execution: run/stimulation/task DTOs (emit) and persisted entities, plus the frontier progress DTO. Zero-runtime types shared by @cnstra/persist and the devtools.",
+  "keywords": ["cnstra", "persist", "dto", "resumable", "stimulation", "run"],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

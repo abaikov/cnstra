@@ -4,7 +4,7 @@ title: "CNStra: A New Generation of Application Orchestration"
 sidebar_label: CNStra
 slug: /core/overview
 description: CNStra is a single-process orchestration engine for application logic — model flows as an explicit, typed graph of isolated handlers that runs deterministically, is traceable and resumable, and stays decoupled from storage and I/O, on backend and frontend alike.
-keywords: [CNStra, orchestration, orchestration engine, workflow engine, flows, backend, deterministic, traceability, durable execution, exhaustive binding, MVC, Redux, state management]
+keywords: [CNStra, orchestration, orchestration engine, workflow engine, flows, backend, deterministic, traceability, resumable execution, exhaustive binding, MVC, Redux, state management]
 ---
 
 # CNStra: A New Generation of Application Orchestration
@@ -362,7 +362,7 @@ Same primitives, same guarantees, wherever it runs:
 * pipelines,
 * background jobs,
 * domain events,
-* durable, resumable runs.
+* resumable, resumable runs.
 
 If you want a deep-dive into:
 

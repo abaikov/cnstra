@@ -38,7 +38,7 @@ function buildCNS() {
     return { cns, registry, entryCol };
 }
 
-describe('CNSDevToolsServer — name-based durable items → stimulationRepository', () => {
+describe('CNSDevToolsServer — name-based resumable items → stimulationRepository', () => {
     it('routes producer cns.stimulation(.attempt|.task) into the injected repo', async () => {
         const { cns, registry, entryCol } = buildCNS();
         const stimRepo = new CNSInMemoryStimulationRepository();

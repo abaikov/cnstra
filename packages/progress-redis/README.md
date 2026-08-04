@@ -2,7 +2,7 @@
 
 > **⚠️ Experimental**: API may change.
 
-A **Redis-backed resume-progress store** (`ICNSProgressRepository`) for CNStra durable
+A **Redis-backed resume-progress store** (`ICNSProgressRepository`) for CNStra resumable
 execution — **broker-agnostic**. Use it to keep the resume checkpoint (the outstanding
 frontier) in Redis with **any** broker: [`@cnstra/pg-boss`](../pg-boss),
 [`@cnstra/bullmq`](../bullmq), or a bespoke worker.

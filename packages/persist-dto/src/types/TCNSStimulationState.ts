@@ -8,7 +8,7 @@ import type { TCNSProgress } from './TCNSProgress';
  * live run; this is what survives in a store: its stable `stimulationId` (= the resume
  * key threaded across a process boundary), `status`, and `progress` (the live resume
  * state, mutated by whichever attempt is currently active) plus `entry` (the originating
- * signal, kept so a fresh **Clone** can be launched from scratch). The durable-execution
+ * signal, kept so a fresh **Clone** can be launched from scratch). The resumable-execution
  * unit a human sees and can retry; its attempts/tasks are separate history records.
  *
  * Storage bookkeeping (created/updated timestamps, TTL, job lifecycle) belongs to the

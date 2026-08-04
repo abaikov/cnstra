@@ -29,7 +29,7 @@ export async function attachBullTransport(
         { connection, concurrency: 1 }
     );
 
-    // Every admin action becomes a durable job on Redis.
+    // Every admin action becomes a resumable job on Redis.
     manager.setDispatch(async (cmd: TStimulationCommand) => {
         await queue.add('cmd', cmd as unknown as object, {
             removeOnComplete: true,

@@ -41,7 +41,7 @@ export type TCNSInMemoryStimulationRepositoryOptions = {
 
 /**
  * In-memory {@link ICNSStimulationRepository} — for tests, single-process dev, and
- * the reference implementation. Not durable across a restart; use a Postgres/Redis
+ * the reference implementation. Not resumable across a restart; use a Postgres/Redis
  * adapter for production. Stimulations are keyed by `stimulationId`, attempts by
  * `stimulationAttemptId`, tasks bucketed per attempt.
  *

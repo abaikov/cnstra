@@ -11,7 +11,7 @@ A very common setup: you write work **items to your own table** (`imports`, `ord
 **cron pulls N pending** rows and processes each. You want an admin where you can literally see
 *"work started on item-123 → these steps → done / failed"*.
 
-CNStra does this with the durable store + the DevTools panel — and the trick is: **key each run
+CNStra does this with the resumable store + the DevTools panel — and the trick is: **key each run
 by your item id**.
 
 ## Process each item as a run keyed by the item id
@@ -79,7 +79,7 @@ import { CNSDevToolsServer } from '@cnstra/devtools-server';
 const server = new CNSDevToolsServer(appTopologyRepo, runStore);
 ```
 
-Open the panel → **⚡ Stimulations** / **💀 Durable Runs**: each row is `import:123`, and you see
+Open the panel → **⚡ Stimulations** / **💀 Resumable Runs**: each row is `import:123`, and you see
 it go `running → completed / failed` with the neuron-by-neuron waterfall (and a **Retry** on the
 resumable frontier of a failed one). Refresh is a ~2s poll — near-live.
 
@@ -114,4 +114,4 @@ If you'd rather have **the queue manage pulling + retries/backoff/scheduling** t
 move the items onto [pg-boss](/docs/integrations/pg-boss) or [BullMQ](/docs/integrations/bullmq)
 and pass `observe: runStore` to the worker. There the run id is the job id — carry your item id
 in `scopeName` (or a `singletonKey`) to keep the correlation. See
-[Durable execution](/docs/advanced/durable-execution) for `resume` vs `observe`.
+[Resumable execution](/docs/advanced/resumable-execution) for `resume` vs `observe`.

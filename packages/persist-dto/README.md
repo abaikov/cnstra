@@ -2,7 +2,7 @@
 
 > **⚠️ Experimental**: API may change.
 
-The **canonical, name-based, zero-runtime model** for CNStra durable execution — the shared
+The **canonical, name-based, zero-runtime model** for CNStra resumable execution — the shared
 type contract behind `@cnstra/persist`, `@cnstra/persist-postgres`, the queue integrations, and
 the devtools protocol. Topology is referenced by **name** everywhere and never persisted (code
 is its source of truth).

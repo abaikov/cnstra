@@ -57,7 +57,7 @@ export class CNSDevToolsServer {
     private lastCpuTime = Date.now();
 
     /**
-     * Name-based durable store (Stimulation/Attempt/Task). Written from the three
+     * Name-based resumable store (Stimulation/Attempt/Task). Written from the three
      * `cns.stimulation*` batch items the producer emits when `trackStimulations` is on.
      * Defaults to in-memory; the example-app can inject a Postgres store.
      */
@@ -138,7 +138,7 @@ export class CNSDevToolsServer {
     }
 
     /**
-     * Explorer protocol (bucket-shaped). The roster row = durable state minus
+     * Explorer protocol (bucket-shaped). The roster row = resumable state minus
      * `progress`, plus envelope summaries derived from the run's attempts.
      *
      * Pushdown: if the store implements `ICNSStimulationRosterQuery` (e.g. the
@@ -279,7 +279,7 @@ export class CNSDevToolsServer {
             case 'topology':
                 await this.handleTopology(ws, item);
                 break;
-            // ── Name-based durable model ──
+            // ── Name-based resumable model ──
             case 'cns.stimulation':
                 await this.stimulationRepository.saveStimulation(item.data);
                 break;
@@ -292,7 +292,7 @@ export class CNSDevToolsServer {
         }
     }
 
-    /** The name-based durable store, for tests/integrations that want to read it back. */
+    /** The name-based resumable store, for tests/integrations that want to read it back. */
     getStimulationRepository(): ICNSStimulationRepository {
         return this.stimulationRepository;
     }
@@ -376,10 +376,10 @@ export class CNSDevToolsServer {
         }
     }
 
-    // ─── Durable actions (retry / clone), Phase 2b-2 ──────────────────────────────
+    // ─── Resumable actions (retry / clone), Phase 2b-2 ──────────────────────────────
     //
     // The UI's request is thin (a stimulationId). The CNS + name→ref registry live in
-    // the APP, so the server can't execute it: it ENRICHES from the durable store (the
+    // the APP, so the server can't execute it: it ENRICHES from the resumable store (the
     // stored entry + progress + a server-assigned attempt identity) and forwards a
     // resume/launch command to the owning app, routed by scopeName (= the cns id).
 

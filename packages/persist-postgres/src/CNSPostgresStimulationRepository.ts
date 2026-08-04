@@ -1,5 +1,5 @@
 /**
- * Postgres relational store for the CNStra stimulation/attempt/task durable model
+ * Postgres relational store for the CNStra stimulation/attempt/task resumable model
  * (`ICNSStimulationRepository`). The stimulation's `progress` is NORMALISED: the
  * outstanding frontier into `<prefix>stimulation_frontier` (one row per task) and
  * per-neuron context into `<prefix>stimulation_context` — rebuilt into `TCNSProgress`

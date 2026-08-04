@@ -2,7 +2,7 @@
  * StimulationRunManager — the write/read side the retry-admin talks to.
  *
  * It owns ONE CNStra flow (importUser → enrichUser → persistUser) plus the
- * durable stores (repository + registry + serializer), and exposes the admin's
+ * resumable stores (repository + registry + serializer), and exposes the admin's
  * three actions plus a read:
  *
  *   launch({ userId, fail })   → start a fresh stimulation (new id, attempt #1)

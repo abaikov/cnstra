@@ -2,7 +2,7 @@
 
 > **⚠️ Experimental**: API and on-the-wire/stored shapes may change in future versions.
 
-The **durable-execution engine** for CNStra — the write side and storage seams behind
+The **resumable-execution engine** for CNStra — the write side and storage seams behind
 resume, queue integrations, and the DevTools run/attempt/task view. Core-free (depends only
 on `@cnstra/types` + `@cnstra/persist-dto`); topology is referenced by **name** everywhere
 and never persisted (code is its source of truth).
@@ -28,7 +28,7 @@ Postgres adapter: [`@cnstra/persist-postgres`](https://www.npmjs.com/package/@cn
 
 ## Docs
 
-See the full guide: **[Durable execution](https://cnstra.org/docs/advanced/durable-execution)**
+See the full guide: **[Resumable execution](https://cnstra.org/docs/advanced/resumable-execution)**
 (the model, `resume` vs `observe`, stores & bounds) and
 [Persistence & Resume](https://cnstra.org/docs/advanced/persistence).
 

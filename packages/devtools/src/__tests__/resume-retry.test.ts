@@ -57,7 +57,7 @@ function buildCNS() {
 
 /**
  * A loopback of the server: app→server batch items land in a real repo, and the
- * test can push a server→app durable command into the app's command handler.
+ * test can push a server→app resumable command into the app's command handler.
  */
 class LoopbackTransport implements ICNSDevToolsTransport {
     private cmdHandler?: (cmd: TCNSAppCommandDTO) => void;

@@ -1,4 +1,4 @@
-// Canonical, name-based CNStra durable-execution data model. Zero-runtime types,
+// Canonical, name-based CNStra resumable-execution data model. Zero-runtime types,
 // shared by @cnstra/persist (engine) and the devtools. Topology is referenced by
 // name only — it is never persisted (the code is its source of truth).
 

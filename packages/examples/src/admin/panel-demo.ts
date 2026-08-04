@@ -6,13 +6,13 @@
  *   ADMIN_QUEUE=pgboss tsx src/admin/panel-demo.ts   → pg-boss (Postgres)
  *
  * It starts:
- *   • the retry-admin on :4545 — the durable run/attempt/task store, executed
+ *   • the retry-admin on :4545 — the resumable run/attempt/task store, executed
  *     through the chosen broker (Launch / Retry-resume / Clone). Serves /api/stimulations.
  *   • example-app on :8080 — serves the DevTools **panel** and its own devtools
  *     WS server (topology + the name-based ⚡ Stimulations stream).
  *
  * Open http://localhost:8080:
- *   • 💀 Durable Runs → the broker-backed runs from :4545 (the panel polls it by
+ *   • 💀 Resumable Runs → the broker-backed runs from :4545 (the panel polls it by
  *     default) — Launch a run, watch it fail, Retry to resume the frontier.
  *   • ⚡ Stimulations → example-app's own e-commerce CNS, live (name-based).
  *
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
         log(`  ℹ️  Docker not used — expecting an existing ${svc} (DATABASE_URL / REDIS_*).`);
     }
 
-    // 1) the broker-backed retry-admin (durable run store + /api/stimulations) on :4545
+    // 1) the broker-backed retry-admin (resumable run store + /api/stimulations) on :4545
     const admin = await startAdmin();
     log(`  🖥️  retry-admin (${admin.backend}) → http://localhost:${admin.port}`);
 
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
     log('');
     if (ready) {
         log(`  ✅ Open  http://localhost:${PANEL_PORT}`);
-        log(`     💀 Durable → broker-backed stimulations (${admin.backend}) — Launch, then Retry/Clone`);
+        log(`     💀 Resumable → broker-backed stimulations (${admin.backend}) — Launch, then Retry/Clone`);
         log(`     ⚡ Stimulations → example-app's own CNS, live (name-based)`);
     } else {
         log(`  ⚠️  panel did not come up on :${PANEL_PORT} within 120s (check output above)`);

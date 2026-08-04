@@ -50,7 +50,7 @@ export default function Home(): JSX.Element {
                             </p>
                         </div>
                         <div className="col col--4">
-                            <h3>Traceable &amp; durable</h3>
+                            <h3>Traceable &amp; resumable</h3>
                             <p>
                                 Trace and replay every step in devtools — and
                                 persist a running flow to resume it after a

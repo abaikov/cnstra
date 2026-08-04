@@ -38,7 +38,7 @@
     "publish:react": "node scripts/publish-workspaces.mjs --workspace=@cnstra/react",
     "docs:llms": "node scripts/generate-llms-full.mjs",
     "version:all": "npm version patch --workspaces",
-    "demo:durable": "npm run demo:durable --workspace=@cnstra/examples",
+    "demo:resume": "npm run demo:resume --workspace=@cnstra/examples",
     "demo:admin": "npm run demo:admin --workspace=@cnstra/examples",
     "demo:admin:pgboss": "npm run demo:admin:pgboss --workspace=@cnstra/examples",
     "demo:admin:bull": "npm run demo:admin:bull --workspace=@cnstra/examples",

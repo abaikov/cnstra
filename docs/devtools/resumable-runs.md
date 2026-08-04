@@ -1,17 +1,17 @@
 ---
-id: durable-runs
-title: Durable Runs — retry & clone in the panel
-sidebar_label: Durable Runs
-slug: /devtools/durable-runs
+id: resumable-runs
+title: Resumable Runs — retry & clone in the panel
+sidebar_label: Resumable Runs
+slug: /devtools/resumable-runs
 description: The DevTools name-based Stimulation → Attempt → Task view, retry (resume frontier) and clone (fresh run) actions, and how to persist the store so the panel becomes a restart-surviving admin.
-keywords: [devtools, durable runs, retry, clone, trackStimulations, stimulations, attempts, tasks, admin panel]
+keywords: [devtools, resumable runs, retry, clone, trackStimulations, stimulations, attempts, tasks, admin panel]
 ---
 
-The DevTools render the same [durable-execution model](../advanced/durable-execution.md) —
+The DevTools render the same [resumable-execution model](../advanced/resumable-execution.md) —
 **Stimulation → Attempt → Task** — with two views:
 
 - **⚡ Stimulations** — the live run/attempt/task stream from the app, by name.
-- **💀 Durable Runs** — a retry admin: a run roster with **Retry** and **Clone** actions.
+- **💀 Resumable Runs** — a retry admin: a run roster with **Retry** and **Clone** actions.
 
 ## App side — emit the model
 
@@ -45,13 +45,13 @@ const server = new CNSDevToolsServer(appTopologyRepo, runStore);
 ```
 
 Default (omit the 2nd arg) is an in-memory store — great for dev, but
-[bound it](../advanced/durable-execution.md#bound-in-memory) for
+[bound it](../advanced/resumable-execution.md#bound-in-memory) for
 anything long-running. With a Postgres store the panel survives restarts and becomes a real
 admin.
 
 ## Retry & clone
 
-From the **💀 Durable Runs** panel:
+From the **💀 Resumable Runs** panel:
 
 - **Retry** — enabled on a failed run; resumes its outstanding **frontier** as a new
   attempt (only the unfinished branch re-runs, with its context). Over the wire the server
@@ -59,7 +59,7 @@ From the **💀 Durable Runs** panel:
   owning app, which hydrates and runs `cns.activate(...)`.
 - **Clone** — a fresh run from the original **entry** (a clean re-do), new id, attempt 1.
 
-The client behind the panel is a pluggable seam (`ICNSDurableRunsClient`) — it polls over
+The client behind the panel is a pluggable seam — it polls over
 HTTP (the standalone admin) or over the DevTools WebSocket; the same page renders either.
 
 ## One-button example
@@ -71,12 +71,12 @@ npm run demo:panel:bull      # BullMQ (Redis) + the DevTools panel on :8080
 npm run demo:panel:pgboss    # pg-boss (Postgres) + the panel
 ```
 
-Open `http://localhost:8080` → **💀 Durable Runs** shows the broker-backed runs (Launch a
+Open `http://localhost:8080` → **💀 Resumable Runs** shows the broker-backed runs (Launch a
 run, watch it fail, **Retry** to resume the frontier, **Clone** for a fresh run), while
 **⚡ Stimulations** shows the app's own CNS activity live. See
 [runnable examples](../examples/runnable-examples.md).
 
 ## See also
 
-- [Durable execution](../advanced/durable-execution.md) — the model, `observe` vs `resume`, stores & bounds.
+- [Resumable execution](../advanced/resumable-execution.md) — the model, `observe` vs `resume`, stores & bounds.
 - [Log correlation](../recipes/log-correlation.md) — tie your logs to the same run ids the panel shows.

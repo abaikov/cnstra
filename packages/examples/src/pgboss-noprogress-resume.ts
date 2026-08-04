@@ -4,7 +4,7 @@
  * Omit `resume` entirely and there is no CNStra checkpoint at all — you get pg-boss's
  * plain job retry: a retried job re-runs the WHOLE flow from the entry signal (no
  * frontier resume, no context carried). This is the "just an admin over pg-boss jobs,
- * nothing fancy" mode. Contrast with pgboss-durable.ts (Postgres checkpoint) where the
+ * nothing fancy" mode. Contrast with pgboss-resumable.ts (Postgres checkpoint) where the
  * retry resumes ONLY the failed neuron.
  *
  *   npm run pg:up

@@ -2,7 +2,7 @@
 
 > **⚠️ Experimental**: API may change.
 
-Redis persistence for the [CNStra](https://cnstra.org) DevTools server. A drop-in, durable
+Redis persistence for the [CNStra](https://cnstra.org) DevTools server. A drop-in, resumable
 replacement for `@cnstra/devtools-server-repository-in-memory`: same
 `ICNSDevToolsServerRepository` contract, backed by Redis so apps, topology, stimulations and
 per-hop history outlive a restart.

@@ -124,7 +124,7 @@ describe('Protocol — topology', () => {
 
 // The legacy id-based stimulation lifecycle (stimulation.started/hop/completed)
 // was removed in Phase 2b-4; the name-based emit (cns.stimulation/.attempt/.task)
-// is covered end-to-end by durable-model.test.ts and durable-retry.test.ts against
+// is covered end-to-end by resumable-model.test.ts and resumable-retry.test.ts against
 // a REAL CNS + persistor (the synthetic MockCNS here can't drive the persistor's
 // neuron/queueLength invariants). Topology + safeValue below remain valid.
 

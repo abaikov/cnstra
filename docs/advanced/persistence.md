@@ -12,7 +12,7 @@ collateral is *the object*, and context is a `Map<object, unknown>`. That is fas
 references can't cross a process boundary. So to survive a restart you serialize the run's
 state **by name** and rebuild it on the other side. This page explains the machinery; for the
 run model (Stimulation → Attempt → Task) and the productized worker seams, see
-[Durable execution](./durable-execution.md).
+[Resumable execution](./resumable-execution.md).
 
 ## The bridge: a name ⇄ object registry
 
@@ -98,7 +98,7 @@ cns.stimulate(signal, { onResponse: recorder.onResponse });
   and **flushed immediately on error** so a failed run's exact frontier is always persisted.
 - Want the full **Stimulation → Attempt → Task** history too (not just the frontier)? Use
   `CNSStimulationPersistor` → an `ICNSStimulationRepository`. See
-  [Durable execution](./durable-execution.md).
+  [Resumable execution](./resumable-execution.md).
 
 ### Per-hop barrier (exactly-resumable)
 

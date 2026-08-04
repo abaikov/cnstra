@@ -20,8 +20,8 @@ export const CNSTopologyMessageDTOSchema = z.object({
     dendrites: z.array(CNSDendriteDTOSchema),
 });
 
-// ─── Name-based durable model (Stimulation/Attempt/Task) ──────────────────────
-// The producer emits these via the SAME CNSStimulationPersistor used for durable
+// ─── Name-based resumable model (Stimulation/Attempt/Task) ──────────────────────
+// The producer emits these via the SAME CNSStimulationPersistor used for resumable
 // resume — the SOLE stimulation/hop emit path. The payloads carry the persist-dto
 // **Persisted** entities (ids already assigned by the producer's persistor).
 // Drift-guarded below so a change to the persist-dto types breaks the build here.

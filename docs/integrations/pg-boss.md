@@ -8,7 +8,7 @@ slug: /integrations/pg-boss
 > **⚠️ Experimental**: The `@cnstra/pg-boss` package is experimental. The API may change.
 
 [pg-boss](https://github.com/timgit/pg-boss) is a job queue built on PostgreSQL. If you're
-already on Postgres and want durable jobs, retries, backoff, scheduling and singleton
+already on Postgres and want resumable jobs, retries, backoff, scheduling and singleton
 guarantees **without adding Redis**, it pairs well with CNStra.
 
 This guide mirrors the [BullMQ guide](/docs/integrations/bullmq): the core
@@ -90,7 +90,7 @@ the checkpoint is keyed by **job id**. Three levels:
 
 - **Whole-flow retry (recommended default).** Omit `resume`. A retried job re-derives the
   entry signal by name and re-runs the flow. Make neurons **idempotent**.
-- **Durable frontier resume (across restarts).** Pass a `resume.repository` and the worker
+- **Resumable frontier resume (across restarts).** Pass a `resume.repository` and the worker
   records the outstanding frontier as the run advances; a retried job continues via
   `cns.activate(...)` instead of re-running from the entry — only the unfinished branch runs.
 
@@ -107,11 +107,11 @@ the checkpoint is keyed by **job id**. Three levels:
   lives in its own table (`cns_pgboss_progress`, keyed by job id). Auto-created on first use,
   or manage it yourself: `DATABASE_URL=… npx cnstra-pgboss-progress migrate`. The store is
   **pluggable** — swap in [`@cnstra/progress-redis`](/docs/integrations/bullmq) or
-  any `ICNSProgressRepository`. See [Durable execution](/docs/advanced/durable-execution) for
+  any `ICNSProgressRepository`. See [Resumable execution](/docs/advanced/resumable-execution) for
   how `resume` (frontier) relates to `observe` (history).
 - **In-process partial resume.** `cns.activate(stimulation.getFailedTasks(), …)` resumes only
   the failed branch, but the failed tasks hold **live object references** — same process only.
-  Across processes use the durable resume above.
+  Across processes use the resumable execution above.
 
 **Row lifecycle / cleanup.** One upserted row per `job.id`; the worker **deletes it on
 success**. A job that fails *permanently* (retries exhausted) keeps its row — pg-boss has no
@@ -184,7 +184,7 @@ relational run/attempt/task tables (`cnstra-persist-postgres migrate`, or auto-c
 no schema to write yourself.
 
 > **Shortcut — the DevTools Explorer as a persistent admin.** The CNStra DevTools already render this
-> exact model (🔎 Explorer · 💀 Durable Runs · ⚡ Stimulations). Hand the same `observe` store to
+> exact model (🔎 Explorer · 💀 Resumable Runs · ⚡ Stimulations). Hand the same `observe` store to
 > `startDevTools` and every job the worker processes shows up live in the Explorer — filterable by job
 > type (entry collateral) or neuron, with a per-run attempt/task waterfall — no bespoke UI:
 > ```ts
@@ -217,7 +217,7 @@ Separate two concerns:
 - **Execution / delivery** (who runs the stimulation, retries, backoff, cron, singleton,
   concurrency): pg-boss solves this natively on Postgres. Reinventing `SELECT … FOR UPDATE SKIP
   LOCKED` + backoff + scheduling + archival is a lot of subtle work — **use pg-boss**.
-- **Progress / history** (durable per-step records, admin): pg-boss has no per-step model, so
+- **Progress / history** (resumable per-step records, admin): pg-boss has no per-step model, so
   this is **always your own tables** regardless. The `progress` sink above is that layer.
 
 Roll your own queue only if you specifically need the job and its trace to be the same

@@ -37,7 +37,7 @@ export interface TCNSWorkerOptions {
      */
     observe?: ICNSStimulationRepository;
     /**
-     * Optional durable **resume**. When set, the worker records the run's
+     * Optional resumable **resume**. When set, the worker records the run's
      * outstanding frontier (by name) as it advances, and a retried job (BullMQ
      * reuses the SAME job id) resumes from that frontier via `cns.activate(...)`
      * instead of re-running from the entry signal. Dropped on success, kept on

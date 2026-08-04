@@ -49,7 +49,7 @@ function buildCNS() {
 }
 
 /**
- * Transport that captures every batch item AND forwards the three name-based durable
+ * Transport that captures every batch item AND forwards the three name-based resumable
  * items into a real {@link ICNSStimulationRepository} — the server's job, exercised
  * directly here.
  */
@@ -97,7 +97,7 @@ describe('trackStimulations — name-based stimulation/attempt/task over the wir
         // Let the persistor's async terminal flush + transport forwarding settle.
         await new Promise(r => setTimeout(r, 50));
 
-        // ── name-based durable model ──
+        // ── name-based resumable model ──
         const stims = await repo.listStimulations();
         expect(stims).toHaveLength(1);
         const stim = stims[0];

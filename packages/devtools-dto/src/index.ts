@@ -7,7 +7,7 @@ export * from './schemas/stimulations-query';
 export * from './schemas/client-messages';
 export * from './schemas/server-messages';
 
-// Canonical, name-based durable-execution model — re-exported from @cnstra/persist-dto.
+// Canonical, name-based resumable-execution model — re-exported from @cnstra/persist-dto.
 // The devtools carry this model directly; there are no legacy id-based entities.
 export type {
     TCNSStimulationState,

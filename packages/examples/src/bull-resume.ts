@@ -1,5 +1,5 @@
 /**
- * Same durable "import user" flow, delivered through BullMQ (Redis) — one job =
+ * Same resumable "import user" flow, delivered through BullMQ (Redis) — one job =
  * one run. The neuron fails on the first pass; BullMQ retries the SAME job id,
  * and the CNStra worker RESUMES the outstanding frontier from the resume
  * repository instead of re-running from the entry signal.
@@ -10,7 +10,7 @@
  *   npm run redis:down        # tears it down
  *
  * Needs Redis (REDIS_HOST/REDIS_PORT, default 127.0.0.1:6379).
- * The pure-engine version with no infra is durable-inprocess.ts; the retry admin
+ * The pure-engine version with no infra is resumable-inprocess.ts; the retry admin
  * over a browser is `npm run demo:admin`.
  */
 import { Queue, Worker } from 'bullmq';
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     const queue = new Queue(QUEUE, { connection });
     console.log('  BullMQ queue "cns" ready.\n');
 
-    // Durable worker: one job → one stimulation, resuming across the job's retries.
+    // Resumable worker: one job → one stimulation, resuming across the job's retries.
     const { worker, shutdown } = createCNSWorker({
         // BullMQ's Worker class is structurally wider than the package's minimal
         // ctor type; pass it through (same as the pg-boss demo's `boss as never`).

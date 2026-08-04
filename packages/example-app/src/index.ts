@@ -822,7 +822,7 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
         );
         const repository = new CNSDevToolsServerRepositoryInMemory();
 
-        // Name-based durable store for the trackStimulations producer path. Defaults to
+        // Name-based resumable store for the trackStimulations producer path. Defaults to
         // in-memory; switch to Postgres with ADMIN_STORE=postgres (or a DATABASE_URL).
         const usePostgres =
             process.env.ADMIN_STORE === 'postgres' ||
@@ -837,13 +837,13 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
                     process.env.DATABASE_URL ||
                     'postgres://postgres:postgres@localhost:5432/postgres',
             });
-            console.log('🗄️  Durable stimulation store: Postgres');
+            console.log('🗄️  Resumable stimulation store: Postgres');
         } else {
             const { CNSInMemoryStimulationRepository } = await import(
                 '@cnstra/persist'
             );
             stimulationRepository = new CNSInMemoryStimulationRepository();
-            console.log('🗄️  Durable stimulation store: in-memory');
+            console.log('🗄️  Resumable stimulation store: in-memory');
         }
 
         devToolsServer = new CNSDevToolsServer(

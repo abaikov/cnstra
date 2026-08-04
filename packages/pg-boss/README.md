@@ -3,7 +3,7 @@
 > **⚠️ Experimental**: API may change in future versions.
 
 [pg-boss](https://github.com/timgit/pg-boss) (Postgres-backed job queue) integration for
-[CNStra](https://cnstra.org). Run each stimulation as a durable job, get Postgres-native
+[CNStra](https://cnstra.org). Run each stimulation as a resumable job, get Postgres-native
 retry/backoff/scheduling/singleton, and stream **per-hop progress** into any store for a
 live admin/history view.
 
@@ -102,7 +102,7 @@ await store.deleteStale(24 * 60 * 60 * 1000);
 ## What this package does / doesn't
 
 - ✅ Job execution, retry/backoff, scheduling, singleton, concurrency → **pg-boss**.
-- ✅ Durable frontier **resume** across retries → a pluggable `resume.repository` (in-package
+- ✅ Resumable frontier **resume** across retries → a pluggable `resume.repository` (in-package
   Postgres, `@cnstra/progress-redis`, or your own); omit it for plain re-run-from-entry.
 - ✅ Name-based run/attempt/task **observability** → an optional `observe` store (in-memory to
   just see it, Postgres to keep it — the same model the DevTools render).

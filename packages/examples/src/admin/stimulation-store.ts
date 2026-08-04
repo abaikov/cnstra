@@ -1,6 +1,6 @@
 /**
  * Selects the admin's run/attempt/task HISTORY store (domain #2):
- *   ADMIN_STORE=postgres  → durable @cnstra/persist-postgres (survives restart)
+ *   ADMIN_STORE=postgres  → resumable @cnstra/persist-postgres (survives restart)
  *   (default)             → in-memory (per process)
  */
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';

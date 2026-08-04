@@ -4,7 +4,7 @@ title: BullMQ
 sidebar_label: BullMQ
 slug: /integrations/bullmq
 description: Run CNStra flows on a BullMQ (Redis) queue with @cnstra/bullmq — one job per stimulation, frontier resume across retries (native job progress or any store), and name-based observability.
-keywords: [bullmq, redis, queue, worker, resume, observe, createCNSWorker, durable, retry]
+keywords: [bullmq, redis, queue, worker, resume, observe, createCNSWorker, resumable, retry]
 ---
 
 `@cnstra/bullmq` runs each queue job as a CNStra stimulation. BullMQ owns delivery,
@@ -76,7 +76,7 @@ it. Three levels:
   ```
 
 Only the unfinished branch re-runs (`cns.activate(...)`), with its context. See
-[Durable execution](/docs/advanced/durable-execution) for how `resume` (frontier) relates to
+[Resumable execution](/docs/advanced/resumable-execution) for how `resume` (frontier) relates to
 `observe` (history).
 
 > **BullMQ vs pg-boss:** BullMQ's `Job` has a mutable native `progress` field, so the default
@@ -102,9 +102,9 @@ const runs = await history.listStimulations(); // roster for an admin screen
 
 > ⚠️ Bound the in-memory store (`maxStimulations` / `ttlMs` / `deleteOnComplete`) or it will
 > OOM a long-running worker — see
-> [Durable execution → bounds](/docs/advanced/durable-execution#bound-in-memory). To keep the
+> [Resumable execution → bounds](/docs/advanced/resumable-execution#bound-in-memory). To keep the
 > history across restarts, use `CNSPostgresStimulationRepository`. The DevTools panel renders
-> this model directly — see [Durable Runs](/docs/devtools/durable-runs).
+> this model directly — see [Resumable Runs](/docs/devtools/resumable-runs).
 
 **See it live in the Explorer.** Hand that same `history` store to `startDevTools` and every job the
 worker processes shows up in the 🔎 Explorer — filterable by job type (entry collateral) or neuron,

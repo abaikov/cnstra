@@ -118,7 +118,7 @@ describe('CNSDevTools', () => {
     });
 
     // The legacy id-based stimulation lifecycle (stimulation.started/hop/completed)
-    // was removed in Phase 2b-4. Name-based emit is covered by durable-model.test.ts
+    // was removed in Phase 2b-4. Name-based emit is covered by resumable-model.test.ts
     // (real CNS + persistor). Topology + safeValue below remain valid.
 
     describe('safeValue', () => {

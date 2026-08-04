@@ -1,7 +1,7 @@
 {
   "name": "@cnstra/devtools-server-repository-postgres",
   "version": "0.2.0",
-  "description": "PostgreSQL repository for CNStra DevTools server (durable stimulations & hops)",
+  "description": "PostgreSQL repository for CNStra DevTools server (resumable stimulations & hops)",
   "keywords": [
     "cnstra",
     "devtools",

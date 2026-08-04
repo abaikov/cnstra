@@ -34,7 +34,7 @@ function rowToApp(r: any): TCNSAppDTO {
 }
 
 /**
- * PostgreSQL-backed repository for the CNStra DevTools server. Durable
+ * PostgreSQL-backed repository for the CNStra DevTools server. Resumable
  * counterpart of `@cnstra/devtools-server-repository-in-memory`: same
  * `ICNSDevToolsServerRepository` contract, but topology/app data survives
  * restarts and can back an admin/history panel.

@@ -2,9 +2,9 @@
 
 > **⚠️ Experimental**: API may change.
 
-A **Postgres relational store** for CNStra's durable run/attempt/task model —
+A **Postgres relational store** for CNStra's resumable run/attempt/task model —
 implements [`ICNSStimulationRepository`](../persist) (the run roster → attempt timeline →
-task waterfall the retry admin renders). Makes the durable-execution history **survive a
+task waterfall the retry admin renders). Makes the resumable-execution history **survive a
 process restart**, and a retried run resumes from the persisted frontier.
 
 This is domain **#2** (run/attempt/task history), distinct from the resume **checkpoint**

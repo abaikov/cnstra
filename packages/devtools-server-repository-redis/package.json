@@ -1,7 +1,7 @@
 {
   "name": "@cnstra/devtools-server-repository-redis",
   "version": "0.2.0",
-  "description": "Redis repository for CNStra DevTools server (durable stimulations & hops)",
+  "description": "Redis repository for CNStra DevTools server (resumable stimulations & hops)",
   "keywords": [
     "cnstra",
     "devtools",

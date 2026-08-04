@@ -33,7 +33,7 @@ export interface TCNSWorkerOptions {
      */
     observe?: ICNSStimulationRepository;
     /**
-     * Optional durable **resume**. When set, the worker records the run's
+     * Optional resumable **resume**. When set, the worker records the run's
      * outstanding frontier (by name) into `repository` as it advances, and a
      * retried job (same job id) resumes from that frontier via `cns.activate(...)`
      * instead of re-running from the entry signal. The record's lifecycle matches

@@ -46,7 +46,7 @@ export const CNSReplayStartMessageDTOSchema = z.object({
     options: CNSReplayOptionsDTOSchema.optional(),
 });
 
-// ─── Durable-run actions (panel → server); canonical types in @cnstra/persist-dto ──
+// ─── Resumable-run actions (panel → server); canonical types in @cnstra/persist-dto ──
 // retry = resume the run's frontier (same run, +1 attempt); clone = fresh run from entry.
 // All topology is by name — options restrict neurons by name, never id.
 

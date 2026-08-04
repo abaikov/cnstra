@@ -12,7 +12,7 @@ import { CNSProgressSerializer } from './CNSProgressSerializer';
 import { CNSDebouncedProgressRecordingStrategy } from './CNSDebouncedProgressRecordingStrategy';
 
 /**
- * Write side of the durable-execution layer. Wire its `onResponse` into a run
+ * Write side of the resumable-execution layer. Wire its `onResponse` into a run
  * (`cns.stimulate(sig, { onResponse })` / `cns.activate(tasks, { onResponse })`).
  *
  * Always keeps the run's `progress` (frontier + context) current for resume — on a

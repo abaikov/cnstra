@@ -1,11 +1,11 @@
 # @cnstra/examples
 
-Runnable CNStra examples. Home for demos — start with durable execution / resume.
+Runnable CNStra examples. Home for demos — start with resumable execution / resume.
 
 ## 0. Retry admin — the whole thing in a browser (`npm run demo:admin`) ⭐
 
 One command, no infra. Boots a tiny server (Node `http`, zero deps) fronting the
-durable-execution engine and serves the **CNStra retry admin** — our admin, in
+resumable-execution engine and serves the **CNStra retry admin** — our admin, in
 place of pg-boss/Bull's:
 
 ```bash
@@ -42,23 +42,23 @@ UI renders stays in the admin — the CNStra admin *operating* a real broker.
 Endpoints (all curl-able): `GET /api/runs`, `GET /api/info`, `POST /api/launch {fail}`,
 `POST /api/retry {runId}`, `POST /api/clone {runId}`, `GET /api/events` (SSE).
 
-## 1. Durable execution & resume — no infra (`npm run demo:durable`)
+## 1. Resumable execution & resume — no infra (`npm run demo:resumable`)
 
-The durable-execution **engine** in-process: a run fails partway, then **resumes
+The resumable-execution **engine** in-process: a run fails partway, then **resumes
 from the exact frontier** (not from scratch) on a second attempt. The whole
 run/attempt/task history is kept in a repository — the same data the DevTools
-"durable runs" admin renders. Prints an ASCII "admin view" of the run.
+"resumable runs" admin renders. Prints an ASCII "admin view" of the run.
 
 ```bash
 cd packages/examples
-npm run demo:durable
+npm run demo:resumable
 ```
 
 No Postgres/Redis needed. Shows: attempt #1 runs `importUser → enrichUser →
 persistUser` where `persistUser` throws; "Retry" resumes **only** `persistUser`
 (context intact) and the run completes.
 
-## 2. Durable via pg-boss (Postgres) — `npm run demo:pgboss`
+## 2. Resumable via pg-boss (Postgres) — `npm run demo:pgboss`
 
 Same flow delivered through **pg-boss** (one job = one run). The job fails, pg-boss
 retries the **same** job, and the CNStra worker **resumes the outstanding frontier**
@@ -73,7 +73,7 @@ npm run pg:down        # tear down
 
 `DATABASE_URL` defaults to `postgres://cnstra:cnstra@localhost:5432/cnstra`.
 
-## 3. Durable via BullMQ (Redis) — `npm run demo:bull`
+## 3. Resumable via BullMQ (Redis) — `npm run demo:bull`
 
 Same flow delivered through **BullMQ** (one job = one run). The job fails, BullMQ
 retries the **same job id**, and the CNStra worker **resumes the outstanding
@@ -92,7 +92,7 @@ Connection defaults to `REDIS_HOST=127.0.0.1` / `REDIS_PORT=6379`. Output shows
 
 ## Where the admin panel fits (honest status)
 
-- The **durable-execution engine + queue integrations** (pg-boss, BullMQ) are done
+- The **resumable-execution engine + queue integrations** (pg-boss, BullMQ) are done
   and runnable.
 - The **retry admin** (roster → attempt timeline → task waterfall → **Launch /
   Retry / Clone**) is built and runnable here as `demo:admin`, over **two backends**:
@@ -102,11 +102,11 @@ Connection defaults to `REDIS_HOST=127.0.0.1` / `REDIS_PORT=6379`. Output shows
   folded into the main `@cnstra/devtools-panel-ui` (topology + live stimulations
   observability panel, served by `packages/example-app`). Merging the two — one panel
   that does both observability and run/attempt/retry — is its own track: the panel-side
-  UI on the now-native Exodra canvas plus a bridge onto this durable store.
+  UI on the now-native Exodra canvas plus a bridge onto this resumable store.
 
 ## The constructor matrix — broker × progress store
 
-Durable resume is a **flexible constructor**: any broker × any resume-checkpoint store ×
+Resumable resume is a **flexible constructor**: any broker × any resume-checkpoint store ×
 resume-on/off. The checkpoint (the outstanding frontier) is an `ICNSProgressRepository`,
 chosen independently of the queue:
 

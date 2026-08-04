@@ -1,26 +1,28 @@
 /**
- * Constructor matrix: **BullMQ broker × explicit Redis progress store.**
+ * Constructor matrix: **pg-boss broker × Redis progress store.**
  *
- * By default `@cnstra/bullmq` keeps the checkpoint in the job's OWN native progress
- * (see bull-durable.ts). Here we SWAP that for an explicit `@cnstra/progress-redis`
- * store (a separate key namespace) — same broker, different progress backend — to show
- * the progress store is a pluggable choice. Same durable behaviour: fail → retry →
- * resume the frontier loaded from Redis.
+ * The progress store is independent of the broker — here the pg-boss worker keeps its
+ * resume checkpoint in Redis (via @cnstra/progress-redis) instead of a Postgres table.
+ * Same resumable behaviour: attempt #1 fails → pg-boss retries the same job → the worker
+ * resumes the outstanding frontier loaded from Redis.
  *
  *   npm run redis:up
- *   npm run demo:bull:redis
+ *   npm run demo:pgboss:redis
+ *
+ * Needs BOTH Postgres (for the pg-boss queue) and Redis (for the checkpoint).
  */
-import { Queue, Worker } from 'bullmq';
+import { PgBoss } from 'pg-boss';
 import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
-import { createCNSWorker, enqueueStimulation, stimulationJob } from '@cnstra/bullmq';
+import { createCNSWorker, enqueueStimulation, stimulationJob } from '@cnstra/pg-boss';
 import { CNSRedisProgressRepository } from '@cnstra/progress-redis';
 
+const DATABASE_URL =
+    process.env.DATABASE_URL ?? 'postgres://cnstra:cnstra@localhost:5432/cnstra';
 const connection = {
     host: process.env.REDIS_HOST ?? '127.0.0.1',
     port: Number(process.env.REDIS_PORT ?? 6379),
 };
-const QUEUE = 'cns';
 
 const input = collateral<{ userId: string }>();
 const userFetched = collateral<{ id: string }>();
@@ -56,32 +58,27 @@ registry.register('persistUser', persistUser);
 registry.registerCollateral('input', input);
 
 async function main(): Promise<void> {
-    const queue = new Queue(QUEUE, { connection });
-    const progress = new CNSRedisProgressRepository({
-        connection,
-        prefix: 'cns:progress:bull',
-    });
-    console.log('  BullMQ queue "cns" ready; checkpoint store = explicit Redis repo.\n');
+    const boss = new PgBoss(DATABASE_URL);
+    boss.on('error', e => console.error('[pg-boss]', e.message));
+    await boss.start();
+    await boss.createQueue('cns');
+    const progress = new CNSRedisProgressRepository({ connection });
+    console.log('  pg-boss queue "cns" ready; checkpoint store = Redis.\n');
 
-    const { worker, shutdown } = createCNSWorker({
-        Worker: Worker as never,
+    await createCNSWorker({
+        boss: boss as never,
         cns,
         registry,
-        queue: QUEUE,
-        connection,
-        resume: { repository: progress }, // ← explicit Redis store, not the native job progress
+        queue: 'cns',
+        resume: { repository: progress }, // ← Redis, not the pg-boss Postgres table
     });
-    (worker as unknown as { on: (e: string, cb: (job: unknown, err: unknown) => void) => void }).on('failed', (_job: unknown, err: unknown) =>
-        console.log(`    · job failed (BullMQ will retry): ${err instanceof Error ? err.message : String(err)}`)
-    );
 
     const job = stimulationJob(registry, input, { userId: '42' });
-    await enqueueStimulation(queue, job, { attempts: 3, backoff: { type: 'fixed', delay: 500 } });
-    console.log('  enqueued; attempt #1 throws → BullMQ retries → resume from Redis repo completes it.\n');
+    await enqueueStimulation(boss as never, 'cns', job, { retryLimit: 3, retryDelay: 1 });
+    console.log('  enqueued; attempt #1 throws → pg-boss retries → resume from Redis completes it.\n');
 
     await new Promise(r => setTimeout(r, 8000));
-    await shutdown();
-    await queue.close();
+    await boss.stop();
     await progress.close();
     console.log(`\n  ✅ Done. persistUser invocations: ${attempt} (1 fail + 1 resumed).`);
     process.exit(0);

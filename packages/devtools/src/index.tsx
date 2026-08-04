@@ -16,7 +16,7 @@ import type {
 } from '@cnstra/devtools-dto';
 
 /**
- * A server-forwarded resume/launch command pre-assigns the durable identity for
+ * A server-forwarded resume/launch command pre-assigns the resumable identity for
  * the very next stimulation this instance runs. It is consumed by the global
  * response listener on that stimulation's first response — since `cns.activate`/
  * `cns.stimulate` pump the first response synchronously (single-threaded), the
@@ -167,7 +167,7 @@ export class CNSDevTools {
         registry: CNSPersistOptionsRegistry,
         cnsId: string
     ): void {
-        // Name-based durable model — the SOLE stimulation/hop emit path. A
+        // Name-based resumable model — the SOLE stimulation/hop emit path. A
         // per-stimulation {@link CNSStimulationPersistor}, keyed by the live core
         // stimulation object, streams Stimulation → Attempt → Task (all by name) to
         // the wire; the server persists + serves them, the panel renders them.
@@ -185,7 +185,7 @@ export class CNSDevTools {
                 seen.add(stimulation);
 
                 // A server-forwarded retry/clone pre-assigns this stimulation's
-                // durable identity (stable stimulationId + attempt number + the
+                // resumable identity (stable stimulationId + attempt number + the
                 // origin entry). Absent an override this is a fresh, app-initiated
                 // stimulation → mint attempt #1 and derive the entry from the first
                 // response.
@@ -204,7 +204,7 @@ export class CNSDevTools {
                 ];
                 const stimId = override?.stimulationId ?? newStimulationId(this.appId);
                 const persistor = new CNSStimulationPersistor({
-                    // Each durable write both enqueues AND flushes, so the terminal
+                    // Each resumable write both enqueues AND flushes, so the terminal
                     // records aren't stranded behind a later flush.
                     repository: new CNSWireStimulationRepository(item => {
                         this.enqueue(item);
@@ -236,7 +236,7 @@ export class CNSDevTools {
                     this.resumeWarned = true;
                     // eslint-disable-next-line no-console
                     console.warn(
-                        '[CNSDevTools] durable stimulation tracking skipped a response — ' +
+                        '[CNSDevTools] resumable stimulation tracking skipped a response — ' +
                             'register every neuron and collateral in the frontier ' +
                             '(incl. entry collaterals) to enable it:',
                         e
@@ -314,11 +314,11 @@ export class CNSDevTools {
             });
     }
 
-    // ─── Durable actions (retry / clone), Phase 2b-2 ──────────────────────────────
+    // ─── Resumable actions (retry / clone), Phase 2b-2 ──────────────────────────────
 
     /**
-     * Execute a server-forwarded durable action. The server has already assigned
-     * the durable identity (stimulationId + attempt number) and enriched the
+     * Execute a server-forwarded resumable action. The server has already assigned
+     * the resumable identity (stimulationId + attempt number) and enriched the
      * command from the store; here we hydrate against THIS app's registry and run
      * it. The new attempt streams back through the normal name-based path — we set
      * {@link pendingStimulationOverride} so the global response listener stamps it with

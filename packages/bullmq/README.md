@@ -3,7 +3,7 @@
 > **⚠️ Experimental**: API may change in future versions.
 
 [BullMQ](https://docs.bullmq.io) (Redis-backed job queue) integration for
-[CNStra](https://cnstra.org). Run each stimulation as a durable job, get BullMQ-native
+[CNStra](https://cnstra.org). Run each stimulation as a resumable job, get BullMQ-native
 retry/backoff/scheduling/concurrency, and — with `resume` — have a **retried job continue
 the failed frontier** instead of re-running from the entry signal.
 
@@ -32,7 +32,7 @@ const worker = createCNSWorker({
   registry,
   queue: 'cns',
   connection,
-  // Durable RESUME: a retried job (BullMQ reuses the same job id) continues the
+  // Resumable RESUME: a retried job (BullMQ reuses the same job id) continues the
   // outstanding frontier via cns.activate(...) — the failed neuron re-runs with
   // its context, the rest does not. With no `repository`, the checkpoint lives in
   // BullMQ's OWN per-job progress (job.updateProgress / job.progress, in Redis) —
@@ -84,7 +84,7 @@ await enqueueStimulation(queue, job, {
 ## What this package does / doesn't
 
 - ✅ Job execution, retry/backoff, scheduling, concurrency → **BullMQ**.
-- ✅ Durable frontier resume across retries → BullMQ's own job progress by default, or a
+- ✅ Resumable frontier resume across retries → BullMQ's own job progress by default, or a
   `resume.repository` you supply.
 - ✅ Per-step (hop) progress records → the `progress` sink (your store / OIMDB / logs).
 - ❌ No built-in Redis schema or admin UI — you own the store. See `@cnstra/examples`

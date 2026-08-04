@@ -1,7 +1,7 @@
 import type { TCNSStimulationResponse } from '@cnstra/types';
 
 /**
- * Write side of the durable-execution layer. Wire its `onResponse` into a run
+ * Write side of the resumable-execution layer. Wire its `onResponse` into a run
  * (`cns.stimulate(sig, { onResponse })` / `cns.activate(tasks, { onResponse })`).
  * As the run advances it keeps the run's `progress` (frontier + context) current
  * for resume, and — when the volume is `'full'` — appends settled tasks as history

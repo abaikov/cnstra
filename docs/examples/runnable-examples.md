@@ -15,13 +15,13 @@ cd cnstra
 npm install
 ```
 
-## Durable execution & resume — no infra
+## Resumable execution & resume — no infra
 
 A run fails partway, then **resumes from the exact frontier** (not from scratch) on
 a second attempt; the whole run/attempt/task history is kept in a repository.
 
 ```bash
-npm run demo:durable
+npm run demo:resumable
 ```
 
 No Postgres/Redis needed. Output: attempt #1 runs `importUser → enrichUser →
@@ -57,7 +57,7 @@ npm run demo:admin:bull
 Connection defaults: `DATABASE_URL=postgres://cnstra:cnstra@localhost:5432/cnstra`,
 `REDIS_HOST=127.0.0.1` / `REDIS_PORT=6379` — override to target an existing instance.
 
-### Durable history — survives a restart
+### Resumable history — survives a restart
 
 ```bash
 npm run demo:admin:pg-store    # ADMIN_STORE=postgres
@@ -88,14 +88,14 @@ stop command:
 
 Note two different stores here. The **admin's** run/attempt/task history (what the UI
 lists) is in-memory in this demo, so that view is per-process. The **resume
-checkpoint** — the outstanding frontier a Retry needs — is a separate, durable thing:
+checkpoint** — the outstanding frontier a Retry needs — is a separate, resumable thing:
 the queue-worker demos below write it where the broker keeps it (BullMQ job progress /
 a pg-boss Postgres table), so it survives a worker restart. Backing the admin's history
 store the same way is the remaining step to make the whole UI survive a restart.
 
 ## Queue workers — the constructor matrix
 
-The worker side on its own, without the admin UI. Durable resume is a **flexible
+The worker side on its own, without the admin UI. Resumable resume is a **flexible
 constructor**: any broker × any resume-checkpoint store × resume-on/off. The checkpoint
 (the outstanding frontier) is an `ICNSProgressRepository` chosen **independently of the
 broker**:

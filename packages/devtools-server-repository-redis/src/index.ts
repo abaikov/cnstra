@@ -29,7 +29,7 @@ const parse = <T>(s: string | null): T | null =>
     s == null ? null : (JSON.parse(s) as T);
 
 /**
- * Redis-backed repository for the CNStra DevTools server. Durable counterpart of
+ * Redis-backed repository for the CNStra DevTools server. Resumable counterpart of
  * `@cnstra/devtools-server-repository-in-memory` with the same
  * `ICNSDevToolsServerRepository` contract.
  *

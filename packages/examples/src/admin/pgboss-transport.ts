@@ -32,7 +32,7 @@ export async function attachPgBossTransport(
             await manager.handle((job as { data: TStimulationCommand }).data);
     });
 
-    // Every admin action becomes a durable job on Postgres.
+    // Every admin action becomes a resumable job on Postgres.
     manager.setDispatch(async (cmd: TStimulationCommand) => {
         await boss.send(QUEUE, cmd as unknown as object);
     });

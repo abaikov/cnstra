@@ -1,13 +1,13 @@
 {
   "name": "@cnstra/broker",
   "version": "0.1.0",
-  "description": "Broker-agnostic core for CNStra queue integrations: run one job as one stimulation, with observability + durable resume. Shared by @cnstra/bullmq and @cnstra/pg-boss.",
+  "description": "Broker-agnostic core for CNStra queue integrations: run one job as one stimulation, with observability + resumable execution. Shared by @cnstra/bullmq and @cnstra/pg-boss.",
   "keywords": [
     "cnstra",
     "broker",
     "queue",
     "worker",
-    "durable",
+    "resumable",
     "resume"
   ],
   "main": "dist/index.js",

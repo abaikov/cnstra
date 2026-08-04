@@ -8,7 +8,7 @@ keywords: [logging, correlation, trace id, stimulationContext, request id, run i
 ---
 
 A neuron's `response` handler runs *inside* the flow, but the run's id (a queue
-`job.id`, an HTTP request id, a durable `stimulationId`) is minted *outside* it. So the
+`job.id`, an HTTP request id, a resumable `stimulationId`) is minted *outside* it. So the
 first production question is always: **how do I tag my logs with the stimulation they
 belong to?**
 
@@ -55,7 +55,7 @@ const runLog = (ctx: { stimulationContext?: unknown }, msg: string) =>
 ## On the backend it's automatic
 
 The queue workers fill `stimulationContext` for you, so **you write nothing**. Every log
-line inside a job's flow already carries the id the durable store and the DevTools panel
+line inside a job's flow already carries the id the resumable store and the DevTools panel
 use — one id ties **log ↔ run/attempt/task store ↔ DevTools waterfall**.
 
 ```ts
@@ -80,7 +80,7 @@ app.post('/checkout', (req, res) => {
 });
 ```
 
-Correlation is independent of persistence — you can tag logs with zero durable storage
-(see [Durable execution](../advanced/durable-execution.md) for when you *do* want the run
+Correlation is independent of persistence — you can tag logs with zero resumable storage
+(see [Resumable execution](../advanced/resumable-execution.md) for when you *do* want the run
 recorded), and the same `cns` can run durably from a worker and plainly from an endpoint
-(see [that page's "one CNS, two call sites"](../advanced/durable-execution.md#one-cns-two-call-sites)).
+(see [that page's "one CNS, two call sites"](../advanced/resumable-execution.md#one-cns-two-call-sites)).

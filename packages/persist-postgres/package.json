@@ -1,11 +1,11 @@
 {
   "name": "@cnstra/persist-postgres",
   "version": "0.2.0",
-  "description": "Postgres relational store for CNStra durable execution (ICNSStimulationRepository: run/attempt/task) — owns its schema + migrations",
+  "description": "Postgres relational store for CNStra resumable execution (ICNSStimulationRepository: run/attempt/task) — owns its schema + migrations",
   "keywords": [
     "cnstra",
     "postgres",
-    "durable",
+    "resumable",
     "run",
     "attempt",
     "task",

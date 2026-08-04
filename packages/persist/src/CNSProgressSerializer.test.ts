@@ -5,7 +5,7 @@ import { CNSInMemoryProgressRepository } from './CNSInMemoryProgressRepository';
 import { CNSDebouncedProgressRecordingStrategy } from './CNSDebouncedProgressRecordingStrategy';
 
 // A tiny two-step flow: n1 → n2. n2 fails on the first pass. We snapshot the
-// outstanding frontier, JSON round-trip it (as a real durable store would), then
+// outstanding frontier, JSON round-trip it (as a real resumable store would), then
 // resume via cns.activate(). Proof points:
 //   - n1 does NOT re-run on resume (only the failed frontier is re-activated)
 //   - n2's context (attempt counter) is restored across the JSON boundary

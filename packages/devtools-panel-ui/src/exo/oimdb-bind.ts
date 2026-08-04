@@ -9,7 +9,7 @@
  * (exactly what the old bridge did internally) and re-exports the one primitive
  * that survived the redesign, `combine` (now `exoCombine`).
  *
- * New code (e.g. the durable-runs admin) can use the richer `@oimdb/exodra` API
+ * New code (e.g. the resumable-runs admin) can use the richer `@oimdb/exodra` API
  * directly; this only keeps the existing panel green on the new versions.
  */
 import type { TOIMKey } from '@oimdb/core';

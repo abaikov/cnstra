@@ -1,10 +1,10 @@
 ---
-id: durable-execution
-title: Durable execution — runs, attempts & tasks
-sidebar_label: Durable execution
-slug: /advanced/durable-execution
-description: The name-based Stimulation → Attempt → Task model, and the two independent seams — resume (frontier checkpoint) and observe (run history) — that make CNStra flows durable and inspectable.
-keywords: [durable execution, stimulation, attempt, task, resume, observe, persist, persist-postgres, CNSStimulationPersistor, ICNSStimulationRepository, retry, clone, scopeName]
+id: resumable-execution
+title: Resumable execution — runs, attempts & tasks
+sidebar_label: Resumable execution
+slug: /advanced/resumable-execution
+description: The name-based Stimulation → Attempt → Task model, and the two independent seams — resume (frontier checkpoint) and observe (run history) — that make CNStra flows resumable and inspectable.
+keywords: [resumable execution, stimulation, attempt, task, resume, observe, persist, persist-postgres, CNSStimulationPersistor, ICNSStimulationRepository, retry, clone, scopeName]
 ---
 
 [Persistence & Resume](./persistence.md) covers the low-level primitive: serialize a
@@ -104,7 +104,7 @@ await pgStore.deleteStale(7 * 24 * 60 * 60 * 1000);
 ## Retry & clone
 
 Given a run's history you get two admin actions for free (this is what the DevTools
-[Durable Runs](../devtools/durable-runs.md) panel does):
+[Resumable Runs](../devtools/resumable-runs.md) panel does):
 
 - **Retry** — resume the outstanding **frontier** as a new attempt; only the unfinished
   branch re-runs, with its context.
@@ -119,7 +119,7 @@ HTTP endpoint:
 ```ts
 const cns = new CNS([...]); // one instance for the whole app
 
-// durable: from the queue worker (persistor + resume + observe wired for you)
+// resumable: from the queue worker (persistor + resume + observe wired for you)
 createCNSWorker({ boss, cns, registry, queue, resume, observe });
 
 // plain: same cns, no persistence
@@ -138,6 +138,6 @@ durability stays on the worker path only if you attach it per-call, which the wo
 - [Log correlation](../recipes/log-correlation.md) — tag logs with the `stimulationId` /
   `attemptNumber` (the workers fill it automatically).
 - [Persistence & Resume](./persistence.md) — the underlying frontier-serialization primitive.
-- [DevTools → Durable Runs](../devtools/durable-runs.md) — the panel that renders this model.
+- [DevTools → Resumable Runs](../devtools/resumable-runs.md) — the panel that renders this model.
 - [Cron item processing](../recipes/cron-item-processing.md) — a run per DB item, visible in the admin by item id.
 - [pg-boss](../integrations/pg-boss.md) / [BullMQ](../integrations/bullmq.md) — the worker integrations.

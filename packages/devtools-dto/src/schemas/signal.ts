@@ -3,7 +3,7 @@ import type { TCNSSignalJSON } from '@cnstra/persist-dto';
 
 /**
  * Wire validator for the canonical signal leaf. Its inferred type IS
- * `TCNSSignalJSON` (persist-dto) — the ONE signal shape shared by the durable
+ * `TCNSSignalJSON` (persist-dto) — the ONE signal shape shared by the resumable
  * model, the explorer wire buckets, and the panel. No parallel `…ViewDTO` signal
  * type.
  */

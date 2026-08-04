@@ -31,7 +31,7 @@ export async function startAdmin(): Promise<TAdminHandle> {
               : 'in-process';
 
     // The run/attempt/task HISTORY store (domain #2): in-memory by default, or a
-    // durable Postgres store when ADMIN_STORE=postgres (survives a restart).
+    // resumable Postgres store when ADMIN_STORE=postgres (survives a restart).
     const { repository, store, closeStore } = createStimulationStore();
     const manager = new StimulationRunManager(repository);
     const apiHandler = createStimulationsHandler(manager, { backend, store });
@@ -81,7 +81,7 @@ export async function startAdmin(): Promise<TAdminHandle> {
         transport = await attachPgBossTransport(manager);
 
     await new Promise<void>(resolve => server.listen(port, resolve));
-    // Seed one failing run ONLY when the store is empty — so a durable (Postgres)
+    // Seed one failing run ONLY when the store is empty — so a resumable (Postgres)
     // store shows the runs it already had after a restart instead of piling on.
     if ((await manager.snapshot()).length === 0)
         void manager.launch({ userId: '42', fail: true });

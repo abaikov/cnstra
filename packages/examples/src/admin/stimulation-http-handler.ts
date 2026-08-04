@@ -1,7 +1,7 @@
 /**
- * Reusable, transport-thin HTTP handler for the durable-runs admin.
+ * Reusable, transport-thin HTTP handler for the resumable-runs admin.
  *
- * The admin is a POLLING surface, not a push one: durable runs change on a button
+ * The admin is a POLLING surface, not a push one: resumable runs change on a button
  * press (launch / retry / clone), not in a stream, so a client just re-reads
  * `GET /api/stimulations` on an interval — no socket needed. This factors the routes out
  * of the standalone server so the SAME endpoints can be mounted anywhere (the

@@ -3,11 +3,11 @@ import type { TCNSProgress, TCNSSignalJSON } from '@cnstra/persist-dto';
 import { CNSStimulationActionOptionsDTOSchema } from './client-messages';
 
 /**
- * Server→app durable-action commands (Phase 2b-2).
+ * Server→app resumable-action commands (Phase 2b-2).
  *
  * The UI sends the THIN `stimulation.retry` / `stimulation.clone` (just a
  * `stimulationId` + options). The server can't execute them — the CNS and its
- * name→ref registry live in the app — so it ENRICHES the request from the durable
+ * name→ref registry live in the app — so it ENRICHES the request from the resumable
  * store (the stored `entry` + `progress`, plus a server-assigned attempt identity)
  * and forwards one of these commands to the owning app. The app hydrates the
  * progress against its own registry and runs `cns.activate` (resume) or

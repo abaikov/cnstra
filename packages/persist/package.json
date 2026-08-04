@@ -1,14 +1,14 @@
 {
   "name": "@cnstra/persist",
   "version": "0.1.0",
-  "description": "Persistence layer for CNStra: name<->object registry, durable checkpoint (resume) serialization, and checkpoint repositories. Core-free (depends only on @cnstra/types).",
+  "description": "Persistence layer for CNStra: name<->object registry, resumable checkpoint (resume) serialization, and checkpoint repositories. Core-free (depends only on @cnstra/types).",
   "keywords": [
     "cnstra",
     "persist",
     "registry",
     "resume",
     "checkpoint",
-    "durable"
+    "resumable"
   ],
   "main": "dist/index.js",
   "module": "dist/index.mjs",

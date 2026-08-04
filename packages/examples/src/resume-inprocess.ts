@@ -1,13 +1,13 @@
 /**
- * Runnable, zero-infra demo of CNStra durable execution: a run fails partway,
+ * Runnable, zero-infra demo of CNStra resumable execution: a run fails partway,
  * then RESUMES from the exact frontier (not from scratch) on a second attempt —
  * and the whole run/attempt/task history is stored in a repository, which is
- * exactly the data the DevTools "durable runs" admin renders.
+ * exactly the data the DevTools "resumable runs" admin renders.
  *
- *   npm run demo:durable   (from packages/examples)
+ *   npm run demo:resumable   (from packages/examples)
  *
- * No Postgres/Redis needed — this is the durable-execution ENGINE in-process. The
- * pg-boss variant (queue + Postgres) is in pgboss-durable.ts.
+ * No Postgres/Redis needed — this is the resumable-execution ENGINE in-process. The
+ * pg-boss variant (queue + Postgres) is in pgboss-resumable.ts.
  */
 import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
 import {
@@ -101,7 +101,7 @@ async function printAdminView(label: string): Promise<void> {
 
 async function main(): Promise<void> {
     line('');
-    line('  CNStra durable execution — fail, then RESUME (not restart)');
+    line('  CNStra resumable execution — fail, then RESUME (not restart)');
     line('');
 
     // ── Attempt 1: runs importUser → enrichUser, then persistUser THROWS ──

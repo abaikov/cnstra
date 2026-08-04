@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 // `data('frontier') === 3` (stuck).
 //
 // The panel no longer ingests the legacy per-hop WS stream
-// (`stimulation.started/hop/completed`). Instead `durableIngest` polls the
+// (`stimulation.started/hop/completed`). Instead `stimulationIngest` polls the
 // server every 2s with `{ type: 'cns.stimulations.query', requestId }` and
 // expects `{ type: 'cns.stimulations.result', requestId, stimulations }`, translating
 // each `TCNSStimulationViewDTO` into `db.stimulations`/`db.responses` via

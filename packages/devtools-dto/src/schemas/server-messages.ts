@@ -70,7 +70,7 @@ export const CNSReplayRejectedDTOSchema = z.object({
     reason: z.string(),
 });
 
-// ─── Durable-run action results (matched by requestId); types in @cnstra/persist-dto ──
+// ─── Resumable-run action results (matched by requestId); types in @cnstra/persist-dto ──
 // `rejected` is the clean "unsupported for this delivery" answer (e.g. pg-boss + retry).
 
 export const CNSStimulationRetryAcceptedDTOSchema = z.object({

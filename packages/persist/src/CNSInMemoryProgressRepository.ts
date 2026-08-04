@@ -3,7 +3,7 @@ import type { TCNSProgress } from '@cnstra/persist-dto';
 
 /**
  * In-memory progress repository — for tests, single-process dev, and as the
- * reference implementation of {@link ICNSProgressRepository}. Not durable across a
+ * reference implementation of {@link ICNSProgressRepository}. Not resumable across a
  * process restart; use a Postgres/Redis adapter for production.
  */
 export class CNSInMemoryProgressRepository implements ICNSProgressRepository {
