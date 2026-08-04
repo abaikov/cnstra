@@ -159,6 +159,37 @@ describe('explorer bucket protocol', () => {
         expect(facets.byStatus.find((f: any) => f.status === 'failed').count).toBe(1);
     });
 
+    it('facets include a byTime histogram; metricPath sums an entry-payload field', async () => {
+        const noMetric = makeWs();
+        await server.handleMessage(
+            noMetric as any,
+            JSON.stringify({ type: 'cns.stimulations.facets', requestId: 'r' })
+        );
+        const f1 = noMetric.reply('cns.stimulations.facets.result').facets;
+        const totalRuns = f1.byTime.reduce(
+            (n: number, b: any) => n + b.completed + b.failed + b.running,
+            0
+        );
+        expect(totalRuns).toBe(3); // every run lands in some bucket
+        expect(f1.byTime.every((b: any) => b.metric === undefined)).toBe(true);
+
+        const withMetric = makeWs();
+        await server.handleMessage(
+            withMetric as any,
+            JSON.stringify({
+                type: 'cns.stimulations.facets',
+                requestId: 'r',
+                metricPath: 'n', // seed payloads are { n: 1 }
+            })
+        );
+        const f2 = withMetric.reply('cns.stimulations.facets.result').facets;
+        const metricSum = f2.byTime.reduce(
+            (n: number, b: any) => n + (b.metric ?? 0),
+            0
+        );
+        expect(metricSum).toBe(3); // 3 runs × n=1
+    });
+
     it('facets include byNeuron; list filters by neuronName (neurons lens)', async () => {
         const ws = makeWs();
         await server.handleMessage(

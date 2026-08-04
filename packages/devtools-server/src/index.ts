@@ -9,11 +9,22 @@ import type {
     TCNSStimulationFilter,
     TCNSStimulationRowDTO,
     TCNSStimulationTask,
+    TCNSStimulationTimeBucket,
 } from '@cnstra/devtools-dto';
 import { buildAttemptId, buildCloneId } from '@cnstra/devtools-dto';
 import type { ICNSStimulationRepository } from '@cnstra/persist';
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 import { WebSocket } from 'ws';
+
+/** Resolve a dot-path (`a.b.c`) into a payload; returns undefined on any miss. */
+function resolvePath(obj: unknown, path: string): unknown {
+    let cur: unknown = obj;
+    for (const key of path.split('.')) {
+        if (cur == null || typeof cur !== 'object') return undefined;
+        cur = (cur as Record<string, unknown>)[key];
+    }
+    return cur;
+}
 
 // ─── Repository interface ─────────────────────────────────────────────────────
 
@@ -266,8 +277,45 @@ export class CNSDevToolsServer {
                     name: x.key,
                     count: x.count,
                 })),
+                byTime: this.buildTimeHistogram(rows, msg.metricPath),
             },
         });
+    }
+
+    /**
+     * Bucket the filtered rows into a fixed number of time buckets → the Chart
+     * view's throughput histogram (run counts by lifecycle state). When a
+     * `metricPath` is given, each bucket also sums that numeric field out of the
+     * run's entry payload (the "pages processed" board).
+     */
+    private buildTimeHistogram(
+        rows: TCNSStimulationRowDTO[],
+        metricPath?: string
+    ): TCNSStimulationTimeBucket[] {
+        if (rows.length === 0) return [];
+        const BUCKETS = 40;
+        const times = rows.map(r => r.startedAt);
+        const min = Math.min(...times);
+        const max = Math.max(...times);
+        const size = Math.max(1, Math.ceil((max - min) / BUCKETS) || 1);
+        const byBucket = new Map<number, TCNSStimulationTimeBucket>();
+        for (const r of rows) {
+            const tsBucket = min + Math.floor((r.startedAt - min) / size) * size;
+            let b = byBucket.get(tsBucket);
+            if (!b) {
+                b = { tsBucket, completed: 0, failed: 0, running: 0 };
+                byBucket.set(tsBucket, b);
+            }
+            if (r.status === 'completed') b.completed++;
+            else if (r.status === 'failed') b.failed++;
+            else b.running++;
+            if (metricPath) {
+                const v = resolvePath(r.entry.payload, metricPath);
+                if (typeof v === 'number' && Number.isFinite(v))
+                    b.metric = (b.metric ?? 0) + v;
+            }
+        }
+        return [...byBucket.values()].sort((a, b) => a.tsBucket - b.tsBucket);
     }
 
     private async handleStimulationDetail(

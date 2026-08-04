@@ -104,9 +104,29 @@ export const CNSStimulationsFacetsRequestSchema = z.object({
     requestId: z.string(),
     scopeName: z.string().optional(),
     filter: CNSStimulationFilterSchema.optional(),
+    /**
+     * Optional dot-path into each run's entry payload (e.g. `pages`,
+     * `doc.pageCount`). When set, every `byTime` bucket also carries `metric` =
+     * the SUM of that numeric field across the bucket's runs — the "how many
+     * pages were processed" board, aggregated at query time.
+     */
+    metricPath: z.string().optional(),
 });
 export type TCNSStimulationsFacetsRequest = z.infer<
     typeof CNSStimulationsFacetsRequestSchema
+>;
+
+// One time-bucket of the throughput histogram: run counts by lifecycle state,
+// plus the optional payload metric sum (present only when `metricPath` is set).
+export const CNSStimulationTimeBucketSchema = z.object({
+    tsBucket: z.number(),
+    completed: z.number(),
+    failed: z.number(),
+    running: z.number(),
+    metric: z.number().optional(),
+});
+export type TCNSStimulationTimeBucket = z.infer<
+    typeof CNSStimulationTimeBucketSchema
 >;
 
 export const CNSStimulationFacetsDTOSchema = z.object({
@@ -116,6 +136,8 @@ export const CNSStimulationFacetsDTOSchema = z.object({
     byStatus: z.array(z.object({ status: z.string(), count: z.number() })),
     /** Activation count per neuron (the neurons lens). */
     byNeuron: z.array(z.object({ name: z.string(), count: z.number() })),
+    /** Throughput histogram over the filtered set (the Chart view). */
+    byTime: z.array(CNSStimulationTimeBucketSchema),
 });
 export type TCNSStimulationFacetsDTO = z.infer<
     typeof CNSStimulationFacetsDTOSchema

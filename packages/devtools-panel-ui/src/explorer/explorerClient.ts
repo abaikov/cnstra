@@ -62,6 +62,7 @@ export class CNSExplorerWsClient {
                 requestId: genId(),
                 scopeName: q.scopeName,
                 filter: toServerFilter(q),
+                ...(q.metricPath ? { metricPath: q.metricPath } : {}),
             },
             (m, resolve) => {
                 if (m.type === 'cns.stimulations.facets.result')

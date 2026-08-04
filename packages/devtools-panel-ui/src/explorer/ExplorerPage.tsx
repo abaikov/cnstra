@@ -4,7 +4,10 @@ import { combine } from '../exo/oimdb-bind';
 import { fmtTime } from '../utils/format';
 import type { TCNSExplorerController } from './explorerController';
 import { toggleFilter } from './queryState';
-import type { TCNSStimulationRowDTO } from '@cnstra/devtools-dto';
+import type {
+    TCNSStimulationRowDTO,
+    TCNSStimulationTimeBucket,
+} from '@cnstra/devtools-dto';
 
 // The faceted explorer (slice 3 core): one query-state → a facet rail (counts),
 // removable filter chips, a search box, a WINDOWED runs list (only visible rows are
@@ -245,6 +248,118 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
         );
     });
 
+    // ── chart view (throughput histogram; div-based bars, no SVG namespace) ──
+    // Y = run count (stacked completed/failed/running) or, when a metric path is
+    // set, the summed payload metric per time-bucket.
+    const chartMode = bindable<'count' | 'metric'>('count');
+    const seg = (h: number, color: string, title: string): TExoSchema =>
+        h <= 0 ? (
+            <div />
+        ) : (
+            <div
+                static={{
+                    title,
+                    style: `height:${h}%;background:${color};min-height:1px`,
+                }}
+            />
+        );
+    const barColumn = (
+        b: TCNSStimulationTimeBucket,
+        maxCount: number,
+        maxMetric: number,
+        mode: 'count' | 'metric'
+    ): TExoSchema => {
+        const t = fmtTime(b.tsBucket);
+        const col: TExoSchema[] =
+            mode === 'metric'
+                ? [
+                      seg(
+                          maxMetric ? ((b.metric ?? 0) / maxMetric) * 100 : 0,
+                          'var(--infection-yellow)',
+                          `${t} · ${b.metric ?? 0}`
+                      ),
+                  ]
+                : [
+                      // column-reverse → first child sits at the bottom
+                      seg(
+                          maxCount ? (b.completed / maxCount) * 100 : 0,
+                          'var(--infection-green)',
+                          `${t} · ${b.completed} completed`
+                      ),
+                      seg(
+                          maxCount ? (b.failed / maxCount) * 100 : 0,
+                          'var(--infection-red)',
+                          `${t} · ${b.failed} failed`
+                      ),
+                      seg(
+                          maxCount ? (b.running / maxCount) * 100 : 0,
+                          'var(--infection-purple)',
+                          `${t} · ${b.running} running`
+                      ),
+                  ];
+        return (
+            <div static={{ style: 'flex:1;min-width:2px;display:flex;flex-direction:column-reverse;justify-content:flex-start' }}>
+                {col}
+            </div>
+        );
+    };
+    const modeToggle = (
+        m: ReturnType<typeof bindable<'count' | 'metric'>>
+    ): TExoSchema => {
+        const btn = (val: 'count' | 'metric', text: string): TExoSchema => (
+            <button
+                static={{
+                    style:
+                        'padding:2px 8px;font-size:10px;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-primary);' +
+                        (m.getValue() === val
+                            ? 'background:var(--infection-purple);color:var(--bg-primary)'
+                            : 'background:var(--bg-card);color:var(--text-secondary)'),
+                }}
+                handlers={{ onClick: () => m.setValue(val) }}
+            >
+                {text}
+            </button>
+        );
+        return (
+            <div static={{ style: 'display:flex;gap:2px' }}>
+                {[btn('count', 'Count'), btn('metric', 'Metric')]}
+            </div>
+        );
+    };
+    const chartView = combine([ctrl.facets, ctrl.query, chartMode], () => {
+        const buckets = ctrl.facets.getValue().byTime;
+        const q = ctrl.query.getValue();
+        const mode: 'count' | 'metric' =
+            q.metricPath && chartMode.getValue() === 'metric'
+                ? 'metric'
+                : 'count';
+        if (!buckets.length)
+            return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>No runs in range.</div>;
+        const maxCount = Math.max(
+            1,
+            ...buckets.map(b => b.completed + b.failed + b.running)
+        );
+        const maxMetric = Math.max(0, ...buckets.map(b => b.metric ?? 0));
+        const yMax = mode === 'metric' ? maxMetric : maxCount;
+        return (
+            <div static={{ style: 'flex:1;display:flex;flex-direction:column;padding:12px;gap:8px;min-height:0' }}>
+                <div static={{ style: 'display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-muted)' }}>
+                    <span>{mode === 'metric' ? `Σ ${q.metricPath} per bucket` : 'runs per bucket'} · peak {String(yMax)}</span>
+                    {q.metricPath
+                        ? modeToggle(chartMode)
+                        : <span static={{ style: 'color:var(--text-muted)' }}>set a metric path below to sum a payload field</span>}
+                </div>
+                <div static={{ style: 'flex:1;display:flex;align-items:stretch;gap:1px;min-height:120px;border-bottom:1px solid var(--border-primary);border-left:1px solid var(--border-primary);padding:2px' }}>
+                    {buckets.map(b => barColumn(b, maxCount, maxMetric, mode))}
+                </div>
+                <div static={{ style: 'display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted)' }}>
+                    <span>{fmtTime(buckets[0].tsBucket)}</span>
+                    <span>{fmtTime(buckets[buckets.length - 1].tsBucket)}</span>
+                </div>
+            </div>
+        );
+    });
+
     // ── search box (uncontrolled; debounced on input) ────────────────────────
     let debounce: ReturnType<typeof setTimeout> | null = null;
     const searchBox: TExoSchema = (
@@ -268,22 +383,19 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
         />
     );
 
-    // ── view-switch (Runs ⇄ Waterfall; Chart/Map are next) ───────────────────
+    // ── view-switch (Runs ⇄ Waterfall ⇄ Chart) ───────────────────────────────
+    const paneFor = (view: string): TExoSchema => {
+        if (view === 'waterfall')
+            return <div static={{ style: 'flex:1;display:flex;min-height:0' }} bindable={{ children: waterfall }} />;
+        if (view === 'chart')
+            return <div static={{ style: 'flex:1;display:flex;min-height:0;overflow:auto' }} bindable={{ children: chartView }} />;
+        return <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: runsList }} />;
+    };
     const resultPane = combine([ctrl.query], () =>
-        ctrl.query.getValue().view === 'waterfall' ? (
-            <div
-                static={{ style: 'flex:1;display:flex;min-height:0' }}
-                bindable={{ children: waterfall }}
-            />
-        ) : (
-            <div
-                static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }}
-                bindable={{ children: runsList }}
-            />
-        )
+        paneFor(ctrl.query.getValue().view)
     );
     const viewBtn = (
-        v: 'runs' | 'waterfall',
+        v: 'runs' | 'waterfall' | 'chart',
         label: string,
         active: boolean
     ): TExoSchema => (
@@ -308,10 +420,36 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                 {[
                     viewBtn('runs', 'Runs', v === 'runs'),
                     viewBtn('waterfall', 'Waterfall', v === 'waterfall'),
+                    viewBtn('chart', 'Chart', v === 'chart'),
                 ]}
             </div>
         );
     });
+
+    // Metric-path input (chart board). Stable element (like searchBox) so a live
+    // facets refresh never yanks focus while typing.
+    let metricDebounce: ReturnType<typeof setTimeout> | null = null;
+    const metricInput: TExoSchema = (
+        <input
+            static={{
+                placeholder: 'chart metric: payload path (e.g. pages)',
+                value: ctrl.query.getValue().metricPath ?? '',
+                style:
+                    'width:200px;padding:5px 8px;font-size:12px;background:var(--bg-secondary);' +
+                    'border:1px solid var(--border-primary);color:var(--text-primary);border-radius:2px',
+            }}
+            handlers={{
+                onInput: (e: Event) => {
+                    const v = (e.target as HTMLInputElement).value.trim();
+                    if (metricDebounce) clearTimeout(metricDebounce);
+                    metricDebounce = setTimeout(() => {
+                        ctrl.setQuery({ metricPath: v || undefined });
+                        if (v) chartMode.setValue('metric');
+                    }, 300);
+                },
+            }}
+        />
+    );
 
     return (
         <div
@@ -327,6 +465,7 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                 <div static={{ style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--border-primary)' }}>
                     {searchBox}
                     <div bindable={{ children: viewSwitch }} />
+                    {metricInput}
                     <div bindable={{ children: filterChips }} />
                 </div>
                 <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: resultPane }} />

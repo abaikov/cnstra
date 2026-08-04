@@ -24,6 +24,12 @@ export interface TCNSExplorerQuery {
     lens: TCNSExplorerLens;
     /** Selected run (drives the waterfall view). */
     selected?: string;
+    /**
+     * Dot-path into the entry payload to SUM per time-bucket in the Chart view
+     * (e.g. `pages`) — the "how many pages were processed" board. Not a filter;
+     * an aggregation directive passed to the facets request.
+     */
+    metricPath?: string;
 }
 
 export const DEFAULT_QUERY: TCNSExplorerQuery = {
@@ -66,6 +72,7 @@ export function encodeQuery(q: TCNSExplorerQuery): string {
     if (q.view !== DEFAULT_QUERY.view) p.set('view', q.view);
     if (q.lens !== DEFAULT_QUERY.lens) p.set('lens', q.lens);
     if (q.selected) p.set('sel', q.selected);
+    if (q.metricPath) p.set('metric', q.metricPath);
     return p.toString();
 }
 
@@ -93,6 +100,7 @@ export function decodeQuery(search: string): TCNSExplorerQuery {
         view: view && VIEWS.includes(view) ? view : DEFAULT_QUERY.view,
         lens: lens && LENSES.includes(lens) ? lens : DEFAULT_QUERY.lens,
         selected: p.get('sel') ?? undefined,
+        metricPath: p.get('metric') ?? undefined,
     };
 }
 

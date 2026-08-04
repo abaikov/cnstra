@@ -61,6 +61,7 @@ export function createExplorerController(
         byEntryCollateral: [],
         byStatus: [],
         byNeuron: [],
+        byTime: [],
     });
     const detail = bindable<TCNSExplorerDetail | null>(null);
     const loading = bindable(false);
