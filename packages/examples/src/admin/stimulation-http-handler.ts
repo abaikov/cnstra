@@ -16,7 +16,7 @@
  *   POST /api/clone  {stimulationId}→ { stimulationId }
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { DurableStimulationManager } from './stimulation-manager';
+import type { StimulationRunManager } from './stimulation-manager';
 
 const readBody = (req: IncomingMessage): Promise<string> =>
     new Promise(resolve => {
@@ -36,8 +36,8 @@ const json = (res: ServerResponse, code: number, body: unknown): void => {
     res.end(JSON.stringify(body));
 };
 
-export function createDurableStimulationsHandler(
-    manager: DurableStimulationManager,
+export function createStimulationsHandler(
+    manager: StimulationRunManager,
     opts: { backend: string; store?: string }
 ): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
     return async (req, res) => {

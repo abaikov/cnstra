@@ -22,7 +22,7 @@ import type {
  * `cns.stimulate` pump the first response synchronously (single-threaded), the
  * override cannot be claimed by any interleaved stimulation.
  */
-type TDurableOverride = {
+type TStimulationOverride = {
     stimulationId: string;
     stimulationAttemptId: string;
     attemptNumber: number;
@@ -67,9 +67,9 @@ export class CNSDevTools {
     private unregisterReplay?: () => void;
     private unregisterCommand?: () => void;
     /** Set just before a server-driven activate/stimulate; consumed on first response. */
-    private pendingDurableOverride?: TDurableOverride;
+    private pendingStimulationOverride?: TStimulationOverride;
     /** One-shot guard so a missing-registration warning isn't logged per response. */
-    private durableWarned = false;
+    private resumeWarned = false;
 
     constructor(
         private readonly appId: string,
@@ -189,8 +189,8 @@ export class CNSDevTools {
                 // origin entry). Absent an override this is a fresh, app-initiated
                 // stimulation → mint attempt #1 and derive the entry from the first
                 // response.
-                const override = this.pendingDurableOverride;
-                this.pendingDurableOverride = undefined;
+                const override = this.pendingStimulationOverride;
+                this.pendingStimulationOverride = undefined;
 
                 const triggerCol = resp.outputSignal?.collateral as AnyCollateral | undefined;
                 const entryName = triggerCol
@@ -232,8 +232,8 @@ export class CNSDevTools {
             try {
                 persistors.get(stimulation)?.onResponse(resp);
             } catch (e) {
-                if (!this.durableWarned) {
-                    this.durableWarned = true;
+                if (!this.resumeWarned) {
+                    this.resumeWarned = true;
                     // eslint-disable-next-line no-console
                     console.warn(
                         '[CNSDevTools] durable stimulation tracking skipped a response — ' +
@@ -321,7 +321,7 @@ export class CNSDevTools {
      * the durable identity (stimulationId + attempt number) and enriched the
      * command from the store; here we hydrate against THIS app's registry and run
      * it. The new attempt streams back through the normal name-based path — we set
-     * {@link pendingDurableOverride} so the global response listener stamps it with
+     * {@link pendingStimulationOverride} so the global response listener stamps it with
      * the given identity instead of minting a fresh one.
      */
     private handleStimulationCommand(
@@ -339,7 +339,7 @@ export class CNSDevTools {
                     console.warn(`[DevTools] Resume: empty frontier for ${cmd.stimulationId}`);
                 return;
             }
-            this.pendingDurableOverride = {
+            this.pendingStimulationOverride = {
                 stimulationId: cmd.stimulationId,
                 stimulationAttemptId: cmd.stimulationAttemptId,
                 attemptNumber: cmd.attemptNumber,
@@ -365,7 +365,7 @@ export class CNSDevTools {
                 console.warn(`[DevTools] Clone: entry collateral not found: ${cmd.entry.collateralName}`);
             return;
         }
-        this.pendingDurableOverride = {
+        this.pendingStimulationOverride = {
             stimulationId: cmd.stimulationId,
             stimulationAttemptId: cmd.stimulationAttemptId,
             attemptNumber: 1,

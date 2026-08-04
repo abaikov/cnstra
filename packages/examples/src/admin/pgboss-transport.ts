@@ -3,16 +3,16 @@
  *
  * Mirror of bull-transport.ts: `launch` / `clone` / `retry` enqueue a command
  * job on a pg-boss queue; an in-process worker pulls it and runs it against the
- * same DurableStimulationManager (which keeps the rich run/attempt/task store the UI
+ * same StimulationRunManager (which keeps the rich run/attempt/task store the UI
  * renders). The CNStra admin operating a real broker — instead of pg-boss's own
  * (nonexistent) UI.
  *
  * pg-boss is imported lazily so the default in-process admin needs no Postgres.
  */
-import type { DurableStimulationManager, TStimulationCommand } from './stimulation-manager';
+import type { StimulationRunManager, TStimulationCommand } from './stimulation-manager';
 
 export async function attachPgBossTransport(
-    manager: DurableStimulationManager
+    manager: StimulationRunManager
 ): Promise<{ close: () => Promise<void> }> {
     const { PgBoss } = await import('pg-boss');
     const url =

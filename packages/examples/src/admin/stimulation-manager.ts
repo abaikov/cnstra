@@ -1,5 +1,5 @@
 /**
- * DurableStimulationManager — the write/read side the retry-admin talks to.
+ * StimulationRunManager — the write/read side the retry-admin talks to.
  *
  * It owns ONE CNStra flow (importUser → enrichUser → persistUser) plus the
  * durable stores (repository + registry + serializer), and exposes the admin's
@@ -81,7 +81,7 @@ export type TStimulationSummary = {
     }>;
 };
 
-export class DurableStimulationManager {
+export class StimulationRunManager {
     private readonly cns = new CNS([importUser, enrichUser, persistUser]);
     private readonly registry = new CNSPersistOptionsRegistry();
     private readonly repository: ICNSStimulationRepository;

@@ -2,16 +2,16 @@
  * Route the admin's commands through a REAL BullMQ (Redis) queue.
  *
  * `launch` / `clone` / `retry` enqueue a command job; an in-process worker pulls
- * it and runs it against the same DurableStimulationManager (which keeps the rich
+ * it and runs it against the same StimulationRunManager (which keeps the rich
  * run/attempt/task store the UI renders). This is the CNStra admin operating a
  * real broker — instead of Bull's own dashboard.
  *
  * bullmq is imported lazily so the default in-process admin needs no Redis.
  */
-import type { DurableStimulationManager, TStimulationCommand } from './stimulation-manager';
+import type { StimulationRunManager, TStimulationCommand } from './stimulation-manager';
 
 export async function attachBullTransport(
-    manager: DurableStimulationManager
+    manager: StimulationRunManager
 ): Promise<{ close: () => Promise<void> }> {
     const { Queue, Worker } = await import('bullmq');
     const connection = {
