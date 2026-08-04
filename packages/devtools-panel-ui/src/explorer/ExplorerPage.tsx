@@ -360,6 +360,62 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
         );
     });
 
+    // ── map view (proportional activation heat-map; lens-aware) ──────────────
+    // Tiles for the active lens's dimension (neurons or entry collaterals), each
+    // grown + heated by activation count — a weight map of where runs concentrate.
+    // Click a tile to filter, same as a facet chip.
+    const mapView = combine([ctrl.facets, ctrl.query], () => {
+        const f = ctrl.facets.getValue();
+        const q = ctrl.query.getValue();
+        const neurons = q.lens === 'neurons';
+        const dim = neurons ? f.byNeuron : f.byEntryCollateral;
+        if (!dim.length)
+            return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>No activation to map.</div>;
+        const max = Math.max(...dim.map(d => d.count));
+        const selected = neurons ? q.neuronName : q.entryCollateralName;
+        return (
+            <div static={{ style: 'flex:1;display:flex;flex-direction:column;gap:8px;padding:12px;min-height:0;overflow:auto' }}>
+                <div static={{ style: 'font-size:11px;color:var(--text-muted)' }}>{neurons ? 'neuron' : 'entry collateral'} activation · tile size + heat ∝ run count</div>
+                <div static={{ style: 'display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start' }}>
+                    {dim.map(d => {
+                        const intensity = max ? d.count / max : 0;
+                        const pct = Math.round(20 + intensity * 80); // 20..100%
+                        const isSel = selected === d.name;
+                        return (
+                            <div
+                                static={{
+                                    title: `${d.name} · ${d.count}`,
+                                    style:
+                                        `flex:${1 + Math.round(intensity * 6)} 1 90px;` +
+                                        `min-width:90px;padding:8px 10px;cursor:pointer;` +
+                                        `border:1px solid ${isSel ? 'var(--infection-yellow)' : 'var(--border-primary)'};` +
+                                        `background:color-mix(in srgb, var(--infection-purple) ${pct}%, var(--bg-card));` +
+                                        `color:${intensity > 0.5 ? 'var(--bg-primary)' : 'var(--text-primary)'};` +
+                                        'display:flex;flex-direction:column;gap:2px;overflow:hidden',
+                                }}
+                                handlers={{
+                                    onClick: () =>
+                                        ctrl.setQuery(
+                                            toggleFilter(
+                                                q,
+                                                neurons
+                                                    ? 'neuronName'
+                                                    : 'entryCollateralName',
+                                                d.name
+                                            )
+                                        ),
+                                }}
+                            >
+                                <span static={{ style: 'font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }}>{d.name}</span>
+                                <span static={{ style: 'font-size:16px;font-weight:600;font-variant-numeric:tabular-nums' }}>{String(d.count)}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    });
+
     // ── search box (uncontrolled; debounced on input) ────────────────────────
     let debounce: ReturnType<typeof setTimeout> | null = null;
     const searchBox: TExoSchema = (
@@ -389,13 +445,15 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
             return <div static={{ style: 'flex:1;display:flex;min-height:0' }} bindable={{ children: waterfall }} />;
         if (view === 'chart')
             return <div static={{ style: 'flex:1;display:flex;min-height:0;overflow:auto' }} bindable={{ children: chartView }} />;
+        if (view === 'map')
+            return <div static={{ style: 'flex:1;display:flex;min-height:0;overflow:auto' }} bindable={{ children: mapView }} />;
         return <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: runsList }} />;
     };
     const resultPane = combine([ctrl.query], () =>
         paneFor(ctrl.query.getValue().view)
     );
     const viewBtn = (
-        v: 'runs' | 'waterfall' | 'chart',
+        v: 'runs' | 'waterfall' | 'chart' | 'map',
         label: string,
         active: boolean
     ): TExoSchema => (
@@ -421,6 +479,7 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                     viewBtn('runs', 'Runs', v === 'runs'),
                     viewBtn('waterfall', 'Waterfall', v === 'waterfall'),
                     viewBtn('chart', 'Chart', v === 'chart'),
+                    viewBtn('map', 'Map', v === 'map'),
                 ]}
             </div>
         );

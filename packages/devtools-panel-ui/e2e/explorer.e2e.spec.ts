@@ -39,5 +39,14 @@ test.describe('Explorer', () => {
         // Neurons lens toggles the facet dimension without error.
         await page.getByRole('button', { name: 'Neurons' }).click();
         await expect(page.getByText('Neuron', { exact: true })).toBeVisible();
+
+        // Map view mounts (heat-map or empty state), never throws.
+        await page.getByRole('button', { name: 'Map', exact: true }).click();
+        await expect(
+            page
+                .getByText(/activation · tile size/)
+                .or(page.getByText('No activation to map.'))
+                .first()
+        ).toBeVisible({ timeout: 60000 });
     });
 });
