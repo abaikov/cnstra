@@ -42,14 +42,44 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
     const scrollTop = bindable(0);
     const viewportH = bindable(600);
 
-    // ── facet rail (left) ────────────────────────────────────────────────────
+    // ── facet rail (left), with a Collaterals ⇄ Neurons lens ─────────────────
+    const lensBtn = (
+        lens: 'collaterals' | 'neurons',
+        label: string,
+        active: boolean
+    ): TExoSchema => (
+        <button
+            static={{
+                style:
+                    'flex:1;padding:4px;font-size:10px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;' +
+                    `border:1px solid var(--border-primary);` +
+                    (active
+                        ? 'background:var(--infection-purple);color:var(--bg-primary)'
+                        : 'background:var(--bg-card);color:var(--text-secondary)'),
+            }}
+            handlers={{ onClick: () => ctrl.setQuery({ lens }) }}
+        >
+            {label}
+        </button>
+    );
+    const label = (t: string): TExoSchema => (
+        <div static={{ style: 'font-size:10px;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px' }}>{t}</div>
+    );
     const facetRail = combine([ctrl.facets, ctrl.query], () => {
         const f = ctrl.facets.getValue();
         const q = ctrl.query.getValue();
+        const neurons = q.lens === 'neurons';
+        const dim = neurons ? f.byNeuron : f.byEntryCollateral;
         return (
             <div static={{ style: 'display:flex;flex-direction:column;gap:14px' }}>
+                <div static={{ style: 'display:flex;gap:2px' }}>
+                    {[
+                        lensBtn('collaterals', 'Collaterals', !neurons),
+                        lensBtn('neurons', 'Neurons', neurons),
+                    ]}
+                </div>
                 <div>
-                    <div static={{ style: 'font-size:10px;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px' }}>Status</div>
+                    {label('Status')}
                     <div static={{ style: 'display:flex;flex-wrap:wrap;gap:5px' }}>
                         {f.byStatus.map(s =>
                             chip(s.status, s.count, q.status === s.status, () =>
@@ -59,16 +89,20 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                     </div>
                 </div>
                 <div>
-                    <div static={{ style: 'font-size:10px;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px' }}>Entry collateral (job type)</div>
+                    {label(neurons ? 'Neuron' : 'Entry collateral (job type)')}
                     <div static={{ style: 'display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow:auto' }}>
-                        {f.byEntryCollateral.map(c =>
+                        {dim.map(c =>
                             chip(
                                 c.name,
                                 c.count,
-                                q.entryCollateralName === c.name,
+                                (neurons ? q.neuronName : q.entryCollateralName) === c.name,
                                 () =>
                                     ctrl.setQuery(
-                                        toggleFilter(q, 'entryCollateralName', c.name)
+                                        toggleFilter(
+                                            q,
+                                            neurons ? 'neuronName' : 'entryCollateralName',
+                                            c.name
+                                        )
                                     )
                             )
                         )}
@@ -92,6 +126,12 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
             active.push(
                 chip(`type: ${q.entryCollateralName}`, null, true, () =>
                     ctrl.setQuery({ entryCollateralName: undefined })
+                )
+            );
+        if (q.neuronName)
+            active.push(
+                chip(`neuron: ${q.neuronName}`, null, true, () =>
+                    ctrl.setQuery({ neuronName: undefined })
                 )
             );
         if (q.text)

@@ -159,6 +159,38 @@ describe('explorer bucket protocol', () => {
         expect(facets.byStatus.find((f: any) => f.status === 'failed').count).toBe(1);
     });
 
+    it('facets include byNeuron; list filters by neuronName (neurons lens)', async () => {
+        const ws = makeWs();
+        await server.handleMessage(
+            ws as any,
+            JSON.stringify({ type: 'cns.stimulations.facets', requestId: 'r' })
+        );
+        const { facets } = ws.reply('cns.stimulations.facets.result');
+        expect(facets.byNeuron.find((f: any) => f.name === 'neuronA').count).toBe(3);
+
+        const ws2 = makeWs();
+        await server.handleMessage(
+            ws2 as any,
+            JSON.stringify({
+                type: 'cns.stimulations.list',
+                requestId: 'r',
+                filter: { neuronName: 'neuronA' },
+            })
+        );
+        expect(ws2.reply('cns.stimulations.list.result').stimulations).toHaveLength(3);
+
+        const ws3 = makeWs();
+        await server.handleMessage(
+            ws3 as any,
+            JSON.stringify({
+                type: 'cns.stimulations.list',
+                requestId: 'r',
+                filter: { neuronName: 'nonexistent' },
+            })
+        );
+        expect(ws3.reply('cns.stimulations.list.result').stimulations).toHaveLength(0);
+    });
+
     it('detail returns attempts + tasks buckets (not a tree)', async () => {
         const ws = makeWs();
         await server.handleMessage(

@@ -63,6 +63,8 @@ export const CNSStimulationFilterSchema = z
     .object({
         status: z.string(),
         entryCollateralName: z.string(),
+        /** Runs that activated this neuron (any task with this neuronName). */
+        neuronName: z.string(),
         /** Substring match on stimulationId (and, server-permitting, entry payload). */
         text: z.string(),
         since: z.number(),
@@ -112,6 +114,8 @@ export const CNSStimulationFacetsDTOSchema = z.object({
         z.object({ name: z.string(), count: z.number() })
     ),
     byStatus: z.array(z.object({ status: z.string(), count: z.number() })),
+    /** Activation count per neuron (the neurons lens). */
+    byNeuron: z.array(z.object({ name: z.string(), count: z.number() })),
 });
 export type TCNSStimulationFacetsDTO = z.infer<
     typeof CNSStimulationFacetsDTOSchema

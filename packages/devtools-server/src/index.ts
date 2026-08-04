@@ -139,11 +139,11 @@ export class CNSDevToolsServer {
     private async computeRows(
         scopeName: string | undefined,
         filter: TCNSStimulationFilter | undefined
-    ): Promise<TCNSStimulationRowDTO[]> {
+    ): Promise<{ row: TCNSStimulationRowDTO; neurons: string[] }[]> {
         const stims = await this.stimulationRepository.listStimulations(
             scopeName ? { scopeName } : undefined
         );
-        const rows: TCNSStimulationRowDTO[] = [];
+        const enriched: { row: TCNSStimulationRowDTO; neurons: string[] }[] = [];
         for (const s of stims) {
             const attempts = await this.stimulationRepository.getAttempts(
                 s.stimulationId
@@ -155,23 +155,36 @@ export class CNSDevToolsServer {
             const completedAt =
                 s.status === 'running' ? null : last?.completedAt ?? null;
             const hopCount = attempts.reduce((n, a) => n + a.hopCount, 0);
-            rows.push({
-                stimulationId: s.stimulationId,
-                scopeName: s.scopeName,
-                entry: s.entry,
-                status: s.status,
-                startedAt,
-                completedAt,
-                hopCount,
-                hasError: s.status === 'failed',
+            // Neuron names this run activated (for the neurons lens + filter).
+            const neurons = new Set<string>();
+            for (const a of attempts) {
+                const tasks = await this.stimulationRepository.getTasks(
+                    a.stimulationAttemptId
+                );
+                for (const t of tasks) neurons.add(t.neuronName);
+            }
+            enriched.push({
+                row: {
+                    stimulationId: s.stimulationId,
+                    scopeName: s.scopeName,
+                    entry: s.entry,
+                    status: s.status,
+                    startedAt,
+                    completedAt,
+                    hopCount,
+                    hasError: s.status === 'failed',
+                },
+                neurons: [...neurons],
             });
         }
         const f = filter ?? {};
-        const matched = rows.filter(
-            r =>
+        const matched = enriched.filter(
+            ({ row: r, neurons }) =>
                 (f.status === undefined || r.status === f.status) &&
                 (f.entryCollateralName === undefined ||
                     r.entry.collateralName === f.entryCollateralName) &&
+                (f.neuronName === undefined ||
+                    neurons.includes(f.neuronName)) &&
                 (f.text === undefined ||
                     r.stimulationId
                         .toLowerCase()
@@ -182,8 +195,8 @@ export class CNSDevToolsServer {
         // Newest first, tie-broken by id (stable keyset order).
         matched.sort(
             (a, b) =>
-                b.startedAt - a.startedAt ||
-                (a.stimulationId < b.stimulationId ? 1 : -1)
+                b.row.startedAt - a.row.startedAt ||
+                (a.row.stimulationId < b.row.stimulationId ? 1 : -1)
         );
         return matched;
     }
@@ -192,7 +205,9 @@ export class CNSDevToolsServer {
         ws: WebSocket,
         msg: any
     ): Promise<void> {
-        const rows = await this.computeRows(msg.scopeName, msg.filter);
+        const rows = (await this.computeRows(msg.scopeName, msg.filter)).map(
+            e => e.row
+        );
         const limit = typeof msg.limit === 'number' ? msg.limit : 50;
         // Keyset cursor = `${startedAt}|${stimulationId}` (base64). Page = rows after it.
         let start = 0;
@@ -226,15 +241,11 @@ export class CNSDevToolsServer {
         ws: WebSocket,
         msg: any
     ): Promise<void> {
-        const rows = await this.computeRows(msg.scopeName, msg.filter);
-        const tally = <K extends string>(
-            keyOf: (r: TCNSStimulationRowDTO) => K
-        ): { key: K; count: number }[] => {
-            const m = new Map<K, number>();
-            for (const r of rows) {
-                const k = keyOf(r);
-                m.set(k, (m.get(k) ?? 0) + 1);
-            }
+        const enriched = await this.computeRows(msg.scopeName, msg.filter);
+        const rows = enriched.map(e => e.row);
+        const tally = (values: string[]): { key: string; count: number }[] => {
+            const m = new Map<string, number>();
+            for (const v of values) m.set(v, (m.get(v) ?? 0) + 1);
             return [...m.entries()]
                 .map(([key, count]) => ({ key, count }))
                 .sort((a, b) => b.count - a.count);
@@ -243,12 +254,16 @@ export class CNSDevToolsServer {
             type: 'cns.stimulations.facets.result',
             requestId: msg.requestId,
             facets: {
-                byEntryCollateral: tally(r => r.entry.collateralName).map(x => ({
-                    name: x.key,
+                byEntryCollateral: tally(
+                    rows.map(r => r.entry.collateralName)
+                ).map(x => ({ name: x.key, count: x.count })),
+                byStatus: tally(rows.map(r => r.status)).map(x => ({
+                    status: x.key,
                     count: x.count,
                 })),
-                byStatus: tally(r => r.status).map(x => ({
-                    status: x.key,
+                // Each run contributes each activated neuron once (distinct per run).
+                byNeuron: tally(enriched.flatMap(e => e.neurons)).map(x => ({
+                    name: x.key,
                     count: x.count,
                 })),
             },

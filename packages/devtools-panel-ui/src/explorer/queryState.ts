@@ -12,6 +12,8 @@ export interface TCNSExplorerQuery {
     /** Facet filters. */
     status?: string;
     entryCollateralName?: string;
+    /** Runs that activated this neuron. */
+    neuronName?: string;
     /** Free-text (stimulationId substring; server may extend to payload). */
     text?: string;
     since?: number;
@@ -36,6 +38,7 @@ const LENSES: readonly TCNSExplorerLens[] = ['collaterals', 'neurons'];
 export function toServerFilter(q: TCNSExplorerQuery): {
     status?: string;
     entryCollateralName?: string;
+    neuronName?: string;
     text?: string;
     since?: number;
     until?: number;
@@ -43,6 +46,7 @@ export function toServerFilter(q: TCNSExplorerQuery): {
     const f: ReturnType<typeof toServerFilter> = {};
     if (q.status) f.status = q.status;
     if (q.entryCollateralName) f.entryCollateralName = q.entryCollateralName;
+    if (q.neuronName) f.neuronName = q.neuronName;
     if (q.text) f.text = q.text;
     if (q.since != null) f.since = q.since;
     if (q.until != null) f.until = q.until;
@@ -55,6 +59,7 @@ export function encodeQuery(q: TCNSExplorerQuery): string {
     if (q.scopeName) p.set('scope', q.scopeName);
     if (q.status) p.set('status', q.status);
     if (q.entryCollateralName) p.set('col', q.entryCollateralName);
+    if (q.neuronName) p.set('neuron', q.neuronName);
     if (q.text) p.set('q', q.text);
     if (q.since != null) p.set('since', String(q.since));
     if (q.until != null) p.set('until', String(q.until));
@@ -81,6 +86,7 @@ export function decodeQuery(search: string): TCNSExplorerQuery {
         scopeName: p.get('scope') ?? undefined,
         status: p.get('status') ?? undefined,
         entryCollateralName: p.get('col') ?? undefined,
+        neuronName: p.get('neuron') ?? undefined,
         text: p.get('q') ?? undefined,
         since: num('since'),
         until: num('until'),
@@ -101,7 +107,7 @@ export function withPatch(
 /** Toggle a facet filter value (click a facet chip on → sets it, click again → clears). */
 export function toggleFilter(
     q: TCNSExplorerQuery,
-    key: 'status' | 'entryCollateralName',
+    key: 'status' | 'entryCollateralName' | 'neuronName',
     value: string
 ): TCNSExplorerQuery {
     return withPatch(q, {

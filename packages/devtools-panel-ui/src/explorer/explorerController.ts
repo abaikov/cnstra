@@ -60,6 +60,7 @@ export function createExplorerController(
     const facets = bindable<TCNSStimulationFacetsDTO>({
         byEntryCollateral: [],
         byStatus: [],
+        byNeuron: [],
     });
     const detail = bindable<TCNSExplorerDetail | null>(null);
     const loading = bindable(false);
