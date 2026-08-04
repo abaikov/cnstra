@@ -2,7 +2,7 @@ import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
 import { collateral, withCtx } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
-import type { CNSDTOAppBatchMessage, CNSDTOAppBatchItem } from '@cnstra/devtools-dto';
+import type { TCNSAppBatchMessageDTO, TCNSAppBatchItemDTO } from '@cnstra/devtools-dto';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -55,18 +55,18 @@ class MockCNS {
 }
 
 class CaptureBatchTransport implements ICNSDevToolsTransport {
-    batches: CNSDTOAppBatchMessage[] = [];
+    batches: TCNSAppBatchMessageDTO[] = [];
 
-    async sendBatch(message: CNSDTOAppBatchMessage): Promise<void> {
+    async sendBatch(message: TCNSAppBatchMessageDTO): Promise<void> {
         this.batches.push(message);
     }
 
-    allItems(): CNSDTOAppBatchItem[] {
+    allItems(): TCNSAppBatchItemDTO[] {
         return this.batches.flatMap(b => b.items);
     }
 
-    itemsOfType<T extends CNSDTOAppBatchItem['type']>(type: T): Extract<CNSDTOAppBatchItem, { type: T }>[] {
-        return this.allItems().filter((i): i is Extract<CNSDTOAppBatchItem, { type: T }> => i.type === type);
+    itemsOfType<T extends TCNSAppBatchItemDTO['type']>(type: T): Extract<TCNSAppBatchItemDTO, { type: T }>[] {
+        return this.allItems().filter((i): i is Extract<TCNSAppBatchItemDTO, { type: T }> => i.type === type);
     }
 }
 
@@ -88,12 +88,20 @@ describe('CNSDevTools', () => {
             expect(topologies[0].appId).toBe('app');
             expect(topologies[0].neurons).toHaveLength(1);
             expect(topologies[0].neurons[0].name).toBe('testNeuron');
-            expect(topologies[0].collaterals).toHaveLength(1);
-            expect(topologies[0].collaterals[0].name).toBe('output-col');
+            // Both the axon collateral AND the entry collateral the dendrite
+            // subscribes to (input-col, no owner) are in the topology.
+            expect(topologies[0].collaterals.map(c => c.name).sort()).toEqual([
+                'input-col',
+                'output-col',
+            ]);
+            expect(
+                topologies[0].collaterals.find(c => c.name === 'input-col')!
+                    .ownerNeuronName
+            ).toBeUndefined();
             expect(topologies[0].dendrites).toHaveLength(1);
         });
 
-        it('sets correct IDs in topology', async () => {
+        it('identifies topology by name + cnsId (no derived ids)', async () => {
             const { registry } = makeRegistry();
             const cns = new MockCNS();
             const transport = new CaptureBatchTransport();
@@ -104,8 +112,8 @@ describe('CNSDevTools', () => {
 
             const [topo] = transport.itemsOfType('topology');
             expect(topo.cnsId).toBe('myApp:core');
-            expect(topo.neurons[0].id).toBe('myApp:core:testNeuron');
-            expect(topo.collaterals[0].neuronId).toBe('myApp:core:testNeuron');
+            expect(topo.neurons[0].name).toBe('testNeuron');
+            expect(topo.collaterals.find(c => c.name === 'output-col')!.ownerNeuronName).toBe('testNeuron');
         });
     });
 

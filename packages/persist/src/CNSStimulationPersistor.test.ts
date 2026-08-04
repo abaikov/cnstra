@@ -7,7 +7,7 @@ import { CNSInMemoryStimulationRepository } from './CNSInMemoryStimulationReposi
 const ENTRY_ = [{ collateralName: 'input', payload: { id: 1 } }];
 
 // n1 → n2; n2 fails on the first pass. Same shape as the serializer test, but here
-// we drive it through the persistor + stimulation repository (run/attempt model).
+// we drive it through the persistor + stimulation repository (stimulation/attempt model).
 function buildFlow() {
     const input = collateral<{ id: number }>();
     const step1Out = collateral<{ id: number }>();
@@ -40,17 +40,17 @@ function buildFlow() {
 
 const ENTRY = [{ collateralName: 'input', payload: { id: 1 } }];
 
-test('persistor: records a failed run with a resumable frontier, then a resumed success', async () => {
+test('persistor: records a failed stimulation with a resumable frontier, then a resumed success', async () => {
     const { cns, registry, input, control } = buildFlow();
     const serializer = new CNSProgressSerializer(registry);
     const repository = new CNSInMemoryStimulationRepository();
 
-    // Attempt 1 — fails. Persistor keeps run.progress + the attempt marker.
+    // Attempt 1 — fails. Persistor keeps stimulation.progress + the attempt marker.
     const p1 = new CNSStimulationPersistor({
         repository,
         registry,
-        stimulationId: 'run-1',
-        stimulationAttemptId: 'run-1#1',
+        stimulationId: 'stim-1',
+        stimulationAttemptId: 'stimulation-1#1',
         attemptNumber: 1,
         entry: ENTRY,
     });
@@ -60,21 +60,21 @@ test('persistor: records a failed run with a resumable frontier, then a resumed 
     await expect(stim1.waitUntilComplete()).rejects.toBeDefined();
     p1.dispose();
 
-    const run = await repository.getStimulation('run-1');
-    expect(run?.status).toBe('failed');
-    expect(run?.entry).toEqual({ collateralName: 'input', payload: { id: 1 } });
-    expect(run?.progress.tasks?.[0]?.neuronName).toBe('n2'); // resumable frontier
-    const attempts1 = await repository.getAttempts('run-1');
+    const stimulation = await repository.getStimulation('stim-1');
+    expect(stimulation?.status).toBe('failed');
+    expect(stimulation?.entry).toEqual({ collateralName: 'input', payload: { id: 1 } });
+    expect(stimulation?.progress.tasks?.[0]?.neuronName).toBe('n2'); // resumable frontier
+    const attempts1 = await repository.getAttempts('stim-1');
     expect(attempts1.map(a => a.status)).toEqual(['failed']);
 
     // Resume — hydrate the persisted frontier and activate as attempt 2.
     control.failStep2 = false;
-    const { tasks, ctx } = serializer.hydrate(run!.progress);
+    const { tasks, ctx } = serializer.hydrate(stimulation!.progress);
     const p2 = new CNSStimulationPersistor({
         repository,
         registry,
-        stimulationId: 'run-1',
-        stimulationAttemptId: 'run-1#2',
+        stimulationId: 'stim-1',
+        stimulationAttemptId: 'stimulation-1#2',
         attemptNumber: 2,
         entry: ENTRY,
     });
@@ -82,7 +82,7 @@ test('persistor: records a failed run with a resumable frontier, then a resumed 
     await stim2.waitUntilComplete();
     p2.dispose();
 
-    const runDone = await repository.getStimulation('run-1');
+    const runDone = await repository.getStimulation('stim-1');
     expect(runDone?.status).toBe('completed');
     expect(runDone?.progress.tasks).toHaveLength(0); // nothing left to resume
     expect(runDone?.entry).toEqual({
@@ -90,7 +90,7 @@ test('persistor: records a failed run with a resumable frontier, then a resumed 
         payload: { id: 1 },
     }); // origin preserved across attempts
 
-    const attempts2 = await repository.getAttempts('run-1');
+    const attempts2 = await repository.getAttempts('stim-1');
     expect(attempts2.map(a => a.attemptNumber)).toEqual([1, 2]);
     expect(attempts2.map(a => a.status)).toEqual(['failed', 'completed']);
 });
@@ -103,8 +103,8 @@ test("full volume: records per-task history with names + inputIndex dedup", asyn
     const p = new CNSStimulationPersistor({
         repository,
         registry,
-        stimulationId: 'run-f',
-        stimulationAttemptId: 'run-f#1',
+        stimulationId: 'stimulation-f',
+        stimulationAttemptId: 'stimulation-f#1',
         attemptNumber: 1,
         entry: ENTRY_,
         volume: 'full',
@@ -115,7 +115,7 @@ test("full volume: records per-task history with names + inputIndex dedup", asyn
     await stim.waitUntilComplete();
     p.dispose();
 
-    const tasks = await repository.getTasks('run-f#1');
+    const tasks = await repository.getTasks('stimulation-f#1');
     // neuron always resolved (via response.neuron) — even name-based
     expect(tasks.map(t => t.neuronName)).toEqual(['n1', 'n2']);
     expect(tasks.map(t => t.dendriteCollateralName)).toEqual([
@@ -131,6 +131,6 @@ test("full volume: records per-task history with names + inputIndex dedup", asyn
     ]);
     expect(tasks.every(t => t.status === 'done')).toBe(true);
 
-    const run = await repository.getStimulation('run-f');
-    expect(run?.status).toBe('completed');
+    const stimulation = await repository.getStimulation('stimulation-f');
+    expect(stimulation?.status).toBe('completed');
 });

@@ -66,7 +66,7 @@ registry.registerCollateral('input', input);
 const repository = new CNSInMemoryStimulationRepository();
 const serializer = new CNSProgressSerializer(registry);
 
-const RUN_ID = 'run:import-user:42';
+const STIM_ID = 'stim:import-user:42';
 const ENTRY = [{ collateralName: 'input', payload: { userId: '42' } }];
 
 const line = (s = '') => console.log(s);
@@ -76,14 +76,14 @@ async function printAdminView(label: string): Promise<void> {
     rule();
     line(`  🖥️  DEVTOOLS ADMIN VIEW — ${label}`);
     rule();
-    const run = await repository.getStimulation(RUN_ID);
-    if (!run) return line('  (no run)');
-    line(`  RUN  ${run.stimulationId}   [${run.status.toUpperCase()}]`);
-    line(`  entry: ${run.entry.collateralName} ← ${JSON.stringify(run.entry.payload)}`);
-    const frontier = run.progress.tasks.map(t => t.neuronName).join(', ') || '—';
+    const stimulation = await repository.getStimulation(STIM_ID);
+    if (!stimulation) return line('  (no stimulation)');
+    line(`  STIM  ${stimulation.stimulationId}   [${stimulation.status.toUpperCase()}]`);
+    line(`  entry: ${stimulation.entry.collateralName} ← ${JSON.stringify(stimulation.entry.payload)}`);
+    const frontier = stimulation.progress.tasks.map(t => t.neuronName).join(', ') || '—';
     line(`  frontier (resumable): ${frontier}`);
     line('');
-    const attempts = await repository.getAttempts(RUN_ID);
+    const attempts = await repository.getAttempts(STIM_ID);
     for (const a of attempts) {
         line(`  ┌ ATTEMPT #${a.attemptNumber}   [${a.status.toUpperCase()}]   ${a.hopCount} hops`);
         const tasks = await repository.getTasks(a.stimulationAttemptId);
@@ -109,8 +109,8 @@ async function main(): Promise<void> {
     const p1 = new CNSStimulationPersistor({
         repository,
         registry,
-        stimulationId: RUN_ID,
-        stimulationAttemptId: `${RUN_ID}#1`,
+        stimulationId: STIM_ID,
+        stimulationAttemptId: `${STIM_ID}#1`,
         attemptNumber: 1,
         entry: ENTRY,
         volume: 'full',
@@ -126,13 +126,13 @@ async function main(): Promise<void> {
     // ── Retry from the panel: fix the fault, RESUME the frontier ──
     line('  🔧 fault fixed — clicking "Retry" resumes the frontier (persistUser only):');
     control.failPersist = false;
-    const run = await repository.getStimulation(RUN_ID);
-    const { tasks, ctx } = serializer.hydrate(run!.progress);
+    const stimulation = await repository.getStimulation(STIM_ID);
+    const { tasks, ctx } = serializer.hydrate(stimulation!.progress);
     const p2 = new CNSStimulationPersistor({
         repository,
         registry,
-        stimulationId: RUN_ID,
-        stimulationAttemptId: `${RUN_ID}#2`,
+        stimulationId: STIM_ID,
+        stimulationAttemptId: `${STIM_ID}#2`,
         attemptNumber: 2,
         entry: ENTRY,
         volume: 'full',

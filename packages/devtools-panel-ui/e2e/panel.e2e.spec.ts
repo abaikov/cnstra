@@ -30,7 +30,7 @@ test.describe('CNStra DevTools Panel E2E', () => {
         // (its Clone action surfaces once a run is auto-selected) or the empty state.
         await expect(
             page
-                .getByText('no runs yet')
+                .getByText('no stimulations tracked')
                 .or(page.getByRole('button', { name: /Clone/ }))
                 .first()
         ).toBeVisible({ timeout: 60000 });

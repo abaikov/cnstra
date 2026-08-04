@@ -1,5 +1,5 @@
 import { CNSDevToolsTransportWs, CNSDevToolsTransportWsOptions } from '../src/index';
-import type { CNSDTOAppBatchMessage } from '@cnstra/devtools-dto';
+import type { TCNSAppBatchMessageDTO } from '@cnstra/devtools-dto';
 
 const MockWebSocket = (global as any).MockWebSocket;
 
@@ -8,7 +8,7 @@ const defaultOpts: CNSDevToolsTransportWsOptions = {
     webSocketImpl: MockWebSocket,
 };
 
-const topologyBatch = (): CNSDTOAppBatchMessage => ({
+const topologyBatch = (): TCNSAppBatchMessageDTO => ({
     type: 'batch',
     items: [{
         type: 'topology',
@@ -19,7 +19,7 @@ const topologyBatch = (): CNSDTOAppBatchMessage => ({
 
 // A valid non-topology batch item (name-based Task) — used where a test just needs
 // "some batch" that is not the topology one.
-const taskBatch = (): CNSDTOAppBatchMessage => ({
+const taskBatch = (): TCNSAppBatchMessageDTO => ({
     type: 'batch',
     items: [{
         type: 'cns.stimulation.task',

@@ -2,23 +2,13 @@ import type { TExoSchema } from '@exodra/core';
 import { bindable } from '@exodra/reactivity';
 import type { TExoBindable } from '@exodra/reactivity';
 import { combine } from '../exo/oimdb-bind';
+import { PANEL, EMPTY_PANEL } from './styles';
 
 // Native Exodra port. TODO(protocol-migration): the Context Store Monitor was
 // built on the per-response `contexts` map of the old StimulationResponse DTO.
-// The @cnstra/devtools-dto protocol models each step as a CNSDTOHop, which has NO
+// The panel now models each step as a name-based `TCNSHopState`, which has NO
 // `contexts` field, so there is no data source for context tracking. Rather than
 // fabricate data, this panel is degraded to a "not available" placeholder.
-
-const PANEL_STYLE =
-    'background:var(--bg-panel);border:2px solid var(--border-infected);' +
-    'border-radius:var(--radius-sm);padding:var(--spacing-sm);' +
-    'font-size:var(--font-size-xs);color:var(--text-primary);' +
-    'font-family:var(--font-primary);box-shadow:0 0 10px var(--shadow-infection);width:100%';
-
-const EMPTY_STYLE =
-    'background:var(--bg-panel);border:2px solid var(--border-primary);' +
-    'border-radius:var(--radius-sm);padding:var(--spacing-sm);' +
-    'font-size:var(--font-size-xs);color:var(--text-muted);text-align:center';
 
 export function contextStoreMonitor(
     selectedAppId: TExoBindable<string | null, string | null>
@@ -26,13 +16,13 @@ export function contextStoreMonitor(
     const isExpanded = bindable(false);
 
     const placeholder = (): TExoSchema => (
-        <div static={{ style: EMPTY_STYLE }}>
+        <div static={{ style: EMPTY_PANEL }}>
             🧮 Select an app to monitor context store
         </div>
     );
 
     const panel = (expanded: boolean): TExoSchema => (
-        <div static={{ style: PANEL_STYLE }}>
+        <div static={{ style: PANEL }}>
             <div
                 static={{
                     style:

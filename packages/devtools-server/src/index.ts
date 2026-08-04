@@ -1,25 +1,27 @@
 import {
-    CNSDTOApp,
-    CNSDTOAppBatchMessageSchema,
-    CNSDTOClientMessageSchema,
-    CNSDTOTopologyMessage,
+    TCNSAppDTO,
+    CNSAppBatchMessageDTOSchema,
+    CNSClientMessageDTOSchema,
+    TCNSTopologyMessageDTO,
 } from '@cnstra/devtools-dto';
+import type { TCNSStimulationViewDTO } from '@cnstra/devtools-dto';
+import { buildAttemptId, buildCloneId } from '@cnstra/devtools-dto';
 import type { ICNSStimulationRepository } from '@cnstra/persist';
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 import { WebSocket } from 'ws';
 
 // ─── Repository interface ─────────────────────────────────────────────────────
 
-export type CNSDTOTopologySnapshot = Omit<CNSDTOTopologyMessage, 'type'>;
+export type TCNSTopologySnapshotDTO = Omit<TCNSTopologyMessageDTO, 'type'>;
 
 export interface ICNSDevToolsServerRepository {
     // Apps
-    upsertApp(app: CNSDTOApp): void | Promise<void>;
-    listApps(): CNSDTOApp[] | Promise<CNSDTOApp[]>;
+    upsertApp(app: TCNSAppDTO): void | Promise<void>;
+    listApps(): TCNSAppDTO[] | Promise<TCNSAppDTO[]>;
 
     // Topology
-    saveTopology(snapshot: CNSDTOTopologySnapshot): void | Promise<void>;
-    getTopology(cnsId?: string): CNSDTOTopologySnapshot[] | Promise<CNSDTOTopologySnapshot[]>;
+    saveTopology(snapshot: TCNSTopologySnapshotDTO): void | Promise<void>;
+    getTopology(cnsId?: string): TCNSTopologySnapshotDTO[] | Promise<TCNSTopologySnapshotDTO[]>;
 
     // CNS ↔ App mapping
     addCnsToApp(appId: string, cnsId: string): void | Promise<void>;
@@ -75,7 +77,7 @@ export class CNSDevToolsServer {
 
         // App batch (topology + stimulation events)
         if (type === 'batch') {
-            const result = CNSDTOAppBatchMessageSchema.safeParse(data);
+            const result = CNSAppBatchMessageDTOSchema.safeParse(data);
             if (!result.success) return;
             for (const item of result.data.items) {
                 await this.handleAppBatchItem(ws, item);
@@ -84,7 +86,7 @@ export class CNSDevToolsServer {
         }
 
         // UI client message
-        const clientResult = CNSDTOClientMessageSchema.safeParse(data);
+        const clientResult = CNSClientMessageDTOSchema.safeParse(data);
         if (!clientResult.success) return;
         const msg = clientResult.data;
 
@@ -108,26 +110,26 @@ export class CNSDevToolsServer {
                 await this.handleStimulationClone(ws, msg);
                 break;
             case 'cns.stimulations.query':
-                await this.handleRunsQuery(ws, msg);
+                await this.handleStimulationsQuery(ws, msg);
                 break;
         }
     }
 
     /**
      * Name-based observability (Phase 2b-3): project the durable
-     * `ICNSStimulationRepository` into the run/attempt/task roster the panel
+     * `ICNSStimulationRepository` into the stimulation/attempt/task roster the panel
      * renders. This replaces the legacy id-based `stimulations.query`/`hops.query`.
      */
-    private async handleRunsQuery(ws: WebSocket, msg: any): Promise<void> {
+    private async handleStimulationsQuery(ws: WebSocket, msg: any): Promise<void> {
         const stims = await this.stimulationRepository.listStimulations(
             msg.scopeName ? { scopeName: msg.scopeName } : undefined
         );
-        const runs = [];
+        const stimulations: TCNSStimulationViewDTO[] = [];
         for (const stim of stims) {
             const attempts = await this.stimulationRepository.getAttempts(
                 stim.stimulationId
             );
-            const attemptViews = [];
+            const attemptViews: TCNSStimulationViewDTO['attempts'] = [];
             for (const a of attempts) {
                 const tasks = await this.stimulationRepository.getTasks(
                     a.stimulationAttemptId
@@ -155,8 +157,8 @@ export class CNSDevToolsServer {
                     })),
                 });
             }
-            runs.push({
-                runId: stim.stimulationId,
+            stimulations.push({
+                stimulationId: stim.stimulationId,
                 status: stim.status,
                 scopeName: stim.scopeName,
                 entry: {
@@ -170,7 +172,7 @@ export class CNSDevToolsServer {
         this.send(ws, {
             type: 'cns.stimulations.result',
             requestId: msg.requestId,
-            runs,
+            stimulations,
         });
     }
 
@@ -185,7 +187,7 @@ export class CNSDevToolsServer {
         if (this.uiClients.size === 0) this.stopMetrics();
     }
 
-    async getActiveApps(): Promise<CNSDTOApp[]> {
+    async getActiveApps(): Promise<TCNSAppDTO[]> {
         return this.repository.listApps();
     }
 
@@ -222,7 +224,7 @@ export class CNSDevToolsServer {
         const { appId, cnsId, appName, version, timestamp, neurons, collaterals, dendrites } = msg;
 
         const now = Date.now();
-        const app: CNSDTOApp = {
+        const app: TCNSAppDTO = {
             id: appId,
             name: appName,
             version,
@@ -334,7 +336,7 @@ export class CNSDevToolsServer {
 
         const attempts = await this.stimulationRepository.getAttempts(msg.stimulationId);
         const nextAttempt = attempts.length + 1;
-        const stimulationAttemptId = `${msg.stimulationId}#${nextAttempt}`;
+        const stimulationAttemptId = buildAttemptId(msg.stimulationId, nextAttempt);
 
         this.send(ws, {
             type: 'stimulation.retry.accepted',
@@ -374,8 +376,8 @@ export class CNSDevToolsServer {
         const appSockets = await this.resolveScopeApp(stim.scopeName);
         if (!appSockets) return reject('app not connected');
 
-        const newStimulationId = `${msg.stimulationId}-clone-${Date.now()}`;
-        const stimulationAttemptId = `${newStimulationId}#1`;
+        const newStimulationId = buildCloneId(msg.stimulationId);
+        const stimulationAttemptId = buildAttemptId(newStimulationId, 1);
 
         this.send(ws, {
             type: 'stimulation.clone.accepted',

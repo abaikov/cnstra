@@ -1,8 +1,8 @@
 import type { ICNSStimulationRepository } from './interfaces/ICNSStimulationRepository';
 import type {
-    TCNSStimulationPersisted,
-    TCNSStimulationAttemptPersisted,
-    TCNSStimulationTaskPersisted,
+    TCNSStimulationState,
+    TCNSStimulationAttempt,
+    TCNSStimulationTask,
 } from '@cnstra/persist-dto';
 
 /**
@@ -43,12 +43,12 @@ export type TCNSInMemoryStimulationRepositoryOptions = {
 export class CNSInMemoryStimulationRepository
     implements ICNSStimulationRepository
 {
-    private readonly stimulations = new Map<string, TCNSStimulationPersisted>();
+    private readonly stimulations = new Map<string, TCNSStimulationState>();
     private readonly attempts = new Map<
         string,
-        TCNSStimulationAttemptPersisted
+        TCNSStimulationAttempt
     >();
-    private readonly tasks = new Map<string, TCNSStimulationTaskPersisted[]>();
+    private readonly tasks = new Map<string, TCNSStimulationTask[]>();
     /** stimulationId → last-write epoch ms, for TTL + LRU eviction. */
     private readonly updatedAt = new Map<string, number>();
 
@@ -57,14 +57,14 @@ export class CNSInMemoryStimulationRepository
     ) {}
 
     async saveStimulation(
-        stimulation: TCNSStimulationPersisted
+        stimulation: TCNSStimulationState
     ): Promise<void> {
         this.stimulations.set(stimulation.stimulationId, stimulation);
         this.touch(stimulation.stimulationId);
         this.sweep();
     }
 
-    async saveAttempt(attempt: TCNSStimulationAttemptPersisted): Promise<void> {
+    async saveAttempt(attempt: TCNSStimulationAttempt): Promise<void> {
         this.attempts.set(attempt.stimulationAttemptId, attempt);
         this.touch(attempt.stimulationId);
         // Terminal flush writes saveStimulation THEN saveAttempt, so this is the last
@@ -80,7 +80,7 @@ export class CNSInMemoryStimulationRepository
         this.sweep();
     }
 
-    async appendTask(task: TCNSStimulationTaskPersisted): Promise<void> {
+    async appendTask(task: TCNSStimulationTask): Promise<void> {
         const bucket = this.tasks.get(task.stimulationAttemptId);
         if (bucket) bucket.push(task);
         else this.tasks.set(task.stimulationAttemptId, [task]);
@@ -88,13 +88,13 @@ export class CNSInMemoryStimulationRepository
 
     async getStimulation(
         stimulationId: string
-    ): Promise<TCNSStimulationPersisted | undefined> {
+    ): Promise<TCNSStimulationState | undefined> {
         return this.stimulations.get(stimulationId);
     }
 
     async listStimulations(filter?: {
         scopeName?: string;
-    }): Promise<TCNSStimulationPersisted[]> {
+    }): Promise<TCNSStimulationState[]> {
         // Newest-first (no timestamps in the model — storage owns time; insertion
         // order reversed is the in-memory proxy).
         const all = [...this.stimulations.values()].reverse();
@@ -104,7 +104,7 @@ export class CNSInMemoryStimulationRepository
 
     async getAttempts(
         stimulationId: string
-    ): Promise<TCNSStimulationAttemptPersisted[]> {
+    ): Promise<TCNSStimulationAttempt[]> {
         return [...this.attempts.values()]
             .filter(a => a.stimulationId === stimulationId)
             .sort((a, b) => a.attemptNumber - b.attemptNumber);
@@ -112,7 +112,7 @@ export class CNSInMemoryStimulationRepository
 
     async getTasks(
         stimulationAttemptId: string
-    ): Promise<TCNSStimulationTaskPersisted[]> {
+    ): Promise<TCNSStimulationTask[]> {
         return this.tasks.get(stimulationAttemptId) ?? [];
     }
 

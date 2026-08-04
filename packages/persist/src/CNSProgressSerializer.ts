@@ -4,8 +4,8 @@ import type {
     TCNSNeuronActivationTask,
 } from '@cnstra/types';
 import { CNSPersistOptionsRegistry } from './CNSPersistOptionsRegistry';
-import { CNSStimulationContextStore } from './CNSStimulationContextStore';
-import type { TCNSProgress, TCNSSerializedTask } from '@cnstra/persist-dto';
+import { CNSStimulationContextStore } from '@cnstra/core';
+import type { TCNSProgress, TCNSPlannedTaskJSON } from '@cnstra/persist-dto';
 
 /**
  * Turns CNStra's in-memory frontier (live neuron/collateral object references plus
@@ -53,7 +53,7 @@ export class CNSProgressSerializer {
 
     private serializeTasks(
         tasks: ReadonlyArray<TCNSNeuronActivationTask>
-    ): TCNSSerializedTask[] {
+    ): TCNSPlannedTaskJSON[] {
         return tasks.map(task => {
             const neuronName = this.requireName(
                 this.registry.getNeuronName(task.neuron as never),
@@ -89,7 +89,7 @@ export class CNSProgressSerializer {
     }
 
     private hydrateTasks(
-        serialized: ReadonlyArray<TCNSSerializedTask>
+        serialized: ReadonlyArray<TCNSPlannedTaskJSON>
     ): TCNSNeuronActivationTask<any>[] {
         return serialized.map(s => {
             const neuron = this.registry.getNeuron(s.neuronName);

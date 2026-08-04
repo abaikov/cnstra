@@ -8,10 +8,11 @@ import {
     readEntitiesByIndexKey,
     subscribeEntitiesByIndexKey,
 } from '../exo/oimdb-bind';
+import { notNull, fmtTime, nodeKey } from '../utils/format';
 import { DECAY_ICONS } from './theme-utils';
 import { jsonView } from './json-view';
 import { db } from '../model';
-import type { TDendrite, UINeuron, UIHop } from '../model';
+import type { TDendrite, UINeuron, TCNSHopState } from '../model';
 
 // Native Exodra port of the React <NeuronDetailsPanel> island. A fixed side overlay
 // shown while a neuron is selected. Data comes from @oimdb/exodra read/subscribe
@@ -54,35 +55,38 @@ const activityLevel = (
     return { level: 'Critical', status: 'critical' };
 };
 
-const fmtTime = (ts: number): string => new Date(ts).toLocaleTimeString();
-const notNull = <T,>(a: readonly (T | undefined)[]): T[] =>
-    a.filter((x): x is T => x != null);
 
 export function neuronDetailsPanel(
-    neuronIdB: TExoBindable<string | null>,
+    neuronRefB: TExoBindable<{ cnsId: string; name: string } | null>,
     appIdB: TExoBindable<string | undefined>,
     onClose: () => void
 ): TExoSchema {
     const neuronB = bindable<UINeuron | undefined>(undefined);
     const dendritesB = bindable<TDendrite[]>([]);
-    const responsesB = bindable<UIHop[]>([]);
+    const responsesB = bindable<TCNSHopState[]>([]);
 
     let unsubs: Array<() => void> = [];
     const read = (): void => {
-        const nid = neuronIdB.getValue();
+        const ref = neuronRefB.getValue();
         const appId = appIdB.getValue() || 'unknown';
         neuronB.setValue(
-            nid ? (readEntityByPk(db.neurons, nid) as UINeuron | undefined) : undefined
+            ref
+                ? (readEntityByPk(db.neurons, [ref.cnsId, ref.name]) as
+                      | UINeuron
+                      | undefined)
+                : undefined
         );
+        // The neuronName index is primitive (names can repeat across cns), so scope
+        // the result to this neuron's cns.
         dendritesB.setValue(
-            nid
+            ref
                 ? notNull(
                       readEntitiesByIndexKey(
                           db.dendrites,
-                          db.dendrites.indexes.neuronId,
-                          nid
+                          db.dendrites.indexes.neuronName,
+                          ref.name
                       )
-                  )
+                  ).filter(d => d.cnsId === ref.cnsId)
                 : []
         );
         responsesB.setValue(
@@ -98,40 +102,34 @@ export function neuronDetailsPanel(
     const wire = (): void => {
         for (const u of unsubs) u();
         unsubs = [];
-        const nid = neuronIdB.getValue();
+        const ref = neuronRefB.getValue();
         const appId = appIdB.getValue() || 'unknown';
         read();
-        if (nid) {
+        if (ref) {
             unsubs.push(
-                subscribeEntityByPk(db.neurons, nid, read),
-                subscribeEntitiesByIndexKey(db.dendrites, db.dendrites.indexes.neuronId, nid, read)
+                subscribeEntityByPk(db.neurons, [ref.cnsId, ref.name], read),
+                subscribeEntitiesByIndexKey(db.dendrites, db.dendrites.indexes.neuronName, ref.name, read)
             );
         }
         unsubs.push(
             subscribeEntitiesByIndexKey(db.responses, db.responses.indexes.appId, appId, read)
         );
     };
-    neuronIdB.subscribe(wire);
+    neuronRefB.subscribe(wire);
     appIdB.subscribe(wire);
     wire();
 
-    const collateralName = (
-        collateralId: string | null | undefined
-    ): string | undefined =>
-        collateralId ? db.collaterals.getOneByPk(collateralId)?.name : undefined;
-
-    const responseRow = (resp: UIHop): TExoSchema => (
+    const responseRow = (resp: TCNSHopState): TExoSchema => (
         <div static={{ style: 'font-size:var(--font-size-xs);padding:var(--spacing-xs) 0;border-bottom:1px dashed var(--border-primary)' }}>
             <div static={{ style: 'display:flex;justify-content:space-between' }}>
-                <span static={{ style: 'color:var(--text-accent)' }}>{collateralName(resp.inputCollateralId) || '?'}</span>
+                <span static={{ style: 'color:var(--text-accent)' }}>{resp.dendriteCollateralName || '?'}</span>
                 <span>→</span>
-                <span static={{ style: 'color:var(--decay-orange)' }}>{collateralName(resp.outputCollateralId) || 'no output'}</span>
+                <span static={{ style: 'color:var(--decay-orange)' }}>{resp.output?.collateralName || 'no output'}</span>
             </div>
             <div static={{ style: 'color:var(--text-muted);font-size:var(--font-size-2xs)' }}>{fmtTime(resp.startedAt)}</div>
-            {resp.inputPayload || resp.outputPayload ? (
+            {resp.output?.payload != null ? (
                 <div static={{ style: 'margin-top:4px;font-size:var(--font-size-2xs)' }}>
-                    {resp.inputPayload ? jsonView(resp.inputPayload) : <div />}
-                    {resp.outputPayload ? jsonView(resp.outputPayload) : <div />}
+                    {jsonView(resp.output.payload)}
                 </div>
             ) : (
                 <div />
@@ -139,10 +137,10 @@ export function neuronDetailsPanel(
         </div>
     );
 
-    const dendriteBlock = (dendrite: TDendrite, responses: UIHop[]): TExoSchema => {
-        const dName = collateralName(dendrite.collateralId);
+    const dendriteBlock = (dendrite: TDendrite, responses: TCNSHopState[]): TExoSchema => {
+        const dName = dendrite.collateralName;
         const dendriteResponses = responses.filter(
-            r => collateralName(r.inputCollateralId) === dName
+            r => r.dendriteCollateralName === dName
         );
         const recent = dendriteResponses
             .slice()
@@ -150,7 +148,7 @@ export function neuronDetailsPanel(
             .slice(0, 15);
         return (
             <div static={{ style: 'padding:var(--spacing-sm);background:var(--bg-card);border:1px solid var(--border-primary);border-radius:var(--radius-sm)' }}>
-                <div static={{ style: 'margin-bottom:var(--spacing-xs);color:var(--decay-blue);font-weight:bold' }}>{DECAY_ICONS.dna} {dName ?? dendrite.collateralId}</div>
+                <div static={{ style: 'margin-bottom:var(--spacing-xs);color:var(--decay-blue);font-weight:bold' }}>{DECAY_ICONS.dna} {dName}</div>
                 <div static={{ style: 'font-size:var(--font-size-xs);color:var(--text-muted)' }}>Responses: {String(dendriteResponses.length)}</div>
                 {recent.length > 0 ? (
                     <div static={{ style: 'margin-top:var(--spacing-xs);padding-left:var(--spacing-sm);border-left:2px solid var(--border-primary)' }}>
@@ -166,29 +164,36 @@ export function neuronDetailsPanel(
     const render = (
         neuron: UINeuron | undefined,
         dendrites: TDendrite[],
-        responses: UIHop[]
+        responses: TCNSHopState[]
     ): TExoSchema => {
         if (!neuron) return <div />;
 
-        const dendriteNames = dendrites
-            .map(d => collateralName(d.collateralId))
-            .filter((n): n is string => Boolean(n));
+        // Scope the app-wide hop stream to THIS neuron's cns (names are unique per
+        // cns, not per app — guard against a same-named collateral in another cns).
+        const scopedResponses = responses.filter(
+            r => r.scopeName === neuron.cnsId
+        );
+        const dendriteNames = dendrites.map(d => d.collateralName);
         const neuronCollateralNames = db.collaterals
             .getAll()
-            .filter(c => c.neuronId === neuron.id)
+            .filter(
+                c => c.cnsId === neuron.cnsId && c.ownerNeuronName === neuron.name
+            )
             .map(c => c.name);
-        const inputSignals = responses.filter(r => {
-            const name = collateralName(r.inputCollateralId);
-            return name != null && dendriteNames.includes(name);
-        });
-        const outputSignals = responses.filter(r => {
-            const name = collateralName(r.outputCollateralId);
-            return name != null && neuronCollateralNames.includes(name);
-        });
+        const inputSignals = scopedResponses.filter(
+            r =>
+                r.dendriteCollateralName != null &&
+                dendriteNames.includes(r.dendriteCollateralName)
+        );
+        const outputSignals = scopedResponses.filter(
+            r =>
+                r.output != null &&
+                neuronCollateralNames.includes(r.output.collateralName)
+        );
 
         try {
             (window as unknown as Record<string, unknown>).__neuronPanelDebug = {
-                neuronId: neuron.id,
+                neuronId: nodeKey(neuron.cnsId, neuron.name),
                 appId: appIdB.getValue() || 'unknown',
                 allResponses: responses.length,
                 inputSignals: inputSignals.length,
@@ -200,14 +205,17 @@ export function neuronDetailsPanel(
             /* debug only */
         }
 
-        const activity = activityLevel(neuron.stimulationCount || 0);
+        // Activity is derived from this neuron's own signal traffic (no stored,
+        // polling-inflated counter).
+        const signalCount = inputSignals.length + outputSignals.length;
+        const activity = activityLevel(signalCount);
 
         return (
             <div static={{ class: 'neuron-details-panel', style: 'position:fixed;top:0;right:0;width:600px;height:100vh;background:var(--bg-panel);border:2px solid var(--border-infected);border-top:none;border-right:none;box-shadow:inset 0 0 20px var(--shadow-blood),-5px 0 15px var(--shadow-dark);z-index:1000;overflow-y:auto;padding:var(--spacing-lg)' }}>
                 <div static={{ style: 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--spacing-lg);gap:var(--spacing-md)' }}>
                     <div static={{ style: 'flex:1' }}>
                         <h2 static={{ class: 'heading-decay md decay-glow', style: 'margin:0;color:var(--infection-red);text-shadow:0 0 5px var(--infection-red);font-size:var(--font-size-lg);line-height:1.2' }}>{DECAY_ICONS.brain} {neuron.name}</h2>
-                        <div static={{ style: 'font-size:var(--font-size-xs);color:var(--text-muted);margin-top:var(--spacing-xs)' }}>ID: <code static={{ style: 'color:var(--text-accent)' }}>{neuron.id}</code></div>
+                        <div static={{ style: 'font-size:var(--font-size-xs);color:var(--text-muted);margin-top:var(--spacing-xs)' }}>ID: <code static={{ style: 'color:var(--text-accent)' }}>{nodeKey(neuron.cnsId, neuron.name)}</code></div>
                     </div>
                     <button static={{ class: 'btn-infected', style: 'min-width:40px;padding:var(--spacing-xs);font-size:var(--font-size-sm)' }} handlers={{ onClick: onClose }}>✕</button>
                 </div>
@@ -223,7 +231,7 @@ export function neuronDetailsPanel(
 
                 {decayCard(
                     'Activity Metrics',
-                    (neuron.stimulationCount || 0) > 30,
+                    signalCount > 30,
                     <div static={{ style: 'display:grid;grid-template-columns:1fr 1fr;gap:var(--spacing-sm)' }}>
                         <div static={{ style: 'text-align:center' }}>
                             <div static={{ style: 'display:flex;gap:var(--spacing-md);justify-content:center' }}>
@@ -249,7 +257,7 @@ export function neuronDetailsPanel(
                     false,
                     dendrites.length > 0 ? (
                         <div static={{ style: 'display:flex;flex-direction:column;gap:var(--spacing-md)' }}>
-                            {dendrites.map(d => dendriteBlock(d, responses))}
+                            {dendrites.map(d => dendriteBlock(d, scopedResponses))}
                         </div>
                     ) : (
                         <div static={{ style: 'text-align:center;color:var(--text-muted);font-style:italic' }}>{DECAY_ICONS.skull} No dendrites found</div>

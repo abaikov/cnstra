@@ -7,8 +7,8 @@ import {
 } from '@cnstra/persist';
 import type { ICNSStimulationRepository } from '@cnstra/persist';
 import type {
-    CNSDTOAppBatchMessage,
-    CNSDTOAppBatchItem,
+    TCNSAppBatchMessageDTO,
+    TCNSAppBatchItemDTO,
 } from '@cnstra/devtools-dto';
 
 // A real tiny CNS: n1 (neuronOne) fires on `entryCol` → emits `midCol`; n2 (neuronTwo)
@@ -54,10 +54,10 @@ function buildCNS() {
  * directly here.
  */
 class ForwardingTransport implements ICNSDevToolsTransport {
-    items: CNSDTOAppBatchItem[] = [];
+    items: TCNSAppBatchItemDTO[] = [];
     constructor(private readonly repo: ICNSStimulationRepository) {}
 
-    async sendBatch(message: CNSDTOAppBatchMessage): Promise<void> {
+    async sendBatch(message: TCNSAppBatchMessageDTO): Promise<void> {
         for (const item of message.items) {
             this.items.push(item);
             switch (item.type) {
@@ -75,8 +75,8 @@ class ForwardingTransport implements ICNSDevToolsTransport {
     }
 }
 
-describe('trackStimulations — name-based run/attempt/task over the wire', () => {
-    it('persists a failing stimulation as run → attempt → tasks, legacy path intact', async () => {
+describe('trackStimulations — name-based stimulation/attempt/task over the wire', () => {
+    it('persists a failing stimulation as stimulation → attempt → tasks, legacy path intact', async () => {
         const { cns, registry, entryCol } = buildCNS();
         const repo = new CNSInMemoryStimulationRepository();
         const transport = new ForwardingTransport(repo);

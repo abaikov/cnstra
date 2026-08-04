@@ -127,3 +127,12 @@ test('without resume, a retried job re-runs the whole flow from the entry signal
     // frontier or context, so it is a brand-new stimulation from the entry.
     expect(ran).toEqual(['n1', 'n2#1', 'n1', 'n2#1']);
 });
+
+test('graceful shutdown stops taking new jobs', async () => {
+    const { cns, registry } = buildFlow();
+    const boss = new FakeBoss();
+    const handle = await createCNSWorker({ boss, cns, registry, queue: 'cns' });
+    await handle.shutdown({ drainMs: 0 }); // nothing in-flight → resolves at once
+    // a job arriving during/after shutdown is rejected → pg-boss retries it later
+    await expect(boss.run(JOB)).rejects.toThrow(/shutting down/);
+});

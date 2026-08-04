@@ -6,8 +6,10 @@ import { ICNS } from '../interfaces/ICNS';
  * lives here. Factory layers add their own fields via the `TExt` extension
  * (see {@link TCNSHandlerContext}), so the base stays clean for neurons that
  * don't opt into anything.
+ *
+ * Internal building block for {@link TCNSHandlerContext} — not part of the public API.
  */
-export type TCNSHandlerContextBase<TContextValue> =
+type TCNSHandlerContextBase<TContextValue> =
     TCNSLocalContextValueStore<TContextValue> & {
         abortSignal?: AbortSignal;
         cns?: ICNS<any, any>;

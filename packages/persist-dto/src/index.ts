@@ -3,28 +3,25 @@
 // name only — it is never persisted (the code is its source of truth).
 
 // ── shared leaf types ──
-export type { TCNSSignalRef } from './types/TCNSSignalRef';
-export type { TCNSStimulationStatus } from './types/TCNSStimulationStatus';
-export type { TCNSStimulationTaskStatus } from './types/TCNSStimulationTaskStatus';
-export type { TCNSStimulationVolume } from './types/TCNSStimulationVolume';
+export type { TCNSSignalJSON } from './types/TCNSSignalJSON';
+export type { ECNSStimulationStatus } from './types/ECNSStimulationStatus';
+export type { ECNSStimulationTaskStatus } from './types/ECNSStimulationTaskStatus';
+export type { ECNSStimulationVolume } from './types/ECNSStimulationVolume';
 
 // ── frontier / resume state ──
-export type { TCNSSerializedTask } from './types/TCNSSerializedTask';
+export type { TCNSPlannedTaskJSON } from './types/TCNSPlannedTaskJSON';
 export type { TCNSProgress } from './types/TCNSProgress';
 
-// ── entities: emit (Dto) + stored (Persisted) ──
-export type { TCNSStimulationDto } from './types/TCNSStimulationDto';
-export type { TCNSStimulationPersisted } from './types/TCNSStimulationPersisted';
-export type { TCNSStimulationAttemptDto } from './types/TCNSStimulationAttemptDto';
-export type { TCNSStimulationAttemptPersisted } from './types/TCNSStimulationAttemptPersisted';
-export type { TCNSStimulationTaskDto } from './types/TCNSStimulationTaskDto';
-export type { TCNSStimulationTaskPersisted } from './types/TCNSStimulationTaskPersisted';
+// ── entities: the persisted stimulation / attempt / task model ──
+export type { TCNSStimulationState } from './types/TCNSStimulationState';
+export type { TCNSStimulationAttempt } from './types/TCNSStimulationAttempt';
+export type { TCNSStimulationTask } from './types/TCNSStimulationTask';
 
 // ── wire actions: retry / clone (panel ↔ server) ──
 export type { TCNSStimulationActionOptions } from './messages/TCNSStimulationActionOptions';
-export type { TCNSStimulationRetryMessage } from './messages/TCNSStimulationRetryMessage';
-export type { TCNSStimulationCloneMessage } from './messages/TCNSStimulationCloneMessage';
-export type { TCNSStimulationRetryAcceptedMessage } from './messages/TCNSStimulationRetryAcceptedMessage';
-export type { TCNSStimulationRetryRejectedMessage } from './messages/TCNSStimulationRetryRejectedMessage';
-export type { TCNSStimulationCloneAcceptedMessage } from './messages/TCNSStimulationCloneAcceptedMessage';
-export type { TCNSStimulationCloneRejectedMessage } from './messages/TCNSStimulationCloneRejectedMessage';
+export type { TCNSStimulationRetryRequest } from './messages/TCNSStimulationRetryRequest';
+export type { TCNSStimulationCloneRequest } from './messages/TCNSStimulationCloneRequest';
+export type { TCNSStimulationRetryAccepted } from './messages/TCNSStimulationRetryAccepted';
+export type { TCNSStimulationRetryRejected } from './messages/TCNSStimulationRetryRejected';
+export type { TCNSStimulationCloneAccepted } from './messages/TCNSStimulationCloneAccepted';
+export type { TCNSStimulationCloneRejected } from './messages/TCNSStimulationCloneRejected';

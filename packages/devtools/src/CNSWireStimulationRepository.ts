@@ -1,10 +1,10 @@
 import type {
     ICNSStimulationWriter,
-    TCNSStimulationPersisted,
-    TCNSStimulationAttemptPersisted,
-    TCNSStimulationTaskPersisted,
+    TCNSStimulationState,
+    TCNSStimulationAttempt,
+    TCNSStimulationTask,
 } from '@cnstra/persist';
-import type { CNSDTOAppBatchItem } from '@cnstra/devtools-dto';
+import type { TCNSAppBatchItemDTO } from '@cnstra/devtools-dto';
 
 /**
  * Producer-side {@link ICNSStimulationWriter} that turns every write from a
@@ -19,23 +19,23 @@ import type { CNSDTOAppBatchItem } from '@cnstra/devtools-dto';
  * correct. The read/list/timeline surface lives on the server store.
  */
 export class CNSWireStimulationRepository implements ICNSStimulationWriter {
-    constructor(private readonly send: (item: CNSDTOAppBatchItem) => void) {}
+    constructor(private readonly send: (item: TCNSAppBatchItemDTO) => void) {}
 
     async saveStimulation(
-        stimulation: TCNSStimulationPersisted
+        stimulation: TCNSStimulationState
     ): Promise<void> {
         this.send({ type: 'cns.stimulation', data: stimulation });
     }
 
-    async saveAttempt(attempt: TCNSStimulationAttemptPersisted): Promise<void> {
+    async saveAttempt(attempt: TCNSStimulationAttempt): Promise<void> {
         this.send({ type: 'cns.stimulation.attempt', data: attempt });
     }
 
-    async appendTask(task: TCNSStimulationTaskPersisted): Promise<void> {
+    async appendTask(task: TCNSStimulationTask): Promise<void> {
         this.send({ type: 'cns.stimulation.task', data: task });
     }
 
-    async getStimulation(): Promise<TCNSStimulationPersisted | undefined> {
+    async getStimulation(): Promise<TCNSStimulationState | undefined> {
         return undefined;
     }
 }

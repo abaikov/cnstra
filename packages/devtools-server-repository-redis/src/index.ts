@@ -1,8 +1,8 @@
 import type {
     ICNSDevToolsServerRepository,
-    CNSDTOTopologySnapshot,
+    TCNSTopologySnapshotDTO,
 } from '@cnstra/devtools-server';
-import type { CNSDTOApp } from '@cnstra/devtools-dto';
+import type { TCNSAppDTO } from '@cnstra/devtools-dto';
 
 /**
  * Minimal structural view of an `ioredis` client — only the commands this
@@ -53,18 +53,18 @@ export class CNSDevToolsServerRepositoryRedis
 
     // ─── Apps ───────────────────────────────────────────────────────────────
 
-    async upsertApp(app: CNSDTOApp): Promise<void> {
+    async upsertApp(app: TCNSAppDTO): Promise<void> {
         await this.redis.hset(`${this.p}apps`, app.id, JSON.stringify(app));
     }
 
-    async listApps(): Promise<CNSDTOApp[]> {
+    async listApps(): Promise<TCNSAppDTO[]> {
         const all = await this.redis.hgetall(`${this.p}apps`);
-        return Object.values(all ?? {}).map(v => JSON.parse(v) as CNSDTOApp);
+        return Object.values(all ?? {}).map(v => JSON.parse(v) as TCNSAppDTO);
     }
 
     // ─── Topology ───────────────────────────────────────────────────────────
 
-    async saveTopology(snapshot: CNSDTOTopologySnapshot): Promise<void> {
+    async saveTopology(snapshot: TCNSTopologySnapshotDTO): Promise<void> {
         await this.redis.hset(
             `${this.p}topology`,
             snapshot.cnsId,
@@ -72,15 +72,15 @@ export class CNSDevToolsServerRepositoryRedis
         );
     }
 
-    async getTopology(cnsId?: string): Promise<CNSDTOTopologySnapshot[]> {
+    async getTopology(cnsId?: string): Promise<TCNSTopologySnapshotDTO[]> {
         if (cnsId) {
             const raw = await this.redis.hget(`${this.p}topology`, cnsId);
-            const snap = parse<CNSDTOTopologySnapshot>(raw);
+            const snap = parse<TCNSTopologySnapshotDTO>(raw);
             return snap ? [snap] : [];
         }
         const all = await this.redis.hgetall(`${this.p}topology`);
         return Object.values(all ?? {}).map(
-            v => JSON.parse(v) as CNSDTOTopologySnapshot
+            v => JSON.parse(v) as TCNSTopologySnapshotDTO
         );
     }
 

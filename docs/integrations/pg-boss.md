@@ -11,7 +11,7 @@ slug: /integrations/pg-boss
 already on Postgres and want durable jobs, retries, backoff, scheduling and singleton
 guarantees **without adding Redis**, it pairs well with CNStra.
 
-This guide mirrors the [Message Brokers guide](/docs/integrations/message-brokers): the core
+This guide mirrors the [BullMQ guide](/docs/integrations/bullmq): the core
 model is **one job = one stimulation**. The one thing you must get right for a queue is that
 CNStra's runtime uses **object identity** for neurons/collaterals and stores context as a
 `Map<object, unknown>` — those references are **not portable across processes**. So jobs carry
@@ -48,7 +48,7 @@ const job = stimulationJob(registry, importUser, { userId: '42' });
 await enqueueStimulation(boss, 'cns', job);
 ```
 
-Under the hood the worker does exactly what the message-brokers guide shows, just resolved by
+Under the hood the worker does exactly what the BullMQ guide shows, just resolved by
 name:
 
 ```ts
@@ -106,7 +106,7 @@ the checkpoint is keyed by **job id**. Three levels:
   pg-boss's `Job` has no mutable native progress field (unlike BullMQ), so the checkpoint
   lives in its own table (`cns_pgboss_progress`, keyed by job id). Auto-created on first use,
   or manage it yourself: `DATABASE_URL=… npx cnstra-pgboss-progress migrate`. The store is
-  **pluggable** — swap in [`@cnstra/progress-redis`](/docs/integrations/message-brokers) or
+  **pluggable** — swap in [`@cnstra/progress-redis`](/docs/integrations/bullmq) or
   any `ICNSProgressRepository`. See [Durable execution](/docs/advanced/durable-execution) for
   how `resume` (frontier) relates to `observe` (history).
 - **In-process partial resume.** `cns.activate(stimulation.getFailedTasks(), …)` resumes only
@@ -123,12 +123,33 @@ const store = new CNSPgBossProgressRepository({ connectionString: DATABASE_URL }
 await store.deleteStale(24 * 60 * 60 * 1000); // e.g. a daily cron
 ```
 
+## Graceful shutdown
+
+`createCNSWorker` resolves to `{ workId, shutdown }`. On `SIGTERM`/`SIGINT` call `shutdown()`:
+it stops taking new jobs, drains in-flight stimulations for up to `drainMs` (default 10s), then
+**aborts** the rest — their remaining tasks become the frontier, the resume checkpoint records
+it, and the job's retry resumes there. It does **not** stop your `boss` or close your stores —
+you own those, so stop the boss and close stores after it resolves (checkpoint lands first).
+
+```ts
+const { shutdown } = await createCNSWorker({ boss, cns, registry, queue: 'cns', resume });
+
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(sig, async () => {
+    await shutdown({ drainMs: 15_000 }); // abort + checkpoint in-flight
+    await boss.stop();                    // you own the boss
+    // await pgStore.close();             // then your stores
+    process.exit(0);
+  });
+}
+```
+
 ## Non-serializable data
 
 Queue payloads must be JSON (pg-boss stores `jsonb`). Keep blobs/handles in-process: a
 "controller" neuron holds them and launches an **inner stimulation** via `ctx.cns.stimulate(...)`,
 while only serializable IDs go on the queue. This is the same pattern as the
-[Message Brokers guide](/docs/integrations/message-brokers#non-serializable-data).
+[BullMQ guide](/docs/integrations/bullmq#non-serializable-data).
 
 ## Observability & an admin panel
 

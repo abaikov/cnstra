@@ -2,7 +2,7 @@ import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
 import { collateral, withCtx } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
-import type { CNSDTOAppBatchMessage, CNSDTOAppBatchItem } from '@cnstra/devtools-dto';
+import type { TCNSAppBatchMessageDTO, TCNSAppBatchItemDTO } from '@cnstra/devtools-dto';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -47,11 +47,11 @@ class MockCNS {
 }
 
 class BatchCapture implements ICNSDevToolsTransport {
-    batches: CNSDTOAppBatchMessage[] = [];
-    async sendBatch(m: CNSDTOAppBatchMessage) { this.batches.push(m); }
-    allItems(): CNSDTOAppBatchItem[] { return this.batches.flatMap(b => b.items); }
-    itemsOf<T extends CNSDTOAppBatchItem['type']>(type: T): Extract<CNSDTOAppBatchItem, { type: T }>[] {
-        return this.allItems().filter((i): i is Extract<CNSDTOAppBatchItem, { type: T }> => i.type === type);
+    batches: TCNSAppBatchMessageDTO[] = [];
+    async sendBatch(m: TCNSAppBatchMessageDTO) { this.batches.push(m); }
+    allItems(): TCNSAppBatchItemDTO[] { return this.batches.flatMap(b => b.items); }
+    itemsOf<T extends TCNSAppBatchItemDTO['type']>(type: T): Extract<TCNSAppBatchItemDTO, { type: T }>[] {
+        return this.allItems().filter((i): i is Extract<TCNSAppBatchItemDTO, { type: T }> => i.type === type);
     }
 }
 
@@ -96,7 +96,7 @@ describe('Protocol — topology', () => {
         expect(transport.itemsOf('topology')[0].cnsId).toBe('app:main');
     });
 
-    it('neuron IDs use format cnsId:name', async () => {
+    it('neurons are identified by name + cnsId (no derived id)', async () => {
         const { registry } = buildRegistry();
         const transport = new BatchCapture();
         new CNSDevTools('app', transport, { cnsId: 'app:core' })
@@ -105,10 +105,11 @@ describe('Protocol — topology', () => {
 
         const [topo] = transport.itemsOf('topology');
         const neuron = topo.neurons.find(n => n.name === 'user-service')!;
-        expect(neuron.id).toBe('app:core:user-service');
+        expect(neuron.cnsId).toBe('app:core');
+        expect((neuron as Record<string, unknown>).id).toBeUndefined();
     });
 
-    it('collateral IDs include owner neuron ID', async () => {
+    it('collateral carries its owner neuron by name', async () => {
         const { registry } = buildRegistry();
         const transport = new BatchCapture();
         new CNSDevTools('app', transport, { cnsId: 'app:core' })
@@ -117,8 +118,7 @@ describe('Protocol — topology', () => {
 
         const [topo] = transport.itemsOf('topology');
         const col = topo.collaterals.find(c => c.name === 'user-created')!;
-        expect(col.neuronId).toBe('app:core:user-service');
-        expect(col.id).toBe('app:core:user-service:user-created');
+        expect(col.ownerNeuronName).toBe('user-service');
     });
 });
 

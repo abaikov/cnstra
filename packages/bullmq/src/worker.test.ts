@@ -96,7 +96,7 @@ test('resume: a retried job resumes the failed frontier instead of re-running fr
         registry,
         queue: 'cns',
         resume: { repository },
-    }) as unknown as FakeWorker;
+    }).worker as unknown as FakeWorker;
 
     // First attempt fails; the outstanding frontier is persisted under the job id.
     await expect(worker.run(makeJob(0))).rejects.toBeDefined();
@@ -121,7 +121,7 @@ test('without resume, a retried job re-runs the whole flow from the entry signal
         cns,
         registry,
         queue: 'cns',
-    }) as unknown as FakeWorker;
+    }).worker as unknown as FakeWorker;
 
     await expect(worker.run(makeJob(0))).rejects.toBeDefined();
     expect(ran).toEqual(['n1', 'n2#1']);
@@ -143,7 +143,7 @@ test('resume via BullMQ NATIVE job progress (no external repository)', async () 
         registry,
         queue: 'cns',
         resume: {},
-    }) as unknown as FakeWorker;
+    }).worker as unknown as FakeWorker;
 
     // One persistent job object (BullMQ carries progress across retries of the
     // same job in Redis; the fake stores it via updateProgress).
@@ -169,4 +169,19 @@ test('resume via BullMQ NATIVE job progress (no external repository)', async () 
     control.failStep2 = false;
     await worker.run(job);
     expect(ran).toEqual(['n1', 'n2#1', 'n2#2']);
+});
+
+test('graceful shutdown stops taking new jobs and closes the worker', async () => {
+    const { cns, registry } = buildFlow();
+    const handle = createCNSWorker({
+        Worker: FakeWorker as unknown as IBullWorkerCtor,
+        cns,
+        registry,
+        queue: 'cns',
+    });
+    await handle.shutdown({ drainMs: 0 }); // nothing in-flight → resolves at once
+    // while stopping, a newly-arriving job is rejected → BullMQ retries it later
+    await expect(
+        (handle.worker as unknown as FakeWorker).run(makeJob(0))
+    ).rejects.toThrow(/shutting down/);
 });

@@ -5,10 +5,9 @@ import {
 } from '../frontier';
 
 const CNS = 'app:main';
+// Output frontier keys are nodeKeys `${cnsId}:${name}`.
 const API = `${CNS}:api`;
 const WORKER = `${CNS}:worker`;
-const C_REQUEST = `${CNS}:api:request`; // owned by api, subscribed by worker
-const C_DONE = `${CNS}:worker:done`;
 
 const base = (
     over: Partial<ComputeFrontierInput> = {}
@@ -16,12 +15,13 @@ const base = (
     now: 10_000,
     hops: [],
     stimulations: [
-        { id: 'stim-1', completedAt: null, startedAt: 9_000 },
+        { stimulationId: 'stim-1', completedAt: null, startedAt: 9_000 },
     ],
-    dendrites: [{ neuronId: WORKER, collateralId: C_REQUEST }],
+    // worker subscribes 'request' (owned by api).
+    dendrites: [{ cnsId: CNS, neuronName: 'worker', collateralName: 'request' }],
     collaterals: [
-        { id: C_REQUEST, neuronId: API, name: 'request' },
-        { id: C_DONE, neuronId: WORKER, name: 'done' },
+        { cnsId: CNS, name: 'request', ownerNeuronName: 'api' },
+        { cnsId: CNS, name: 'done', ownerNeuronName: 'worker' },
     ],
     ...over,
 });
@@ -44,8 +44,9 @@ describe('computeFrontier', () => {
                 hops: [
                     {
                         stimulationId: 'stim-1',
-                        neuronId: API,
-                        outputCollateralId: C_REQUEST,
+                        scopeName: CNS,
+                        neuronName: 'api',
+                        outputCollateralName: 'request',
                         startedAt: 5_000,
                     },
                 ],
@@ -65,8 +66,9 @@ describe('computeFrontier', () => {
                 hops: [
                     {
                         stimulationId: 'stim-1',
-                        neuronId: API,
-                        outputCollateralId: C_REQUEST,
+                        scopeName: CNS,
+                        neuronName: 'api',
+                        outputCollateralName: 'request',
                         startedAt: 5_000, // 5s ago
                     },
                 ],
@@ -81,15 +83,17 @@ describe('computeFrontier', () => {
                 hops: [
                     {
                         stimulationId: 'stim-1',
-                        neuronId: API,
-                        outputCollateralId: C_REQUEST,
+                        scopeName: CNS,
+                        neuronName: 'api',
+                        outputCollateralName: 'request',
                         startedAt: 5_000,
                     },
                     // worker ran → no longer "about to run"
                     {
                         stimulationId: 'stim-1',
-                        neuronId: WORKER,
-                        outputCollateralId: C_DONE,
+                        scopeName: CNS,
+                        neuronName: 'worker',
+                        outputCollateralName: 'done',
                         startedAt: 6_000,
                     },
                 ],
@@ -102,13 +106,14 @@ describe('computeFrontier', () => {
         const f = computeFrontier(
             base({
                 stimulations: [
-                    { id: 'stim-1', completedAt: 9_500, startedAt: 9_000 },
+                    { stimulationId: 'stim-1', completedAt: 9_500, startedAt: 9_000 },
                 ],
                 hops: [
                     {
                         stimulationId: 'stim-1',
-                        neuronId: API,
-                        outputCollateralId: C_REQUEST,
+                        scopeName: CNS,
+                        neuronName: 'api',
+                        outputCollateralName: 'request',
                         startedAt: 5_000,
                     },
                 ],
@@ -124,13 +129,14 @@ describe('computeFrontier', () => {
                 now: 10_000_000,
                 windowMs: 1_000,
                 stimulations: [
-                    { id: 'stim-1', completedAt: null, startedAt: 0 },
+                    { stimulationId: 'stim-1', completedAt: null, startedAt: 0 },
                 ],
                 hops: [
                     {
                         stimulationId: 'stim-1',
-                        neuronId: API,
-                        outputCollateralId: C_REQUEST,
+                        scopeName: CNS,
+                        neuronName: 'api',
+                        outputCollateralName: 'request',
                         startedAt: 0,
                     },
                 ],
@@ -142,12 +148,14 @@ describe('computeFrontier', () => {
     it('does not put a self-subscribing neuron on its own frontier', () => {
         const f = computeFrontier(
             base({
-                dendrites: [{ neuronId: API, collateralId: C_REQUEST }], // api subscribes its own output
+                // api subscribes its own output
+                dendrites: [{ cnsId: CNS, neuronName: 'api', collateralName: 'request' }],
                 hops: [
                     {
                         stimulationId: 'stim-1',
-                        neuronId: API,
-                        outputCollateralId: C_REQUEST,
+                        scopeName: CNS,
+                        neuronName: 'api',
+                        outputCollateralName: 'request',
                         startedAt: 5_000,
                     },
                 ],

@@ -59,17 +59,22 @@ export class CNS<
         this.global = global;
     }
 
-    public addResponseListener(
-        listener: (response: TCNSStimulationResponse) => void | Promise<void>
-    ): () => void {
-        this.globalResponseListeners.push(listener);
+    /** Push a listener onto a list; return an idempotent unsubscribe. */
+    private addListener<T>(list: T[], listener: T): () => void {
+        list.push(listener);
         let active = true;
         return () => {
             if (!active) return;
             active = false;
-            const idx = this.globalResponseListeners.indexOf(listener);
-            if (idx >= 0) this.globalResponseListeners.splice(idx, 1);
+            const idx = list.indexOf(listener);
+            if (idx >= 0) list.splice(idx, 1);
         };
+    }
+
+    public addResponseListener(
+        listener: (response: TCNSStimulationResponse) => void | Promise<void>
+    ): () => void {
+        return this.addListener(this.globalResponseListeners, listener);
     }
 
     /**
@@ -83,14 +88,7 @@ export class CNS<
     public addDrainListener(
         listener: (drain: TCNSStimulationDrain) => void
     ): () => void {
-        this.globalDrainListeners.push(listener);
-        let active = true;
-        return () => {
-            if (!active) return;
-            active = false;
-            const idx = this.globalDrainListeners.indexOf(listener);
-            if (idx >= 0) this.globalDrainListeners.splice(idx, 1);
-        };
+        return this.addListener(this.globalDrainListeners, listener);
     }
 
     /**
@@ -173,20 +171,26 @@ export class CNS<
         };
     }
 
+    /** Build a stimulation (wired listeners, unseeded). Shared by stimulate/activate. */
+    private createStimulation(
+        options?: TCNSStimulationOptions<TCNSStimulationResponse>
+    ): CNSStimulation<TNeuron, TDendrite> {
+        return new CNSStimulation<TNeuron, TDendrite>(
+            this,
+            this.instanceNeuronQueue,
+            options,
+            this.wrapOnResponse(options?.onResponse),
+            this.wrapOnDrain(options?.onDrain)
+        );
+    }
+
     public stimulate(
         signalOrSignals:
             | TCNSSignal<ICNSCollateral<unknown>>
             | TCNSSignal<ICNSCollateral<unknown>>[],
         options?: TCNSStimulationOptions<TCNSStimulationResponse>
     ): CNSStimulation<TNeuron, TDendrite> {
-        const wrapped = this.wrapOnResponse(options?.onResponse);
-        const stimulation = new CNSStimulation<TNeuron, TDendrite>(
-            this,
-            this.instanceNeuronQueue,
-            options,
-            wrapped,
-            this.wrapOnDrain(options?.onDrain)
-        );
+        const stimulation = this.createStimulation(options);
         stimulation.responseToSignal(signalOrSignals);
         return stimulation;
     }
@@ -198,14 +202,7 @@ export class CNS<
         tasks: TCNSNeuronActivationTask<TNeuron>[],
         options?: TCNSStimulationOptions<TCNSStimulationResponse>
     ): CNSStimulation<TNeuron, TDendrite> {
-        const wrapped = this.wrapOnResponse(options?.onResponse);
-        const stimulation = new CNSStimulation<TNeuron, TDendrite>(
-            this,
-            this.instanceNeuronQueue,
-            options,
-            wrapped,
-            this.wrapOnDrain(options?.onDrain)
-        );
+        const stimulation = this.createStimulation(options);
         stimulation.enqueueTasks(tasks);
         return stimulation;
     }

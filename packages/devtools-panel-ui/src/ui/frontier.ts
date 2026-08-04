@@ -1,37 +1,46 @@
 // Pure, framework-free logic for the "live frontier": which neurons/edges are
 // about to run (from topology + the last hops), and how a stalled one ages into
 // a "stuck" state. Kept side-effect-free so it can be unit-tested without a
-// browser or cytoscape.
+// browser or cytoscape. All identity is by NAME, scoped per cns; graph keys are
+// built with `nodeKey(cnsId, name)` (cytoscape needs a scalar node id).
+
+import { nodeKey } from '../utils/format';
 
 export interface FrontierData {
-    /** neuronId -> entered-frontier timestamp (ms). */
+    /** nodeKey -> entered-frontier timestamp (ms). */
     neurons: Record<string, number>;
-    /** edgeId (`${from}->${to}::${label}`) -> entered-frontier timestamp (ms). */
+    /** edgeId (`${fromNode}->${toNode}::${label}`) -> entered-frontier timestamp (ms). */
     edges: Record<string, number>;
 }
 
 export const EMPTY_FRONTIER: FrontierData = { neurons: {}, edges: {} };
 
-// Minimal structural shapes (subset of the DTO/UI entities we actually read).
+// Minimal structural shapes (subset of the entities we actually read), all by name.
 export interface FrontierHop {
     stimulationId: string;
-    neuronId: string;
-    outputCollateralId?: string | null;
+    /** cns this hop ran in (= cnsId). */
+    scopeName: string;
+    neuronName: string;
+    outputCollateralName?: string | null;
     startedAt?: number;
 }
 export interface FrontierStimulation {
-    id: string;
+    stimulationId: string;
     completedAt?: number | null;
     startedAt?: number;
 }
 export interface FrontierDendrite {
-    neuronId: string;
-    collateralId: string;
+    cnsId: string;
+    /** Subscriber neuron. */
+    neuronName: string;
+    /** Subscribed collateral. */
+    collateralName: string;
 }
 export interface FrontierCollateral {
-    id: string;
-    neuronId?: string;
-    name?: string;
+    cnsId: string;
+    name: string;
+    /** Owner (emitting) neuron; absent for an entry/external collateral. */
+    ownerNeuronName?: string;
 }
 
 export interface ComputeFrontierInput {
@@ -69,20 +78,22 @@ export function computeFrontier(input: ComputeFrontierInput): FrontierData {
     const neurons: Record<string, number> = {};
     const edges: Record<string, number> = {};
 
-    // collateralId -> subscriber neuronIds
+    // collateral nodeKey -> subscriber neuron nodeKeys
     const subsByCollateral = new Map<string, Set<string>>();
     for (const d of dendrites) {
-        const set = subsByCollateral.get(d.collateralId) || new Set<string>();
-        set.add(d.neuronId);
-        subsByCollateral.set(d.collateralId, set);
+        const collKey = nodeKey(d.cnsId, d.collateralName);
+        const set = subsByCollateral.get(collKey) || new Set<string>();
+        set.add(nodeKey(d.cnsId, d.neuronName));
+        subsByCollateral.set(collKey, set);
     }
-    // collateralId -> owner (emitting) neuronId, and -> display name
+    // collateral nodeKey -> owner (emitting) neuron nodeKey, and -> display name
     const ownerByCollateral = new Map<string, string>();
     const nameByCollateral = new Map<string, string>();
     for (const c of collaterals) {
-        if (c.neuronId && c.neuronId !== 'unknown')
-            ownerByCollateral.set(c.id, c.neuronId);
-        if (c.name) nameByCollateral.set(c.id, c.name);
+        const collKey = nodeKey(c.cnsId, c.name);
+        if (c.ownerNeuronName)
+            ownerByCollateral.set(collKey, nodeKey(c.cnsId, c.ownerNeuronName));
+        nameByCollateral.set(collKey, c.name);
     }
 
     // hops grouped by stimulation
@@ -106,16 +117,19 @@ export function computeFrontier(input: ComputeFrontierInput): FrontierData {
     for (const s of stimulations) {
         if (!s || s.completedAt != null) continue; // running only
         if (s.startedAt != null && now - s.startedAt > windowMs) continue;
-        const stimHops = hopsByStim.get(s.id) || [];
+        const stimHops = hopsByStim.get(s.stimulationId) || [];
         const ranNeurons = new Set<string>();
-        for (const h of stimHops) if (h.neuronId) ranNeurons.add(h.neuronId);
+        for (const h of stimHops)
+            if (h.neuronName) ranNeurons.add(nodeKey(h.scopeName, h.neuronName));
         for (const h of stimHops) {
-            const outColl = h.outputCollateralId;
-            if (!outColl) continue;
+            if (!h.outputCollateralName) continue;
+            const outColl = nodeKey(h.scopeName, h.outputCollateralName);
             const subs = subsByCollateral.get(outColl);
             if (!subs) continue;
-            const source = ownerByCollateral.get(outColl) || h.neuronId;
-            const label = nameByCollateral.get(outColl) || outColl;
+            const source =
+                ownerByCollateral.get(outColl) ??
+                nodeKey(h.scopeName, h.neuronName);
+            const label = nameByCollateral.get(outColl) || h.outputCollateralName;
             const since = typeof h.startedAt === 'number' ? h.startedAt : now;
             for (const target of subs) {
                 if (target === source || ranNeurons.has(target)) continue;

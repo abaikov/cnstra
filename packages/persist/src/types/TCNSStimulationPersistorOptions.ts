@@ -1,4 +1,4 @@
-import type { TCNSSignalRef, TCNSStimulationVolume } from '@cnstra/persist-dto';
+import type { TCNSSignalJSON, ECNSStimulationVolume } from '@cnstra/persist-dto';
 import type { CNSPersistOptionsRegistry } from '../CNSPersistOptionsRegistry';
 import type { ICNSStimulationWriter } from '../interfaces/ICNSStimulationRepository';
 import type { ICNSProgressRecordingStrategy } from '../interfaces/ICNSProgressRecordingStrategy';
@@ -20,7 +20,7 @@ export type TCNSStimulationPersistorOptions = {
     stimulationAttemptId: string;
     attemptNumber: number;
     /** The signal(s) this attempt was activated with (frontier slots `0..k-1`). */
-    entry: TCNSSignalRef[];
+    entry: TCNSSignalJSON[];
 
     /**
      * Which scope (cns/graph) the stimulation belongs to. Unset ⇒ the single default
@@ -29,7 +29,7 @@ export type TCNSStimulationPersistorOptions = {
     scopeName?: string;
 
     /** How much to record. Defaults to `'progress'` (resume-only). */
-    volume?: TCNSStimulationVolume;
+    volume?: ECNSStimulationVolume;
     /** When to persist. Defaults to CNSDebouncedProgressRecordingStrategy. */
     strategy?: ICNSProgressRecordingStrategy;
 };

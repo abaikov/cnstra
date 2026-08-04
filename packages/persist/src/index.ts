@@ -2,7 +2,6 @@ export { CNSPersistOptionsRegistry } from './CNSPersistOptionsRegistry';
 export { CNSPersistOptionsRegistryFactory } from './CNSPersistOptionsRegistryFactory';
 
 export { CNSProgressSerializer } from './CNSProgressSerializer';
-export { CNSStimulationContextStore } from './CNSStimulationContextStore';
 export { CNSInMemoryProgressRepository } from './CNSInMemoryProgressRepository';
 
 export { CNSProgressRecorder } from './CNSProgressRecorder';
@@ -19,21 +18,18 @@ export type { TCNSNeuronRegistryEntry } from './types/TCNSNeuronRegistryEntry';
 export type { TCNSProgressRecorderOptions } from './types/TCNSProgressRecorderOptions';
 export type { TCNSDebouncedProgressRecordingStrategyOptions } from './types/TCNSDebouncedProgressRecordingStrategyOptions';
 
-// ── durable-execution run/attempt/task model — canonical types live in
-//    @cnstra/persist-dto; re-exported here for convenience + back-compat ──
+// ── durable-execution stimulation/attempt/task model — canonical types live in
+//    @cnstra/persist-dto; re-exported here for convenience ──
 export type {
-    TCNSSignalRef,
-    TCNSStimulationStatus,
-    TCNSStimulationTaskStatus,
-    TCNSStimulationVolume,
-    TCNSSerializedTask,
+    TCNSSignalJSON,
+    ECNSStimulationStatus,
+    ECNSStimulationTaskStatus,
+    ECNSStimulationVolume,
+    TCNSPlannedTaskJSON,
     TCNSProgress,
-    TCNSStimulationDto,
-    TCNSStimulationPersisted,
-    TCNSStimulationAttemptDto,
-    TCNSStimulationAttemptPersisted,
-    TCNSStimulationTaskDto,
-    TCNSStimulationTaskPersisted,
+    TCNSStimulationState,
+    TCNSStimulationAttempt,
+    TCNSStimulationTask,
 } from '@cnstra/persist-dto';
 
 // ── engine ports (types only; impls to follow) ──

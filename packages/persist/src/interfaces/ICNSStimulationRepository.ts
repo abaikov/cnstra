@@ -1,7 +1,7 @@
 import type {
-    TCNSStimulationPersisted,
-    TCNSStimulationAttemptPersisted,
-    TCNSStimulationTaskPersisted,
+    TCNSStimulationState,
+    TCNSStimulationAttempt,
+    TCNSStimulationTask,
 } from '@cnstra/persist-dto';
 
 /**
@@ -16,15 +16,15 @@ import type {
  */
 export interface ICNSStimulationWriter {
     /** Upsert a stimulation: its identity, status, and current progress (resume state). */
-    saveStimulation(stimulation: TCNSStimulationPersisted): Promise<void>;
+    saveStimulation(stimulation: TCNSStimulationState): Promise<void>;
     /** Upsert one attempt marker. */
-    saveAttempt(attempt: TCNSStimulationAttemptPersisted): Promise<void>;
+    saveAttempt(attempt: TCNSStimulationAttempt): Promise<void>;
     /** Append one settled history task (full volume only; append-only). */
-    appendTask(task: TCNSStimulationTaskPersisted): Promise<void>;
+    appendTask(task: TCNSStimulationTask): Promise<void>;
     /** Load a stimulation — for resume (its `progress`) and Clone (its `entry`). */
     getStimulation(
         stimulationId: string
-    ): Promise<TCNSStimulationPersisted | undefined>;
+    ): Promise<TCNSStimulationState | undefined>;
 }
 
 /**
@@ -34,19 +34,19 @@ export interface ICNSStimulationWriter {
 export interface ICNSStimulationReader {
     getStimulation(
         stimulationId: string
-    ): Promise<TCNSStimulationPersisted | undefined>;
+    ): Promise<TCNSStimulationState | undefined>;
     /** List stimulations (newest-first), for the retry UI. Optionally scope-filtered. */
     listStimulations(filter?: {
         scopeName?: string;
-    }): Promise<TCNSStimulationPersisted[]>;
+    }): Promise<TCNSStimulationState[]>;
     /** The attempt timeline of a stimulation. */
     getAttempts(
         stimulationId: string
-    ): Promise<TCNSStimulationAttemptPersisted[]>;
+    ): Promise<TCNSStimulationAttempt[]>;
     /** The task waterfall of one attempt (empty when volume was `'progress'`). */
     getTasks(
         stimulationAttemptId: string
-    ): Promise<TCNSStimulationTaskPersisted[]>;
+    ): Promise<TCNSStimulationTask[]>;
 }
 
 /**

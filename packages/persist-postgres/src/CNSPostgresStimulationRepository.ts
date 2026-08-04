@@ -13,14 +13,14 @@
 import { Pool } from 'pg';
 import type { ICNSStimulationRepository } from '@cnstra/persist';
 import type {
-    TCNSStimulationPersisted,
-    TCNSStimulationAttemptPersisted,
-    TCNSStimulationTaskPersisted,
+    TCNSStimulationState,
+    TCNSStimulationAttempt,
+    TCNSStimulationTask,
     TCNSProgress,
-    TCNSSerializedTask,
-    TCNSSignalRef,
-    TCNSStimulationStatus,
-    TCNSStimulationTaskStatus,
+    TCNSPlannedTaskJSON,
+    TCNSSignalJSON,
+    ECNSStimulationStatus,
+    ECNSStimulationTaskStatus,
 } from '@cnstra/persist-dto';
 import {
     DEFAULT_PREFIX,
@@ -100,7 +100,7 @@ export class CNSPostgresStimulationRepository
 
     // ── write ──
 
-    async saveStimulation(s: TCNSStimulationPersisted): Promise<void> {
+    async saveStimulation(s: TCNSStimulationState): Promise<void> {
         await this.ensure();
         const { p } = this;
         await this.tx(async db => {
@@ -149,7 +149,7 @@ export class CNSPostgresStimulationRepository
         });
     }
 
-    async saveAttempt(a: TCNSStimulationAttemptPersisted): Promise<void> {
+    async saveAttempt(a: TCNSStimulationAttempt): Promise<void> {
         await this.ensure();
         const { p } = this;
         await this.db.query(
@@ -176,7 +176,7 @@ export class CNSPostgresStimulationRepository
         );
     }
 
-    async appendTask(t: TCNSStimulationTaskPersisted): Promise<void> {
+    async appendTask(t: TCNSStimulationTask): Promise<void> {
         await this.ensure();
         const { p } = this;
         await this.db.query(
@@ -204,7 +204,7 @@ export class CNSPostgresStimulationRepository
 
     async getStimulation(
         stimulationId: string
-    ): Promise<TCNSStimulationPersisted | undefined> {
+    ): Promise<TCNSStimulationState | undefined> {
         await this.ensure();
         const { p } = this;
         const stimRes = await this.db.query(
@@ -213,8 +213,8 @@ export class CNSPostgresStimulationRepository
         );
         const row = stimRes.rows[0] as
             | {
-                  entry: TCNSSignalRef;
-                  status: TCNSStimulationStatus;
+                  entry: TCNSSignalJSON;
+                  status: ECNSStimulationStatus;
                   scope_name: string | null;
               }
             | undefined;
@@ -244,7 +244,7 @@ export class CNSPostgresStimulationRepository
 
     async listStimulations(filter?: {
         scopeName?: string;
-    }): Promise<TCNSStimulationPersisted[]> {
+    }): Promise<TCNSStimulationState[]> {
         await this.ensure();
         const { p } = this;
         const scope = filter?.scopeName ?? null;
@@ -291,7 +291,7 @@ export class CNSPostgresStimulationRepository
 
     async getAttempts(
         stimulationId: string
-    ): Promise<TCNSStimulationAttemptPersisted[]> {
+    ): Promise<TCNSStimulationAttempt[]> {
         await this.ensure();
         const { p } = this;
         const res = await this.db.query(
@@ -303,7 +303,7 @@ export class CNSPostgresStimulationRepository
 
     async getTasks(
         stimulationAttemptId: string
-    ): Promise<TCNSStimulationTaskPersisted[]> {
+    ): Promise<TCNSStimulationTask[]> {
         await this.ensure();
         const { p } = this;
         const res = await this.db.query(
@@ -338,6 +338,40 @@ export class CNSPostgresStimulationRepository
         });
     }
 
+    /**
+     * Retention: prune stimulations not updated for `olderThanMs` (with their
+     * attempts/tasks/frontier/context). A run's `updated_at` stops advancing once it
+     * settles, so old finished runs age out while an active one stays fresh — the same
+     * semantics as the in-memory store's `ttlMs` and the pg-boss checkpoint's
+     * `deleteStale`. Run it on a schedule (cron). Returns the number removed.
+     */
+    async deleteStale(olderThanMs: number): Promise<number> {
+        await this.ensure();
+        const { p } = this;
+        const params = [Math.max(0, Math.floor(olderThanMs))];
+        const cond = `updated_at < now() - ($1::bigint * interval '1 millisecond')`;
+        const staleIds = `SELECT stimulation_id FROM ${p}stimulation WHERE ${cond}`;
+        return this.tx(async db => {
+            // tasks + attempts have no FK → delete explicitly (tasks first), then the
+            // stimulations (FK cascade removes frontier/context).
+            await db.query(
+                `DELETE FROM ${p}task WHERE stimulation_attempt_id IN
+                    (SELECT stimulation_attempt_id FROM ${p}stimulation_attempt
+                     WHERE stimulation_id IN (${staleIds}))`,
+                params
+            );
+            await db.query(
+                `DELETE FROM ${p}stimulation_attempt WHERE stimulation_id IN (${staleIds})`,
+                params
+            );
+            const res = await db.query(
+                `DELETE FROM ${p}stimulation WHERE ${cond} RETURNING stimulation_id`,
+                params
+            );
+            return res.rows.length;
+        });
+    }
+
     async close(): Promise<void> {
         if (this.ownsPool && this.pool) await this.pool.end();
     }
@@ -348,7 +382,7 @@ export class CNSPostgresStimulationRepository
         frontier: TFrontierRow[],
         context: TContextRow[]
     ): TCNSProgress {
-        const tasks: TCNSSerializedTask[] = [...frontier]
+        const tasks: TCNSPlannedTaskJSON[] = [...frontier]
             .sort((a, b) => a.ord - b.ord)
             .map(f => ({
                 neuronName: f.neuron_name,
@@ -364,8 +398,8 @@ export class CNSPostgresStimulationRepository
 // ── row shapes (jsonb columns come back already parsed by node-pg) ──
 type TStimulationRow = {
     stimulation_id: string;
-    entry: TCNSSignalRef;
-    status: TCNSStimulationStatus;
+    entry: TCNSSignalJSON;
+    status: ECNSStimulationStatus;
     scope_name: string | null;
 };
 type TFrontierRow = {
@@ -373,7 +407,7 @@ type TFrontierRow = {
     ord: number;
     neuron_name: string;
     dendrite_collateral_name: string;
-    input: { collateralName: string; payload?: unknown } | null;
+    input: TCNSSignalJSON | null;
 };
 type TContextRow = {
     stimulation_id: string;
@@ -384,13 +418,13 @@ type TAttemptRow = {
     stimulation_attempt_id: string;
     stimulation_id: string;
     attempt_number: number;
-    status: TCNSStimulationStatus;
+    status: ECNSStimulationStatus;
     started_at: string | number;
     completed_at: string | number | null;
     hop_count: number;
     has_error: boolean;
     replay_of: string | null;
-    entry: TCNSSignalRef[];
+    entry: TCNSSignalJSON[];
 };
 type TTaskRow = {
     stimulation_attempt_id: string;
@@ -398,14 +432,14 @@ type TTaskRow = {
     neuron_name: string;
     dendrite_collateral_name: string;
     input_index: number;
-    output: TCNSSignalRef | null;
-    status: TCNSStimulationTaskStatus;
+    output: TCNSSignalJSON | null;
+    status: ECNSStimulationTaskStatus;
     error: string | null;
     started_at: string | number;
     duration: number | null;
 };
 
-function rowToAttempt(a: TAttemptRow): TCNSStimulationAttemptPersisted {
+function rowToAttempt(a: TAttemptRow): TCNSStimulationAttempt {
     return {
         stimulationAttemptId: a.stimulation_attempt_id,
         stimulationId: a.stimulation_id,
@@ -420,7 +454,7 @@ function rowToAttempt(a: TAttemptRow): TCNSStimulationAttemptPersisted {
     };
 }
 
-function rowToTask(t: TTaskRow): TCNSStimulationTaskPersisted {
+function rowToTask(t: TTaskRow): TCNSStimulationTask {
     return {
         stimulationAttemptId: t.stimulation_attempt_id,
         index: num(t.index),

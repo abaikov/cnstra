@@ -1,31 +1,31 @@
-import { CNSDTOApp } from "@cnstra/devtools-dto";
-import type { ICNSDevToolsServerRepository, CNSDTOTopologySnapshot } from '@cnstra/devtools-server';
+import { TCNSAppDTO } from "@cnstra/devtools-dto";
+import type { ICNSDevToolsServerRepository, TCNSTopologySnapshotDTO } from '@cnstra/devtools-server';
 
 export class CNSDevToolsServerRepositoryInMemory
     implements ICNSDevToolsServerRepository
 {
-    private apps = new Map<string, CNSDTOApp>();
-    private topologies = new Map<string, CNSDTOTopologySnapshot>(); // cnsId → snapshot
+    private apps = new Map<string, TCNSAppDTO>();
+    private topologies = new Map<string, TCNSTopologySnapshotDTO>(); // cnsId → snapshot
     private cnsToApp = new Map<string, string>();             // cnsId → appId
     private appToCns = new Map<string, Set<string>>();        // appId → Set<cnsId>
 
     // ─── Apps ─────────────────────────────────────────────────────────────────
 
-    upsertApp(app: CNSDTOApp): void {
+    upsertApp(app: TCNSAppDTO): void {
         this.apps.set(app.id, app);
     }
 
-    listApps(): CNSDTOApp[] {
+    listApps(): TCNSAppDTO[] {
         return [...this.apps.values()];
     }
 
     // ─── Topology ─────────────────────────────────────────────────────────────
 
-    saveTopology(snapshot: CNSDTOTopologySnapshot): void {
+    saveTopology(snapshot: TCNSTopologySnapshotDTO): void {
         this.topologies.set(snapshot.cnsId, snapshot);
     }
 
-    getTopology(cnsId?: string): CNSDTOTopologySnapshot[] {
+    getTopology(cnsId?: string): TCNSTopologySnapshotDTO[] {
         if (cnsId) {
             const s = this.topologies.get(cnsId);
             return s ? [s] : [];

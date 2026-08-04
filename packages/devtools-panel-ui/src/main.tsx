@@ -5,13 +5,14 @@ import './ui/theme.css';
 import './ui/components.css';
 import './ui/cns-graph.css';
 import './ui/styles.css';
+import './ui/durable-stimulations.css';
 import { createHashHistory } from './exo/hash-history';
 import { routes } from './app/routes';
 import { createDevtoolsSocket } from './app/controllers/socket';
 import { createAppSelection } from './app/controllers/selection';
 import { createDurableIngest } from './app/controllers/durableIngest';
 import { createShell } from './app/shell';
-import { CNSDurableRunsHttpClient } from './durable/CNSDurableRunsHttpClient';
+import { CNSDurableStimulationsHttpClient } from './durable/CNSDurableStimulationsHttpClient';
 
 // Client-only bootstrap (no SSR): hash-history router (electron loads over
 // file://), the WebSocket + selection controllers, then mount the shell. The
@@ -46,7 +47,7 @@ if (root) {
     const durableUrl =
         (window as unknown as { __CNSTRA_DURABLE_URL__?: string })
             .__CNSTRA_DURABLE_URL__ || 'http://localhost:4545';
-    const durableClient = new CNSDurableRunsHttpClient(durableUrl);
+    const durableClient = new CNSDurableStimulationsHttpClient(durableUrl);
 
     // Land on /apps if we booted with no hash route.
     if (router.getLocation().pathname === '/') {

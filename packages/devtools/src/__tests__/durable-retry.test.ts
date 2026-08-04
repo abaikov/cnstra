@@ -7,8 +7,8 @@ import {
 } from '@cnstra/persist';
 import type { ICNSStimulationRepository } from '@cnstra/persist';
 import type {
-    CNSDTOAppBatchMessage,
-    CNSDTOAppCommand,
+    TCNSAppBatchMessageDTO,
+    TCNSAppCommandDTO,
 } from '@cnstra/devtools-dto';
 
 // A resumable CNS: importUser (always ok) → persistUser (throws while `shouldFail`).
@@ -60,10 +60,10 @@ function buildCNS() {
  * test can push a server→app durable command into the app's command handler.
  */
 class LoopbackTransport implements ICNSDevToolsTransport {
-    private cmdHandler?: (cmd: CNSDTOAppCommand) => void;
+    private cmdHandler?: (cmd: TCNSAppCommandDTO) => void;
     constructor(private readonly repo: ICNSStimulationRepository) {}
 
-    async sendBatch(message: CNSDTOAppBatchMessage): Promise<void> {
+    async sendBatch(message: TCNSAppBatchMessageDTO): Promise<void> {
         for (const item of message.items) {
             switch (item.type) {
                 case 'cns.stimulation':
@@ -79,12 +79,12 @@ class LoopbackTransport implements ICNSDevToolsTransport {
         }
     }
 
-    onStimulationCommand(handler: (cmd: CNSDTOAppCommand) => void): () => void {
+    onStimulationCommand(handler: (cmd: TCNSAppCommandDTO) => void): () => void {
         this.cmdHandler = handler;
         return () => { this.cmdHandler = undefined; };
     }
 
-    pushCommand(cmd: CNSDTOAppCommand): void {
+    pushCommand(cmd: TCNSAppCommandDTO): void {
         this.cmdHandler?.(cmd);
     }
 }
@@ -92,7 +92,7 @@ class LoopbackTransport implements ICNSDevToolsTransport {
 describe('Phase 2b-2 — retry resumes the stored frontier over the wire', () => {
     beforeEach(() => { shouldFail = true; });
 
-    it('failed run → server-enriched resume → attempt #2 runs persistUser only, completed', async () => {
+    it('failed stimulation → server-enriched resume → attempt #2 runs persistUser only, completed', async () => {
         const { cns, registry, entryCol } = buildCNS();
         const repo = new CNSInMemoryStimulationRepository();
         const transport = new LoopbackTransport(repo);

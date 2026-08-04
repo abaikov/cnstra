@@ -2,25 +2,25 @@ import type { DevtoolsSocket } from './socket';
 import { mainCNS } from '../../cns';
 import { appModelAxon } from '../../cns/controller-layer/AppModelAxon';
 import { db } from '../../model';
-import type { TCNSDurableRunView } from '../../durable/TCNSDurableRunView';
-import { translateRunView } from '../../durable/translateRunView';
+import type { TCNSStimulationState, TCNSHopState } from '../../model';
+import type { TCNSStimulationViewDTO } from '@cnstra/devtools-dto';
 
 /**
- * Name-based observability ingest (Phase 2b-4): the panel's SOLE stimulation/hop
- * data source. Polls the devtools-server's durable store (`cns.stimulations.query`
- * → run views), translates each run into the panel's id-shaped OIMDB entities via
- * {@link translateRunView}, and feeds them through the existing data-layer by
- * stimulating the domain collaterals (so the graph frontier / analytics / details /
- * performance views — which read `db.stimulations`/`db.responses` — need no change).
+ * Name-based observability ingest: the panel's SOLE stimulation/hop data source.
+ * Polls the devtools-server's durable store (`cns.stimulations.query` → run views)
+ * and stores each view by NAME — a `TCNSStimulationState` header + flat
+ * `TCNSHopState` rows (the backend task shape, stored once) — via the domain
+ * collaterals. No id is synthesized from names: the entry/hops keep collateral &
+ * neuron NAMES; the graph resolves those to topology nodes at render.
  *
  * This replaces the legacy per-hop id-based WS stream (`stimulation.started/hop/
  * completed`) entirely. Transport is pluggable (polling here; a push socket could
- * feed the same translate step) — see [[reference-devtools-transport-seam]].
+ * feed the same store step) — see [[reference-devtools-transport-seam]].
  */
 const POLL_MS = 2000;
 
 const genId = (): string =>
-    `runs-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    `stimulations-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 /** cnsId → appId, via the synthesized `db.cns` (falls back to any neuron's app). */
 function appIdForCns(cnsId: string): string | undefined {
@@ -30,27 +30,58 @@ function appIdForCns(cnsId: string): string | undefined {
     return undefined;
 }
 
-/** Build a collateralName → topology id lookup for a cns (names unique per cns). */
-function collateralIdByNameFor(cnsId: string): (name: string) => string | undefined {
-    const map = new Map<string, string>();
-    for (const col of db.collaterals.getAll()) {
-        if (col.cnsId === cnsId) map.set(col.name, col.id);
+/** Flatten one name-based view into a header + its flat name-based hop rows. */
+export function projectView(
+    view: TCNSStimulationViewDTO,
+    cnsId: string,
+    appId: string
+): { stimulation: TCNSStimulationState; hops: TCNSHopState[] } {
+    const firstAttempt = view.attempts[0];
+    const lastAttempt = view.attempts[view.attempts.length - 1];
+    const startedAt = firstAttempt?.startedAt ?? 0;
+    const completedAt =
+        view.status === 'running' ? null : lastAttempt?.completedAt ?? null;
+    const hopCount = view.attempts.reduce((n, a) => n + a.tasks.length, 0);
+
+    const stimulation: TCNSStimulationState = {
+        stimulationId: view.stimulationId,
+        scopeName: cnsId,
+        appId,
+        entry: view.entry,
+        status: view.status,
+        frontier: view.frontier,
+        startedAt,
+        completedAt,
+        hopCount,
+        hasError: view.status === 'failed',
+    };
+
+    const hops: TCNSHopState[] = [];
+    for (const a of view.attempts) {
+        for (const t of a.tasks) {
+            hops.push({
+                ...t,
+                // Surrogate row key from real ids/indices — NOT derived from a name.
+                id: `${view.stimulationId}#${a.attemptNumber}:${t.index}`,
+                stimulationId: view.stimulationId,
+                attemptNumber: a.attemptNumber,
+                appId,
+                scopeName: cnsId,
+                startedAt: t.startedAt ?? startedAt,
+            });
+        }
     }
-    return name => map.get(name);
+    return { stimulation, hops };
 }
 
-function ingestRuns(runs: TCNSDurableRunView[]): void {
-    for (const run of runs) {
-        const cnsId = run.scopeName;
+function ingestStimulations(views: TCNSStimulationViewDTO[]): void {
+    for (const view of views) {
+        const cnsId = view.scopeName;
         if (!cnsId) continue;
         const appId = appIdForCns(cnsId);
         if (!appId) continue; // topology for this cns not received yet — next poll
 
-        const { stimulation, hops } = translateRunView(run, {
-            cnsId,
-            appId,
-            collateralIdByName: collateralIdByNameFor(cnsId),
-        });
+        const { stimulation, hops } = projectView(view, cnsId, appId);
 
         mainCNS.stimulate(
             appModelAxon.stimulationStarted.createSignal(stimulation)
@@ -61,7 +92,7 @@ function ingestRuns(runs: TCNSDurableRunView[]): void {
         if (stimulation.completedAt != null) {
             mainCNS.stimulate(
                 appModelAxon.stimulationCompleted.createSignal({
-                    stimulationId: stimulation.id,
+                    stimulationId: stimulation.stimulationId,
                     completedAt: stimulation.completedAt,
                     hopCount: stimulation.hopCount,
                     hasError: stimulation.hasError,
@@ -98,7 +129,7 @@ export function createDurableIngest(socket: DevtoolsSocket): DurableIngest {
                 return;
             ws.removeEventListener('message', listener);
             if (onMsg === listener) onMsg = null;
-            ingestRuns(m.runs as TCNSDurableRunView[]);
+            ingestStimulations(m.stimulations as TCNSStimulationViewDTO[]);
         };
         // Drop any previous unanswered listener before installing a new one.
         if (onMsg) ws.removeEventListener('message', onMsg);

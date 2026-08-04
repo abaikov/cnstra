@@ -7,6 +7,7 @@ import {
     TCNSNeuronPersistOptions,
     TCNSStimulationPersistOptions,
 } from '@cnstra/types';
+import type { TCNSCollateralNameMap } from './types/TCNSCollateralNameMap';
 
 export class CNSPersistOptionsRegistry {
     private neurons = new Map<string, TCNSNeuron<unknown, TCNSAxon>>();
@@ -87,7 +88,7 @@ export class CNSPersistOptionsRegistry {
     register<TAxon extends TCNSAxon>(
         name: string,
         neuron: TCNSNeuron<any, TAxon>,
-        collateralNames?: { [K in keyof TAxon]?: string }
+        collateralNames?: TCNSCollateralNameMap<TAxon>
     ): this {
         this.addNeuron(neuron as unknown as TCNSNeuron<unknown, TCNSAxon>, { name, neuron: neuron as unknown as TCNSNeuron<unknown, TCNSAxon> });
         for (const [key, col] of Object.entries(neuron.axon)) {

@@ -1,8 +1,8 @@
 import type {
     ICNSDevToolsServerRepository,
-    CNSDTOTopologySnapshot,
+    TCNSTopologySnapshotDTO,
 } from '@cnstra/devtools-server';
-import type { CNSDTOApp } from '@cnstra/devtools-dto';
+import type { TCNSAppDTO } from '@cnstra/devtools-dto';
 
 /**
  * Minimal structural view of a `pg` Pool/Client, so this package doesn't hard
@@ -23,7 +23,7 @@ export interface CNSDevToolsServerRepositoryPostgresOptions {
 /** JSON-encode a value for a `jsonb` parameter (null-safe). */
 const j = (v: unknown): string => JSON.stringify(v ?? null);
 
-function rowToApp(r: any): CNSDTOApp {
+function rowToApp(r: any): TCNSAppDTO {
     return {
         id: r.id,
         name: r.name,
@@ -80,7 +80,7 @@ export class CNSDevToolsServerRepositoryPostgres
 
     // ─── Apps ───────────────────────────────────────────────────────────────
 
-    async upsertApp(app: CNSDTOApp): Promise<void> {
+    async upsertApp(app: TCNSAppDTO): Promise<void> {
         await this.db.query(
             `insert into ${this.p}app (id, name, version, connected_at, last_seen_at)
              values ($1, $2, $3, $4, $5)
@@ -93,14 +93,14 @@ export class CNSDevToolsServerRepositoryPostgres
         );
     }
 
-    async listApps(): Promise<CNSDTOApp[]> {
+    async listApps(): Promise<TCNSAppDTO[]> {
         const { rows } = await this.db.query(`select * from ${this.p}app`);
         return rows.map(rowToApp);
     }
 
     // ─── Topology ───────────────────────────────────────────────────────────
 
-    async saveTopology(snapshot: CNSDTOTopologySnapshot): Promise<void> {
+    async saveTopology(snapshot: TCNSTopologySnapshotDTO): Promise<void> {
         await this.db.query(
             `insert into ${this.p}topology (cns_id, app_id, snapshot)
              values ($1, $2, $3::jsonb)
@@ -111,14 +111,14 @@ export class CNSDevToolsServerRepositoryPostgres
         );
     }
 
-    async getTopology(cnsId?: string): Promise<CNSDTOTopologySnapshot[]> {
+    async getTopology(cnsId?: string): Promise<TCNSTopologySnapshotDTO[]> {
         const { rows } = cnsId
             ? await this.db.query(
                   `select snapshot from ${this.p}topology where cns_id = $1`,
                   [cnsId]
               )
             : await this.db.query(`select snapshot from ${this.p}topology`);
-        return rows.map(r => r.snapshot as CNSDTOTopologySnapshot);
+        return rows.map(r => r.snapshot as TCNSTopologySnapshotDTO);
     }
 
     // ─── CNS ↔ App mapping ──────────────────────────────────────────────────

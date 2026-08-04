@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { TCNSProgress, TCNSSignalRef } from '@cnstra/persist-dto';
-import { CNSDTOStimulationActionOptionsSchema } from './client-messages';
+import type { TCNSProgress, TCNSSignalJSON } from '@cnstra/persist-dto';
+import { CNSStimulationActionOptionsDTOSchema } from './client-messages';
 
 /**
  * Server→app durable-action commands (Phase 2b-2).
@@ -21,7 +21,7 @@ import { CNSDTOStimulationActionOptionsSchema } from './client-messages';
 type Extends<A, _B extends A> = true;
 
 /** Retry: resume the stored frontier as a NEW attempt of the SAME stimulation. */
-export const CNSDTOStimulationResumeCommandSchema = z.object({
+export const CNSStimulationResumeCommandDTOSchema = z.object({
     type: z.literal('cns.stimulation.resume'),
     requestId: z.string(),
     scopeName: z.string().optional(),
@@ -29,42 +29,42 @@ export const CNSDTOStimulationResumeCommandSchema = z.object({
     stimulationAttemptId: z.string(),
     attemptNumber: z.number().int().positive(),
     // The stimulation's original entry (the persistor preserves it across attempts).
-    entry: z.custom<TCNSSignalRef>(),
+    entry: z.custom<TCNSSignalJSON>(),
     // Frontier + context to hydrate against the app's registry and `cns.activate`.
     progress: z.custom<TCNSProgress>(),
-    options: CNSDTOStimulationActionOptionsSchema.optional(),
+    options: CNSStimulationActionOptionsDTOSchema.optional(),
 });
 
 /** Clone: a fresh stimulation (new id, attempt 1) re-fired from the source entry. */
-export const CNSDTOStimulationLaunchCommandSchema = z.object({
+export const CNSStimulationLaunchCommandDTOSchema = z.object({
     type: z.literal('cns.stimulation.launch'),
     requestId: z.string(),
     scopeName: z.string().optional(),
     stimulationId: z.string(),
     stimulationAttemptId: z.string(),
-    entry: z.custom<TCNSSignalRef>(),
-    options: CNSDTOStimulationActionOptionsSchema.optional(),
+    entry: z.custom<TCNSSignalJSON>(),
+    options: CNSStimulationActionOptionsDTOSchema.optional(),
 });
 
-export const CNSDTOAppCommandSchema = z.discriminatedUnion('type', [
-    CNSDTOStimulationResumeCommandSchema,
-    CNSDTOStimulationLaunchCommandSchema,
+export const CNSAppCommandDTOSchema = z.discriminatedUnion('type', [
+    CNSStimulationResumeCommandDTOSchema,
+    CNSStimulationLaunchCommandDTOSchema,
 ]);
 
-export type CNSDTOStimulationResumeCommand = z.infer<
-    typeof CNSDTOStimulationResumeCommandSchema
+export type TCNSStimulationResumeCommandDTO = z.infer<
+    typeof CNSStimulationResumeCommandDTOSchema
 >;
-export type CNSDTOStimulationLaunchCommand = z.infer<
-    typeof CNSDTOStimulationLaunchCommandSchema
+export type TCNSStimulationLaunchCommandDTO = z.infer<
+    typeof CNSStimulationLaunchCommandDTOSchema
 >;
-export type CNSDTOAppCommand = z.infer<typeof CNSDTOAppCommandSchema>;
+export type TCNSAppCommandDTO = z.infer<typeof CNSAppCommandDTOSchema>;
 
 // Drift guards: the enriched commands must carry the canonical persist-dto shapes.
 type _Resume = Extends<
     TCNSProgress,
-    z.infer<typeof CNSDTOStimulationResumeCommandSchema>['progress']
+    z.infer<typeof CNSStimulationResumeCommandDTOSchema>['progress']
 >;
 type _Entry = Extends<
-    TCNSSignalRef,
-    z.infer<typeof CNSDTOStimulationLaunchCommandSchema>['entry']
+    TCNSSignalJSON,
+    z.infer<typeof CNSStimulationLaunchCommandDTOSchema>['entry']
 >;

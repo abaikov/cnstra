@@ -133,7 +133,7 @@ const worker = new Worker('jobs', async (job) => {
 });
 ```
 
-See [Integrations](/docs/integrations/message-brokers) for more details. For best practices on context usage, see [Best Practices](/docs/advanced/best-practices).
+See [Integrations](/docs/integrations/bullmq) for more details. For best practices on context usage, see [Best Practices](/docs/advanced/best-practices).
 
 ## Memory Issues
 

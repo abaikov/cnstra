@@ -85,7 +85,7 @@ export class DataLimiter {
 
         // Find stimulations to remove
         const stimulationsToRemove = allStimulations.filter(s =>
-            !limitedStimulations.some(ls => ls.id === s.id)
+            !limitedStimulations.some(ls => ls.stimulationId === s.stimulationId)
         );
 
         // Remove old stimulations

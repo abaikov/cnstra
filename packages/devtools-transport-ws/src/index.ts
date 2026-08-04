@@ -1,8 +1,8 @@
 import type { ICNSDevToolsTransport } from '@cnstra/devtools';
 import {
-    CNSDTOReplayStartMessageSchema,
-    CNSDTOAppCommandSchema,
-    type CNSDTOAppBatchMessage,
+    CNSReplayStartMessageDTOSchema,
+    CNSAppCommandDTOSchema,
+    type TCNSAppBatchMessageDTO,
 } from '@cnstra/devtools-dto';
 
 export type CNSDevToolsTransportWsOptions = {
@@ -27,8 +27,8 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
     private reconnectAttempts = 0;
     private hasConnectedOnce = false;
 
-    private readonly pendingBatches: CNSDTOAppBatchMessage[] = [];
-    private lastTopologyBatch?: CNSDTOAppBatchMessage;
+    private readonly pendingBatches: TCNSAppBatchMessageDTO[] = [];
+    private lastTopologyBatch?: TCNSAppBatchMessageDTO;
     private onReplayHandler?: (cmd: any) => void;
     private onCommandHandler?: (cmd: any) => void;
 
@@ -36,7 +36,7 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
 
     // ─── ICNSDevToolsTransport ────────────────────────────────────────────────────
 
-    async sendBatch(message: CNSDTOAppBatchMessage): Promise<void> {
+    async sendBatch(message: TCNSAppBatchMessageDTO): Promise<void> {
         if (message.items.some(i => i.type === 'topology')) {
             this.lastTopologyBatch = message;
         }
@@ -107,7 +107,7 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
                 try {
                     const msg = JSON.parse(typeof ev.data === 'string' ? ev.data : String(ev.data));
                     if (msg?.type === 'replay.start') {
-                        const result = CNSDTOReplayStartMessageSchema.safeParse(msg);
+                        const result = CNSReplayStartMessageDTOSchema.safeParse(msg);
                         if (result.success) {
                             this.onReplayHandler?.(result.data);
                         } else if (this.opts.consoleLogEnabled) {
@@ -117,7 +117,7 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
                         msg?.type === 'cns.stimulation.resume' ||
                         msg?.type === 'cns.stimulation.launch'
                     ) {
-                        const result = CNSDTOAppCommandSchema.safeParse(msg);
+                        const result = CNSAppCommandDTOSchema.safeParse(msg);
                         if (result.success) {
                             this.onCommandHandler?.(result.data);
                         } else if (this.opts.consoleLogEnabled) {

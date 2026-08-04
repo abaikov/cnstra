@@ -1,8 +1,4 @@
-import {
-    CNSProgressRecorder,
-    CNSProgressSerializer,
-    CNSStimulationPersistor,
-} from '@cnstra/persist';
+import { CNSProgressSerializer } from '@cnstra/persist';
 import type {
     CNSPersistOptionsRegistry,
     ICNSProgressRepository,
@@ -10,12 +6,12 @@ import type {
     ICNSStimulationRepository,
     TCNSProgress,
 } from '@cnstra/persist';
-import type { ICNS, TCNSStimulationResponse } from '@cnstra/types';
+import type { ICNS } from '@cnstra/types';
+import { runStimulationJob, createDrainState } from '@cnstra/broker';
 import type {
     IBullJob,
     IBullWorkerCtor,
     IBullWorkerLike,
-    ICNSResponseLike,
     TCNSStimulationJobData,
 } from './types';
 
@@ -104,124 +100,66 @@ function jobProgressRepository(
     };
 }
 
-export function createCNSWorker(options: TCNSWorkerOptions): IBullWorkerLike {
-    const {
-        Worker,
-        cns,
-        registry,
-        queue,
-        connection,
-        observe,
-        resume,
-        workerOptions,
-    } = options;
+/** A running worker + a graceful `shutdown` (see {@link createCNSWorker}). */
+export interface TCNSBullWorkerHandle {
+    /** The constructed BullMQ worker (for power users / event listeners). */
+    worker: IBullWorkerLike;
+    /**
+     * Graceful shutdown: stop taking new jobs, let in-flight stimulations finish for
+     * up to `drainMs` (default 10s), then **abort** whatever is still running — an
+     * aborted stimulation's remaining tasks become its frontier, which the resume
+     * checkpoint records, so the job's retry resumes exactly there. Finally closes the
+     * worker. Does NOT close your `observe`/`resume` stores (you own those — close them
+     * after this resolves).
+     */
+    shutdown(opts?: { drainMs?: number }): Promise<void>;
+}
 
-    // One serializer per worker; the recorder is per-job (holds job-specific key).
-    const serializer = resume
-        ? new CNSProgressSerializer(registry)
-        : undefined;
+export function createCNSWorker(options: TCNSWorkerOptions): TCNSBullWorkerHandle {
+    const { Worker, cns, registry, queue, connection, observe, resume, workerOptions } =
+        options;
+
+    // One serializer per worker; the per-job pipeline lives in @cnstra/broker.
+    const serializer = resume ? new CNSProgressSerializer(registry) : undefined;
+    const drain = createDrainState();
 
     const runJob = async (
         job: IBullJob<TCNSStimulationJobData>
     ): Promise<void> => {
-        const jobId = String(job.id ?? job.name);
-        const { collateralName, payload, maxNeuronHops } = job.data;
-        const collateral = registry.getCollateral(collateralName);
-        if (!collateral) {
-            throw new Error(
-                `[@cnstra/bullmq] Unknown collateral "${collateralName}". ` +
-                    `Register it in the CNSPersistOptionsRegistry.`
-            );
-        }
-
         // Resume store: an external repository if given, else BullMQ's own per-job
         // progress (job.updateProgress / job.progress) — no separate store.
         const resumeRepo: ICNSProgressRepository | undefined = resume
             ? resume.repository ?? jobProgressRepository(job)
             : undefined;
-
-        // Records the outstanding frontier as the run advances (crash-safety); the
-        // explicit save on failure below guarantees the exact final frontier.
-        const recorder =
-            resume && serializer && resumeRepo
-                ? new CNSProgressRecorder({
-                      serializer,
-                      repository: resumeRepo,
-                      key: jobId,
-                      strategy: resume.strategy,
-                  })
-                : undefined;
-
-        // Observability: stream the canonical name-based Stimulation → Attempt →
-        // Task model to `observe`. One job = one stimulation; each BullMQ retry is
-        // a new attempt (attemptsMade is 0-based).
-        const attemptNumber = (job.attemptsMade ?? 0) + 1;
-        const persistor = observe
-            ? new CNSStimulationPersistor({
-                  repository: observe,
-                  registry,
-                  stimulationId: jobId,
-                  stimulationAttemptId: `${jobId}#${attemptNumber}`,
-                  attemptNumber,
-                  entry: [{ collateralName, payload }],
-                  volume: 'full',
-              })
-            : undefined;
-
-        const onResponse = (resp: ICNSResponseLike) => {
-            const r = resp as unknown as TCNSStimulationResponse;
-            // recorder → resume checkpoint; persistor → observability history.
-            recorder?.onResponse(r);
-            persistor?.onResponse(r);
-        };
-
-        // Resume from a persisted frontier if this job already has one (a retry of
-        // the same job id); otherwise start fresh from the entry signal.
-        // Correlate logs to this run: every handler reads `ctx.stimulationContext`
-        // (same object on every hop, sync or async) — no wiring on the user's side.
-        const stimulationContext = { stimulationId: jobId, attemptNumber };
-
-        let stimulation;
-        if (resume && serializer && resumeRepo) {
-            const saved = await resumeRepo.load(jobId);
-            if (saved) {
-                const { tasks, ctx } = serializer.hydrate(saved);
-                stimulation = cns.activate(tasks, {
-                    maxNeuronHops,
-                    ctx,
-                    onResponse,
-                    stimulationContext,
-                });
-            }
-        }
-        if (!stimulation) {
-            stimulation = cns.stimulate(collateral.createSignal(payload), {
-                maxNeuronHops,
-                onResponse,
-                stimulationContext,
-            });
-        }
-
-        try {
-            await stimulation.waitUntilComplete();
-            // Job about to complete → its resume checkpoint can go (lifecycle = job row).
-            if (resumeRepo) await resumeRepo.delete(jobId);
-        } catch (err) {
-            // Persist the exact final frontier before throwing so the retried job
-            // resumes from it (the recorder's cadence may still be debouncing).
-            if (resume && serializer && resumeRepo) {
-                await resumeRepo.save(jobId, serializer.serialize(stimulation));
-            }
-            // Let BullMQ decide about retries/backoff.
-            throw err;
-        } finally {
-            recorder?.dispose();
-            persistor?.dispose();
-        }
+        await runStimulationJob({
+            pkgName: '@cnstra/bullmq',
+            stopping: drain.isStopping(),
+            cns,
+            registry,
+            jobId: String(job.id ?? job.name),
+            collateralName: job.data.collateralName,
+            payload: job.data.payload,
+            maxNeuronHops: job.data.maxNeuronHops,
+            // Each BullMQ retry is a new attempt (attemptsMade is 0-based).
+            attemptNumber: (job.attemptsMade ?? 0) + 1,
+            observe,
+            serializer,
+            resumeRepo,
+            resumeStrategy: resume?.strategy,
+            abort: drain.abort,
+            active: drain.active,
+        });
     };
 
-    return new Worker<TCNSStimulationJobData>(queue, runJob, {
+    const worker = new Worker<TCNSStimulationJobData>(queue, runJob, {
         ...(connection !== undefined ? { connection } : {}),
         ...workerOptions,
     });
+
+    const shutdown = async (opts?: { drainMs?: number }): Promise<void> => {
+        await drain.drainAndAbort(opts?.drainMs ?? 10_000);
+        await worker.close();
+    };
+
+    return { worker, shutdown };
 }

@@ -120,5 +120,5 @@ broker**:
 All are the one `ICNSProgressRepository` seam (in-memory only for tests); the persistent
 options make the checkpoint survive a worker restart.
 
-See the [Message Brokers](/docs/integrations/message-brokers) and
+See the [Message Brokers](/docs/integrations/bullmq) and
 [pg-boss](/docs/integrations/pg-boss) guides for how the worker and resume wiring work.

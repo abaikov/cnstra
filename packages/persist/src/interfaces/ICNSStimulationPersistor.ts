@@ -6,7 +6,7 @@ import type { TCNSStimulationResponse } from '@cnstra/types';
  * As the run advances it keeps the run's `progress` (frontier + context) current
  * for resume, and — when the volume is `'full'` — appends settled tasks as history
  * rows, updating the attempt and run status. Cadence is delegated to a
- * {@link ICNSProgressRecordingStrategy}; volume to {@link TCNSStimulationVolume}.
+ * {@link ICNSProgressRecordingStrategy}; volume to {@link ECNSStimulationVolume}.
  *
  * It never deletes the run — record lifecycle (cleanup on success, retention for the
  * retry UI) is the integration's concern. Supersedes the narrower

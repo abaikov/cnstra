@@ -1,16 +1,16 @@
 import { CNSInMemoryStimulationRepository } from './CNSInMemoryStimulationRepository';
 import type {
-    TCNSStimulationPersisted,
-    TCNSStimulationAttemptPersisted,
+    TCNSStimulationState,
+    TCNSStimulationAttempt,
 } from '@cnstra/persist-dto';
 
 const stim = (
     stimulationId: string,
     status: string
-): TCNSStimulationPersisted => ({
+): TCNSStimulationState => ({
     stimulationId,
     entry: { collateralName: 'c', payload: {} },
-    status: status as TCNSStimulationPersisted['status'],
+    status: status as TCNSStimulationState['status'],
     progress: { tasks: [], context: {} },
 });
 
@@ -18,11 +18,11 @@ const attempt = (
     stimulationId: string,
     status: string,
     done: boolean
-): TCNSStimulationAttemptPersisted => ({
+): TCNSStimulationAttempt => ({
     stimulationAttemptId: `${stimulationId}#1`,
     stimulationId,
     attemptNumber: 1,
-    status: status as TCNSStimulationAttemptPersisted['status'],
+    status: status as TCNSStimulationAttempt['status'],
     startedAt: 1,
     completedAt: done ? 2 : null,
     hopCount: 1,
@@ -42,7 +42,7 @@ describe('CNSInMemoryStimulationRepository — bounds (OOM prevention)', () => {
         expect(await repo.getStimulation('a')).toBeUndefined();
     });
 
-    it('deleteOnComplete drops a run (and its attempts/tasks) when it settles', async () => {
+    it('deleteOnComplete drops a stimulation (and its attempts/tasks) when it settles', async () => {
         const repo = new CNSInMemoryStimulationRepository({
             deleteOnComplete: true,
         });
@@ -57,7 +57,7 @@ describe('CNSInMemoryStimulationRepository — bounds (OOM prevention)', () => {
         expect(await repo.getTasks('x#1')).toEqual([]);
     });
 
-    it('deleteOnComplete also drops permanently-failed runs', async () => {
+    it('deleteOnComplete also drops permanently-failed stimulations', async () => {
         const repo = new CNSInMemoryStimulationRepository({
             deleteOnComplete: true,
         });

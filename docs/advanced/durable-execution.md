@@ -92,8 +92,14 @@ new CNSInMemoryStimulationRepository({
 ```
 
 Use `deleteOnComplete` when you only watch in-flight runs; use `maxStimulations` / `ttlMs`
-to keep a bounded *recent* history (e.g. to still inspect or retry failed runs). The
-Postgres store has no such limit — rows persist; prune with your own retention policy.
+to keep a bounded *recent* history (e.g. to still inspect or retry failed runs).
+
+The **Postgres** store persists rows, so bound it with retention on a schedule (cron):
+
+```ts
+// prune runs not updated for a week (attempts/tasks/frontier/context cascade)
+await pgStore.deleteStale(7 * 24 * 60 * 60 * 1000);
+```
 
 ## Retry & clone
 
@@ -133,4 +139,5 @@ durability stays on the worker path only if you attach it per-call, which the wo
   `attemptNumber` (the workers fill it automatically).
 - [Persistence & Resume](./persistence.md) — the underlying frontier-serialization primitive.
 - [DevTools → Durable Runs](../devtools/durable-runs.md) — the panel that renders this model.
-- [pg-boss](../integrations/pg-boss.md) / [message brokers](../integrations/message-brokers.md) — the worker integrations.
+- [Cron item processing](../recipes/cron-item-processing.md) — a run per DB item, visible in the admin by item id.
+- [pg-boss](../integrations/pg-boss.md) / [BullMQ](../integrations/bullmq.md) — the worker integrations.

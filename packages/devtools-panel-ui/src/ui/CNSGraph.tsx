@@ -23,8 +23,10 @@ export type { FrontierData } from './frontier';
 cytoscape.use(dagre);
 cytoscape.use(coseBilkent);
 
-interface NeuronData {
+export interface NeuronData {
+    /** Cytoscape node id = `nodeKey(cnsId, name)`. */
     id: string;
+    cnsId: string;
     name: string;
     x: number;
     y: number;
@@ -36,7 +38,7 @@ interface NeuronData {
     avgDuration?: number;
 }
 
-interface StimulationData {
+export interface StimulationData {
     id: string;
     timestamp: number;
     signal: unknown;
@@ -44,7 +46,7 @@ interface StimulationData {
     targetNeuron?: string;
 }
 
-interface ConnectionData {
+export interface ConnectionData {
     from: string;
     to: string;
     weight: number;

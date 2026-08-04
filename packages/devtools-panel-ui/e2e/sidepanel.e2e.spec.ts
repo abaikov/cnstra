@@ -35,41 +35,6 @@ test.describe('Neuron sidebar panel', () => {
             { timeout: 60000 }
         );
 
-        // Use the exposed Cytoscape instance to click a node with stim > 0 if available
-        const clickedNodeLabel: string | null = await page.evaluate(() => {
-            const cy: any = (window as any).__cnsCy;
-            if (!cy) return null;
-            const nodes: any[] = cy.nodes().toArray();
-            let picked: any | null = null;
-            for (const n of nodes) {
-                const stim = Number(n.data('stim') || 0);
-                if (stim > 0) {
-                    picked = n;
-                    break;
-                }
-            }
-            if (!picked) picked = nodes[0];
-            if (!picked) return null;
-            // The cytoscape label is `${name}\n${stats}`; the panel heading shows
-            // only the neuron name, so match on the first line.
-            const label = String(picked.data('label') || '').split('\n')[0];
-            picked.emit('tap');
-            return label as string;
-        });
-
-        // Sidebar should appear
-        await expect(page.locator('.neuron-details-panel')).toBeVisible({
-            timeout: 10000,
-        });
-
-        if (clickedNodeLabel) {
-            await expect(
-                page.getByRole('heading', {
-                    name: new RegExp(clickedNodeLabel),
-                })
-            ).toBeVisible();
-        }
-
         const readPanelNumbers = async () => {
             const txt = await page.locator('.neuron-details-panel').innerText();
             const inputMatch = txt.match(/(\d+)\s*Input Signals/);
@@ -82,18 +47,80 @@ test.describe('Neuron sidebar panel', () => {
             };
         };
 
-        // Wait for signals to appear
-        const deadline = Date.now() + 20000;
-        let { input, output, total } = await readPanelNumbers();
-        while (total === 0 && Date.now() < deadline) {
-            await page.waitForTimeout(500);
-            const nums = await readPanelNumbers();
-            input = nums.input;
-            output = nums.output;
-            total = nums.total;
+        // Active nodes (stim > 0), in graph order.
+        const activeNodeIds = (): Promise<string[]> =>
+            page.evaluate(() => {
+                const cy: any = (window as any).__cnsCy;
+                if (!cy) return [] as string[];
+                return cy
+                    .nodes()
+                    .toArray()
+                    .filter((n: any) => Number(n.data('stim') || 0) > 0)
+                    .map((n: any) => n.id() as string);
+            });
+
+        // Open a node's sidebar; returns its label (first line of the cy label).
+        const openNode = async (id: string): Promise<string | null> => {
+            const label = await page.evaluate(nodeId => {
+                const cy: any = (window as any).__cnsCy;
+                const n = cy?.getElementById(nodeId);
+                if (!n || n.length === 0) return null;
+                const l = String(n.data('label') || '').split('\n')[0];
+                n.emit('tap');
+                return l as string;
+            }, id);
+            await expect(page.locator('.neuron-details-panel')).toBeVisible({
+                timeout: 10000,
+            });
+            return label;
+        };
+
+        const PAYLOAD_KEYS = ['userId', 'email', 'token', 'event', 'action'];
+        const panelHasPayload = (txt: string): boolean =>
+            PAYLOAD_KEYS.some(k => txt.includes(k));
+
+        // The payloads this test asserts render in a neuron's dendrite (input)
+        // response rows carrying an OUTPUT payload — i.e. a processing neuron that
+        // both received and emitted (e.g. cartNeuron: addToCart → cartUpdated{userId}).
+        // The live demo is non-deterministic, so poll every active neuron over a
+        // deadline until one surfaces payload data.
+        const deadline = Date.now() + 30000;
+        let chosen:
+            | { id: string; label: string | null; input: number; output: number; total: number }
+            | null = null;
+        while (Date.now() < deadline && !chosen) {
+            const ids = await activeNodeIds();
+            for (const id of ids) {
+                const label = await openNode(id);
+                const nums = await readPanelNumbers();
+                const txt = await page
+                    .locator('.neuron-details-panel')
+                    .innerText();
+                if (panelHasPayload(txt)) {
+                    chosen = { id, label, ...nums };
+                    break;
+                }
+            }
+            if (!chosen) await page.waitForTimeout(1000);
         }
 
-        // Debug output
+        // Hard gate: a payload-bearing processing neuron must surface (topology now
+        // includes entry collaterals, so cart/order-style neurons show their inputs).
+        expect(
+            chosen,
+            'no payload-bearing response surfaced within the deadline'
+        ).not.toBeNull();
+        const clickedNodeLabel = await openNode(chosen!.id);
+        const { input, output, total } = await readPanelNumbers();
+
+        if (clickedNodeLabel) {
+            await expect(
+                page.getByRole('heading', {
+                    name: new RegExp(clickedNodeLabel),
+                })
+            ).toBeVisible();
+        }
+
         const debug = await page.evaluate(
             () => (window as any).__neuronPanelDebug
         );
@@ -102,33 +129,18 @@ test.describe('Neuron sidebar panel', () => {
             JSON.stringify(debug, null, 2)
         );
 
-        // The neuron has real signal activity. (Not every neuron has both
-        // directions, so we don't require input AND output separately.)
+        // Structural assertions (always required): the panel reflects real activity.
         expect(total).toBe(input + output);
         expect(total).toBeGreaterThan(0);
 
-        // Check that dendrites section exists and has data
         const panelText = await page
             .locator('.neuron-details-panel')
             .innerText();
         expect(panelText).toContain('DENDRITES & RESPONSE HISTORY');
 
-        // Check that at least some response counts are shown
-        const responseCountMatch = panelText.match(/Responses:\s*(\d+)/);
-        if (responseCountMatch) {
-            const responsesCount = Number(responseCountMatch[1]);
-            console.log(`📊 Dendrite responses count: ${responsesCount}`);
-            // Note: responses might be 0 for some dendrites, that's ok
-        }
-
-        // Check that we have actual payload data, not just empty objects
-        const hasPayloadData =
-            panelText.includes('userId') ||
-            panelText.includes('email') ||
-            panelText.includes('token') ||
-            panelText.includes('event') ||
-            panelText.includes('action');
-        expect(hasPayloadData).toBe(true);
+        // Payload assertion (hard): the selected neuron's dendrite rows show real
+        // signal payloads, not empty objects.
+        expect(panelHasPayload(panelText)).toBe(true);
 
         // Close via the ✕ button inside the sidebar panel
         const closeBtn = page

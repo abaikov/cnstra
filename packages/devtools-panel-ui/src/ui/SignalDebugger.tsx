@@ -7,10 +7,12 @@ import {
     subscribeEntitiesByIndexKey,
 } from '../exo/oimdb-bind';
 import { db } from '../model';
-import type { TStimulation } from '../model';
+import type { TCNSStimulationState } from '../model';
 import { jsonView } from './json-view';
 import { safeStringify } from '../utils/safeJson';
-import type { CNSDTOReplayStartMessage } from '@cnstra/devtools-dto';
+import { notNull, fmtTime } from '../utils/format';
+import { PANEL, EMPTY_PANEL as EMPTY, SECTION_H } from './styles';
+import type { TCNSReplayStartMessageDTO } from '@cnstra/devtools-dto';
 import type { DevtoolsSocket } from '../app/controllers/socket';
 
 // Native Exodra port of the React <SignalDebugger> island. Form inputs are
@@ -27,22 +29,11 @@ type Injection = {
     error?: string;
 };
 
-type Collateral = { id: string; name: string };
+type Collateral = { name: string };
 
-const notNull = <T,>(a: readonly (T | undefined)[]): T[] =>
-    a.filter((x): x is T => x != null);
-
-const PANEL =
-    'background:var(--bg-panel);border:2px solid var(--border-infected);border-radius:var(--radius-sm);' +
-    'padding:var(--spacing-sm);font-size:var(--font-size-xs);color:var(--text-primary);' +
-    'font-family:var(--font-primary);box-shadow:0 0 10px var(--shadow-infection);width:100%';
-const EMPTY =
-    'background:var(--bg-panel);border:2px solid var(--border-primary);border-radius:var(--radius-sm);' +
-    'padding:var(--spacing-sm);font-size:var(--font-size-xs);color:var(--text-muted);text-align:center';
 const LABEL = 'display:block;margin-bottom:2px;font-size:10px;color:var(--text-muted)';
 const FIELD =
     'width:100%;padding:4px;font-size:10px;background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:2px;color:var(--text-primary)';
-const SECTION_H = 'margin-bottom:var(--spacing-xs);font-size:11px;font-weight:bold';
 
 export function signalDebugger(
     socket: DevtoolsSocket,
@@ -52,7 +43,7 @@ export function signalDebugger(
     const isExpanded = bindable(false);
     const history = bindable<Injection[]>([]);
     const collateralsB = bindable<Collateral[]>([]);
-    const stimsB = bindable<TStimulation[]>([]);
+    const stimsB = bindable<TCNSStimulationState[]>([]);
 
     let formEl: HTMLElement | null = null;
     let chosenCol = '';
@@ -87,8 +78,15 @@ export function signalDebugger(
     appIdB.subscribe(wire);
     wire();
 
-    const colNameById = (id: string): string =>
-        db.collaterals.getOneByPk(id)?.name ?? id;
+    /** Owner (emitting) neuron of a stimulation's entry collateral, by name — the
+     *  real topology collateral within the stimulation's cns scope (no id synthesis). */
+    const entryOwner = (stim: TCNSStimulationState): string => {
+        for (const c of db.collaterals.getAll()) {
+            if (c.cnsId === stim.scopeName && c.name === stim.entry.collateralName)
+                return c.ownerNeuronName ?? '-';
+        }
+        return '-';
+    };
     const field = (name: string): string =>
         (formEl?.querySelector(`[name="${name}"]`) as
             | HTMLInputElement
@@ -129,17 +127,15 @@ export function signalDebugger(
             const singleCnsId =
                 cnsIdB.getValue() ||
                 (cnsIds.size === 1 ? Array.from(cnsIds)[0] : undefined);
-            const targetCol = collateralsB
-                .getValue()
-                .find(c => c.name === collateralName);
             // No fresh-stimulate command in the protocol; closest is replay.start
             // with an empty source stimulationId (see @cnstra/devtools-dto). contexts
-            // has no equivalent and is dropped.
-            const cmd: CNSDTOReplayStartMessage = {
+            // has no equivalent and is dropped. Topology is name-based, so the
+            // collateral is identified by its name.
+            const cmd: TCNSReplayStartMessageDTO = {
                 type: 'replay.start',
                 replayId: `debug-${Date.now()}`,
                 stimulationId: '',
-                collateralId: targetCol?.id ?? collateralName,
+                collateralId: collateralName,
                 payload,
                 appId,
                 ...(singleCnsId ? { cnsId: singleCnsId } : {}),
@@ -158,10 +154,10 @@ export function signalDebugger(
         }
     };
 
-    const copy = (stim: TStimulation): void => {
-        chosenCol = colNameById(stim.collateralId);
+    const copy = (stim: TCNSStimulationState): void => {
+        chosenCol = stim.entry.collateralName;
         setField('collateral', chosenCol);
-        setField('payload', safeStringify(stim.payload || {}, 2));
+        setField('payload', safeStringify(stim.entry.payload || {}, 2));
         setField('contexts', '{}');
         setField('options', '{}');
     };
@@ -187,11 +183,11 @@ export function signalDebugger(
                 {stims.map(stim => (
                     <div static={{ style: 'background:var(--bg-secondary);border:1px solid var(--border-primary);border-radius:2px;padding:4px;margin-bottom:4px;font-size:9px' }}>
                         <div static={{ style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:2px' }}>
-                            <span static={{ style: 'color:var(--infection-green)' }}>{colNameById(stim.collateralId)}</span>
+                            <span static={{ style: 'color:var(--infection-green)' }}>{stim.entry.collateralName}</span>
                             <button static={{ style: 'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:8px;padding:2px' }} handlers={{ onClick: () => copy(stim) }}>📋 Copy</button>
                         </div>
-                        <div static={{ style: 'color:var(--text-muted)' }}>{new Date(stim.startedAt).toLocaleTimeString()} | from: {db.collaterals.getOneByPk(stim.collateralId)?.neuronId ?? '-'}</div>
-                        {jsonView(stim.payload || {})}
+                        <div static={{ style: 'color:var(--text-muted)' }}>{fmtTime(stim.startedAt)} | from: {entryOwner(stim)}</div>
+                        {jsonView(stim.entry.payload || {})}
                     </div>
                 ))}
             </div>
@@ -209,7 +205,7 @@ export function signalDebugger(
                         <div static={{ style: `background:${inj.success ? 'var(--bg-secondary)' : 'rgba(255,0,0,0.1)'};border:1px solid ${inj.success ? 'var(--border-primary)' : 'var(--infection-red)'};border-radius:2px;padding:4px;margin-bottom:2px;font-size:9px` }}>
                             <div static={{ style: 'display:flex;justify-content:space-between;align-items:center' }}>
                                 <span static={{ style: `color:${inj.success ? 'var(--infection-green)' : 'var(--infection-red)'}` }}>{inj.success ? '✅' : '❌'} {inj.collateralName}</span>
-                                <span static={{ style: 'color:var(--text-muted)' }}>{new Date(inj.timestamp).toLocaleTimeString()}</span>
+                                <span static={{ style: 'color:var(--text-muted)' }}>{fmtTime(inj.timestamp)}</span>
                             </div>
                             {inj.error ? <div static={{ style: 'color:var(--infection-red);font-size:8px' }}>Error: {inj.error}</div> : <div />}
                         </div>

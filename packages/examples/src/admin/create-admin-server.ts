@@ -12,11 +12,11 @@ import { createServer } from 'node:http';
 import type { Server, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { DurableRunManager } from './run-manager';
+import { DurableStimulationManager } from './stimulation-manager';
 import { attachBullTransport } from './bull-transport';
 import { attachPgBossTransport } from './pgboss-transport';
-import { createDurableRunsHandler } from './durable-http-handler';
-import { createRunStore } from './run-store';
+import { createDurableStimulationsHandler } from './durable-http-handler';
+import { createStimulationStore } from './stimulation-store';
 
 export type TAdminHandle = { port: number; backend: string; store: string; stop: () => Promise<void> };
 
@@ -32,9 +32,9 @@ export async function startAdmin(): Promise<TAdminHandle> {
 
     // The run/attempt/task HISTORY store (domain #2): in-memory by default, or a
     // durable Postgres store when ADMIN_STORE=postgres (survives a restart).
-    const { repository, store, closeStore } = createRunStore();
-    const manager = new DurableRunManager(repository);
-    const apiHandler = createDurableRunsHandler(manager, { backend, store });
+    const { repository, store, closeStore } = createStimulationStore();
+    const manager = new DurableStimulationManager(repository);
+    const apiHandler = createDurableStimulationsHandler(manager, { backend, store });
     const clients = new Set<ServerResponse>();
     manager.onChange(() => {
         for (const res of clients) res.write('event: update\ndata: 1\n\n');

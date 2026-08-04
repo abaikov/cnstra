@@ -246,7 +246,7 @@ Context growth significantly impacts memory usage:
    - Survives process restarts
    - Better observability and retry mechanisms
    
-   See [Integrations](/docs/integrations/message-brokers) for examples.
+   See [Integrations](/docs/integrations/bullmq) for examples.
 
 10. **Context is per-neuron per-stimulation and automatically cleaned up**:
     

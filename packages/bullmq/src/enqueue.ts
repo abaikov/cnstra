@@ -1,5 +1,6 @@
 import type { CNSCollateral } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+import { stimulationJob as brokerStimulationJob } from '@cnstra/broker';
 import type {
     IBullJob,
     IBullQueueLike,
@@ -33,14 +34,7 @@ export function stimulationJob(
     payload: unknown,
     extra?: Pick<TCNSStimulationJobData, 'maxNeuronHops'>
 ): TCNSStimulationJobData {
-    const collateralName = registry.getCollateralName(collateral);
-    if (!collateralName) {
-        throw new Error(
-            '[@cnstra/bullmq] Collateral is not registered in the ' +
-                'CNSPersistOptionsRegistry; cannot enqueue it by name.'
-        );
-    }
-    return { collateralName, payload, ...extra };
+    return brokerStimulationJob(registry, collateral, payload, extra, '@cnstra/bullmq');
 }
 
 /** Add a stimulation job to a BullMQ queue. Returns the created job. */

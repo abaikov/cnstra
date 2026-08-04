@@ -1,4 +1,4 @@
-import type { CNSDTOClientMessage } from '@cnstra/devtools-dto';
+import type { TCNSClientMessageDTO } from '@cnstra/devtools-dto';
 import { bindable } from '@exodra/reactivity';
 import type { TExoWritableBindable } from '@exodra/reactivity';
 import { mainCNS } from '../../cns';
@@ -25,7 +25,7 @@ export interface DevtoolsSocket {
     /** Current live socket, or null when not open. */
     getSocket(): WebSocket | null;
     /** Safe, typed send. Returns false when the socket is not open. */
-    send(message: CNSDTOClientMessage): boolean;
+    send(message: TCNSClientMessageDTO): boolean;
     /** Tear down: stop reconnecting and close the socket. */
     dispose(): void;
 }
@@ -42,7 +42,7 @@ export function createDevtoolsSocket(): DevtoolsSocket {
     const wsRef: { current: WebSocket | null } = { current: null };
     const connectionStatus = bindable<ConnectionStatus>('connecting');
 
-    const send = (message: CNSDTOClientMessage): boolean => {
+    const send = (message: TCNSClientMessageDTO): boolean => {
         try {
             if (!ws || ws.readyState !== WebSocket.OPEN) return false;
             ws.send(JSON.stringify(message));

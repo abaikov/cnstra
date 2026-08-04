@@ -1,7 +1,7 @@
 import { neuron } from '@cnstra/core';
 import { appModelAxon } from '../../controller-layer/AppModelAxon';
 import { db, dbEventQueue } from '../../../model';
-import type { UIHop } from '../../../model';
+import type { TCNSHopState } from '../../../model';
 
 // Bound memory: cap retained hops per app.
 const MAX_HOPS_PER_APP = 5000;
@@ -14,7 +14,7 @@ function cleanupOldHops(appId: string): void {
         .sort((a, b) => b.startedAt - a.startedAt);
 
     const now = Date.now();
-    const toRemove: UIHop[] = [];
+    const toRemove: TCNSHopState[] = [];
     for (const h of appHops) {
         if (now - h.startedAt > HOP_TTL_MS) toRemove.push(h);
     }

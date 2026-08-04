@@ -1,4 +1,4 @@
-import type { TCNSSerializedTask } from './TCNSSerializedTask';
+import type { TCNSPlannedTaskJSON } from './TCNSPlannedTaskJSON';
 
 /**
  * The durable resume state of a run: its current outstanding frontier plus the
@@ -9,7 +9,7 @@ import type { TCNSSerializedTask } from './TCNSSerializedTask';
  */
 export type TCNSProgress = {
     /** The outstanding frontier (from `getOutstandingTasks()`), by name. */
-    tasks: TCNSSerializedTask[];
+    tasks: TCNSPlannedTaskJSON[];
     /** Per-neuron context (metadata), keyed by neuron name. */
     context: Record<string, unknown>;
 };

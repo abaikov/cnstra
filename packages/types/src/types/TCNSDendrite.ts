@@ -1,6 +1,6 @@
 import { ICNSCollateral } from '../interfaces/ICNSCollateral';
 import { TCNSAxon } from './TCNSAxon';
-import { TNCNeuronResponseReturn } from './TCNSNeuronResponseReturn';
+import { TCNSNeuronResponseReturn } from './TCNSNeuronResponseReturn';
 import { TCNSHandlerContext } from './TCNSHandlerContext';
 
 export type TCNSDendrite<
@@ -17,5 +17,5 @@ export type TCNSDendrite<
         payload: TSenderCollateral extends ICNSCollateral<infer P> ? P : never,
         axon: TAxonType,
         ctx: TCNSHandlerContext<TContextValue, TExt>
-    ) => TNCNeuronResponseReturn<TAxonType>;
+    ) => TCNSNeuronResponseReturn<TAxonType>;
 };

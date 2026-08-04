@@ -1,20 +1,23 @@
 import { collateral } from '@cnstra/core';
 import type {
-    CNSDTOApp,
-    CNSDTOCollateral,
-    CNSDTODendrite,
-    CNSDTONeuron,
-    CNSDTOStimulation,
+    TCNSAppDTO,
+    TCNSCollateralDTO,
+    TCNSDendriteDTO,
+    TCNSNeuronDTO,
 } from '@cnstra/devtools-dto';
-import type { UIHop, TServerMetrics } from '../../model';
+import type {
+    TCNSStimulationState,
+    TCNSHopState,
+    TServerMetrics,
+} from '../../model';
 
 /** A topology snapshot for one CNS of one app (from `app.connected` / `topology*`). */
 export type TTopologySnapshot = {
     cnsId: string;
     appId: string;
-    neurons: CNSDTONeuron[];
-    collaterals: CNSDTOCollateral[];
-    dendrites: CNSDTODendrite[];
+    neurons: TCNSNeuronDTO[];
+    collaterals: TCNSCollateralDTO[];
+    dendrites: TCNSDendriteDTO[];
 };
 
 /** Stimulation completion patch (from `stimulation.completed`). */
@@ -31,12 +34,12 @@ export type TStimulationCompletion = {
  * plain upsert.
  */
 export const appModelAxon = {
-    appUpserted: collateral<CNSDTOApp>(),
+    appUpserted: collateral<TCNSAppDTO>(),
     appDisconnected: collateral<{ appId: string }>(),
     topologyReceived: collateral<TTopologySnapshot>(),
-    stimulationStarted: collateral<CNSDTOStimulation>(),
+    stimulationStarted: collateral<TCNSStimulationState>(),
     stimulationCompleted: collateral<TStimulationCompletion>(),
-    hopAdded: collateral<UIHop>(),
+    hopAdded: collateral<TCNSHopState>(),
     serverMetrics: collateral<TServerMetrics>(),
     // UI action: user picked an app in the list.
     selectAppClicked: collateral<{ appId: string }>(),

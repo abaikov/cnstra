@@ -1,19 +1,15 @@
-import {
-    CNSProgressRecorder,
-    CNSProgressSerializer,
-    CNSStimulationPersistor,
-} from '@cnstra/persist';
+import { CNSProgressSerializer } from '@cnstra/persist';
 import type {
     CNSPersistOptionsRegistry,
     ICNSProgressRepository,
     ICNSProgressRecordingStrategy,
     ICNSStimulationRepository,
 } from '@cnstra/persist';
-import type { ICNS, TCNSStimulationResponse } from '@cnstra/types';
+import type { ICNS } from '@cnstra/types';
+import { runStimulationJob, createDrainState } from '@cnstra/broker';
 import type {
     IPgBossLike,
     IPgBossJob,
-    ICNSResponseLike,
     TCNSStimulationJobData,
 } from './types';
 
@@ -66,108 +62,52 @@ export interface TCNSWorkerOptions {
  * `waitUntilComplete()` rejects and the error propagates so pg-boss applies its
  * own retry/backoff policy.
  */
-export function createCNSWorker(options: TCNSWorkerOptions): Promise<string> {
+/** A registered worker + a graceful `shutdown` (see {@link createCNSWorker}). */
+export interface TCNSPgBossWorkerHandle {
+    /** The pg-boss `work()` registration id. */
+    workId: string;
+    /**
+     * Graceful shutdown of THIS worker's processing: stop taking new jobs, let
+     * in-flight stimulations finish for up to `drainMs` (default 10s), then **abort**
+     * whatever is still running — an aborted stimulation's remaining tasks become its
+     * frontier, which the resume checkpoint records, so the job's retry resumes there.
+     * It does NOT stop or close your `boss` (you own it) or your stores — call
+     * `boss.stop(...)` and close your stores after this resolves.
+     */
+    shutdown(opts?: { drainMs?: number }): Promise<void>;
+}
+
+export async function createCNSWorker(
+    options: TCNSWorkerOptions
+): Promise<TCNSPgBossWorkerHandle> {
     const { boss, cns, registry, queue, observe, resume, workOptions } =
         options;
 
-    // One serializer per worker; the recorder is per-job (holds job-specific key).
-    const serializer = resume
-        ? new CNSProgressSerializer(registry)
-        : undefined;
+    // One serializer per worker; the per-job pipeline lives in @cnstra/broker.
+    const serializer = resume ? new CNSProgressSerializer(registry) : undefined;
+    const drain = createDrainState();
 
     const runJob = async (
         job: IPgBossJob<TCNSStimulationJobData>
     ): Promise<void> => {
-        const { collateralName, payload, maxNeuronHops } = job.data;
-        const collateral = registry.getCollateral(collateralName);
-        if (!collateral) {
-            throw new Error(
-                `[@cnstra/pg-boss] Unknown collateral "${collateralName}". ` +
-                    `Register it in the CNSPersistOptionsRegistry.`
-            );
-        }
-
-        // Records the outstanding frontier as the run advances (crash-safety); the
-        // explicit save on failure below guarantees the exact final frontier.
-        const recorder =
-            resume && serializer
-                ? new CNSProgressRecorder({
-                      serializer,
-                      repository: resume.repository,
-                      key: job.id,
-                      strategy: resume.strategy,
-                  })
-                : undefined;
-
-        // Observability: stream the canonical name-based Stimulation → Attempt →
-        // Task model to `observe`. One job = one stimulation; each pg-boss retry is
-        // a new attempt (retryCount is 0-based).
-        const attemptNumber = (job.retryCount ?? 0) + 1;
-        const persistor = observe
-            ? new CNSStimulationPersistor({
-                  repository: observe,
-                  registry,
-                  stimulationId: job.id,
-                  stimulationAttemptId: `${job.id}#${attemptNumber}`,
-                  attemptNumber,
-                  entry: [{ collateralName, payload }],
-                  volume: 'full',
-              })
-            : undefined;
-
-        const onResponse = (resp: ICNSResponseLike) => {
-            const r = resp as unknown as TCNSStimulationResponse;
-            // recorder → resume checkpoint; persistor → observability history.
-            recorder?.onResponse(r);
-            persistor?.onResponse(r);
-        };
-
-        // Correlate logs to this run: every handler reads `ctx.stimulationContext`
-        // (same object on every hop, sync or async) — no wiring on the user's side.
-        const stimulationContext = { stimulationId: job.id, attemptNumber };
-
-        // Resume from a persisted frontier if this job already has one (a retry of
-        // the same job id); otherwise start fresh from the entry signal.
-        let stimulation;
-        if (resume && serializer) {
-            const saved = await resume.repository.load(job.id);
-            if (saved) {
-                const { tasks, ctx } = serializer.hydrate(saved);
-                stimulation = cns.activate(tasks, {
-                    maxNeuronHops,
-                    ctx,
-                    onResponse,
-                    stimulationContext,
-                });
-            }
-        }
-        if (!stimulation) {
-            stimulation = cns.stimulate(collateral.createSignal(payload), {
-                maxNeuronHops,
-                onResponse,
-                stimulationContext,
-            });
-        }
-
-        try {
-            await stimulation.waitUntilComplete();
-            // Job about to complete → its resume checkpoint can go (lifecycle = job row).
-            if (resume) await resume.repository.delete(job.id);
-        } catch (err) {
-            // Persist the exact final frontier before throwing so the retried job
-            // resumes from it (the recorder's cadence may still be debouncing).
-            if (resume && serializer) {
-                await resume.repository.save(
-                    job.id,
-                    serializer.serialize(stimulation)
-                );
-            }
-            // Let pg-boss decide about retries/backoff.
-            throw err;
-        } finally {
-            recorder?.dispose();
-            persistor?.dispose();
-        }
+        await runStimulationJob({
+            pkgName: '@cnstra/pg-boss',
+            stopping: drain.isStopping(),
+            cns,
+            registry,
+            jobId: job.id,
+            collateralName: job.data.collateralName,
+            payload: job.data.payload,
+            maxNeuronHops: job.data.maxNeuronHops,
+            // Each pg-boss retry is a new attempt (retryCount is 0-based).
+            attemptNumber: (job.retryCount ?? 0) + 1,
+            observe,
+            serializer,
+            resumeRepo: resume?.repository,
+            resumeStrategy: resume?.strategy,
+            abort: drain.abort,
+            active: drain.active,
+        });
     };
 
     const handler = async (
@@ -178,7 +118,13 @@ export function createCNSWorker(options: TCNSWorkerOptions): Promise<string> {
         }
     };
 
-    return workOptions
+    const workId = await (workOptions
         ? boss.work<TCNSStimulationJobData>(queue, workOptions, handler)
-        : boss.work<TCNSStimulationJobData>(queue, handler);
+        : boss.work<TCNSStimulationJobData>(queue, handler));
+
+    const shutdown = async (opts?: { drainMs?: number }): Promise<void> => {
+        await drain.drainAndAbort(opts?.drainMs ?? 10_000);
+    };
+
+    return { workId, shutdown };
 }

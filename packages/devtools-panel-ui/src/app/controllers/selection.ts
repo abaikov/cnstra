@@ -1,7 +1,7 @@
 import { bindable } from '@exodra/reactivity';
 import type { TExoWritableBindable } from '@exodra/reactivity';
 import type { TExoRouter } from '@exodra/router';
-import type { CNSDTOClientMessage } from '@cnstra/devtools-dto';
+import type { TCNSClientMessageDTO } from '@cnstra/devtools-dto';
 import { mainCNS } from '../../cns';
 import { appModelAxon } from '../../cns/controller-layer/AppModelAxon';
 import { db } from '../../model';
@@ -35,7 +35,7 @@ export interface AppSelection {
 
 export interface CreateAppSelectionParams {
     router: TExoRouter;
-    send(message: CNSDTOClientMessage): boolean;
+    send(message: TCNSClientMessageDTO): boolean;
 }
 
 /** Extract the `:appId` route param from the current router match/location. */

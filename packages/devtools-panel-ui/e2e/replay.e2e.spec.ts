@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
 // Stimulation→Attempt→Task view (Phase 2b-2/2b-3). This smoke checks those
 // actions are present on a real run and that invoking one doesn't break the view.
 test.describe('Stimulations retry/clone actions', () => {
-    test('a selected run exposes Retry and Clone, and acting does not break the view', async ({
+    test('a selected stimulation exposes Retry and Clone, and acting does not break the view', async ({
         page,
     }) => {
         test.setTimeout(90000);

@@ -1,6 +1,6 @@
 import { CNSDevToolsServer } from '../src/index';
 import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-repository-in-memory';
-import type { CNSDTOAppBatchMessage } from '@cnstra/devtools-dto';
+import type { TCNSAppBatchMessageDTO } from '@cnstra/devtools-dto';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -16,13 +16,13 @@ function makeWs(id = 'ws') {
     };
 }
 
-const topology = (appId = 'app', cnsId = 'app:cns'): CNSDTOAppBatchMessage => ({
+const topology = (appId = 'app', cnsId = 'app:cns'): TCNSAppBatchMessageDTO => ({
     type: 'batch',
     items: [{
         type: 'topology',
         appId, cnsId, appName: 'Test App', version: '1.0.0', timestamp: Date.now(),
-        neurons: [{ id: `${cnsId}:authNeuron`, name: 'authNeuron', cnsId, appId }],
-        collaterals: [{ id: `${cnsId}:authNeuron:user-created`, name: 'user-created', neuronId: `${cnsId}:authNeuron`, cnsId, appId }],
+        neurons: [{ name: 'authNeuron', cnsId, appId }],
+        collaterals: [{ name: 'user-created', ownerNeuronName: 'authNeuron', cnsId, appId }],
         dendrites: [],
     }],
 });

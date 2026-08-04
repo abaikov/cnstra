@@ -1,9 +1,9 @@
 import type { ICNSStimulation, TCNSStimulationResponse } from '@cnstra/types';
 import type {
-    TCNSStimulationStatus,
-    TCNSStimulationPersisted,
-    TCNSStimulationAttemptPersisted,
-    TCNSStimulationTaskPersisted,
+    ECNSStimulationStatus,
+    TCNSStimulationState,
+    TCNSStimulationAttempt,
+    TCNSStimulationTask,
 } from '@cnstra/persist-dto';
 import type { ICNSStimulationPersistor } from './interfaces/ICNSStimulationPersistor';
 import type { ICNSProgressRecordingStrategy } from './interfaces/ICNSProgressRecordingStrategy';
@@ -95,7 +95,7 @@ export class CNSStimulationPersistor implements ICNSStimulationPersistor {
         if (outputCollateralName)
             this.producerByCollateral.set(outputCollateralName, index);
 
-        const task: TCNSStimulationTaskPersisted = {
+        const task: TCNSStimulationTask = {
             stimulationAttemptId: this.options.stimulationAttemptId,
             index,
             neuronName,
@@ -123,7 +123,7 @@ export class CNSStimulationPersistor implements ICNSStimulationPersistor {
         const { repository } = this.options;
         const options = this.options;
         const hasError = stimulation.getFailedTasks().length > 0;
-        const status: TCNSStimulationStatus = done
+        const status: ECNSStimulationStatus = done
             ? hasError
                 ? 'failed'
                 : 'completed'
@@ -134,7 +134,7 @@ export class CNSStimulationPersistor implements ICNSStimulationPersistor {
         const entry = existing?.entry ?? options.entry[0];
         if (!entry) return;
 
-        const stimulationRecord: TCNSStimulationPersisted = {
+        const stimulationRecord: TCNSStimulationState = {
             stimulationId: options.stimulationId,
             entry,
             status,
@@ -145,7 +145,7 @@ export class CNSStimulationPersistor implements ICNSStimulationPersistor {
                 ? { scopeName: existing.scopeName }
                 : {}),
         };
-        const attempt: TCNSStimulationAttemptPersisted = {
+        const attempt: TCNSStimulationAttempt = {
             stimulationAttemptId: options.stimulationAttemptId,
             stimulationId: options.stimulationId,
             attemptNumber: options.attemptNumber,

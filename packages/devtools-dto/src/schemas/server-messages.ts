@@ -1,47 +1,47 @@
 import { z } from 'zod';
-import { CNSDTOAppSchema, CNSDTOCollateralSchema, CNSDTODendriteSchema, CNSDTONeuronSchema } from './entities';
+import { CNSAppDTOSchema, CNSCollateralDTOSchema, CNSDendriteDTOSchema, CNSNeuronDTOSchema } from './entities';
 import type {
-    TCNSStimulationRetryAcceptedMessage,
-    TCNSStimulationRetryRejectedMessage,
-    TCNSStimulationCloneAcceptedMessage,
-    TCNSStimulationCloneRejectedMessage,
+    TCNSStimulationRetryAccepted,
+    TCNSStimulationRetryRejected,
+    TCNSStimulationCloneAccepted,
+    TCNSStimulationCloneRejected,
 } from '@cnstra/persist-dto';
 
 type Extends<A, _B extends A> = true;
-import { CNSDTOTopologyMessageSchema } from './app-messages';
-import { CNSDTORunViewSchema } from './run-view';
+import { CNSTopologyMessageDTOSchema } from './app-messages';
+import { CNSStimulationViewDTOSchema } from './stimulation-view';
 
 /**
  * Name-based observability result (Phase 2b-3): the run/attempt/task roster the
  * panel renders, projected from the server's `ICNSStimulationRepository`. Replaces
  * the legacy `stimulations.result` + `hops.result` pair.
  */
-export const CNSDTORunsResultSchema = z.object({
+export const CNSStimulationsResultDTOSchema = z.object({
     type: z.literal('cns.stimulations.result'),
     requestId: z.string(),
-    runs: z.array(CNSDTORunViewSchema),
+    stimulations: z.array(CNSStimulationViewDTOSchema),
 });
-export type CNSDTORunsResult = z.infer<typeof CNSDTORunsResultSchema>;
+export type TCNSStimulationsResultDTO = z.infer<typeof CNSStimulationsResultDTOSchema>;
 
 // ─── Broadcasts (server → all connected UI clients) ───────────────────────────
 
-export const CNSDTOAppConnectedBroadcastSchema = z.object({
+export const CNSAppConnectedBroadcastDTOSchema = z.object({
     type: z.literal('app.connected'),
-    app: CNSDTOAppSchema,
+    app: CNSAppDTOSchema,
     topology: z.object({
         cnsId: z.string(),
-        neurons: z.array(CNSDTONeuronSchema),
-        collaterals: z.array(CNSDTOCollateralSchema),
-        dendrites: z.array(CNSDTODendriteSchema),
+        neurons: z.array(CNSNeuronDTOSchema),
+        collaterals: z.array(CNSCollateralDTOSchema),
+        dendrites: z.array(CNSDendriteDTOSchema),
     }),
 });
 
-export const CNSDTOAppDisconnectedBroadcastSchema = z.object({
+export const CNSAppDisconnectedBroadcastDTOSchema = z.object({
     type: z.literal('app.disconnected'),
     appId: z.string(),
 });
 
-export const CNSDTOServerMetricsBroadcastSchema = z.object({
+export const CNSServerMetricsBroadcastDTOSchema = z.object({
     type: z.literal('server.metrics'),
     timestamp: z.number(),
     rssMB: z.number(),
@@ -52,31 +52,31 @@ export const CNSDTOServerMetricsBroadcastSchema = z.object({
 
 // ─── Query results (server → requesting UI client, matched by requestId) ──────
 
-export const CNSDTOAppsResultSchema = z.object({
+export const CNSAppsResultDTOSchema = z.object({
     type: z.literal('apps.result'),
     requestId: z.string(),
-    items: z.array(CNSDTOAppSchema),
+    items: z.array(CNSAppDTOSchema),
 });
 
-export const CNSDTOTopologyResultSchema = z.object({
+export const CNSTopologyResultDTOSchema = z.object({
     type: z.literal('topology.result'),
     requestId: z.string(),
     snapshots: z.array(z.object({
         cnsId: z.string(),
         appId: z.string(),
-        neurons: z.array(CNSDTONeuronSchema),
-        collaterals: z.array(CNSDTOCollateralSchema),
-        dendrites: z.array(CNSDTODendriteSchema),
+        neurons: z.array(CNSNeuronDTOSchema),
+        collaterals: z.array(CNSCollateralDTOSchema),
+        dendrites: z.array(CNSDendriteDTOSchema),
     })),
 });
 
-export const CNSDTOReplayAcceptedSchema = z.object({
+export const CNSReplayAcceptedDTOSchema = z.object({
     type: z.literal('replay.accepted'),
     replayId: z.string(),
     newStimulationId: z.string(),
 });
 
-export const CNSDTOReplayRejectedSchema = z.object({
+export const CNSReplayRejectedDTOSchema = z.object({
     type: z.literal('replay.rejected'),
     replayId: z.string(),
     reason: z.string(),
@@ -85,64 +85,64 @@ export const CNSDTOReplayRejectedSchema = z.object({
 // ─── Durable-run action results (matched by requestId); types in @cnstra/persist-dto ──
 // `rejected` is the clean "unsupported for this delivery" answer (e.g. pg-boss + retry).
 
-export const CNSDTOStimulationRetryAcceptedSchema = z.object({
+export const CNSStimulationRetryAcceptedDTOSchema = z.object({
     type: z.literal('stimulation.retry.accepted'),
     requestId: z.string(),
     stimulationId: z.string(),
     newStimulationAttemptId: z.string(),
 });
-export const CNSDTOStimulationRetryRejectedSchema = z.object({
+export const CNSStimulationRetryRejectedDTOSchema = z.object({
     type: z.literal('stimulation.retry.rejected'),
     requestId: z.string(),
     stimulationId: z.string(),
     reason: z.string(),
 });
-export const CNSDTOStimulationCloneAcceptedSchema = z.object({
+export const CNSStimulationCloneAcceptedDTOSchema = z.object({
     type: z.literal('stimulation.clone.accepted'),
     requestId: z.string(),
     stimulationId: z.string(),
     newStimulationId: z.string(),
     newStimulationAttemptId: z.string(),
 });
-export const CNSDTOStimulationCloneRejectedSchema = z.object({
+export const CNSStimulationCloneRejectedDTOSchema = z.object({
     type: z.literal('stimulation.clone.rejected'),
     requestId: z.string(),
     stimulationId: z.string(),
     reason: z.string(),
 });
 
-type _RA = Extends<TCNSStimulationRetryAcceptedMessage, z.infer<typeof CNSDTOStimulationRetryAcceptedSchema>>;
-type _RR = Extends<TCNSStimulationRetryRejectedMessage, z.infer<typeof CNSDTOStimulationRetryRejectedSchema>>;
-type _CA = Extends<TCNSStimulationCloneAcceptedMessage, z.infer<typeof CNSDTOStimulationCloneAcceptedSchema>>;
-type _CR = Extends<TCNSStimulationCloneRejectedMessage, z.infer<typeof CNSDTOStimulationCloneRejectedSchema>>;
+type _RA = Extends<TCNSStimulationRetryAccepted, z.infer<typeof CNSStimulationRetryAcceptedDTOSchema>>;
+type _RR = Extends<TCNSStimulationRetryRejected, z.infer<typeof CNSStimulationRetryRejectedDTOSchema>>;
+type _CA = Extends<TCNSStimulationCloneAccepted, z.infer<typeof CNSStimulationCloneAcceptedDTOSchema>>;
+type _CR = Extends<TCNSStimulationCloneRejected, z.infer<typeof CNSStimulationCloneRejectedDTOSchema>>;
 
 // ─── Full server message union ────────────────────────────────────────────────
 
-export const CNSDTOServerMessageSchema = z.discriminatedUnion('type', [
-    CNSDTOAppConnectedBroadcastSchema,
-    CNSDTOAppDisconnectedBroadcastSchema,
-    CNSDTOServerMetricsBroadcastSchema,
-    CNSDTOTopologyMessageSchema,
-    CNSDTOAppsResultSchema,
-    CNSDTOTopologyResultSchema,
-    CNSDTOReplayAcceptedSchema,
-    CNSDTOReplayRejectedSchema,
-    CNSDTOStimulationRetryAcceptedSchema,
-    CNSDTOStimulationRetryRejectedSchema,
-    CNSDTOStimulationCloneAcceptedSchema,
-    CNSDTOStimulationCloneRejectedSchema,
-    CNSDTORunsResultSchema,
+export const CNSServerMessageDTOSchema = z.discriminatedUnion('type', [
+    CNSAppConnectedBroadcastDTOSchema,
+    CNSAppDisconnectedBroadcastDTOSchema,
+    CNSServerMetricsBroadcastDTOSchema,
+    CNSTopologyMessageDTOSchema,
+    CNSAppsResultDTOSchema,
+    CNSTopologyResultDTOSchema,
+    CNSReplayAcceptedDTOSchema,
+    CNSReplayRejectedDTOSchema,
+    CNSStimulationRetryAcceptedDTOSchema,
+    CNSStimulationRetryRejectedDTOSchema,
+    CNSStimulationCloneAcceptedDTOSchema,
+    CNSStimulationCloneRejectedDTOSchema,
+    CNSStimulationsResultDTOSchema,
 ]);
 
-export type CNSDTOAppConnectedBroadcast = z.infer<typeof CNSDTOAppConnectedBroadcastSchema>;
-export type CNSDTOAppDisconnectedBroadcast = z.infer<typeof CNSDTOAppDisconnectedBroadcastSchema>;
-export type CNSDTOServerMetricsBroadcast = z.infer<typeof CNSDTOServerMetricsBroadcastSchema>;
-export type CNSDTOAppsResult = z.infer<typeof CNSDTOAppsResultSchema>;
-export type CNSDTOTopologyResult = z.infer<typeof CNSDTOTopologyResultSchema>;
-export type CNSDTOReplayAccepted = z.infer<typeof CNSDTOReplayAcceptedSchema>;
-export type CNSDTOReplayRejected = z.infer<typeof CNSDTOReplayRejectedSchema>;
-export type CNSDTOStimulationRetryAccepted = z.infer<typeof CNSDTOStimulationRetryAcceptedSchema>;
-export type CNSDTOStimulationRetryRejected = z.infer<typeof CNSDTOStimulationRetryRejectedSchema>;
-export type CNSDTOStimulationCloneAccepted = z.infer<typeof CNSDTOStimulationCloneAcceptedSchema>;
-export type CNSDTOStimulationCloneRejected = z.infer<typeof CNSDTOStimulationCloneRejectedSchema>;
-export type CNSDTOServerMessage = z.infer<typeof CNSDTOServerMessageSchema>;
+export type TCNSAppConnectedBroadcastDTO = z.infer<typeof CNSAppConnectedBroadcastDTOSchema>;
+export type TCNSAppDisconnectedBroadcastDTO = z.infer<typeof CNSAppDisconnectedBroadcastDTOSchema>;
+export type TCNSServerMetricsBroadcastDTO = z.infer<typeof CNSServerMetricsBroadcastDTOSchema>;
+export type TCNSAppsResultDTO = z.infer<typeof CNSAppsResultDTOSchema>;
+export type TCNSTopologyResultDTO = z.infer<typeof CNSTopologyResultDTOSchema>;
+export type TCNSReplayAcceptedDTO = z.infer<typeof CNSReplayAcceptedDTOSchema>;
+export type TCNSReplayRejectedDTO = z.infer<typeof CNSReplayRejectedDTOSchema>;
+export type TCNSStimulationRetryAcceptedDTO = z.infer<typeof CNSStimulationRetryAcceptedDTOSchema>;
+export type TCNSStimulationRetryRejectedDTO = z.infer<typeof CNSStimulationRetryRejectedDTOSchema>;
+export type TCNSStimulationCloneAcceptedDTO = z.infer<typeof CNSStimulationCloneAcceptedDTOSchema>;
+export type TCNSStimulationCloneRejectedDTO = z.infer<typeof CNSStimulationCloneRejectedDTOSchema>;
+export type TCNSServerMessageDTO = z.infer<typeof CNSServerMessageDTOSchema>;

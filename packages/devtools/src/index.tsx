@@ -1,17 +1,18 @@
 import type { CNSCollateral } from '@cnstra/core';
-import type { CNSPersistOptionsRegistry, TCNSSignalRef } from '@cnstra/persist';
+import type { CNSPersistOptionsRegistry, TCNSSignalJSON } from '@cnstra/persist';
 import { CNSStimulationPersistor, CNSProgressSerializer } from '@cnstra/persist';
 import type { ICNS, TCNSNeuron } from '@cnstra/types';
 import { CNSStimulationContextStore } from '@cnstra/core';
 import type { ICNSDevToolsTransport } from './interfaces/ICNSDevToolsTransport';
 import { CNSWireStimulationRepository } from './CNSWireStimulationRepository';
+import { buildAttemptId } from '@cnstra/devtools-dto';
 import type {
-    CNSDTOAppBatchItem,
-    CNSDTOCollateral,
-    CNSDTODendrite,
-    CNSDTONeuron,
-    CNSDTOReplayStartMessage,
-    CNSDTOAppCommand,
+    TCNSAppBatchItemDTO,
+    TCNSCollateralDTO,
+    TCNSDendriteDTO,
+    TCNSNeuronDTO,
+    TCNSReplayStartMessageDTO,
+    TCNSAppCommandDTO,
 } from '@cnstra/devtools-dto';
 
 /**
@@ -25,7 +26,7 @@ type TDurableOverride = {
     stimulationId: string;
     stimulationAttemptId: string;
     attemptNumber: number;
-    entry: TCNSSignalRef[];
+    entry: TCNSSignalJSON[];
     scopeName?: string;
 };
 
@@ -62,7 +63,7 @@ let stimulationCounter = 0;
 const newStimulationId = (appId: string) => `${appId}:stim:${++stimulationCounter}:${Date.now()}`;
 
 export class CNSDevTools {
-    private readonly buffer: CNSDTOAppBatchItem[] = [];
+    private readonly buffer: TCNSAppBatchItemDTO[] = [];
     private unregisterReplay?: () => void;
     private unregisterCommand?: () => void;
     /** Set just before a server-driven activate/stimulate; consumed on first response. */
@@ -102,26 +103,46 @@ export class CNSDevTools {
         registry: CNSPersistOptionsRegistry,
         cnsId: string
     ): void {
-        const neurons: CNSDTONeuron[] = [];
-        const collaterals: CNSDTOCollateral[] = [];
-        const dendrites: CNSDTODendrite[] = [];
+        const neurons: TCNSNeuronDTO[] = [];
+        const collaterals: TCNSCollateralDTO[] = [];
+        const dendrites: TCNSDendriteDTO[] = [];
+        const named = [...registry.getNamedNeurons()];
 
-        for (const [neuronName, neuron] of registry.getNamedNeurons()) {
-            const neuronId = `${cnsId}:${neuronName}`;
-            neurons.push({ id: neuronId, name: neuronName, cnsId, appId: this.appId });
+        // Pass 1: every axon (owned) collateral NAME. Collateral names are unique
+        // within a cns, so a dendrite whose collateral name is already an axon name
+        // IS that owned collateral — only a name NOT seen here is a standalone
+        // entry/external collateral that must be emitted separately.
+        const axonCollateralNames = new Set<string>();
+        for (const [, neuron] of named) {
+            for (const [colKey, col] of Object.entries(neuron.axon)) {
+                axonCollateralNames.add(registry.getCollateralName(col as AnyCollateral) ?? colKey);
+            }
+        }
+
+        // Pass 2: emit neurons, their axon collaterals, and dendrites — plus any
+        // ENTRY/external collateral a dendrite subscribes to that no axon owns
+        // (owner 'unknown'). Without this the panel can't resolve those dendrites'
+        // collateralId → the neuron looks like it has no inputs.
+        const standaloneEmitted = new Set<string>();
+        for (const [neuronName, neuron] of named) {
+            neurons.push({ name: neuronName, cnsId, appId: this.appId });
 
             for (const [colKey, col] of Object.entries(neuron.axon)) {
                 const colName = registry.getCollateralName(col as AnyCollateral) ?? colKey;
-                const colId = `${neuronId}:${colName}`;
-                collaterals.push({ id: colId, name: colName, neuronId, cnsId, appId: this.appId });
+                collaterals.push({ name: colName, ownerNeuronName: neuronName, cnsId, appId: this.appId });
             }
 
             for (const dendrite of neuron.dendrites) {
                 const col = dendrite.collateral as AnyCollateral;
-                const colId = this.resolveCollateralId(col, cnsId, cns, registry);
                 const colName = registry.getCollateralName(col) ?? 'unknown';
-                const dendriteId = `${neuronId}:d:${colName}`;
-                dendrites.push({ id: dendriteId, neuronId, collateralId: colId, cnsId, appId: this.appId });
+                dendrites.push({ neuronName, collateralName: colName, cnsId, appId: this.appId });
+
+                // An entry/external collateral no axon owns: emit it (owner absent)
+                // so the panel can render this neuron's input subscription.
+                if (!axonCollateralNames.has(colName) && !standaloneEmitted.has(colName)) {
+                    standaloneEmitted.add(colName);
+                    collaterals.push({ name: colName, cnsId, appId: this.appId });
+                }
             }
         }
 
@@ -175,7 +196,7 @@ export class CNSDevTools {
                 const entryName = triggerCol
                     ? registry.getCollateralName(triggerCol) ?? '(entry)'
                     : '(entry)';
-                const entry: TCNSSignalRef[] = override?.entry ?? [
+                const entry: TCNSSignalJSON[] = override?.entry ?? [
                     {
                         collateralName: entryName,
                         payload: resp.outputSignal?.payload,
@@ -192,7 +213,7 @@ export class CNSDevTools {
                     registry,
                     stimulationId: stimId,
                     stimulationAttemptId:
-                        override?.stimulationAttemptId ?? `${stimId}#1`,
+                        override?.stimulationAttemptId ?? buildAttemptId(stimId, 1),
                     attemptNumber: override?.attemptNumber ?? 1,
                     entry,
                     volume: 'full',
@@ -231,7 +252,7 @@ export class CNSDevTools {
         cns: ICNS<AnyNeuron>,
         registry: CNSPersistOptionsRegistry,
         cnsId: string,
-        cmd: CNSDTOReplayStartMessage
+        cmd: TCNSReplayStartMessageDTO
     ): void {
         const colIdParts = cmd.collateralId.split(':');
         const colName = colIdParts[colIdParts.length - 1];
@@ -307,7 +328,7 @@ export class CNSDevTools {
         cns: ICNS<AnyNeuron>,
         registry: CNSPersistOptionsRegistry,
         cnsId: string,
-        cmd: CNSDTOAppCommand
+        cmd: TCNSAppCommandDTO
     ): void {
         if (cmd.type === 'cns.stimulation.resume') {
             // Resume the stored frontier as a new attempt of the SAME stimulation.
@@ -363,7 +384,7 @@ export class CNSDevTools {
 
     /** Map name-based action options → core stimulation options. */
     private actionOptions(
-        options: CNSDTOAppCommand['options']
+        options: TCNSAppCommandDTO['options']
     ): Record<string, unknown> {
         const out: Record<string, unknown> = {};
         if (options?.maxHops) out.maxNeuronHops = options.maxHops;
@@ -407,7 +428,7 @@ export class CNSDevTools {
         return ownerName ? `${cnsId}:${ownerName}:${name}` : `${cnsId}:external:${name}`;
     }
 
-    private enqueue(item: CNSDTOAppBatchItem): void {
+    private enqueue(item: TCNSAppBatchItemDTO): void {
         this.buffer.push(item);
     }
 

@@ -3,12 +3,12 @@ import { derive } from '@exodra/reactivity';
 import type { TExoRouter } from '@exodra/router';
 import { sidebarView } from '../ui/Sidebar';
 import { topologyView } from '../ui/TopologyView';
-import { durableRunsPage } from '../ui/DurableRunsPage';
+import { stimulationsPage } from '../ui/StimulationsPage';
 import { isStimulationsPath, isDurablePath } from './routes';
 import type { DevtoolsSocket } from './controllers/socket';
 import type { AppSelection } from './controllers/selection';
-import type { ICNSDurableRunsClient } from '../durable/ICNSDurableRunsClient';
-import { CNSDurableRunsWsClient } from '../durable/CNSDurableRunsWsClient';
+import type { ICNSDurableStimulationsClient } from '../durable/ICNSDurableStimulationsClient';
+import { CNSDurableStimulationsWsClient } from '../durable/CNSDurableStimulationsWsClient';
 
 // The native Exodra shell: the flex layout that was `AppInner` in the old React
 // App.tsx. The sidebar is now native Exodra; the two heavy main-pane views
@@ -21,7 +21,7 @@ export interface CreateShellParams {
     router: TExoRouter;
     socket: DevtoolsSocket;
     selection: AppSelection;
-    durableClient: ICNSDurableRunsClient;
+    durableClient: ICNSDurableStimulationsClient;
 }
 
 export function createShell({
@@ -39,16 +39,16 @@ export function createShell({
     // The Stimulations pane is the name-based Stimulation→Attempt→Task view (2b-3),
     // fed live from the devtools-server's durable store over the SAME socket, scoped
     // to the selected CNS. Observability only — no Launch; Retry/Clone go over 2b-2.
-    const stimClient = new CNSDurableRunsWsClient(
+    const stimClient = new CNSDurableStimulationsWsClient(
         socket,
         () => selectedCnsId.getValue() ?? undefined
     );
-    const stimPane = durableRunsPage(stimClient, {
+    const stimPane = stimulationsPage(stimClient, {
         canLaunch: false,
         title: 'Stimulations',
         icon: '⚡',
     });
-    const durablePane = durableRunsPage(durableClient);
+    const durablePane = stimulationsPage(durableClient);
     const mainChild = derive(router.location, loc =>
         isDurablePath(loc.pathname)
             ? durablePane

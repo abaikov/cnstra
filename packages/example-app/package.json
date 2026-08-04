@@ -32,7 +32,7 @@
     "@cnstra/devtools-server-repository-in-memory": "file:../devtools-server-repository-in-memory",
     "ws": "^8.18.0",
     "@cnstra/persist": "^0.1.0",
-    "@cnstra/persist-postgres": "^0.1.0"
+    "@cnstra/persist-postgres": "^0.2.0"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

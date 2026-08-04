@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     });
     console.log('  BullMQ queue "cns" ready; checkpoint store = explicit Redis repo.\n');
 
-    const worker = createCNSWorker({
+    const { worker, shutdown } = createCNSWorker({
         Worker: Worker as never,
         cns,
         registry,
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
         connection,
         resume: { repository: progress }, // ← explicit Redis store, not the native job progress
     });
-    worker.on('failed', (_job: unknown, err: unknown) =>
+    (worker as unknown as { on: (e: string, cb: (job: unknown, err: unknown) => void) => void }).on('failed', (_job: unknown, err: unknown) =>
         console.log(`    · job failed (BullMQ will retry): ${err instanceof Error ? err.message : String(err)}`)
     );
 
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
     console.log('  enqueued; attempt #1 throws → BullMQ retries → resume from Redis repo completes it.\n');
 
     await new Promise(r => setTimeout(r, 8000));
-    await worker.close();
+    await shutdown();
     await queue.close();
     await progress.close();
     console.log(`\n  ✅ Done. persistUser invocations: ${attempt} (1 fail + 1 resumed).`);

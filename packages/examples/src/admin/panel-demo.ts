@@ -7,7 +7,7 @@
  *
  * It starts:
  *   • the retry-admin on :4545 — the durable run/attempt/task store, executed
- *     through the chosen broker (Launch / Retry-resume / Clone). Serves /api/runs.
+ *     through the chosen broker (Launch / Retry-resume / Clone). Serves /api/stimulations.
  *   • example-app on :8080 — serves the DevTools **panel** and its own devtools
  *     WS server (topology + the name-based ⚡ Stimulations stream).
  *
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
         log(`  ℹ️  Docker not used — expecting an existing ${svc} (DATABASE_URL / REDIS_*).`);
     }
 
-    // 1) the broker-backed retry-admin (durable run store + /api/runs) on :4545
+    // 1) the broker-backed retry-admin (durable run store + /api/stimulations) on :4545
     const admin = await startAdmin();
     log(`  🖥️  retry-admin (${admin.backend}) → http://localhost:${admin.port}`);
 
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
     log('');
     if (ready) {
         log(`  ✅ Open  http://localhost:${PANEL_PORT}`);
-        log(`     💀 Durable Runs → broker-backed runs (${admin.backend}) — Launch, then Retry/Clone`);
+        log(`     💀 Durable → broker-backed stimulations (${admin.backend}) — Launch, then Retry/Clone`);
         log(`     ⚡ Stimulations → example-app's own CNS, live (name-based)`);
     } else {
         log(`  ⚠️  panel did not come up on :${PANEL_PORT} within 120s (check output above)`);

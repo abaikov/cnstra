@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     console.log('  BullMQ queue "cns" ready.\n');
 
     // Durable worker: one job → one stimulation, resuming across the job's retries.
-    const worker = createCNSWorker({
+    const { worker, shutdown } = createCNSWorker({
         // BullMQ's Worker class is structurally wider than the package's minimal
         // ctor type; pass it through (same as the pg-boss demo's `boss as never`).
         Worker: Worker as never,
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
         // progress (job.updateProgress / job.progress, in Redis). No side store.
         resume: {},
     });
-    worker.on('failed', (job: unknown, err: unknown) =>
+    (worker as unknown as { on: (e: string, cb: (job: unknown, err: unknown) => void) => void }).on('failed', (job: unknown, err: unknown) =>
         console.log(
             `    · job failed (BullMQ will retry): ${
                 err instanceof Error ? err.message : String(err)
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
 
     // Let the worker run + BullMQ retry, then exit.
     await new Promise(r => setTimeout(r, 8000));
-    await worker.close();
+    await shutdown();
     await queue.close();
     console.log(
         `\n  ✅ Done. Total persistUser invocations: ${attempt} (1 fail + 1 resumed success).`

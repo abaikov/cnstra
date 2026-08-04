@@ -6,19 +6,19 @@
 
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { db, dbEventQueue } from '../model';
-import type { CNSDTOApp, CNSDTOServerMessage } from '@cnstra/devtools-dto';
+import type { TCNSAppDTO, TCNSServerMessageDTO } from '@cnstra/devtools-dto';
 import { mainCNS } from '../cns';
 import { wsAxon } from '../cns/ws/WsAxon';
 
 // Deterministic: await the whole ingest → data-layer chain, then flush the queue.
-const feed = async (msg: CNSDTOServerMessage) => {
+const feed = async (msg: TCNSServerMessageDTO) => {
     await mainCNS
         .stimulate(wsAxon.message.createSignal(JSON.stringify(msg)))
         .waitUntilComplete();
     dbEventQueue.flush();
 };
 
-const makeApp = (id: string, name: string, version = '1.0.0'): CNSDTOApp => ({
+const makeApp = (id: string, name: string, version = '1.0.0'): TCNSAppDTO => ({
     id,
     name,
     version,
@@ -26,7 +26,7 @@ const makeApp = (id: string, name: string, version = '1.0.0'): CNSDTOApp => ({
     lastSeenAt: Date.now(),
 });
 
-const appConnected = (app: CNSDTOApp): CNSDTOServerMessage => ({
+const appConnected = (app: TCNSAppDTO): TCNSServerMessageDTO => ({
     type: 'app.connected',
     app,
     topology: {

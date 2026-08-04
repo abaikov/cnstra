@@ -14,7 +14,7 @@ import { TCNSNeuronActivationTaskFailure } from '@cnstra/types';
 import { TCNSStimulationResponse } from '@cnstra/types';
 import { TCNSStimulationDrain } from '@cnstra/types';
 
-import { TNCNeuronResponseReturn } from '@cnstra/types';
+import { TCNSNeuronResponseReturn } from '@cnstra/types';
 import { TCNSAxon } from '@cnstra/types';
 
 /**
@@ -720,7 +720,7 @@ export class CNSStimulation<
         // Mark neuron as active only when we actually start processing (after gate allows it)
         this.markNeuronActive(neuron);
 
-        let response: TNCNeuronResponseReturn<TCNSAxon>;
+        let response: TCNSNeuronResponseReturn<TCNSAxon>;
         try {
             response = dendrite.response(
                 inputSignal?.payload,

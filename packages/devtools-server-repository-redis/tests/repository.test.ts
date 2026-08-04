@@ -1,9 +1,9 @@
 import RedisMock from 'ioredis-mock';
 import { CNSDevToolsServerRepositoryRedis } from '../src/index';
-import type { CNSDTOApp } from '@cnstra/devtools-dto';
-import type { CNSDTOTopologySnapshot } from '@cnstra/devtools-server';
+import type { TCNSAppDTO } from '@cnstra/devtools-dto';
+import type { TCNSTopologySnapshotDTO } from '@cnstra/devtools-server';
 
-const makeApp = (id: string, o: Partial<CNSDTOApp> = {}): CNSDTOApp => ({
+const makeApp = (id: string, o: Partial<TCNSAppDTO> = {}): TCNSAppDTO => ({
     id,
     name: `App ${id}`,
     version: '1.0.0',
@@ -15,7 +15,7 @@ const makeApp = (id: string, o: Partial<CNSDTOApp> = {}): CNSDTOApp => ({
 const makeTopology = (
     cnsId: string,
     appId: string
-): CNSDTOTopologySnapshot => ({
+): TCNSTopologySnapshotDTO => ({
     cnsId,
     appId,
     appName: 'Test App',

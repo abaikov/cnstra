@@ -3,7 +3,9 @@ import { bindable, derive } from '@exodra/reactivity';
 import type { TExoBindable } from '@exodra/reactivity';
 import { combine, readEntitiesByIndexKey } from '../exo/oimdb-bind';
 import { db } from '../model';
+import { nodeKey } from '../utils/format';
 import { cnsGraph } from './CNSGraph';
+import type { NeuronData, StimulationData, ConnectionData } from './CNSGraph';
 import { FrontierData, computeFrontier } from './frontier';
 import { neuronDetailsPanel } from './NeuronDetailsPanel';
 import { emptyGraphPlaceholder } from './EmptyGraphPlaceholder';
@@ -13,39 +15,7 @@ import { emptyGraphPlaceholder } from './EmptyGraphPlaceholder';
 // three heavy children — CNSGraph (cytoscape), NeuronDetailsPanel, and
 // EmptyGraphPlaceholder — are still React, hosted as @exodra/react islands.
 
-const collateralName = (
-    collateralId: string | null | undefined
-): string | undefined =>
-    collateralId ? db.collaterals.getOneByPk(collateralId)?.name : undefined;
 
-interface StimulationData {
-    id: string;
-    timestamp: number;
-    signal: unknown;
-    sourceNeuron?: string;
-    targetNeuron?: string;
-}
-
-interface NeuronData {
-    id: string;
-    name: string;
-    x: number;
-    y: number;
-    stimulationCount: number;
-    stimulations: StimulationData[];
-    type: 'input' | 'processing' | 'output';
-    responseCount?: number;
-    errorCount?: number;
-    avgDuration?: number;
-}
-
-interface ConnectionData {
-    from: string;
-    to: string;
-    weight: number;
-    stimulationCount: number;
-    label?: string;
-}
 
 interface GraphSets {
     allNeurons: any[];
@@ -66,27 +36,31 @@ function buildGraphData({
     }
 
     const graphNeurons: NeuronData[] = allNeurons.map((neuron, index) => {
+        const scope = neuron.cnsId;
+        const neuronId = nodeKey(scope, neuron.name);
+
         const neuronCollateralNames = allCollaterals
-            ?.filter(c => c.neuronId === neuron.id)
+            ?.filter(c => c.cnsId === scope && c.ownerNeuronName === neuron.name)
             .map(c => c.name);
 
         const outgoingResponses = Array.isArray(allResponses)
             ? allResponses.filter(r => {
-                  const outName = collateralName(r.outputCollateralId);
-                  if (!r || !neuronCollateralNames || !outName) return false;
+                  const outName = r?.output?.collateralName;
+                  if (!r || r.scopeName !== scope || !neuronCollateralNames || !outName)
+                      return false;
                   return neuronCollateralNames.includes(outName);
               })
             : [];
 
         const neuronDendriteNames = allDendrites
-            ?.filter(d => d.neuronId === neuron.id)
-            .map(d => collateralName(d.collateralId))
-            .filter((n): n is string => Boolean(n));
+            ?.filter(d => d.cnsId === scope && d.neuronName === neuron.name)
+            .map(d => d.collateralName);
 
         const incomingResponses = Array.isArray(allResponses)
             ? allResponses.filter(r => {
-                  const inName = collateralName(r.inputCollateralId);
-                  if (!r || !neuronDendriteNames || !inName) return false;
+                  const inName = r?.dendriteCollateralName;
+                  if (!r || r.scopeName !== scope || !neuronDendriteNames || !inName)
+                      return false;
                   return neuronDendriteNames.includes(inName);
               })
             : [];
@@ -126,7 +100,8 @@ function buildGraphData({
                 : 0;
 
         return {
-            id: neuron.id,
+            id: neuronId,
+            cnsId: scope,
             name: neuron.name,
             x,
             y,
@@ -141,15 +116,11 @@ function buildGraphData({
                           timestamp: response.startedAt,
                           signal: {
                               type: 'response',
-                              inputCollateral: collateralName(
-                                  response?.inputCollateralId
-                              ),
-                              outputCollateral: collateralName(
-                                  response?.outputCollateralId
-                              ),
-                              payload: response.outputPayload,
+                              inputCollateral: response?.dendriteCollateralName,
+                              outputCollateral: response?.output?.collateralName,
+                              payload: response.output?.payload,
                           },
-                          sourceNeuron: neuron.id,
+                          sourceNeuron: neuronId,
                           targetNeuron: undefined,
                       }))
                     : [],
@@ -165,9 +136,9 @@ function buildGraphData({
     if (Array.isArray(allDendrites) && allDendrites.length > 0) {
         const dendritesByCollateral = new Map<string, Set<string>>();
         allDendrites.forEach(d => {
-            const key = d.collateralId;
+            const key = nodeKey(d.cnsId, d.collateralName);
             const set = dendritesByCollateral.get(key) || new Set<string>();
-            set.add(d.neuronId);
+            set.add(nodeKey(d.cnsId, d.neuronName));
             dendritesByCollateral.set(key, set);
         });
 
@@ -178,27 +149,34 @@ function buildGraphData({
             { from: string; to: string; label: string; count: number }
         >();
 
+        // collateral nodeKey → owner neuron nodeKey (owned only), and → display name.
         const ownerByCollateral = new Map<string, string>();
+        const labelByCollateral = new Map<string, string>();
         if (Array.isArray(allCollaterals)) {
             allCollaterals.forEach(collateral => {
-                if (collateral.neuronId === 'unknown' || !collateral.neuronId) {
-                    return;
+                const key = nodeKey(collateral.cnsId, collateral.name);
+                labelByCollateral.set(key, collateral.name);
+                if (collateral.ownerNeuronName) {
+                    ownerByCollateral.set(
+                        key,
+                        nodeKey(collateral.cnsId, collateral.ownerNeuronName)
+                    );
                 }
-                ownerByCollateral.set(collateral.id, collateral.neuronId);
             });
         }
 
         dendritesByCollateral.forEach((listeners, coll) => {
             const owner = ownerByCollateral.get(coll);
             if (!owner) return;
+            const label = labelByCollateral.get(coll) || coll;
             listeners.forEach(target => {
                 if (target === owner) return;
-                const key = edgeKey(owner, target, coll);
+                const key = edgeKey(owner, target, label);
                 const prev = edgeMap.get(key);
                 edgeMap.set(key, {
                     from: owner,
                     to: target,
-                    label: coll,
+                    label,
                     count: (prev?.count || 0) + 1,
                 });
             });
@@ -207,51 +185,32 @@ function buildGraphData({
         if (Array.isArray(allResponses)) {
             for (const r of allResponses) {
                 if (!r) continue;
-                const inColl = r?.inputCollateralId || undefined;
-                const outColl = r?.outputCollateralId || undefined;
+                const scope = r.scopeName;
+                const inColl = r?.dendriteCollateralName
+                    ? nodeKey(scope, r.dendriteCollateralName)
+                    : undefined;
+                const outColl = r?.output?.collateralName
+                    ? nodeKey(scope, r.output.collateralName)
+                    : undefined;
                 const sourceNeuronId = outColl
                     ? ownerByCollateral.get(outColl)
                     : undefined;
-                if (inColl) {
-                    const listeners = dendritesByCollateral.get(inColl);
-                    if (listeners && sourceNeuronId) {
-                        for (const targetNeuronId of listeners) {
-                            if (targetNeuronId !== sourceNeuronId) {
-                                const key = edgeKey(
-                                    sourceNeuronId,
-                                    targetNeuronId,
-                                    inColl
-                                );
-                                const prev = edgeMap.get(key);
-                                edgeMap.set(key, {
-                                    from: sourceNeuronId,
-                                    to: targetNeuronId,
-                                    label: inColl,
-                                    count: (prev?.count || 0) + 1,
-                                });
-                            }
-                        }
-                    }
-                }
-                if (outColl && sourceNeuronId) {
-                    const listeners = dendritesByCollateral.get(outColl);
-                    if (listeners) {
-                        for (const targetNeuronId of listeners) {
-                            if (targetNeuronId !== sourceNeuronId) {
-                                const key = edgeKey(
-                                    sourceNeuronId,
-                                    targetNeuronId,
-                                    outColl
-                                );
-                                const prev = edgeMap.get(key);
-                                edgeMap.set(key, {
-                                    from: sourceNeuronId,
-                                    to: targetNeuronId,
-                                    label: outColl,
-                                    count: (prev?.count || 0) + 1,
-                                });
-                            }
-                        }
+                if (!sourceNeuronId) continue;
+                for (const coll of [inColl, outColl]) {
+                    if (!coll) continue;
+                    const listeners = dendritesByCollateral.get(coll);
+                    if (!listeners) continue;
+                    const label = labelByCollateral.get(coll) || coll;
+                    for (const targetNeuronId of listeners) {
+                        if (targetNeuronId === sourceNeuronId) continue;
+                        const key = edgeKey(sourceNeuronId, targetNeuronId, label);
+                        const prev = edgeMap.get(key);
+                        edgeMap.set(key, {
+                            from: sourceNeuronId,
+                            to: targetNeuronId,
+                            label,
+                            count: (prev?.count || 0) + 1,
+                        });
                     }
                 }
             }
@@ -263,7 +222,7 @@ function buildGraphData({
                 to: v.to,
                 weight: 0.5,
                 stimulationCount: v.count,
-                label: collateralName(v.label) || v.label,
+                label: v.label,
             });
         });
     }
@@ -293,6 +252,8 @@ export function topologyView(
 
     const recompute = (): void => {
         const id = appId.getValue();
+        // Everything is name-based; buildGraphData/computeFrontier join by name and
+        // build cytoscape node keys themselves — no id resolution at this boundary.
         const allNeurons = readSet(db.neurons, db.neurons.indexes.appId, id);
         const allDendrites = readSet(db.dendrites, db.dendrites.indexes.appId, id);
         const allResponses = readSet(db.responses, db.responses.indexes.appId, id);
@@ -307,6 +268,15 @@ export function topologyView(
             id
         );
 
+        // computeFrontier only needs each hop's output collateral flattened to a name.
+        const frontierHops = allResponses.map((h: any) => ({
+            stimulationId: h.stimulationId,
+            scopeName: h.scopeName,
+            neuronName: h.neuronName,
+            outputCollateralName: h.output ? h.output.collateralName : null,
+            startedAt: h.startedAt,
+        }));
+
         const data = buildGraphData({
             allNeurons,
             allDendrites,
@@ -317,7 +287,7 @@ export function topologyView(
         frontier.setValue(
             id
                 ? computeFrontier({
-                      hops: allResponses,
+                      hops: frontierHops,
                       stimulations: allStimulations,
                       dendrites: allDendrites,
                       collaterals: allCollaterals,
@@ -429,7 +399,10 @@ export function topologyView(
     const cnsGraphNode = cnsGraph(graphProps);
 
     // ── NeuronDetailsPanel island (props emit on selection/app change) ───────
-    const neuronIdB = combine([selectedNeuron], () => selectedNeuron.getValue()?.id ?? null);
+    const neuronIdB = combine([selectedNeuron], () => {
+        const sel = selectedNeuron.getValue();
+        return sel ? { cnsId: sel.cnsId, name: sel.name } : null;
+    });
     const appIdB = combine([appId], () => appId.getValue() ?? undefined);
     const neuronPanel = neuronDetailsPanel(neuronIdB, appIdB, onClose);
 

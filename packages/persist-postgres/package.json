@@ -1,15 +1,33 @@
 {
   "name": "@cnstra/persist-postgres",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Postgres relational store for CNStra durable execution (ICNSStimulationRepository: run/attempt/task) — owns its schema + migrations",
-  "keywords": ["cnstra", "postgres", "durable", "run", "attempt", "task", "persist"],
+  "keywords": [
+    "cnstra",
+    "postgres",
+    "durable",
+    "run",
+    "attempt",
+    "task",
+    "persist"
+  ],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.mjs", "require": "./dist/index.js" } },
-  "bin": { "cnstra-persist-postgres": "./dist/cli.js" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "cnstra-persist-postgres": "./dist/cli.js"
+  },
   "sideEffects": false,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "jest",
@@ -21,7 +39,11 @@
     "@cnstra/persist-dto": "^0.1.0",
     "pg": ">=8"
   },
-  "peerDependenciesMeta": { "pg": { "optional": true } },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@cnstra/persist": "^0.1.0",
     "@cnstra/persist-dto": "^0.1.0",
@@ -36,5 +58,7 @@
   },
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "license": "MIT",
-  "publishConfig": { "access": "public" }
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -5,7 +5,7 @@ import { TCNSAxon } from '@cnstra/types';
 import { TCNSOptions } from '@cnstra/types';
 import { TCNSDendrite } from '@cnstra/types';
 import { TCNSHandlerContext } from '@cnstra/types';
-import { TNCNeuronResponseReturn } from '@cnstra/types';
+import { TCNSNeuronResponseReturn } from '@cnstra/types';
 import { TCNSNeuron } from '@cnstra/types';
 import { TCNSModality } from '@cnstra/types';
 import { TCNSAfferentPath } from '@cnstra/types';
@@ -67,7 +67,7 @@ type InterNeuronAPI<
                     : never,
                 axon: TAxonType,
                 ctx: TCNSHandlerContext<TContextValue, TGlobal>
-            ) => TNCNeuronResponseReturn<TAxonType>;
+            ) => TCNSNeuronResponseReturn<TAxonType>;
         }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
         <
             TCollaterals extends readonly [
@@ -80,7 +80,7 @@ type InterNeuronAPI<
                 payload: CollateralPayloadUnion<TCollaterals>,
                 axon: TAxonType,
                 ctx: TCNSHandlerContext<TContextValue, TGlobal>
-            ) => TNCNeuronResponseReturn<TAxonType>;
+            ) => TCNSNeuronResponseReturn<TAxonType>;
         }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
         <TPayloadUnion>(s: {
             collateral: ICNSCollateral<unknown>[];
@@ -88,7 +88,7 @@ type InterNeuronAPI<
                 payload: TPayloadUnion,
                 axon: TAxonType,
                 ctx: TCNSHandlerContext<TContextValue, TGlobal>
-            ) => TNCNeuronResponseReturn<TAxonType>;
+            ) => TCNSNeuronResponseReturn<TAxonType>;
         }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
         (
             s: TCNSDendrite<
@@ -124,7 +124,7 @@ type InterNeuronAPI<
                 result: TResult,
                 axon: TAxonType,
                 ctx: TCNSHandlerContext<TContextValue, TGlobal>
-            ) => TNCNeuronResponseReturn<TAxonType>;
+            ) => TCNSNeuronResponseReturn<TAxonType>;
         }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
         <TSenderCollateral extends ICNSCollateral<unknown>, TResult>(s: {
             collateral: TSenderCollateral;
@@ -161,7 +161,7 @@ type InterNeuronAPI<
                 result: TResult,
                 axon: TAxonType,
                 ctx: TCNSHandlerContext<TContextValue, TGlobal>
-            ) => TNCNeuronResponseReturn<TAxonType>;
+            ) => TCNSNeuronResponseReturn<TAxonType>;
         }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
     };
 };

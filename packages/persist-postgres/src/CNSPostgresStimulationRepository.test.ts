@@ -1,9 +1,9 @@
 import { Pool } from 'pg';
 import { CNSPostgresStimulationRepository } from './CNSPostgresStimulationRepository';
 import type {
-    TCNSStimulationPersisted,
-    TCNSStimulationAttemptPersisted,
-    TCNSStimulationTaskPersisted,
+    TCNSStimulationState,
+    TCNSStimulationAttempt,
+    TCNSStimulationTask,
 } from '@cnstra/persist-dto';
 
 // Live integration test — runs only when DATABASE_URL points at a reachable Postgres.
@@ -38,8 +38,8 @@ d('CNSPostgresStimulationRepository (live Postgres)', () => {
     });
 
     test('stimulation → attempt → task round-trip, resume progress, delete cascade', async () => {
-        const stimId = 'run:import:42';
-        const stim1: TCNSStimulationPersisted = {
+        const stimId = 'stim:import:42';
+        const stim1: TCNSStimulationState = {
             stimulationId: stimId,
             entry: sig('input', { userId: '42' }),
             status: 'failed',
@@ -55,8 +55,8 @@ d('CNSPostgresStimulationRepository (live Postgres)', () => {
             },
         };
         await repo.saveStimulation(stim1);
-        const attempt1: TCNSStimulationAttemptPersisted = {
-            stimulationAttemptId: 'run:import:42#1',
+        const attempt1: TCNSStimulationAttempt = {
+            stimulationAttemptId: 'stim:import:42#1',
             stimulationId: stimId,
             attemptNumber: 1,
             status: 'failed',
@@ -68,9 +68,9 @@ d('CNSPostgresStimulationRepository (live Postgres)', () => {
             entry: [sig('input', { userId: '42' })],
         };
         await repo.saveAttempt(attempt1);
-        const tasks: TCNSStimulationTaskPersisted[] = [
-            { stimulationAttemptId: 'run:import:42#1', index: 1, neuronName: 'importUser', dendriteCollateralName: 'input', inputIndex: 0, output: sig('userFetched', { id: '42' }), status: 'done', error: null, startedAt: 1000, duration: 5 },
-            { stimulationAttemptId: 'run:import:42#1', index: 3, neuronName: 'persistUser', dendriteCollateralName: 'userEnriched', inputIndex: 2, output: null, status: 'failed', error: 'boom', startedAt: 1500, duration: null },
+        const tasks: TCNSStimulationTask[] = [
+            { stimulationAttemptId: 'stim:import:42#1', index: 1, neuronName: 'importUser', dendriteCollateralName: 'input', inputIndex: 0, output: sig('userFetched', { id: '42' }), status: 'done', error: null, startedAt: 1000, duration: 5 },
+            { stimulationAttemptId: 'stim:import:42#1', index: 3, neuronName: 'persistUser', dendriteCollateralName: 'userEnriched', inputIndex: 2, output: null, status: 'failed', error: 'boom', startedAt: 1500, duration: null },
         ];
         for (const t of tasks) await repo.appendTask(t);
 
@@ -84,7 +84,7 @@ d('CNSPostgresStimulationRepository (live Postgres)', () => {
 
         // timeline + waterfall
         expect((await repo.getAttempts(stimId)).map(a => a.attemptNumber)).toEqual([1]);
-        const wf = await repo.getTasks('run:import:42#1');
+        const wf = await repo.getTasks('stim:import:42#1');
         expect(wf.map(t => t.index)).toEqual([1, 3]);
         expect(wf[0].output).toEqual(sig('userFetched', { id: '42' }));
         expect(wf[1].status).toBe('failed');
@@ -92,7 +92,7 @@ d('CNSPostgresStimulationRepository (live Postgres)', () => {
 
         // attempt 2 resumes → completed, frontier REPLACED (empty)
         await repo.saveStimulation({ ...stim1, status: 'completed', progress: { tasks: [], context: { persistUser: { attempt: 2 } } } });
-        await repo.saveAttempt({ ...attempt1, stimulationAttemptId: 'run:import:42#2', attemptNumber: 2, status: 'completed', startedAt: 3000, completedAt: 4000, hopCount: 1, hasError: false });
+        await repo.saveAttempt({ ...attempt1, stimulationAttemptId: 'stim:import:42#2', attemptNumber: 2, status: 'completed', startedAt: 3000, completedAt: 4000, hopCount: 1, hasError: false });
         const got2 = await repo.getStimulation(stimId);
         expect(got2?.status).toBe('completed');
         expect(got2?.progress.tasks).toEqual([]); // frontier replaced
@@ -103,23 +103,23 @@ d('CNSPostgresStimulationRepository (live Postgres)', () => {
         await repo.delete(stimId);
         expect(await repo.getStimulation(stimId)).toBeUndefined();
         expect(await repo.getAttempts(stimId)).toEqual([]);
-        expect(await repo.getTasks('run:import:42#1')).toEqual([]);
+        expect(await repo.getTasks('stim:import:42#1')).toEqual([]);
     });
 
     test('appendTask tolerates arriving BEFORE saveAttempt (persistor order)', async () => {
-        const sid = 'run:order';
+        const sid = 'stim:order';
         await repo.saveStimulation({ stimulationId: sid, entry: sig('input', {}), status: 'running', progress: { tasks: [], context: {} } });
         // The real persistor streams settled tasks as hops complete, BEFORE the
         // attempt marker is flushed — must not FK-fail.
-        await repo.appendTask({ stimulationAttemptId: 'run:order#1', index: 1, neuronName: 'importUser', dendriteCollateralName: 'input', inputIndex: 0, output: sig('userFetched', {}), status: 'done', error: null, startedAt: 1, duration: 1 });
-        await repo.saveAttempt({ stimulationAttemptId: 'run:order#1', stimulationId: sid, attemptNumber: 1, status: 'running', startedAt: 1, completedAt: null, hopCount: 1, hasError: false, replayOf: null, entry: [sig('input', {})] });
-        expect((await repo.getTasks('run:order#1')).map(t => t.index)).toEqual([1]);
+        await repo.appendTask({ stimulationAttemptId: 'stim:order#1', index: 1, neuronName: 'importUser', dendriteCollateralName: 'input', inputIndex: 0, output: sig('userFetched', {}), status: 'done', error: null, startedAt: 1, duration: 1 });
+        await repo.saveAttempt({ stimulationAttemptId: 'stim:order#1', stimulationId: sid, attemptNumber: 1, status: 'running', startedAt: 1, completedAt: null, hopCount: 1, hasError: false, replayOf: null, entry: [sig('input', {})] });
+        expect((await repo.getTasks('stim:order#1')).map(t => t.index)).toEqual([1]);
         await repo.delete(sid);
-        expect(await repo.getTasks('run:order#1')).toEqual([]); // manual task cascade works
+        expect(await repo.getTasks('stim:order#1')).toEqual([]); // manual task cascade works
     });
 
     test('listStimulations is newest-first', async () => {
-        const mk = (id: string): TCNSStimulationPersisted => ({
+        const mk = (id: string): TCNSStimulationState => ({
             stimulationId: id,
             entry: sig('input', {}),
             status: 'completed',
@@ -135,14 +135,14 @@ d('CNSPostgresStimulationRepository (live Postgres)', () => {
     });
 
     test('scopeName round-trips and listStimulations filters by scope', async () => {
-        const scoped: TCNSStimulationPersisted = {
+        const scoped: TCNSStimulationState = {
             stimulationId: 'scope:alpha:1',
             entry: sig('input', {}),
             status: 'completed',
             scopeName: 'alpha',
             progress: { tasks: [], context: {} },
         };
-        const defaultScope: TCNSStimulationPersisted = {
+        const defaultScope: TCNSStimulationState = {
             stimulationId: 'scope:default:1',
             entry: sig('input', {}),
             status: 'completed',
@@ -166,5 +166,33 @@ d('CNSPostgresStimulationRepository (live Postgres)', () => {
 
         await repo.delete('scope:alpha:1');
         await repo.delete('scope:default:1');
+    });
+
+    test('deleteStale prunes stimulations by age, cascading attempts/tasks', async () => {
+        const mk = (id: string): TCNSStimulationState => ({
+            stimulationId: id, entry: sig('input', {}), status: 'completed',
+            progress: { tasks: [], context: {} },
+        });
+        const att = (id: string): TCNSStimulationAttempt => ({
+            stimulationAttemptId: `${id}#1`, stimulationId: id, attemptNumber: 1,
+            status: 'completed', startedAt: 1, completedAt: 2, hopCount: 1,
+            hasError: false, replayOf: null, entry: [sig('input', {})],
+        });
+        for (const id of ['ret:old', 'ret:fresh']) {
+            await repo.saveStimulation(mk(id));
+            await repo.saveAttempt(att(id));
+        }
+        // backdate the "old" run past the window
+        await pool.query(
+            `UPDATE ${prefix}stimulation SET updated_at = now() - interval '2 hours' WHERE stimulation_id = 'ret:old'`
+        );
+
+        // prune stale (older than 1h) → old goes (cascaded), fresh stays
+        expect(await repo.deleteStale(60 * 60 * 1000)).toBe(1);
+        expect((await repo.listStimulations()).map(r => r.stimulationId).filter(id => id.startsWith('ret:')))
+            .toEqual(['ret:fresh']);
+        expect(await repo.getAttempts('ret:old')).toEqual([]); // cascaded
+
+        await repo.delete('ret:fresh');
     });
 });

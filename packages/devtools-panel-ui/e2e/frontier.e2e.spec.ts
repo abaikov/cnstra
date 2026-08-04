@@ -1,19 +1,19 @@
 import { test, expect } from '@playwright/test';
 
 // Full-stack check of the live frontier: feeds a topology + a *running*,
-// name-based run snapshot (the panel's new poll protocol) through a faked
+// name-based stimulation snapshot (the panel's new poll protocol) through a faked
 // WebSocket and asserts the stalled subscriber node reaches cytoscape
 // `data('frontier') === 3` (stuck).
 //
 // The panel no longer ingests the legacy per-hop WS stream
 // (`stimulation.started/hop/completed`). Instead `durableIngest` polls the
 // server every 2s with `{ type: 'cns.stimulations.query', requestId }` and
-// expects `{ type: 'cns.stimulations.result', requestId, runs }`, translating
-// each `TCNSDurableRunView` into `db.stimulations`/`db.responses` via
-// `translateRunView`. So here the fake WS answers that query with ONE running
-// run whose single task (neuron `api`, output collateral `request`, an OLD
+// expects `{ type: 'cns.stimulations.result', requestId, stimulations }`, translating
+// each `TCNSStimulationViewDTO` into `db.stimulations`/`db.responses` via
+// `translateStimulationView`. So here the fake WS answers that query with ONE running
+// stimulation whose single task (neuron `api`, output collateral `request`, an OLD
 // startedAt) points — via the `worker` dendrite — at `worker`, which has not
-// run and therefore ages into a "stuck" frontier.
+// stimulation and therefore ages into a "stuck" frontier.
 //
 // Requires the shared e2e harness (playwright.global-setup boots example-app on
 // :8080 to serve the panel). The pure selection/severity logic is also covered,
@@ -22,10 +22,9 @@ import { test, expect } from '@playwright/test';
 // ── Deterministic topology (mirrors the integration-test shapes) ──────────────
 const APP = 'stuck-app';
 const CNS_ID = 'stuck-app:main';
+// Cytoscape node ids are nodeKeys `${cnsId}:${name}`.
 const N_API = `${CNS_ID}:api`;
 const N_WORKER = `${CNS_ID}:worker`;
-const C_REQUEST = `${CNS_ID}:api:request`; // owned by api, subscribed by worker
-const C_DONE = `${CNS_ID}:worker:done`;
 
 /**
  * Replace window.WebSocket with a fake the test drives, so we can feed exact
@@ -33,7 +32,7 @@ const C_DONE = `${CNS_ID}:worker:done`;
  * Runs in the browser before app scripts load.
  *
  * `send()` intercepts the ingest's `cns.stimulations.query` and replies with a
- * `cns.stimulations.result` built from `window.__cnsRuns` (set by the test once
+ * `cns.stimulations.result` built from `window.__cnsStimulations` (set by the test once
  * the topology has landed), echoing the query's `requestId` so the poll matches
  * it. All other outgoing frames (client.connect / apps.query / topology.query)
  * are ignored; topology is delivered out-of-band via `emit()`.
@@ -70,7 +69,7 @@ function installFakeWebSocket() {
             if (i >= 0) a.splice(i, 1);
         }
         send(data?: string) {
-            // Answer the durable-ingest poll from the test-provided run fixture.
+            // Answer the durable-ingest poll from the test-provided stimulation fixture.
             let m: any;
             try {
                 m = JSON.parse(String(data));
@@ -78,11 +77,11 @@ function installFakeWebSocket() {
                 return; // client.connect / apps.query / topology.query — ignore
             }
             if (m && m.type === 'cns.stimulations.query') {
-                const runs = (window as any).__cnsRuns || [];
+                const stimulations = (window as any).__cnsStimulations || [];
                 const reply = {
                     type: 'cns.stimulations.result',
                     requestId: m.requestId,
-                    runs,
+                    stimulations,
                 };
                 setTimeout(() => this.emit(JSON.stringify(reply)), 0);
             }
@@ -134,46 +133,28 @@ test('a stalled hop makes its subscriber neuron turn "stuck" (frontier = 3)', as
         topology: {
             cnsId: CNS_ID,
             neurons: [
-                { id: N_API, name: 'api', cnsId: CNS_ID, appId: APP },
-                { id: N_WORKER, name: 'worker', cnsId: CNS_ID, appId: APP },
+                { name: 'api', cnsId: CNS_ID, appId: APP },
+                { name: 'worker', cnsId: CNS_ID, appId: APP },
             ],
             collaterals: [
-                {
-                    id: C_REQUEST,
-                    name: 'request',
-                    neuronId: N_API,
-                    cnsId: CNS_ID,
-                    appId: APP,
-                },
-                {
-                    id: C_DONE,
-                    name: 'done',
-                    neuronId: N_WORKER,
-                    cnsId: CNS_ID,
-                    appId: APP,
-                },
+                { name: 'request', ownerNeuronName: 'api', cnsId: CNS_ID, appId: APP },
+                { name: 'done', ownerNeuronName: 'worker', cnsId: CNS_ID, appId: APP },
             ],
             dendrites: [
-                {
-                    id: `${CNS_ID}:worker:d:request`,
-                    neuronId: N_WORKER,
-                    collateralId: C_REQUEST,
-                    cnsId: CNS_ID,
-                    appId: APP,
-                },
+                { neuronName: 'worker', collateralName: 'request', cnsId: CNS_ID, appId: APP },
             ],
         },
     };
 
-    // One *running* name-based run snapshot (the poll reply). `scopeName` MUST be
-    // the cnsId so translateRunView reconstructs ids against the topology above,
+    // One *running* name-based stimulation snapshot (the poll reply). `scopeName` MUST be
+    // the cnsId so translateStimulationView reconstructs ids against the topology above,
     // and status 'running' makes the stimulation in-flight (completedAt: null) —
     // required for a live frontier. The single task: neuron `api` outputs the
     // `request` collateral, which `worker` subscribes to (dendrite) but never
-    // runs — so `worker` is the frontier node. Its `startedAt` is 10s in the past
+    // stimulations — so `worker` is the frontier node. Its `startedAt` is 10s in the past
     // so the frontier ages straight to "stuck" on the next poll tick.
-    const run = {
-        runId: 'run-1',
+    const stimulation = {
+        stimulationId: 'stimulation-1',
         status: 'running',
         scopeName: CNS_ID,
         entry: { collateralName: 'request', payload: { n: 1 } },
@@ -215,11 +196,11 @@ test('a stalled hop makes its subscriber neuron turn "stuck" (frontier = 3)', as
     await page.locator('.cns-graph').waitFor({ state: 'visible' });
     await page.waitForFunction(() => Boolean((window as any).__cnsCy));
 
-    // Publish the run fixture the fake WS serves on the next `cns.stimulations.query`
+    // Publish the stimulation fixture the fake WS serves on the next `cns.stimulations.query`
     // poll (durableIngest polls every 2s; the assertion below waits it out).
     await page.evaluate(r => {
-        (window as any).__cnsRuns = [r];
-    }, run);
+        (window as any).__cnsStimulations = [r];
+    }, stimulation);
 
     const frontierOf = (id: string) =>
         page.evaluate(nid => {

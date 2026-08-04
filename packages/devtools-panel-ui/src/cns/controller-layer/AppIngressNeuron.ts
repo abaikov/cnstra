@@ -1,10 +1,10 @@
 import { neuron } from '@cnstra/core';
-import type { CNSDTOServerMessage } from '@cnstra/devtools-dto';
+import type { TCNSServerMessageDTO } from '@cnstra/devtools-dto';
 import { appModelAxon } from './AppModelAxon';
 import { wsAxon } from '../ws/WsAxon';
 
 /**
- * Parses the raw WebSocket stream (the server's `CNSDTOServerMessage` protocol)
+ * Parses the raw WebSocket stream (the server's `TCNSServerMessageDTO` protocol)
  * into domain events on `appModelAxon`. It does not touch the database — the
  * data-layer neurons persist the events it emits.
  *
@@ -18,7 +18,7 @@ export const appIngressNeuron = neuron(appModelAxon).bind(wsAxon, {
     close: () => {},
     error: () => {},
     message: (raw, axon) => {
-        let msg: CNSDTOServerMessage | undefined;
+        let msg: TCNSServerMessageDTO | undefined;
         try {
             msg = typeof raw === 'string' ? JSON.parse(raw) : undefined;
         } catch {

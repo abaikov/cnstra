@@ -1,199 +1,144 @@
 ---
 id: persistence
-title: State Persistence & Resume
+title: State Persistence & Resume — how it works
 sidebar_label: Persistence & Resume
 slug: /advanced/persistence
-description: How to use CNSPersistOptionsRegistry to serialize running stimulations, persist them to a database, and resume after a process restart.
-keywords: [persistence, resume, restart, CNSPersistOptionsRegistry, state, serialization, message broker, BullMQ, crash recovery]
+description: How CNStra serializes a running stimulation by name, checkpoints its frontier, and resumes it after a restart — the registry, the CNSProgressSerializer, checkpoint recorders, and cns.activate().
+keywords: [persistence, resume, checkpoint, CNSProgressSerializer, CNSProgressRecorder, CNSStimulationPersistor, TCNSProgress, activate, getOutstandingTasks, registry, crash recovery]
 ---
 
-When you run large queues or long-lived flows in production, processes can restart — deploys, crashes, OOM kills. `CNSPersistOptionsRegistry` gives you the tools to serialize in-flight stimulations so they can be resumed after a restart.
+CNStra stimulations are **in-memory**, and identity is by **object reference** — a neuron/
+collateral is *the object*, and context is a `Map<object, unknown>`. That is fast, but object
+references can't cross a process boundary. So to survive a restart you serialize the run's
+state **by name** and rebuild it on the other side. This page explains the machinery; for the
+run model (Stimulation → Attempt → Task) and the productized worker seams, see
+[Durable execution](./durable-execution.md).
 
-## The problem
+## The bridge: a name ⇄ object registry
 
-CNStra stimulations are in-memory. When a process dies, all pending signals are lost. For short-lived flows this is fine. For long-running flows — multi-step order processing, batch jobs, import pipelines — you need a way to know what was running and pick up where you left off.
-
-## How CNSPersistOptionsRegistry helps
-
-The registry maps **object references** ↔ **stable string names**:
-
-```
-deckNeuron (object ref)  ←→  "deckNeuron" (string, safe to store in DB)
-deckAxon.created (object ref)  ←→  "deckCreated" (string, safe to store in DB)
-```
-
-This lets you serialize "which signal was in flight" as a plain JSON record, then deserialize it back into a real signal on restart.
-
-## Setup
-
-Create one registry instance and register neurons and collaterals from each file:
+`CNSPersistOptionsRegistry` maps object references ↔ stable string names, so anything you
+store is plain JSON and can be rebuilt on any process:
 
 ```ts
-// src/neurons/registry.ts — create once
+// src/neurons/registry.ts — create once, register in each neuron's own file
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
 ```
 
 ```ts
-// src/neurons/deck.ts — register in your neuron's own file
-import { collateral, withCtx } from '@cnstra/core';
+// src/neurons/import.ts
 import { registry } from './registry';
 
-export const deckCreated = collateral<{ deckId: string }>();
-export const deckArchived = collateral<{ deckId: string }>();
-export const importStarted = collateral<{ importId: string }>();  // external entry point
-
-export const deckNeuron = withCtx()
-    .neuron({ deckCreated, deckArchived })
-    .bind({ importStarted }, {
-        importStarted: ({ importId }, axon) => axon.deckCreated.createSignal({ deckId: importId }),
-    });
-
 registry
-    .register('deckNeuron', deckNeuron)           // registers neuron + its axon collaterals
-    .registerCollateral('importStarted', importStarted);  // standalone entry-point collateral
+  .register('importUser', importUserNeuron)   // the neuron + ALL its axon collaterals, by name
+  .registerCollateral('input', input);         // a standalone ENTRY collateral (no neuron owns it)
 ```
 
-Register **only the collaterals that are entry points** — the ones you actually stimulate from outside (from a job queue, webhook, cron). You don't need to register intermediate collaterals that are emitted between neurons internally.
+> **Register every name that can appear in the frontier** — each neuron, its collaterals, AND
+> the external entry collaterals you stimulate from (those are no neuron's axon, so they need an
+> explicit `registerCollateral`). For a whole map at once:
+> `CNSPersistOptionsRegistryFactory.create({ importUser, … })` (it registers each neuron's axon
+> collaterals automatically; still `registerCollateral` your entry collaterals).
 
-## Pattern 1: Message broker with named signals
+## The unit of state: `TCNSProgress`
 
-The most common pattern. Each job stores a collateral name + payload. On restart, the broker re-delivers unprocessed jobs and the worker reconstructs the signal by name.
+The resumable state of a running stimulation is its **frontier + context**, all by name:
 
 ```ts
-import Queue from 'bullmq';
-
-// Enqueue — store collateral name as a string
-await queue.add('process', {
-    collateralName: 'deckCreated',
-    payload: { deckId: 'deck-123', userId: 'user-456' },
-});
-
-// Worker — reconstruct signal from name on any process (after restart too)
-new Worker('process', async (job) => {
-    const collateral = registry.getCollateral(job.data.collateralName);
-    if (!collateral) throw new Error(`Unknown collateral: ${job.data.collateralName}`);
-
-    const stimulation = cns.stimulate(
-        collateral.createSignal(job.data.payload)
-    );
-    await stimulation.waitUntilComplete();
-});
+type TCNSProgress = {
+  tasks: TCNSSerializedTask[];              // the OUTSTANDING work (frontier ∪ failed), by name
+  context: Record<string /*neuronName*/, unknown>; // per-neuron ctx (attempt counters, etc.)
+};
 ```
 
-Because the name `"deckCreated"` is a stable string in your DB, the worker can reconstruct the exact signal on any restart.
+`tasks` is what's left to do; `context` is the state those tasks need. That's the entire
+checkpoint — no topology (code is its source of truth).
 
-## Pattern 2: Checkpoint in-flight stimulations
+## How resume works (the primitive)
 
-For very long flows you may want to checkpoint progress — save which stimulation is running so you can detect stale ones after a crash.
+Three steps, all through the registry:
 
 ```ts
-const stimulationId = `stim-${crypto.randomUUID()}`;
+import { CNSProgressSerializer } from '@cnstra/persist';
+const serializer = new CNSProgressSerializer(registry);
 
-// Save to DB before starting
-await db.stimulations.create({
-    id: stimulationId,
-    collateralName: 'importStarted',
-    payload: { importId: 'import-123' },
-    status: 'running',
-    startedAt: new Date(),
-});
+// 1) SERIALIZE the live frontier → a JSON-safe TCNSProgress
+const progress = serializer.serialize(stimulation);   // reads stimulation.getOutstandingTasks()
+await store.save(runId, progress);                     // your DB / KV / queue-job progress
 
-// Register the in-flight stimulation
-const stimulation = cns.stimulate(
-    importAxon.started.createSignal({ importId: 'import-123' })
-);
-registry.addStimulation(stimulation, { stimulationId });
+// … process restarts …
 
-// Clean up on complete
-stimulation.waitUntilComplete().then(() => {
-    registry.removeStimulation(stimulationId);
-    db.stimulations.update(stimulationId, { status: 'done' });
-}).catch(() => {
-    registry.removeStimulation(stimulationId);
-    db.stimulations.update(stimulationId, { status: 'failed' });
-});
+// 2) HYDRATE the names back into real tasks + a context store
+const { tasks, ctx } = serializer.hydrate(progress);
+
+// 3) ACTIVATE — resume ONLY the outstanding branch (not from the entry), with its context
+cns.activate(tasks, { ctx });
 ```
 
-> **Per-hop checkpoints (finer granularity).** The pattern above records progress at start/finish. If you need to durably record progress at *each* hop, return a promise from `onResponse` — it acts as a **barrier**, so the next hops do not run until your write lands. This gives a transactional boundary per hop: a crash between the checkpoint and the next hop resumes exactly the not-yet-done work. See [Response Listeners → Async listeners are a barrier](../recipes/response-listeners.md#async-listeners-are-a-barrier-this-is-how-checkpointing-works).
+`cns.activate(tasks, { ctx })` is the resume counterpart of `cns.stimulate(signal)`: instead of
+starting from an entry signal, it re-injects the exact outstanding tasks. Only the unfinished
+branch runs, and its neurons see their previous context.
 
-**On restart** — find stale `running` records in the DB and re-stimulate:
+## Checkpointing as the run advances
+
+Serializing once at the end only helps if the process dies *after* that write. To survive a
+crash mid-run, checkpoint the frontier **as it moves**. Two ready-made recorders wire into
+`onResponse` (every settled hop):
 
 ```ts
-const stale = await db.stimulations.findAll({ status: 'running' });
+import { CNSProgressRecorder } from '@cnstra/persist';
 
-for (const record of stale) {
-    const collateral = registry.getCollateral(record.collateralName);
-    if (!collateral) continue;
-
-    const stimulation = cns.stimulate(
-        collateral.createSignal(record.payload)
-    );
-    registry.addStimulation(stimulation, { stimulationId: record.id });
-    // update status back to 'running'
-}
+const recorder = new CNSProgressRecorder({ serializer, repository: store, key: runId });
+cns.stimulate(signal, { onResponse: recorder.onResponse });
+// on teardown: recorder.dispose();
 ```
 
-## Pattern 3: Full serialization with context
+- `CNSProgressRecorder` writes the **frontier** (`TCNSProgress`) to an `ICNSProgressRepository`
+  (`save/load/delete` by key) on a cadence — by default debounced with a max-staleness bound,
+  and **flushed immediately on error** so a failed run's exact frontier is always persisted.
+- Want the full **Stimulation → Attempt → Task** history too (not just the frontier)? Use
+  `CNSStimulationPersistor` → an `ICNSStimulationRepository`. See
+  [Durable execution](./durable-execution.md).
 
-When you need to resume with the same context (retry state, attempt counters), pass a shared context store:
+### Per-hop barrier (exactly-resumable)
+
+Because `onResponse` may return a promise and CNStra **awaits it before the next hop**, a write
+you `await` there is a transactional boundary: the next hop cannot start until the checkpoint
+lands. A crash between the two resumes exactly the not-yet-done work — no lost or double hops.
+See [Response Listeners → async listeners are a barrier](../recipes/response-listeners.md#async-listeners-are-a-barrier-this-is-how-checkpointing-works).
+
+## Where progress is stored
+
+`ICNSProgressRepository` is a tiny `save(key, progress) / load(key) / delete(key)` seam — plug
+in anything:
+
+| Store | Package |
+|---|---|
+| In-memory (dev/tests) | `CNSInMemoryProgressRepository` (`@cnstra/persist`) |
+| Redis | `CNSRedisProgressRepository` (`@cnstra/progress-redis`) |
+| Postgres (for pg-boss) | `CNSPgBossProgressRepository` (`@cnstra/pg-boss/postgres-progress`) |
+| BullMQ's own job progress | built into `@cnstra/bullmq` (`resume: {}`) |
+
+## You rarely wire this by hand
+
+The queue integrations do all of the above for you — one job = one stimulation, checkpoint on
+each hop, resume the frontier on retry:
 
 ```ts
-import { CNSStimulationContextStore } from '@cnstra/core';
-
-// Save context to DB alongside stimulation record
-const ctx = new CNSStimulationContextStore();
-const stimulation = cns.stimulate(signal, { ctx });
-
-// Serialize context periodically
-stimulation.waitUntilComplete().catch(async () => {
-    const serialized = ctx.serialize(); // if your store supports it
-    await db.stimulations.update(id, {
-        status: 'failed',
-        context: serialized,
-    });
-});
-
-// Resume with restored context
-const restoredCtx = new CNSStimulationContextStore();
-restoredCtx.restore(savedContext);
-cns.stimulate(signal, { ctx: restoredCtx });
+// @cnstra/pg-boss / @cnstra/bullmq
+await createCNSWorker({ boss, cns, registry, queue: 'cns', resume: { repository: store } });
 ```
 
-See [Custom Context Store](/docs/advanced/custom-context-store) for implementing serializable context.
+Reach for the raw serializer/recorder only when you resume outside a queue (a cron sweep of
+stale `running` rows, a custom scheduler, etc.). See [pg-boss](/docs/integrations/pg-boss) and
+[BullMQ](/docs/integrations/bullmq).
 
 ## What to register
 
 | Register | Why |
 |---|---|
-| Entry-point collaterals (stimulated from outside) | So workers/jobs can reconstruct signals by name |
-| Neurons that own persisted domain models | So you can look them up by name for diagnostics |
-| Active stimulations (optional) | So you can detect and recover stale ones after a crash |
+| Every neuron (`register`) | resolves neuron + axon collaterals by name |
+| Entry collaterals (`registerCollateral`) | external triggers are no neuron's axon — needed so the frontier serializes |
+| Nothing else | intermediate collaterals come from `register`; topology is never persisted |
 
-**Don't register** internal collaterals emitted between neurons — those are intermediate steps, not resumption points.
-
-## Registry in devtools vs production
-
-The same registry instance works for both persistence and devtools/AI inspection. The per-file `register()` approach is recommended for production since it co-locates registration with the neuron definition:
-
-```ts
-// src/neurons/registry.ts
-import { CNSPersistOptionsRegistry } from '@cnstra/persist';
-export const registry = new CNSPersistOptionsRegistry();
-
-// src/neurons/deck.ts
-import { registry } from './registry';
-registry
-    .register('deckNeuron', deckNeuron)
-    .registerCollateral('importStarted', importStarted);
-```
-
-For simple projects where all neurons are in one place, `CNSPersistOptionsRegistryFactory` is a convenient shorthand:
-
-```ts
-import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
-export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron, uiNeuron });
-// equivalent to calling register() for each neuron
-```
-
-Both produce the same result and can be passed to devtools, MCP, and BullMQ workers.
+The **same** registry powers persistence, the queue workers, and DevTools/AI inspection.

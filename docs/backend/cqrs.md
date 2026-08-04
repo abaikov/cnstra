@@ -189,6 +189,6 @@ CNStra can support more advanced CQRS patterns:
 
 ## See Also
 
-- [Message Brokers Integration](/docs/integrations/message-brokers) - Retry patterns and context preservation with message brokers
+- [Message Brokers Integration](/docs/integrations/bullmq) - Retry patterns and context preservation with message brokers
 - [Backend Overview](/docs/backend/overview) - General backend orchestration patterns
 

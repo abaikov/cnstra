@@ -1,5 +1,5 @@
 export { createCNSWorker } from './worker';
-export type { TCNSWorkerOptions } from './worker';
+export type { TCNSWorkerOptions, TCNSBullWorkerHandle } from './worker';
 
 export {
     enqueueStimulation,

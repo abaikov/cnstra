@@ -264,7 +264,7 @@ export function sidebarView({
                     static={{ class: 'btn-infected', style: navBtnStyle(isDurable) }}
                     handlers={{ onClick: () => void router.navigate('/durable') }}
                 >
-                    💀 Durable Runs
+                    💀 Durable
                 </button>
                 {appId
                     ? (

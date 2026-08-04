@@ -1,6 +1,6 @@
 import { neuron } from '@cnstra/core';
 import { db, dbEventQueue } from '../../../model';
-import type { TStimulation } from '../../../model';
+import type { TCNSStimulationState } from '../../../model';
 import { appModelAxon } from '../../controller-layer/AppModelAxon';
 
 // Bound memory: cap retained stimulations per app.
@@ -14,7 +14,7 @@ function cleanupOldStimulations(appId: string): void {
         .sort((a, b) => b.startedAt - a.startedAt);
 
     const now = Date.now();
-    const toRemove: TStimulation[] = [];
+    const toRemove: TCNSStimulationState[] = [];
     for (const s of appStimulations) {
         if (now - s.startedAt > STIMULATION_TTL_MS) toRemove.push(s);
     }

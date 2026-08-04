@@ -7,22 +7,22 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { db, dbEventQueue } from '../model';
 import type {
-    CNSDTOApp,
-    CNSDTONeuron,
-    CNSDTOServerMessage,
+    TCNSAppDTO,
+    TCNSNeuronDTO,
+    TCNSServerMessageDTO,
 } from '@cnstra/devtools-dto';
 import { mainCNS } from '../cns';
 import { wsAxon } from '../cns/ws/WsAxon';
 
 // Deterministic: await the whole ingest → data-layer chain, then flush the queue.
-const feed = async (msg: CNSDTOServerMessage) => {
+const feed = async (msg: TCNSServerMessageDTO) => {
     await mainCNS
         .stimulate(wsAxon.message.createSignal(JSON.stringify(msg)))
         .waitUntilComplete();
     dbEventQueue.flush();
 };
 
-const makeApp = (id: string, name: string): CNSDTOApp => ({
+const makeApp = (id: string, name: string): TCNSAppDTO => ({
     id,
     name,
     version: '1.0.0',
@@ -30,8 +30,7 @@ const makeApp = (id: string, name: string): CNSDTOApp => ({
     lastSeenAt: Date.now(),
 });
 
-const makeNeuron = (appId: string, name: string): CNSDTONeuron => ({
-    id: `${appId}:main:${name}`,
+const makeNeuron = (appId: string, name: string): TCNSNeuronDTO => ({
     name,
     cnsId: `${appId}:main`,
     appId,
@@ -69,9 +68,8 @@ describe('E2E Late-Joining Apps', () => {
                 neurons: [makeNeuron('late-app', 'api')],
                 collaterals: [
                     {
-                        id: 'late-app:main:api:done',
                         name: 'done',
-                        neuronId: 'late-app:main:api',
+                        ownerNeuronName: 'api',
                         cnsId: 'late-app:main',
                         appId: 'late-app',
                     },
@@ -85,9 +83,10 @@ describe('E2E Late-Joining Apps', () => {
             'existing-app',
             'late-app',
         ]);
+        // Neurons are keyed by the composite pk [cnsId, name].
         expect(
             Array.from(db.neurons.indexes.appId.getPksByKey('late-app'))
-        ).toEqual(['late-app:main:api']);
+        ).toEqual([['late-app:main', 'api']]);
         expect(db.collaterals.getAll().length).toBe(1);
         expect(db.cns.getOneByPk('late-app:main')?.appId).toBe('late-app');
     });
