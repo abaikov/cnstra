@@ -8,6 +8,7 @@ import type {
     TCNSStimulationRowDTO,
     TCNSStimulationTimeBucket,
 } from '@cnstra/devtools-dto';
+import { heartbeatMonitor } from './HeartbeatMonitor';
 
 // The faceted explorer (slice 3 core): one query-state → a facet rail (counts),
 // removable filter chips, a search box, a WINDOWED runs list (only visible rows are
@@ -549,6 +550,8 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                     <div bindable={{ children: viewSwitch }} />
                     {metricInput}
                     <div bindable={{ children: filterChips }} />
+                    <div static={{ style: 'flex:1' }} />
+                    {heartbeatMonitor(ctrl.total)}
                 </div>
                 <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: resultPane }} />
             </div>

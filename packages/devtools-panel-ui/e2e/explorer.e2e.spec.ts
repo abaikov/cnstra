@@ -26,6 +26,13 @@ test.describe('Explorer', () => {
             timeout: 60000,
         });
 
+        // The heartbeat monitor mounts a live ECG strip in the header.
+        const beat = page.locator('[title="live stimulation activity"] polyline');
+        await expect(beat).toHaveCount(1, { timeout: 60000 });
+        await page.waitForTimeout(1500); // let the demo emit + a few beats scroll
+        await page.screenshot({ path: 'e2e/.artifacts/explorer-heartbeat.png' });
+        expect((await beat.getAttribute('points'))?.length).toBeGreaterThan(20);
+
         // Switch to the Chart view — it must mount (either a histogram or the
         // empty state), never throw.
         await page.getByRole('button', { name: 'Chart', exact: true }).click();
