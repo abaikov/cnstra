@@ -77,18 +77,19 @@ const buildLabel = (n: NeuronData): string => {
     return stats.length > 0 ? `${n.name}\n${stats.join('  ')}` : n.name;
 };
 
+// Neon activity ramp: dim slate → blue → cyan → green → yellow → magenta (hottest).
 const colorFor = (stim: number): string =>
     stim === 0
-        ? '#6b4940'
+        ? '#4c476a'
         : stim < 5
-        ? '#8b5a52'
+        ? '#3f6fd6'
         : stim < 15
-        ? '#b86b63'
+        ? '#3fe6ff'
         : stim < 30
-        ? '#d4a574'
+        ? '#4dffa6'
         : stim < 50
-        ? '#8ba85c'
-        : '#6fb84a';
+        ? '#ffe34d'
+        : '#ff6ad5';
 
 const edgeId = (e: ConnectionData): string =>
     `${e.from}->${e.to}::${e.label || ''}`;
@@ -162,18 +163,18 @@ const GRAPH_STYLE: any = [
             'font-family': 'Px437_IBM_Conv, monospace',
             'font-size': '13',
             'font-weight': 'bold',
-            color: '#f0ece4',
-            'text-outline-color': '#1a1409',
+            color: '#e7e4f5',
+            'text-outline-color': '#07070d',
             'text-outline-width': '3',
             'text-valign': 'center',
             'text-halign': 'center',
             width: 'mapData(stim, 0, 50, 180, 280)',
             height: 'mapData(stim, 0, 50, 80, 120)',
             'border-width': '3',
-            'border-color': '#2e2218',
+            'border-color': '#2a2648',
             shape: 'round-rectangle',
             padding: '16',
-            'overlay-color': '#a83c3c',
+            'overlay-color': '#7a5cff',
             'overlay-opacity': '0',
             'text-wrap': 'wrap',
             'text-max-width': '240',
@@ -181,26 +182,26 @@ const GRAPH_STYLE: any = [
         },
     },
     { selector: 'node[type = "input"]', style: { 'border-color': '#00c853' } },
-    { selector: 'node[type = "output"]', style: { 'border-color': '#ff5252' } },
+    { selector: 'node[type = "output"]', style: { 'border-color': '#ff3b6b' } },
     {
         selector: 'edge',
         style: {
             'curve-style': 'bezier',
-            'line-color': '#6b4d3a',
+            'line-color': '#4a4680',
             width: 'mapData(stim, 0, 50, 2, 8)',
             opacity: 0.9,
             'target-arrow-shape': 'triangle',
-            'target-arrow-color': '#6b4d3a',
+            'target-arrow-color': '#4a4680',
             'arrow-scale': '1.5',
             'arrow-fill': 'filled',
             label: 'data(label)',
             'font-family': 'Px437_IBM_Conv, monospace',
             'font-size': '11',
             'font-weight': 'bold',
-            color: '#f0ece4',
-            'text-outline-color': '#1a1409',
+            color: '#e7e4f5',
+            'text-outline-color': '#07070d',
             'text-outline-width': '2',
-            'text-background-color': '#0a0908',
+            'text-background-color': '#07070d',
             'text-background-opacity': '0.95',
             'text-background-padding': '4',
             'text-rotation': 'autorotate',
@@ -211,24 +212,24 @@ const GRAPH_STYLE: any = [
         selector: 'node:selected',
         style: {
             'border-width': '3',
-            'border-color': '#a83c3c',
+            'border-color': '#7a5cff',
             'overlay-opacity': '0.06',
         },
     },
     {
         selector: 'edge:selected',
         style: {
-            'line-color': '#a83c3c',
-            'target-arrow-color': '#a83c3c',
+            'line-color': '#7a5cff',
+            'target-arrow-color': '#7a5cff',
             width: '6',
         },
     },
     {
         selector: '.highlighted',
         style: {
-            'border-color': '#a83c3c',
-            'line-color': '#a83c3c',
-            'target-arrow-color': '#a83c3c',
+            'border-color': '#7a5cff',
+            'line-color': '#7a5cff',
+            'target-arrow-color': '#7a5cff',
             opacity: 1,
         },
     },
@@ -253,17 +254,17 @@ const GRAPH_STYLE: any = [
     {
         selector: 'node[frontier = 2]',
         style: {
-            'border-color': '#ffb84d',
+            'border-color': '#ffe34d',
             'border-width': '7',
-            'overlay-color': '#ffb84d',
+            'overlay-color': '#ffe34d',
             'overlay-opacity': '0.16',
         },
     },
     {
         selector: 'edge[frontier = 2]',
         style: {
-            'line-color': '#ffb84d',
-            'target-arrow-color': '#ffb84d',
+            'line-color': '#ffe34d',
+            'target-arrow-color': '#ffe34d',
             width: '6',
             opacity: 1,
         },
@@ -271,17 +272,17 @@ const GRAPH_STYLE: any = [
     {
         selector: 'node[frontier = 3]',
         style: {
-            'border-color': '#ff3b30',
+            'border-color': '#ff3b6b',
             'border-width': '9',
-            'overlay-color': '#ff3b30',
+            'overlay-color': '#ff3b6b',
             'overlay-opacity': '0.24',
         },
     },
     {
         selector: 'edge[frontier = 3]',
         style: {
-            'line-color': '#ff3b30',
-            'target-arrow-color': '#ff3b30',
+            'line-color': '#ff3b6b',
+            'target-arrow-color': '#ff3b6b',
             width: '8',
             opacity: 1,
         },
@@ -547,12 +548,12 @@ export function cnsGraph(props: TExoBindable<CNSGraphProps>): TExoSchema {
 
             <div static={{ class: 'cns-graph-legend' }}>
                 <h3>Legend</h3>
-                {legendItem('#6b4940', 'Inactive')}
-                {legendItem('#8b5a52', 'Low activity')}
-                {legendItem('#b86b63', 'Medium')}
-                {legendItem('#d4a574', 'High')}
-                {legendItem('#6fb84a', 'Very high')}
-                {legendItem('#6b4d3a', 'Edge thickness = response volume')}
+                {legendItem('#4c476a', 'Inactive')}
+                {legendItem('#3f6fd6', 'Low activity')}
+                {legendItem('#3fe6ff', 'Medium')}
+                {legendItem('#4dffa6', 'High')}
+                {legendItem('#ff6ad5', 'Very high')}
+                {legendItem('#4a4680', 'Edge thickness = response volume')}
             </div>
 
             <div static={{ class: 'cns-graph-controls' }}>
