@@ -44,6 +44,12 @@ export interface TCNSExplorerController {
     loadMore: () => Promise<void>;
     /** Select a run → fetch its attempts/tasks and switch to the waterfall. */
     selectRun: (stimulationId: string) => Promise<void>;
+    /** Resume a run's frontier (retry) — then refresh the roster + detail. */
+    retryRun: (stimulationId: string) => Promise<void>;
+    /** Clone a run from its entry — then refresh the roster. */
+    cloneRun: (stimulationId: string) => Promise<void>;
+    /** Last retry/clone error message (cleared on the next action), for the UI. */
+    actionError: TExoWritableBindable<string | null, string | null>;
     start: () => void;
     stop: () => void;
 }
@@ -123,6 +129,30 @@ export function createExplorerController(
         if (query.getValue().selected === stimulationId) detail.setValue(d);
     };
 
+    const actionError = bindable<string | null>(null);
+    const retryRun = async (stimulationId: string): Promise<void> => {
+        actionError.setValue(null);
+        try {
+            await client.retry(stimulationId);
+            await refetchList();
+            if (query.getValue().selected === stimulationId) {
+                const d = await client.detail(stimulationId);
+                detail.setValue(d);
+            }
+        } catch (e) {
+            actionError.setValue((e as Error).message);
+        }
+    };
+    const cloneRun = async (stimulationId: string): Promise<void> => {
+        actionError.setValue(null);
+        try {
+            await client.clone(stimulationId);
+            await refetchList();
+        } catch (e) {
+            actionError.setValue((e as Error).message);
+        }
+    };
+
     const liveTick = async (): Promise<void> => {
         const q = query.getValue();
         const fac = await client.facets(q);
@@ -158,6 +188,9 @@ export function createExplorerController(
         setQuery,
         loadMore,
         selectRun,
+        retryRun,
+        cloneRun,
+        actionError,
         start,
         stop,
     };

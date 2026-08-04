@@ -23,8 +23,8 @@ import type {
     TCNSNeuronDTO,
     TCNSCollateralDTO,
     TCNSDendriteDTO,
-    TCNSStimulationViewDTO,
-    TCNSStimulationTaskViewDTO,
+    TCNSSignalJSON,
+    TCNSStimulationTask,
 } from '@cnstra/devtools-dto';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
@@ -47,40 +47,42 @@ export type TCNSDendritePk = TOIMKeyPath;
 export type TCNSStimulationId = string;
 export type TCNSHopId = string;
 /**
- * The panel's stored stimulation row — INHERITED from the backend observability
- * view (`TCNSStimulationViewDTO`, by name) via `Omit`, minus the nested attempts
- * (whose tasks live flat in `db.responses`, stored exactly once). Adds a required
- * `scopeName` (= cnsId), a denormalized `appId` (so stimulations index by app),
- * and `startedAt/completedAt/hopCount/hasError` summary counters aggregated at
- * ingest (avoid re-scanning hops every render). No id is synthesized from names —
- * `entry` stays the shared `TCNSSignalJSON` leaf.
+ * The panel's stored stimulation row — the run header the topology/signal views
+ * read, joined at ingest from the flat `cns.stimulations.snapshot` buckets. A
+ * required `scopeName` (= cnsId) + denormalized `appId` (so stimulations index by
+ * app) + `startedAt/completedAt/hopCount/hasError` summary counters (avoid
+ * re-scanning hops every render). Names, not ids — `entry` is the shared
+ * `TCNSSignalJSON` leaf; the graph resolves collateral names to nodes at render.
  */
-export type TCNSStimulationState = Omit<
-    TCNSStimulationViewDTO,
-    'attempts' | 'scopeName'
-> & {
+export type TCNSStimulationState = {
+    stimulationId: TCNSStimulationId;
     scopeName: string;
     appId: TCNSAppId;
+    entry: TCNSSignalJSON;
+    status: string;
     startedAt: number;
     completedAt: number | null;
     hopCount: number;
     hasError: boolean;
 };
 /**
- * The panel's stored hop row — one backend task (`TCNSStimulationTaskViewDTO`, by
- * name) plus denormalized keys for indexing and the graph-boundary name→node
- * resolution. `id` is a surrogate row key `${stimulationId}#${attemptNumber}:${index}`
- * (composed from real ids/indices, NOT derived from any name).
+ * The panel's stored hop row — one backend task (a subset of the canonical
+ * `TCNSStimulationTask`, by name) plus denormalized keys for indexing and the
+ * graph-boundary name→node resolution. `id` is a surrogate row key
+ * `${stimulationId}#${attemptNumber}:${index}` (composed from real ids/indices,
+ * NOT derived from any name).
  */
-export type TCNSHopState = TCNSStimulationTaskViewDTO & {
+export type TCNSHopState = Pick<
+    TCNSStimulationTask,
+    'index' | 'neuronName' | 'dendriteCollateralName' | 'status' | 'output' | 'error' | 'duration'
+> & {
     id: TCNSHopId;
     stimulationId: TCNSStimulationId;
     attemptNumber: number;
     appId: TCNSAppId;
     /** CNS scope (= cnsId) — used to resolve names→topology nodes at the graph boundary. */
     scopeName: string;
-    /** Always set at ingest (falls back to the stimulation's start) — narrows the
-     *  optional `startedAt` of the base task so cleanup/sorting stays total. */
+    /** Always set at ingest (falls back to the stimulation's start). */
     startedAt: number;
 };
 

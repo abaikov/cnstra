@@ -17,22 +17,13 @@ test.describe('CNStra DevTools Panel E2E', () => {
             timeout: 60000,
         });
 
-        // Open the Stimulations tab — now the name-based Stimulation→Attempt→Task
-        // view, fed live from the server's durable store over the socket.
-        await page.getByRole('button', { name: '⚡ Stimulations' }).click();
+        // Open the Explorer — the single stimulation surface (bucket protocol),
+        // fed live from the server's name-based store over the socket.
+        await page.getByRole('button', { name: /Explorer/ }).click();
 
-        // The page frame is present (unique backend line).
-        await expect(page.getByText(/backend: devtools/)).toBeVisible({
+        // The roster header ("<n> runs") is always present; the demo emits runs.
+        await expect(page.getByText(/\d+ runs/).first()).toBeVisible({
             timeout: 60000,
         });
-
-        // The demo emits stimulations every few seconds. Accept either a real run
-        // (its Clone action surfaces once a run is auto-selected) or the empty state.
-        await expect(
-            page
-                .getByText('no stimulations tracked')
-                .or(page.getByRole('button', { name: /Clone/ }))
-                .first()
-        ).toBeVisible({ timeout: 60000 });
     });
 });

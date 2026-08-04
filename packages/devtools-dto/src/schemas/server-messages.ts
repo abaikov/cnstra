@@ -9,20 +9,7 @@ import type {
 
 type Extends<A, _B extends A> = true;
 import { CNSTopologyMessageDTOSchema } from './app-messages';
-import { CNSStimulationViewDTOSchema } from './stimulation-view';
 import { CNSStimulationsSnapshotResultSchema } from './stimulations-query';
-
-/**
- * Name-based observability result (Phase 2b-3): the run/attempt/task roster the
- * panel renders, projected from the server's `ICNSStimulationRepository`. Replaces
- * the legacy `stimulations.result` + `hops.result` pair.
- */
-export const CNSStimulationsResultDTOSchema = z.object({
-    type: z.literal('cns.stimulations.result'),
-    requestId: z.string(),
-    stimulations: z.array(CNSStimulationViewDTOSchema),
-});
-export type TCNSStimulationsResultDTO = z.infer<typeof CNSStimulationsResultDTOSchema>;
 
 // ─── Broadcasts (server → all connected UI clients) ───────────────────────────
 
@@ -132,7 +119,6 @@ export const CNSServerMessageDTOSchema = z.discriminatedUnion('type', [
     CNSStimulationRetryRejectedDTOSchema,
     CNSStimulationCloneAcceptedDTOSchema,
     CNSStimulationCloneRejectedDTOSchema,
-    CNSStimulationsResultDTOSchema,
     CNSStimulationsSnapshotResultSchema,
 ]);
 

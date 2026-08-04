@@ -5,14 +5,12 @@ import './ui/theme.css';
 import './ui/components.css';
 import './ui/cns-graph.css';
 import './ui/styles.css';
-import './ui/durable-stimulations.css';
 import { createHashHistory } from './exo/hash-history';
 import { routes } from './app/routes';
 import { createDevtoolsSocket } from './app/controllers/socket';
 import { createAppSelection } from './app/controllers/selection';
 import { createStimulationIngest } from './app/controllers/stimulationIngest';
 import { createShell } from './app/shell';
-import { CNSDurableStimulationsHttpClient } from './durable/CNSDurableStimulationsHttpClient';
 
 // Client-only bootstrap (no SSR): hash-history router (electron loads over
 // file://), the WebSocket + selection controllers, then mount the shell. The
@@ -37,22 +35,15 @@ if (root) {
     const socket = createDevtoolsSocket();
     const selection = createAppSelection({ router, send: socket.send });
 
-    // The panel's stimulation/hop data now comes from the name-based durable store
-    // (polled), translated into the id-shaped OIMDB the graph/analytics/details/
-    // performance views read. This is the sole stimulation ingest (2b-4).
+    // The panel's stimulation/hop data comes from the name-based store, polled as
+    // flat buckets and joined into the OIMDB the graph/analytics/details/performance
+    // views read. This is the sole stimulation ingest.
     createStimulationIngest(socket);
-
-    // The durable-runs admin is a separate POLLING service (not the WS stream);
-    // its base URL is overridable like the WS one.
-    const durableUrl =
-        (window as unknown as { __CNSTRA_DURABLE_URL__?: string })
-            .__CNSTRA_DURABLE_URL__ || 'http://localhost:4545';
-    const durableClient = new CNSDurableStimulationsHttpClient(durableUrl);
 
     // Land on /apps if we booted with no hash route.
     if (router.getLocation().pathname === '/') {
         void router.navigate('/apps', { replace: true });
     }
 
-    mount(createShell({ router, socket, selection, durableClient }), root);
+    mount(createShell({ router, socket, selection }), root);
 }

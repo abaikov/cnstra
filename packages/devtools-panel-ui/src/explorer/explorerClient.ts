@@ -1,4 +1,4 @@
-import { socketRequest } from '../durable/socketRequest';
+import { socketRequest } from './socketRequest';
 import type { DevtoolsSocket } from '../app/controllers/socket';
 import type {
     TCNSStimulationRowDTO,
@@ -67,6 +67,33 @@ export class CNSExplorerWsClient {
             (m, resolve) => {
                 if (m.type === 'cns.stimulations.facets.result')
                     resolve(m.facets);
+            }
+        );
+    }
+
+    /** Resume the run's outstanding frontier (Phase 2b-2 server→app command). */
+    retry(stimulationId: string): Promise<void> {
+        return socketRequest<void>(
+            this.socket,
+            { type: 'stimulation.retry', requestId: genId(), stimulationId },
+            (m, resolve, reject) => {
+                if (m.type === 'stimulation.retry.accepted') resolve(undefined);
+                else if (m.type === 'stimulation.retry.rejected')
+                    reject(new Error(m.reason ?? 'retry rejected'));
+            }
+        );
+    }
+
+    /** Start a fresh run from this run's entry signal. Returns the new run id. */
+    clone(stimulationId: string): Promise<string> {
+        return socketRequest<string>(
+            this.socket,
+            { type: 'stimulation.clone', requestId: genId(), stimulationId },
+            (m, resolve, reject) => {
+                if (m.type === 'stimulation.clone.accepted')
+                    resolve(m.newStimulationId as string);
+                else if (m.type === 'stimulation.clone.rejected')
+                    reject(new Error(m.reason ?? 'clone rejected'));
             }
         );
     }

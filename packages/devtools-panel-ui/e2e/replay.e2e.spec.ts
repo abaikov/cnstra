@@ -1,11 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-// The legacy id-based "▶️ Replay" action was replaced by the name-based
-// Retry (resume frontier) / Clone (fresh run from entry) actions on the
-// Stimulation→Attempt→Task view (Phase 2b-2/2b-3). This smoke checks those
+// The name-based Retry (resume frontier) / Clone (fresh run from entry) actions
+// live on the Explorer's waterfall (a selected run). This smoke checks those
 // actions are present on a real run and that invoking one doesn't break the view.
-test.describe('Stimulations retry/clone actions', () => {
-    test('a selected stimulation exposes Retry and Clone, and acting does not break the view', async ({
+test.describe('Explorer retry/clone actions', () => {
+    test('a selected run exposes Retry and Clone, and acting does not break the view', async ({
         page,
     }) => {
         test.setTimeout(90000);
@@ -13,22 +12,25 @@ test.describe('Stimulations retry/clone actions', () => {
         await expect(page.getByText('Server Connected')).toBeVisible({
             timeout: 60000,
         });
-        await expect(page.getByText(/CONNECTED APPS \(\d+\)/)).toBeVisible({
-            timeout: 60000,
-        });
 
-        await page.getByRole('button', { name: '⚡ Stimulations' }).click();
-        await expect(page.getByText(/backend: devtools/)).toBeVisible({
-            timeout: 60000,
-        });
+        await page.getByRole('button', { name: /Explorer/ }).click();
 
-        // The demo emits runs; the page auto-selects the latest → its actions show.
-        const cloneBtn = page.getByRole('button', { name: /Clone/ });
+        // The demo emits runs; click the newest roster row → the waterfall opens.
+        const firstRow = page.locator('.exp-row').first();
+        await expect(firstRow).toBeVisible({ timeout: 60000 });
+        await firstRow.click();
+
+        // The waterfall exposes Retry + Clone for the selected run.
+        const cloneBtn = page.getByRole('button', { name: 'Clone', exact: true });
         await expect(cloneBtn).toBeVisible({ timeout: 60000 });
-        await expect(page.getByRole('button', { name: /Retry/ })).toBeVisible();
+        await expect(
+            page.getByRole('button', { name: 'Retry', exact: true })
+        ).toBeVisible();
 
-        // Clone a run — the view must keep rendering (backend line stays).
+        // Clone a run — the view must keep rendering (Runs switch stays).
         await cloneBtn.click();
-        await expect(page.getByText(/backend: devtools/)).toBeVisible();
+        await expect(
+            page.getByRole('button', { name: 'Runs', exact: true })
+        ).toBeVisible();
     });
 });

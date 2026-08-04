@@ -6,7 +6,7 @@ import { performanceMonitor } from './PerformanceMonitor';
 import { signalDebugger } from './SignalDebugger';
 import { contextStoreMonitor } from './ContextStoreMonitor';
 import { analyticsDashboard } from './AnalyticsDashboard';
-import { isStimulationsPath, isDurablePath, isExplorerPath } from '../app/routes';
+import { isExplorerPath } from '../app/routes';
 import type { DevtoolsSocket } from '../app/controllers/socket';
 import type { AppSelection } from '../app/controllers/selection';
 import type { TCNSAppDTO } from '../model';
@@ -236,8 +236,6 @@ export function sidebarView({
     // ── Filter controls + nav buttons (depend on route + selection) ──────────
     const filterAndNav = (): TExoSchema => {
         const loc = router.getLocation();
-        const isStim = isStimulationsPath(loc.pathname);
-        const isDurable = isDurablePath(loc.pathname);
         const isExplorer = isExplorerPath(loc.pathname);
         const appId = selectedAppId.getValue();
         const eff = effectiveSelectedAppId.getValue() || '';
@@ -252,7 +250,7 @@ export function sidebarView({
         return (
             <div static={{ style: 'display:flex;flex-direction:column;gap:var(--spacing-sm)' }}>
                 <button
-                    static={{ class: 'btn-infected', style: navBtnStyle(!isStim && !isDurable && !isExplorer) }}
+                    static={{ class: 'btn-infected', style: navBtnStyle(!isExplorer) }}
                     handlers={{
                         onClick: () => {
                             if (appId) void router.navigate(`/apps/${eff}`);
@@ -267,25 +265,6 @@ export function sidebarView({
                 >
                     🔎 Explorer
                 </button>
-                <button
-                    static={{ class: 'btn-infected', style: navBtnStyle(isDurable) }}
-                    handlers={{ onClick: () => void router.navigate('/durable') }}
-                >
-                    💀 Durable
-                </button>
-                {appId
-                    ? (
-                          <button
-                              static={{ class: 'btn-infected', style: navBtnStyle(isStim) }}
-                              handlers={{
-                                  onClick: () =>
-                                      void router.navigate(`/apps/${eff}/stimulations`),
-                              }}
-                          >
-                              ⚡ Stimulations
-                          </button>
-                      )
-                    : ''}
             </div>
         );
     };

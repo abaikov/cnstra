@@ -5,7 +5,6 @@ import {
     TCNSTopologyMessageDTO,
 } from '@cnstra/devtools-dto';
 import type {
-    TCNSStimulationViewDTO,
     TCNSStimulationFilter,
     TCNSStimulationTask,
     TCNSStimulationAttempt,
@@ -122,9 +121,6 @@ export class CNSDevToolsServer {
                 break;
             case 'stimulation.clone':
                 await this.handleStimulationClone(ws, msg);
-                break;
-            case 'cns.stimulations.query':
-                await this.handleStimulationsQuery(ws, msg);
                 break;
             case 'cns.stimulations.list':
                 await this.handleStimulationsList(ws, msg);
@@ -254,67 +250,6 @@ export class CNSDevToolsServer {
             stimulations: page.rows,
             attempts,
             tasks,
-        });
-    }
-
-    /**
-     * Name-based observability (Phase 2b-3): project the durable
-     * `ICNSStimulationRepository` into the stimulation/attempt/task roster the panel
-     * renders. This replaces the legacy id-based `stimulations.query`/`hops.query`.
-     */
-    private async handleStimulationsQuery(ws: WebSocket, msg: any): Promise<void> {
-        const stims = await this.stimulationRepository.listStimulations(
-            msg.scopeName ? { scopeName: msg.scopeName } : undefined
-        );
-        const stimulations: TCNSStimulationViewDTO[] = [];
-        for (const stim of stims) {
-            const attempts = await this.stimulationRepository.getAttempts(
-                stim.stimulationId
-            );
-            const attemptViews: TCNSStimulationViewDTO['attempts'] = [];
-            for (const a of attempts) {
-                const tasks = await this.stimulationRepository.getTasks(
-                    a.stimulationAttemptId
-                );
-                attemptViews.push({
-                    attemptNumber: a.attemptNumber,
-                    status: a.status,
-                    hopCount: a.hopCount,
-                    startedAt: a.startedAt,
-                    completedAt: a.completedAt ?? null,
-                    tasks: tasks.map(t => ({
-                        index: t.index,
-                        neuronName: t.neuronName,
-                        dendriteCollateralName: t.dendriteCollateralName,
-                        status: t.status,
-                        output: t.output
-                            ? {
-                                  collateralName: t.output.collateralName,
-                                  payload: t.output.payload,
-                              }
-                            : null,
-                        error: t.error ?? null,
-                        startedAt: t.startedAt,
-                        duration: t.duration ?? null,
-                    })),
-                });
-            }
-            stimulations.push({
-                stimulationId: stim.stimulationId,
-                status: stim.status,
-                scopeName: stim.scopeName,
-                entry: {
-                    collateralName: stim.entry.collateralName,
-                    payload: stim.entry.payload,
-                },
-                frontier: stim.progress.tasks.map(t => t.neuronName),
-                attempts: attemptViews,
-            });
-        }
-        this.send(ws, {
-            type: 'cns.stimulations.result',
-            requestId: msg.requestId,
-            stimulations,
         });
     }
 

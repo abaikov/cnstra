@@ -220,16 +220,39 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
     });
 
     // ── waterfall (from detail buckets, joined by attempt id on the client) ──
-    const waterfall = combine([ctrl.detail, ctrl.query], () => {
+    const actionBtn = (
+        text: string,
+        run: string,
+        fn: (id: string) => Promise<void>
+    ): TExoSchema => (
+        <button
+            static={{
+                style:
+                    'padding:3px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;' +
+                    'border:1px solid var(--border-primary);background:var(--bg-card);color:var(--text-secondary)',
+            }}
+            handlers={{ onClick: () => void fn(run) }}
+        >
+            {text}
+        </button>
+    );
+    const waterfall = combine([ctrl.detail, ctrl.query, ctrl.actionError], () => {
         const d = ctrl.detail.getValue();
         const q = ctrl.query.getValue();
+        const err = ctrl.actionError.getValue();
         if (!q.selected)
             return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Select a run to see its waterfall.</div>;
         if (!d)
             return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Loading…</div>;
+        const run = q.selected;
         return (
             <div static={{ style: 'display:flex;flex-direction:column;gap:10px;padding:12px;overflow:auto' }}>
-                <div static={{ style: 'color:var(--text-accent);font-size:13px;word-break:break-all' }}>{q.selected}</div>
+                <div static={{ style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' }}>
+                    <div static={{ style: 'color:var(--text-accent);font-size:13px;word-break:break-all;flex:1;min-width:0' }}>{run}</div>
+                    {actionBtn('Retry', run, ctrl.retryRun)}
+                    {actionBtn('Clone', run, ctrl.cloneRun)}
+                </div>
+                {err ? <div static={{ style: 'color:var(--infection-red);font-size:11px' }}>{err}</div> : <div />}
                 {d.attempts.map(a => (
                     <div static={{ style: 'border:1px solid var(--border-primary);background:var(--bg-card)' }}>
                         <div static={{ style: 'padding:6px 10px;background:var(--bg-secondary);font-size:11px;color:var(--infection-yellow);text-transform:uppercase;letter-spacing:1px' }}>Attempt #{String(a.attemptNumber)} · {a.status} · {String(a.hopCount)} hops</div>

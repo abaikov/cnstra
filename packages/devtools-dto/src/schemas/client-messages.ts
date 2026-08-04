@@ -29,19 +29,6 @@ export const CNSTopologyQueryDTOSchema = z.object({
     appId: z.string().optional(),
 });
 
-/**
- * Name-based observability query (Phase 2b-3): poll the server's durable
- * `ICNSStimulationRepository` for the Stimulation→Attempt→Task roster, optionally
- * scoped. The server replies with `cns.stimulations.result` (run views). This is
- * the name-based replacement for the legacy `stimulations.query`/`hops.query`.
- */
-export const CNSStimulationsQueryDTOSchema = z.object({
-    type: z.literal('cns.stimulations.query'),
-    requestId: z.string(),
-    scopeName: z.string().optional(),
-});
-
-
 export const CNSReplayOptionsDTOSchema = z.object({
     maxHops: z.number().int().positive().optional(),
     timeoutMs: z.number().int().positive().optional(),
@@ -91,7 +78,6 @@ export const CNSClientMessageDTOSchema = z.discriminatedUnion('type', [
     CNSClientConnectMessageDTOSchema,
     CNSAppsQueryDTOSchema,
     CNSTopologyQueryDTOSchema,
-    CNSStimulationsQueryDTOSchema,
     CNSStimulationsListRequestSchema,
     CNSStimulationsFacetsRequestSchema,
     CNSStimulationDetailRequestSchema,
@@ -104,7 +90,6 @@ export const CNSClientMessageDTOSchema = z.discriminatedUnion('type', [
 export type TCNSClientConnectMessageDTO = z.infer<typeof CNSClientConnectMessageDTOSchema>;
 export type TCNSAppsQueryDTO = z.infer<typeof CNSAppsQueryDTOSchema>;
 export type TCNSTopologyQueryDTO = z.infer<typeof CNSTopologyQueryDTOSchema>;
-export type TCNSStimulationsQueryDTO = z.infer<typeof CNSStimulationsQueryDTOSchema>;
 export type TCNSReplayOptionsDTO = z.infer<typeof CNSReplayOptionsDTOSchema>;
 export type TCNSReplayStartMessageDTO = z.infer<typeof CNSReplayStartMessageDTOSchema>;
 export type TCNSStimulationActionOptionsDTO = z.infer<typeof CNSStimulationActionOptionsDTOSchema>;

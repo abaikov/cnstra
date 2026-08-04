@@ -86,7 +86,6 @@ export function ingestSnapshot(snap: TSnapshot): void {
             appId,
             entry: row.entry,
             status: row.status,
-            frontier: [], // survivors derive the frontier from hops, not this field
             startedAt: row.startedAt,
             completedAt: row.completedAt,
             hopCount: row.hopCount,
