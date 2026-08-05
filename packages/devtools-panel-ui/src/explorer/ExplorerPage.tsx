@@ -246,13 +246,43 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
         if (!d)
             return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Loading…</div>;
         const run = q.selected;
+        // Retry resumes a FAILED run's unfinished branch. A completed run has no
+        // frontier — Retry is disabled there; Clone (fresh run from entry) is the
+        // action instead.
+        const last = d.attempts[d.attempts.length - 1];
+        const retryable = !!last && (last.status === 'failed' || last.hasError);
+        const retryBtn = (
+            <button
+                static={{
+                    title: retryable
+                        ? 'Resume this run’s failed step (only the unfinished branch re-runs)'
+                        : 'This run finished — nothing to resume. Use Clone to run it again.',
+                    style:
+                        'padding:3px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;' +
+                        'border:1px solid var(--border-primary);' +
+                        (retryable
+                            ? 'cursor:pointer;background:var(--bg-card);color:var(--infection-green);border-color:var(--infection-green)'
+                            : 'cursor:not-allowed;background:var(--bg-secondary);color:var(--text-muted);opacity:.5'),
+                }}
+                handlers={{ onClick: () => retryable && void ctrl.retryRun(run) }}
+            >
+                Retry
+            </button>
+        );
         return (
             <div static={{ style: 'display:flex;flex-direction:column;gap:10px;padding:12px;overflow:auto' }}>
                 <div static={{ style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' }}>
                     <div static={{ style: 'color:var(--text-accent);font-size:13px;word-break:break-all;flex:1;min-width:0' }}>{run}</div>
-                    {actionBtn('Retry', run, ctrl.retryRun)}
+                    {retryBtn}
                     {actionBtn('Clone', run, ctrl.cloneRun)}
                 </div>
+                {!retryable && !err ? (
+                    <div static={{ style: 'color:var(--text-muted);font-size:11px' }}>
+                        This run finished — nothing to resume. <b static={{ style: 'color:var(--infection-green)' }}>Clone</b> runs it again from the start.
+                    </div>
+                ) : (
+                    <div />
+                )}
                 {err ? <div static={{ style: 'color:var(--infection-red);font-size:11px' }}>{err}</div> : <div />}
                 {d.attempts.map(a => (
                     <div static={{ style: 'border:1px solid var(--border-primary);background:var(--bg-card)' }}>
