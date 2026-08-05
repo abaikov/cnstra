@@ -165,7 +165,9 @@ export function createAppSelection({
         } catch {
             /* selection is best-effort */
         }
-        void router.navigate(`/apps/${appId}`);
+        // No route change: the panel is a single Explorer surface. Selecting an app
+        // only updates the identity/health indicator — navigating would leave
+        // `/explorer` (and a reload must always land back on the Explorer).
     }
 
     function selectCns(cnsId: string | null): void {

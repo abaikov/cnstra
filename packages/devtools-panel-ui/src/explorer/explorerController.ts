@@ -50,6 +50,8 @@ export interface TCNSExplorerController {
     cloneRun: (stimulationId: string) => Promise<void>;
     /** Last retry/clone error message (cleared on the next action), for the UI. */
     actionError: TExoWritableBindable<string | null, string | null>;
+    /** Last retry/clone SUCCESS message (transient toast, auto-clears), for the UI. */
+    actionNotice: TExoWritableBindable<string | null, string | null>;
     start: () => void;
     stop: () => void;
 }
@@ -130,10 +132,26 @@ export function createExplorerController(
     };
 
     const actionError = bindable<string | null>(null);
-    const retryRun = async (stimulationId: string): Promise<void> => {
+    const actionNotice = bindable<string | null>(null);
+    let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+    // Surface a transient success toast that auto-dismisses, so an action always
+    // gives visible acknowledgement (not just the error path).
+    const notify = (msg: string): void => {
+        actionNotice.setValue(msg);
+        if (noticeTimer) clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => actionNotice.setValue(null), 6000);
+    };
+    const clearAction = (): void => {
         actionError.setValue(null);
+        actionNotice.setValue(null);
+        if (noticeTimer) clearTimeout(noticeTimer);
+    };
+
+    const retryRun = async (stimulationId: string): Promise<void> => {
+        clearAction();
         try {
             await client.retry(stimulationId);
+            notify('Retry accepted — resuming this run');
             await refetchList();
             if (query.getValue().selected === stimulationId) {
                 const d = await client.detail(stimulationId);
@@ -144,9 +162,10 @@ export function createExplorerController(
         }
     };
     const cloneRun = async (stimulationId: string): Promise<void> => {
-        actionError.setValue(null);
+        clearAction();
         try {
-            await client.clone(stimulationId);
+            const newId = await client.clone(stimulationId);
+            notify(`Cloned → new run ${newId}`);
             await refetchList();
         } catch (e) {
             actionError.setValue((e as Error).message);
@@ -191,6 +210,7 @@ export function createExplorerController(
         retryRun,
         cloneRun,
         actionError,
+        actionNotice,
         start,
         stop,
     };

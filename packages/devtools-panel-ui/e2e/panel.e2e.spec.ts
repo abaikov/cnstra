@@ -1,27 +1,38 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('CNStra DevTools Panel E2E', () => {
-    test('connects to server, shows apps, displays the name-based Stimulations view', async ({
+    test('lands directly on the Explorer (no landing page, no nav click)', async ({
         page,
     }) => {
         await page.goto('/');
 
-        // Connection status
-        await expect(page.getByText('CONNECTION STATUS')).toBeVisible();
-        await expect(page.getByText('Server Connected')).toBeVisible({
+        // Identity/health is folded into the top bar — the brand is always present.
+        await expect(page.getByText('🧠 CNStra')).toBeVisible();
+
+        // The Explorer IS the landing surface: the facet rail (lens switch) and the
+        // roster header ("<n> runs") are visible immediately, with NO extra click.
+        await expect(
+            page.getByRole('button', { name: 'Collaterals' })
+        ).toBeVisible({ timeout: 60000 });
+        await expect(page.getByText(/\d+ runs/).first()).toBeVisible({
             timeout: 60000,
         });
+    });
 
-        // Connected apps list appears (may take a bit while demo warms up)
-        await expect(page.getByText(/CONNECTED APPS \(\d+\)/)).toBeVisible({
-            timeout: 60000,
-        });
+    test('a bare reload lands back on the Explorer, not a topology/apps page', async ({
+        page,
+    }) => {
+        await page.goto('/');
+        await expect(
+            page.getByRole('button', { name: 'Collaterals' })
+        ).toBeVisible({ timeout: 60000 });
 
-        // Open the Explorer — the single stimulation surface (bucket protocol),
-        // fed live from the server's name-based store over the socket.
-        await page.getByRole('button', { name: /Explorer/ }).click();
-
-        // The roster header ("<n> runs") is always present; the demo emits runs.
+        // Reload the bare URL — the Explorer must come straight back up, no click.
+        await page.reload();
+        await expect(page.getByText('🧠 CNStra')).toBeVisible();
+        await expect(
+            page.getByRole('button', { name: 'Collaterals' })
+        ).toBeVisible({ timeout: 60000 });
         await expect(page.getByText(/\d+ runs/).first()).toBeVisible({
             timeout: 60000,
         });

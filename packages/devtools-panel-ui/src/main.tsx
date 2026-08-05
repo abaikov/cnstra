@@ -3,13 +3,11 @@ import { createRouter } from '@exodra/router';
 import { mainCNS } from './cns';
 import './ui/theme.css';
 import './ui/components.css';
-import './ui/cns-graph.css';
 import './ui/styles.css';
 import { createHashHistory } from './exo/hash-history';
 import { routes } from './app/routes';
 import { createDevtoolsSocket } from './app/controllers/socket';
 import { createAppSelection } from './app/controllers/selection';
-import { createStimulationIngest } from './app/controllers/stimulationIngest';
 import { createShell } from './app/shell';
 
 // Client-only bootstrap (no SSR): hash-history router (electron loads over
@@ -35,14 +33,11 @@ if (root) {
     const socket = createDevtoolsSocket();
     const selection = createAppSelection({ router, send: socket.send });
 
-    // The panel's stimulation/hop data comes from the name-based store, polled as
-    // flat buckets and joined into the OIMDB the graph/analytics/details/performance
-    // views read. This is the sole stimulation ingest.
-    createStimulationIngest(socket);
-
-    // Land on /apps if we booted with no hash route.
+    // The Explorer IS the whole tool — land directly on it (no landing page, no
+    // graph, no nav click). A bare reload (empty hash → pathname '/') always lands
+    // here too, so refresh keeps you in the Explorer.
     if (router.getLocation().pathname === '/') {
-        void router.navigate('/apps', { replace: true });
+        void router.navigate('/explorer', { replace: true });
     }
 
     mount(createShell({ router, socket, selection }), root);

@@ -28,6 +28,8 @@ function makeClient(): CNSExplorerWsClient {
             attempts: [{ stimulationId: id } as any],
             tasks: [{ neuronName: 'n' } as any],
         })),
+        clone: jest.fn(async (_id: string) => 'new-run-42'),
+        retry: jest.fn(async (_id: string) => undefined),
     } as unknown as CNSExplorerWsClient;
 }
 
@@ -75,6 +77,39 @@ describe('explorerController', () => {
         await flush();
         expect(c.query.getValue().status).toBe('failed');
         expect(writes.some(s => s.includes('status=failed'))).toBe(true);
+    });
+
+    it('cloneRun() surfaces a success notice naming the new run', async () => {
+        const c = createExplorerController(makeClient(), { liveMs: 0 });
+        c.start();
+        await flush();
+        await c.cloneRun('s1');
+        expect(c.actionNotice.getValue()).toBe('Cloned → new run new-run-42');
+        expect(c.actionError.getValue()).toBeNull();
+    });
+
+    it('retryRun() surfaces a success notice; a rejected action surfaces the error', async () => {
+        const c = createExplorerController(makeClient(), { liveMs: 0 });
+        c.start();
+        await flush();
+        await c.retryRun('s1');
+        expect(c.actionNotice.getValue()).toBe('Retry accepted — resuming this run');
+
+        // A rejected clone clears the notice and shows the error instead.
+        const failing = createExplorerController(
+            {
+                ...makeClient(),
+                clone: jest.fn(async () => {
+                    throw new Error('clone rejected');
+                }),
+            } as any,
+            { liveMs: 0 }
+        );
+        failing.start();
+        await flush();
+        await failing.cloneRun('s1');
+        expect(failing.actionError.getValue()).toBe('clone rejected');
+        expect(failing.actionNotice.getValue()).toBeNull();
     });
 
     it('restores query from the URL on construction', async () => {

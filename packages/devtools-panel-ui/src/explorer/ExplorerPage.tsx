@@ -1,5 +1,6 @@
 import type { TExoSchema } from '@exodra/core';
 import { bindable } from '@exodra/reactivity';
+import type { TExoWritableBindable } from '@exodra/reactivity';
 import { combine } from '../exo/oimdb-bind';
 import { fmtTime } from '../utils/format';
 import type { TCNSExplorerController } from './explorerController';
@@ -8,15 +9,25 @@ import type {
     TCNSStimulationRowDTO,
     TCNSStimulationTimeBucket,
 } from '@cnstra/devtools-dto';
+import type { ConnectionStatus } from '../app/controllers/socket';
 import { heartbeatMonitor } from './HeartbeatMonitor';
 
-// The faceted explorer (slice 3 core): one query-state → a facet rail (counts),
-// removable filter chips, a search box, a WINDOWED runs list (only visible rows are
-// in the DOM — usable at 20k), and a waterfall built from the detail buckets. All
-// state lives in the controller; this view only reads bindables + dispatches patches.
+// The Explorer IS the whole DevTools panel — an observability / runs viewer
+// (think Sentry issues · CI runs). One top bar (identity + health · search ·
+// view tabs · metric · heartbeat · run count), ONE secondary column (the compact
+// facet rail = the primary filter/nav), and a main area that shows the runs list
+// (Runs), a selected run's step timeline (Waterfall) or throughput (Chart). All
+// state lives in the controller; this view only reads bindables + dispatches
+// patches. No sidebar, no graph, no landing page — opening the panel lands here.
 
 const ROW_H = 44; // px, fixed → enables windowing
 const OVERSCAN = 6;
+
+/** Connection identity + health, folded into the top bar (was the old sidebar). */
+export interface TCNSExplorerConnection {
+    connectionStatus: TExoWritableBindable<ConnectionStatus, ConnectionStatus>;
+    appName: TExoWritableBindable<string, string>;
+}
 
 const chip = (
     label: string,
@@ -40,11 +51,48 @@ const chip = (
     </button>
 );
 
-export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
+export function explorerPage(
+    ctrl: TCNSExplorerController,
+    conn: TCNSExplorerConnection
+): TExoSchema {
     // Scroll offset drives the window; a ResizeObserver-free height guess is fine
     // (the container is a fixed flex child).
     const scrollTop = bindable(0);
     const viewportH = bindable(600);
+
+    // ── top-bar identity + health (brand · connection dot · app name) ─────────
+    const dotColor = (s: ConnectionStatus): string =>
+        s === 'connected'
+            ? 'var(--infection-green)'
+            : s === 'connecting'
+              ? 'var(--infection-yellow)'
+              : 'var(--infection-red)';
+    const connBlock = combine([conn.connectionStatus, conn.appName], () => {
+        const s = conn.connectionStatus.getValue();
+        const name = conn.appName.getValue();
+        const label =
+            s === 'connected'
+                ? name || 'Server Connected'
+                : s === 'connecting'
+                  ? 'Connecting…'
+                  : 'Disconnected';
+        return (
+            <div
+                static={{
+                    title: `Server ${s}`,
+                    style: 'display:flex;align-items:center;gap:8px;flex:none',
+                }}
+            >
+                <span static={{ class: 'brand', style: 'font-size:16px;color:var(--text-primary);white-space:nowrap' }}>
+                    🧠 CNStra
+                </span>
+                <span static={{ style: `width:9px;height:9px;border-radius:50%;flex:none;background:${dotColor(s)};box-shadow:0 0 6px ${dotColor(s)}` }} />
+                <span static={{ style: 'font-size:12px;color:var(--text-secondary);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis' }}>
+                    {label}
+                </span>
+            </div>
+        );
+    });
 
     // ── facet rail (left), with a Collaterals ⇄ Neurons lens ─────────────────
     const lensBtn = (
@@ -66,8 +114,9 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
             {label}
         </button>
     );
+    // Section labels are HEADINGS → pixel font (.exp-heading) + bright yellow.
     const label = (t: string): TExoSchema => (
-        <div static={{ style: 'font-size:10px;letter-spacing:1.5px;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px' }}>{t}</div>
+        <div static={{ class: 'exp-heading', style: 'font-size:11px;letter-spacing:1.5px;color:var(--infection-yellow);text-transform:uppercase;margin-bottom:6px' }}>{t}</div>
     );
     const facetRail = combine([ctrl.facets, ctrl.query], () => {
         const f = ctrl.facets.getValue();
@@ -93,7 +142,7 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                     </div>
                 </div>
                 <div>
-                    {label(neurons ? 'Neuron' : 'Entry collateral (job type)')}
+                    {label(neurons ? 'Neuron' : 'Job type')}
                     <div static={{ style: 'display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow:auto' }}>
                         {dim.map(c =>
                             chip(
@@ -116,8 +165,8 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
         );
     });
 
-    // ── active filter chips (breadcrumb) ─────────────────────────────────────
-    const filterChips = combine([ctrl.query, ctrl.total], () => {
+    // ── active filter chips (breadcrumb; shown in the main header only when set) ─
+    const filterChips = combine([ctrl.query], () => {
         const q = ctrl.query.getValue();
         const active: TExoSchema[] = [];
         if (q.status)
@@ -144,13 +193,21 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                     ctrl.setQuery({ text: undefined })
                 )
             );
+        if (!active.length) return <div static={{ style: 'display:none' }} />;
         return (
-            <div static={{ style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11px;color:var(--text-muted)' }}>
-                <span>{String(ctrl.total.getValue())} runs</span>
+            <div static={{ style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border-primary)' }}>
+                <span static={{ style: 'font-size:10px;letter-spacing:1px;color:var(--text-muted);text-transform:uppercase' }}>Filters</span>
                 {active}
             </div>
         );
     });
+
+    // ── run count (top bar; prominent bright yellow) ─────────────────────────
+    const runsCount = combine([ctrl.total], () => (
+        <span static={{ style: 'font-size:13px;color:var(--infection-yellow);white-space:nowrap;font-weight:600' }}>
+            {String(ctrl.total.getValue())} runs
+        </span>
+    ));
 
     // ── windowed runs list ───────────────────────────────────────────────────
     const rowView = (r: TCNSStimulationRowDTO, top: number): TExoSchema => {
@@ -237,74 +294,92 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
             {text}
         </button>
     );
-    const waterfall = combine([ctrl.detail, ctrl.query, ctrl.actionError], () => {
-        const d = ctrl.detail.getValue();
-        const q = ctrl.query.getValue();
-        const err = ctrl.actionError.getValue();
-        if (!q.selected)
-            return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Select a run to see its waterfall.</div>;
-        if (!d)
-            return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Loading…</div>;
-        const run = q.selected;
-        // Retry resumes a FAILED run's unfinished branch. A completed run has no
-        // frontier — Retry is disabled there; Clone (fresh run from entry) is the
-        // action instead.
-        const last = d.attempts[d.attempts.length - 1];
-        const retryable = !!last && (last.status === 'failed' || last.hasError);
-        const retryBtn = (
-            <button
-                static={{
-                    title: retryable
-                        ? 'Resume this run’s failed step (only the unfinished branch re-runs)'
-                        : 'This run finished — nothing to resume. Use Clone to run it again.',
-                    style:
-                        'padding:3px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;' +
-                        'border:1px solid var(--border-primary);' +
-                        (retryable
-                            ? 'cursor:pointer;background:var(--bg-card);color:var(--infection-green);border-color:var(--infection-green)'
-                            : 'cursor:not-allowed;background:var(--bg-secondary);color:var(--text-muted);opacity:.5'),
-                }}
-                handlers={{ onClick: () => retryable && void ctrl.retryRun(run) }}
-            >
-                Retry
-            </button>
-        );
-        return (
-            <div static={{ style: 'display:flex;flex-direction:column;gap:10px;padding:12px;overflow:auto' }}>
-                <div static={{ style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' }}>
-                    <div static={{ style: 'color:var(--text-accent);font-size:13px;word-break:break-all;flex:1;min-width:0' }}>{run}</div>
-                    {retryBtn}
-                    {actionBtn('Clone', run, ctrl.cloneRun)}
+    const waterfall = combine(
+        [ctrl.detail, ctrl.query, ctrl.actionError, ctrl.actionNotice],
+        () => {
+            const d = ctrl.detail.getValue();
+            const q = ctrl.query.getValue();
+            const err = ctrl.actionError.getValue();
+            const notice = ctrl.actionNotice.getValue();
+            if (!q.selected)
+                return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Select a run to see its waterfall.</div>;
+            if (!d)
+                return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Loading…</div>;
+            const run = q.selected;
+            // Retry resumes a FAILED run's unfinished branch. A completed run has no
+            // frontier — Retry is disabled there; Clone (fresh run from entry) is the
+            // action instead.
+            const last = d.attempts[d.attempts.length - 1];
+            const retryable = !!last && (last.status === 'failed' || last.hasError);
+            const retryBtn = (
+                <button
+                    static={{
+                        title: retryable
+                            ? 'Resume this run’s failed step (only the unfinished branch re-runs)'
+                            : 'This run finished — nothing to resume. Use Clone to run it again.',
+                        style:
+                            'padding:3px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;' +
+                            'border:1px solid var(--border-primary);' +
+                            (retryable
+                                ? 'cursor:pointer;background:var(--bg-card);color:var(--infection-green);border-color:var(--infection-green)'
+                                : 'cursor:not-allowed;background:var(--bg-secondary);color:var(--text-muted);opacity:.5'),
+                    }}
+                    handlers={{ onClick: () => retryable && void ctrl.retryRun(run) }}
+                >
+                    Retry
+                </button>
+            );
+            // Visible acknowledgement of Retry/Clone: a green success toast (auto-
+            // clears) or a red error line — the owner must always see the outcome.
+            const feedback = notice ? (
+                <div static={{ class: 'exp-toast', style: 'padding:6px 10px;font-size:12px;color:var(--bg-primary);background:var(--infection-green);border-radius:2px;word-break:break-all' }}>
+                    ✓ {notice}
                 </div>
-                {!retryable && !err ? (
-                    <div static={{ style: 'color:var(--text-muted);font-size:11px' }}>
-                        This run finished — nothing to resume. <b static={{ style: 'color:var(--infection-green)' }}>Clone</b> runs it again from the start.
+            ) : err ? (
+                <div static={{ class: 'exp-toast', style: 'padding:6px 10px;font-size:12px;color:var(--bg-primary);background:var(--infection-red);border-radius:2px;word-break:break-all' }}>
+                    ✕ {err}
+                </div>
+            ) : (
+                <div />
+            );
+            return (
+                <div static={{ style: 'display:flex;flex-direction:column;gap:10px;padding:12px;overflow:auto' }}>
+                    <div static={{ style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' }}>
+                        <div static={{ style: 'color:var(--text-accent);font-size:13px;word-break:break-all;flex:1;min-width:0' }}>{run}</div>
+                        {retryBtn}
+                        {actionBtn('Clone', run, ctrl.cloneRun)}
                     </div>
-                ) : (
-                    <div />
-                )}
-                {err ? <div static={{ style: 'color:var(--infection-red);font-size:11px' }}>{err}</div> : <div />}
-                {d.attempts.map(a => (
-                    <div static={{ style: 'border:1px solid var(--border-primary);background:var(--bg-card)' }}>
-                        <div static={{ style: 'padding:6px 10px;background:var(--bg-secondary);font-size:11px;color:var(--infection-yellow);text-transform:uppercase;letter-spacing:1px' }}>Attempt #{String(a.attemptNumber)} · {a.status} · {String(a.hopCount)} hops</div>
-                        {d.tasks
-                            .filter(t => t.stimulationAttemptId === a.stimulationAttemptId)
-                            .map(t => (
-                                <div static={{ style: `padding:6px 10px;font-size:12px;border-top:1px solid var(--border-primary);box-shadow:${t.error ? 'inset 3px 0 0 var(--infection-red)' : 'none'}` }}>
-                                    <span static={{ style: 'color:var(--infection-purple)' }}>{t.neuronName}</span>
-                                    <span static={{ style: 'color:var(--text-muted)' }}> {t.dendriteCollateralName} → {t.output?.collateralName ?? 'no output'}</span>
-                                    {t.error ? <div static={{ style: 'color:var(--infection-red);font-size:11px' }}>{t.error}</div> : <div />}
-                                </div>
-                            ))}
-                    </div>
-                ))}
-            </div>
-        );
-    });
+                    {feedback}
+                    {!retryable && !notice && !err ? (
+                        <div static={{ style: 'color:var(--text-muted);font-size:11px' }}>
+                            This run finished — nothing to resume. <b static={{ style: 'color:var(--infection-green)' }}>Clone</b> runs it again from the start.
+                        </div>
+                    ) : (
+                        <div />
+                    )}
+                    {d.attempts.map(a => (
+                        <div static={{ style: 'border:1px solid var(--border-primary);background:var(--bg-card)' }}>
+                            <div static={{ style: 'padding:6px 10px;background:var(--bg-secondary);font-size:11px;color:var(--infection-yellow);text-transform:uppercase;letter-spacing:1px' }}>Attempt #{String(a.attemptNumber)} · {a.status} · {String(a.hopCount)} hops</div>
+                            {d.tasks
+                                .filter(t => t.stimulationAttemptId === a.stimulationAttemptId)
+                                .map(t => (
+                                    <div static={{ style: `padding:6px 10px;font-size:12px;border-top:1px solid var(--border-primary);box-shadow:${t.error ? 'inset 3px 0 0 var(--infection-red)' : 'none'}` }}>
+                                        <span static={{ style: 'color:var(--infection-purple)' }}>{t.neuronName}</span>
+                                        <span static={{ style: 'color:var(--text-muted)' }}> {t.dendriteCollateralName} → {t.output?.collateralName ?? 'no output'}</span>
+                                        {t.error ? <div static={{ style: 'color:var(--infection-red);font-size:11px' }}>{t.error}</div> : <div />}
+                                    </div>
+                                ))}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+    );
 
-    // ── chart view (throughput histogram; div-based bars, no SVG namespace) ──
+    // ── chart view (legible throughput histogram; div-based bars, no SVG) ─────
     // Y = run count (stacked completed/failed/running) or, when a metric path is
-    // set, the summed payload metric per time-bucket.
+    // set, the summed payload metric per time-bucket. Legend, gridlines, a peak
+    // y-label, thin centred bars + hover tooltips → readable, not ambiguous slabs.
     const chartMode = bindable<'count' | 'metric'>('count');
     const seg = (h: number, color: string, title: string): TExoSchema =>
         h <= 0 ? (
@@ -317,6 +392,12 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                 }}
             />
         );
+    const swatch = (color: string, text: string): TExoSchema => (
+        <span static={{ style: 'display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary)' }}>
+            <span static={{ style: `width:10px;height:10px;border-radius:2px;background:${color};flex:none` }} />
+            {text}
+        </span>
+    );
     const barColumn = (
         b: TCNSStimulationTimeBucket,
         maxCount: number,
@@ -324,36 +405,32 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
         mode: 'count' | 'metric'
     ): TExoSchema => {
         const t = fmtTime(b.tsBucket);
+        const total = b.completed + b.failed + b.running;
+        const barTitle =
+            mode === 'metric'
+                ? `${t} · Σ ${b.metric ?? 0}`
+                : `${t} · ${b.completed} completed · ${b.failed} failed · ${b.running} running`;
         const col: TExoSchema[] =
             mode === 'metric'
                 ? [
                       seg(
                           maxMetric ? ((b.metric ?? 0) / maxMetric) * 100 : 0,
                           'var(--infection-yellow)',
-                          `${t} · ${b.metric ?? 0}`
+                          barTitle
                       ),
                   ]
                 : [
                       // column-reverse → first child sits at the bottom
-                      seg(
-                          maxCount ? (b.completed / maxCount) * 100 : 0,
-                          'var(--infection-green)',
-                          `${t} · ${b.completed} completed`
-                      ),
-                      seg(
-                          maxCount ? (b.failed / maxCount) * 100 : 0,
-                          'var(--infection-red)',
-                          `${t} · ${b.failed} failed`
-                      ),
-                      seg(
-                          maxCount ? (b.running / maxCount) * 100 : 0,
-                          'var(--infection-purple)',
-                          `${t} · ${b.running} running`
-                      ),
+                      seg(maxCount ? (b.completed / maxCount) * 100 : 0, 'var(--infection-green)', barTitle),
+                      seg(maxCount ? (b.failed / maxCount) * 100 : 0, 'var(--infection-red)', barTitle),
+                      seg(maxCount ? (b.running / maxCount) * 100 : 0, 'var(--infection-purple)', barTitle),
                   ];
         return (
-            <div static={{ style: 'flex:1;min-width:2px;display:flex;flex-direction:column-reverse;justify-content:flex-start' }}>
-                {col}
+            // slot (flex:1) centres a thin bar → small gaps between bars
+            <div static={{ title: barTitle, style: 'flex:1 1 0;min-width:3px;display:flex;justify-content:center;align-items:flex-end;height:100%' }}>
+                <div static={{ style: `width:64%;max-width:16px;height:100%;display:flex;flex-direction:column-reverse;justify-content:flex-start;opacity:${total || mode === 'metric' ? '1' : '.25'}` }}>
+                    {col}
+                </div>
             </div>
         );
     };
@@ -380,6 +457,9 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
             </div>
         );
     };
+    const gridline = (pct: number): TExoSchema => (
+        <div static={{ style: `position:absolute;left:0;right:0;bottom:${pct}%;height:1px;background:var(--border-primary);opacity:.5` }} />
+    );
     const chartView = combine([ctrl.facets, ctrl.query, chartMode], () => {
         const buckets = ctrl.facets.getValue().byTime;
         const q = ctrl.query.getValue();
@@ -395,76 +475,41 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
         );
         const maxMetric = Math.max(0, ...buckets.map(b => b.metric ?? 0));
         const yMax = mode === 'metric' ? maxMetric : maxCount;
+        const legend =
+            mode === 'metric'
+                ? [swatch('var(--infection-yellow)', `Σ ${q.metricPath}`)]
+                : [
+                      swatch('var(--infection-green)', 'completed'),
+                      swatch('var(--infection-red)', 'failed'),
+                      swatch('var(--infection-purple)', 'running'),
+                  ];
         return (
             <div static={{ style: 'flex:1;display:flex;flex-direction:column;padding:12px;gap:8px;min-height:0' }}>
-                <div static={{ style: 'display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text-muted)' }}>
-                    <span>{mode === 'metric' ? `Σ ${q.metricPath} per bucket` : 'runs per bucket'} · peak {String(yMax)}</span>
+                <div static={{ style: 'display:flex;align-items:baseline;gap:10px;flex-wrap:wrap' }}>
+                    <h3 static={{ class: 'exp-heading', style: 'margin:0;font-size:13px;letter-spacing:1px;color:var(--text-primary);text-transform:uppercase' }}>Throughput</h3>
+                    <span static={{ style: 'font-size:11px;color:var(--text-muted)' }}>{mode === 'metric' ? `Σ ${q.metricPath} per bucket` : 'runs per bucket'} · peak {String(yMax)}</span>
                     {q.metricPath
                         ? modeToggle(chartMode)
-                        : <span static={{ style: 'color:var(--text-muted)' }}>set a metric path below to sum a payload field</span>}
+                        : <span static={{ style: 'font-size:10px;color:var(--text-muted)' }}>set a metric path (top bar) to sum a payload field</span>}
                 </div>
-                <div static={{ style: 'flex:1;display:flex;align-items:stretch;gap:1px;min-height:120px;border-bottom:1px solid var(--border-primary);border-left:1px solid var(--border-primary);padding:2px' }}>
-                    {buckets.map(b => barColumn(b, maxCount, maxMetric, mode))}
+                <div static={{ style: 'display:flex;gap:14px;flex-wrap:wrap' }}>{legend}</div>
+                <div static={{ style: 'flex:1;display:flex;min-height:160px;gap:8px' }}>
+                    {/* y-axis scale (max at top, 0 at bottom) */}
+                    <div static={{ style: 'display:flex;flex-direction:column;justify-content:space-between;font-size:9px;color:var(--text-muted);text-align:right;min-width:22px' }}>
+                        <span>{String(yMax)}</span>
+                        <span>0</span>
+                    </div>
+                    {/* plot: faint gridlines behind, thin bars in front */}
+                    <div static={{ style: 'flex:1;position:relative;border-left:1px solid var(--border-primary);border-bottom:1px solid var(--border-primary)' }}>
+                        {[gridline(25), gridline(50), gridline(75), gridline(100)]}
+                        <div static={{ style: 'position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px;padding:0 2px' }}>
+                            {buckets.map(b => barColumn(b, maxCount, maxMetric, mode))}
+                        </div>
+                    </div>
                 </div>
-                <div static={{ style: 'display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted)' }}>
+                <div static={{ style: 'display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);padding-left:30px' }}>
                     <span>{fmtTime(buckets[0].tsBucket)}</span>
                     <span>{fmtTime(buckets[buckets.length - 1].tsBucket)}</span>
-                </div>
-            </div>
-        );
-    });
-
-    // ── map view (proportional activation heat-map; lens-aware) ──────────────
-    // Tiles for the active lens's dimension (neurons or entry collaterals), each
-    // grown + heated by activation count — a weight map of where runs concentrate.
-    // Click a tile to filter, same as a facet chip.
-    const mapView = combine([ctrl.facets, ctrl.query], () => {
-        const f = ctrl.facets.getValue();
-        const q = ctrl.query.getValue();
-        const neurons = q.lens === 'neurons';
-        const dim = neurons ? f.byNeuron : f.byEntryCollateral;
-        if (!dim.length)
-            return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>No activation to map.</div>;
-        const max = Math.max(...dim.map(d => d.count));
-        const selected = neurons ? q.neuronName : q.entryCollateralName;
-        return (
-            <div static={{ style: 'flex:1;display:flex;flex-direction:column;gap:8px;padding:12px;min-height:0;overflow:auto' }}>
-                <div static={{ style: 'font-size:11px;color:var(--text-muted)' }}>{neurons ? 'neuron' : 'entry collateral'} activation · tile size + heat ∝ run count</div>
-                <div static={{ style: 'display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start' }}>
-                    {dim.map(d => {
-                        const intensity = max ? d.count / max : 0;
-                        const pct = Math.round(20 + intensity * 80); // 20..100%
-                        const isSel = selected === d.name;
-                        return (
-                            <div
-                                static={{
-                                    title: `${d.name} · ${d.count}`,
-                                    style:
-                                        `flex:${1 + Math.round(intensity * 6)} 1 90px;` +
-                                        `min-width:90px;padding:8px 10px;cursor:pointer;` +
-                                        `border:1px solid ${isSel ? 'var(--infection-yellow)' : 'var(--border-primary)'};` +
-                                        `background:color-mix(in srgb, var(--infection-purple) ${pct}%, var(--bg-card));` +
-                                        `color:${intensity > 0.5 ? 'var(--bg-primary)' : 'var(--text-primary)'};` +
-                                        'display:flex;flex-direction:column;gap:2px;overflow:hidden',
-                                }}
-                                handlers={{
-                                    onClick: () =>
-                                        ctrl.setQuery(
-                                            toggleFilter(
-                                                q,
-                                                neurons
-                                                    ? 'neuronName'
-                                                    : 'entryCollateralName',
-                                                d.name
-                                            )
-                                        ),
-                                }}
-                            >
-                                <span static={{ style: 'font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }}>{d.name}</span>
-                                <span static={{ style: 'font-size:16px;font-weight:600;font-variant-numeric:tabular-nums' }}>{String(d.count)}</span>
-                            </div>
-                        );
-                    })}
                 </div>
             </div>
         );
@@ -477,7 +522,7 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
             static={{
                 placeholder: 'search stimulationId…',
                 style:
-                    'width:220px;padding:5px 8px;font-size:12px;background:var(--bg-secondary);' +
+                    'width:200px;padding:5px 8px;font-size:12px;background:var(--bg-secondary);' +
                     'border:1px solid var(--border-primary);color:var(--text-primary);border-radius:2px',
             }}
             handlers={{
@@ -499,26 +544,25 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
             return <div static={{ style: 'flex:1;display:flex;min-height:0' }} bindable={{ children: waterfall }} />;
         if (view === 'chart')
             return <div static={{ style: 'flex:1;display:flex;min-height:0;overflow:auto' }} bindable={{ children: chartView }} />;
-        if (view === 'map')
-            return <div static={{ style: 'flex:1;display:flex;min-height:0;overflow:auto' }} bindable={{ children: mapView }} />;
         return <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: runsList }} />;
     };
     const resultPane = combine([ctrl.query], () =>
         paneFor(ctrl.query.getValue().view)
     );
+    // Active tab accent = bright yellow (owner ask); inactive = muted card.
     const viewBtn = (
-        v: 'runs' | 'waterfall' | 'chart' | 'map',
+        v: 'runs' | 'waterfall' | 'chart',
         label: string,
         active: boolean
     ): TExoSchema => (
         <button
             static={{
                 style:
-                    `padding:4px 10px;font-size:11px;cursor:pointer;border:1px solid var(--border-primary);` +
+                    `padding:4px 12px;font-size:11px;cursor:pointer;` +
                     `text-transform:uppercase;letter-spacing:1px;` +
                     (active
-                        ? 'background:var(--infection-purple);color:var(--bg-primary)'
-                        : 'background:var(--bg-card);color:var(--text-secondary)'),
+                        ? 'background:var(--infection-yellow);color:var(--bg-primary);border:1px solid var(--infection-yellow);font-weight:600'
+                        : 'background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border-primary)'),
             }}
             handlers={{ onClick: () => ctrl.setQuery({ view: v }) }}
         >
@@ -533,14 +577,14 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                     viewBtn('runs', 'Runs', v === 'runs'),
                     viewBtn('waterfall', 'Waterfall', v === 'waterfall'),
                     viewBtn('chart', 'Chart', v === 'chart'),
-                    viewBtn('map', 'Map', v === 'map'),
                 ]}
             </div>
         );
     });
 
-    // Metric-path input (chart board). Stable element (like searchBox) so a live
-    // facets refresh never yanks focus while typing.
+    // Metric-path input (chart only; stable element so a live facets refresh never
+    // yanks focus while typing). Shown in the top bar only when the Chart view is
+    // active — it is meaningless elsewhere.
     let metricDebounce: ReturnType<typeof setTimeout> | null = null;
     const metricInput: TExoSchema = (
         <input
@@ -548,7 +592,7 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
                 placeholder: 'chart metric: payload path (e.g. pages)',
                 value: ctrl.query.getValue().metricPath ?? '',
                 style:
-                    'width:200px;padding:5px 8px;font-size:12px;background:var(--bg-secondary);' +
+                    'width:220px;padding:5px 8px;font-size:12px;background:var(--bg-secondary);' +
                     'border:1px solid var(--border-primary);color:var(--text-primary);border-radius:2px',
             }}
             handlers={{
@@ -563,27 +607,36 @@ export function explorerPage(ctrl: TCNSExplorerController): TExoSchema {
             }}
         />
     );
+    const metricSlot = combine([ctrl.query], () =>
+        ctrl.query.getValue().view === 'chart' ? metricInput : <div />
+    );
 
     return (
         <div
             static={{
-                class: 'no-smooth',
-                style: 'display:flex;flex:1;min-height:0;overflow:hidden;background:var(--bg-primary)',
+                style: 'display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden;background:var(--bg-primary)',
                 onExoMount: () => ctrl.start(),
                 onExoUnmount: () => ctrl.stop(),
             }}
         >
-            <div static={{ style: 'width:240px;flex:none;border-right:1px solid var(--border-primary);padding:12px;overflow:auto' }} bindable={{ children: facetRail }} />
-            <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-width:0' }}>
-                <div static={{ style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--border-primary)' }}>
-                    {searchBox}
-                    <div bindable={{ children: viewSwitch }} />
-                    {metricInput}
+            {/* ── ONE top bar: identity/health · search · tabs · metric · beat · count ── */}
+            <div static={{ style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border-primary);background:var(--bg-panel)' }}>
+                <div bindable={{ children: connBlock }} />
+                <div static={{ style: 'width:1px;height:20px;background:var(--border-primary)' }} />
+                {searchBox}
+                <div bindable={{ children: viewSwitch }} />
+                <div bindable={{ children: metricSlot }} />
+                <div static={{ style: 'flex:1' }} />
+                {heartbeatMonitor(ctrl.total)}
+                <div bindable={{ children: runsCount }} />
+            </div>
+            {/* ── body: compact facet rail (only secondary column) + main area ── */}
+            <div static={{ style: 'flex:1;display:flex;min-height:0;overflow:hidden' }}>
+                <div static={{ style: 'width:200px;flex:none;border-right:1px solid var(--border-primary);padding:12px;overflow:auto;background:var(--bg-panel)' }} bindable={{ children: facetRail }} />
+                <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-width:0' }}>
                     <div bindable={{ children: filterChips }} />
-                    <div static={{ style: 'flex:1' }} />
-                    {heartbeatMonitor(ctrl.total)}
+                    <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: resultPane }} />
                 </div>
-                <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: resultPane }} />
             </div>
         </div>
     );

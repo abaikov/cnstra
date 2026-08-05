@@ -3,7 +3,7 @@
 // query string, so every slice is shareable / back-forward-able (the v1 "persist").
 // Pure + framework-free so it unit-tests without a browser.
 
-export type TCNSExplorerView = 'runs' | 'waterfall' | 'chart' | 'map';
+export type TCNSExplorerView = 'runs' | 'waterfall' | 'chart';
 export type TCNSExplorerLens = 'collaterals' | 'neurons';
 
 export interface TCNSExplorerQuery {
@@ -37,7 +37,7 @@ export const DEFAULT_QUERY: TCNSExplorerQuery = {
     lens: 'collaterals',
 };
 
-const VIEWS: readonly TCNSExplorerView[] = ['runs', 'waterfall', 'chart', 'map'];
+const VIEWS: readonly TCNSExplorerView[] = ['runs', 'waterfall', 'chart'];
 const LENSES: readonly TCNSExplorerLens[] = ['collaterals', 'neurons'];
 
 /** Just the filter subset the server's `filter` field understands. */

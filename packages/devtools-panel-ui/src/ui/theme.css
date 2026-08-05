@@ -28,7 +28,7 @@
   --blood-dark: #2e2420;           /* Deep magenta */
   --blood-medium: #9c685c;         /* Magenta */
   --blood-bright: #cf6f63;         /* Neon red-pink alert */
-  --pus-yellow: #c8b148;           /* Acid yellow (MAGI) */
+  --pus-yellow: #F5C344;           /* Bright terminal yellow (MAGI) */
   --pus-green: #b3e053;            /* Neon green */
   /* Bone / cool near-whites */
   --bone-dark: #4e4f4e;            /* Dim */
@@ -39,7 +39,7 @@
   --infection-red: #cf6f63;        /* Error / alert */
   --infection-green: #b3e053;      /* Success */
   --infection-purple: #c9a6f8;     /* Eva violet */
-  --infection-yellow: #c8b148;     /* Warning / MAGI */
+  --infection-yellow: #F5C344;     /* Warning / MAGI — bright terminal yellow */
   --infection-cyan: #52a7c9;       /* Info / links (голубой) */
   --infection-pink: #d98fd0;       /* Highlight pop */
   /* Text colors */
@@ -48,7 +48,7 @@
   --text-muted: #8d8d8c;           /* Muted */
   --text-accent: #52a7c9;          /* Accent — cyan links */
   --text-success: #b3e053;         /* Success — neon green */
-  --text-warning: #c8b148;         /* Warning — acid yellow */
+  --text-warning: #F5C344;         /* Warning — bright terminal yellow */
   --text-error: #cf6f63;           /* Error — neon red-pink */
   /* Borders and dividers */
   --border-primary: #333333;       /* Primary borders */
@@ -61,8 +61,12 @@
   --shadow-infection: rgba(65, 143, 174, 0.35);  /* cyan bloom */
   --shadow-bone: rgba(179, 173, 208, 0.2);
   /* === FONTS === */
+  /* Branded pixel font — HEADINGS / BRAND ONLY (see .pixel-font / h1,h2,h3). */
   --font-primary: 'Px437_IBM_Conv', 'Courier New', monospace;
   --font-secondary: 'Px437_IBM_Conv', 'Monaco', monospace;
+  /* Clean, readable terminal mono for ALL body / data text. */
+  --font-body: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo',
+    'Consolas', 'Courier New', monospace;
   /* Font sizes (pixel-based) */
   --font-size-xs: 10px;
   --font-size-sm: 11px;
@@ -105,18 +109,26 @@ html, body {
   color: var(--text-primary);
   background: var(--bg-primary);
 
-  font-family: var(--font-primary);
+  /* Body / data text uses the clean readable mono; the pixel font is reserved
+     for headings + brand only (see rule below). */
+  font-family: var(--font-body);
   font-size: var(--font-size-base);
-  font-smooth: never;
-  line-height: 1.4;
-  /* Disable smoothing for pixel effect */
+  line-height: 1.45;
 
-  -webkit-font-smoothing: none;
+  -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Pixel image rendering */
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
+}
+
+/* === BRANDED PIXEL FONT — HEADINGS / BRAND ONLY === */
+h1, h2, h3, h4,
+.pixel-font,
+.exp-heading,
+.brand {
+  font-family: var(--font-primary);
+  /* Pixel glyphs must render crisp, never smoothed. */
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+  font-smooth: never;
 }
 
 #root {
