@@ -229,7 +229,9 @@ export function explorerPage(
                 handlers={{ onClick: () => void ctrl.selectRun(r.stimulationId) }}
             >
                 <span static={{ style: `width:8px;height:8px;border-radius:50%;background:${color};flex:none` }} />
-                <span static={{ style: 'color:var(--text-accent);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1' }}>{r.entry.collateralName}</span>
+                <span static={{ style: 'color:var(--text-accent);white-space:nowrap;flex:none' }}>{r.entry.collateralName}</span>
+                {/* the id — what search matches on; dim + truncated so it's scannable but not loud */}
+                <span static={{ style: 'color:var(--text-muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;opacity:.7' }}>{r.stimulationId}</span>
                 <span static={{ style: 'color:var(--text-muted);white-space:nowrap' }}>{fmtTime(r.startedAt)}</span>
                 <span static={{ style: 'color:var(--text-muted);white-space:nowrap' }}>{String(r.hopCount)} hops</span>
                 <span static={{ style: `color:${color};text-transform:uppercase;font-size:10px;white-space:nowrap` }}>{r.status}</span>
@@ -273,6 +275,13 @@ export function explorerPage(
                 <div static={{ style: `height:${all.length * ROW_H}px;position:relative` }}>
                     {windowRows}
                 </div>
+                {all.length === 0 ? (
+                    <div static={{ style: 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px;text-align:center;padding:24px' }}>
+                        No runs yet — they appear here as the app stimulates (or clear filters if you set any).
+                    </div>
+                ) : (
+                    <div />
+                )}
             </div>
         );
     });
@@ -490,7 +499,7 @@ export function explorerPage(
                     <span static={{ style: 'font-size:11px;color:var(--text-muted)' }}>{mode === 'metric' ? `Σ ${q.metricPath} per bucket` : 'runs per bucket'} · peak {String(yMax)}</span>
                     {q.metricPath
                         ? modeToggle(chartMode)
-                        : <span static={{ style: 'font-size:10px;color:var(--text-muted)' }}>set a metric path (top bar) to sum a payload field</span>}
+                        : <span static={{ style: 'font-size:10px;color:var(--text-muted)' }}>· set a metric path (top bar) to sum a payload field</span>}
                 </div>
                 <div static={{ style: 'display:flex;gap:14px;flex-wrap:wrap' }}>{legend}</div>
                 <div static={{ style: 'flex:1;display:flex;min-height:160px;gap:8px' }}>

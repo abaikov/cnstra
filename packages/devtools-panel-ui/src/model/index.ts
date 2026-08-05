@@ -99,29 +99,6 @@ export type TCNSServerMetrics = {
     cpuPercent: number;
 };
 
-// ─── Derived graph data (panel-local, computed from base entities) ────────────
-
-export type TCNSGraphLayoutPk = `${string}::${string}`;
-export type TCNSGraphEdgePk = `${string}::${string}->${string}::${string}`;
-
-export type TCNSGraphLayout = {
-    appId: TCNSAppId;
-    /** Graph node key `${cnsId}:${name}`, built at render — not a stored id. */
-    neuronId: string;
-    x: number;
-    y: number;
-    stimulationCount: number;
-};
-
-export type TCNSGraphEdge = {
-    appId: TCNSAppId;
-    /** Graph node keys `${cnsId}:${name}`. */
-    from: string;
-    to: string;
-    label?: string;
-    count: number;
-};
-
 // UI state for response/hop collapsible blocks.
 export type TCNSResponseUIState = {
     responseId: TCNSHopId;
@@ -263,27 +240,6 @@ export const db = {
             appId: factory.derivedSetIndex(h => [h.appId]),
             stimulationId: factory.derivedSetIndex(h => [h.stimulationId]),
         })
-    ),
-
-    graphLayouts: collectionWith<TCNSGraphLayout, TCNSGraphLayoutPk, {
-        appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCNSGraphLayout, TCNSGraphLayoutPk>>['indexFactory']['derivedSetIndex']
-        >;
-    }>(
-        layout => `${layout.appId}::${layout.neuronId}` as TCNSGraphLayoutPk,
-        factory => ({ appId: factory.derivedSetIndex(l => [l.appId]) })
-    ),
-
-    graphEdges: collectionWith<TCNSGraphEdge, TCNSGraphEdgePk, {
-        appId: ReturnType<
-            ReturnType<typeof createOIMCollectionKit<TCNSGraphEdge, TCNSGraphEdgePk>>['indexFactory']['derivedSetIndex']
-        >;
-    }>(
-        edge =>
-            `${edge.appId}::${edge.from}->${edge.to}::${
-                edge.label || ''
-            }` as TCNSGraphEdgePk,
-        factory => ({ appId: factory.derivedSetIndex(e => [e.appId]) })
     ),
 
     serverMetrics: collectionWith<TCNSServerMetrics, `${number}`, {
