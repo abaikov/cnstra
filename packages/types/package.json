@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/types",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared TypeScript contract for CNStra: signals, tasks, axons, neuron/collateral/stimulation/network interfaces. Zero runtime — the base package core and integrations build on.",
   "keywords": ["cnstra", "types", "contract", "interfaces"],
   "main": "dist/index.js",
@@ -16,6 +16,7 @@
   "sideEffects": false,
   "files": ["dist"],
   "scripts": {
+    "prepublishOnly": "node ../../scripts/check-drift.mjs --gate",
     "build": "tsup",
     "test:types": "tsc --noEmit",
     "clean": "rm -rf dist"

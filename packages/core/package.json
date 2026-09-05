@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/core",
-  "version": "2.6.0",
+  "version": "3.0.0",
   "description": "Embeddable workflow/orchestration engine for TypeScript: deterministic runs over a typed neuron graph (in-memory, zero dependencies).",
   "keywords": [
     "neural-network",
@@ -50,7 +50,7 @@
   "scripts": {
     "build": "tsup && tsc --emitDeclarationOnly",
     "build:types": "tsc --emitDeclarationOnly",
-    "prepublishOnly": "npm run test && npm run test:types && npm run build",
+    "prepublishOnly": "node ../../scripts/check-drift.mjs --gate && npm run test && npm run test:types && npm run build",
     "test": "jest",
     "test:types": "npm run build:types",
     "examples": "tsx examples/run-examples.ts"
@@ -64,7 +64,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@cnstra/types": "^0.1.0"
+    "@cnstra/types": "^0.2.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

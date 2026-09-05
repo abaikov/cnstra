@@ -1,0 +1,36 @@
+name: Check Drift
+
+# A package can carry the same version as the one on npm and still ship different
+# code. That is invisible to every version-number comparison, so it went unnoticed
+# for months once. This compares the real publishable artifact — the `npm pack`
+# tarball — against the published one, on every change, not only at release time.
+#
+# Running on Linux while releases are cut on macOS makes this the cross-machine
+# reproducibility check too: a build that is not byte-identical everywhere would
+# show up here as drift on a package nobody touched.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: check-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: 'npm'
+      - name: Install
+        run: npm ci
+      - name: Compare every public package against its published tarball
+        run: npm run check:drift

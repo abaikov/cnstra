@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-transport-ws",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "WebSocket transport for CNStra DevTools",
   "keywords": [
     "devtools",
@@ -27,19 +27,19 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "prepublishOnly": "npm run test && npm run build"
+    "prepublishOnly": "node ../../scripts/check-drift.mjs --gate && npm run test && npm run build"
   },
   "files": [
     "dist"
   ],
   "dependencies": {
-    "@cnstra/devtools-dto": "^2.0.0"
+    "@cnstra/devtools-dto": "^3.0.0"
   },
   "peerDependencies": {
-    "@cnstra/devtools": "^2.0.0"
+    "@cnstra/devtools": "^3.0.0"
   },
   "devDependencies": {
-    "@cnstra/devtools": "^2.0.0",
+    "@cnstra/devtools": "^3.0.0",
     "@types/jest": "^29.5.5",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",

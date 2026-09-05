@@ -4,6 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { ALREADY_CHECKED, findDrift, formatDrift } from './check-drift.mjs';
+
 const args = process.argv.slice(2);
 const workspaces = [];
 let otp;
@@ -73,6 +75,28 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const npmRun = script => run(npm, ['run', script, '--if-present']);
 
 run(npm, ['whoami']);
+
+// Drift gate. A package can sit at the SAME version as npm and still contain
+// different code — that is a change that landed without a bump, and it is
+// invisible to every version-number comparison below (including --bumped, which
+// would happily report "nothing to publish"). So compare the real artifacts
+// first and refuse to publish anything until the forgotten bumps are done.
+{
+    console.log('Checking every public package against its published tarball…\n');
+    const drift = findDrift({ log: line => console.log(line) });
+    const message = formatDrift(drift);
+
+    if (message) {
+        console.error(message);
+        process.exit(1);
+    }
+
+    // Every `npm publish` below runs each package's `prepublishOnly`, which is the
+    // same check again. It has just passed for the whole repo — tell the children.
+    process.env[ALREADY_CHECKED] = '1';
+
+    console.log('\n✓ No unbumped changes.\n');
+}
 
 // --bumped: auto-select every public package whose current version is not yet on
 // npm (i.e. it was bumped, or is brand new) and publish only those.

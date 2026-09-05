@@ -24,14 +24,14 @@
     "demo:admin:pg-store": "ADMIN_STORE=postgres tsx src/admin/server.ts"
   },
   "dependencies": {
-    "@cnstra/core": "^2.5.0",
-    "@cnstra/persist": "^0.1.0",
-    "@cnstra/persist-dto": "^0.1.0",
-    "@cnstra/pg-boss": "^0.3.0",
-    "@cnstra/bullmq": "^0.2.0",
-    "@cnstra/factory": "^0.1.0",
-    "@cnstra/progress-redis": "^0.1.0",
-    "@cnstra/persist-postgres": "^0.2.0"
+    "@cnstra/core": "^3.0.0",
+    "@cnstra/persist": "^0.2.0",
+    "@cnstra/persist-dto": "^0.2.0",
+    "@cnstra/pg-boss": "^0.4.0",
+    "@cnstra/bullmq": "^0.3.0",
+    "@cnstra/factory": "^0.2.0",
+    "@cnstra/progress-redis": "^0.2.0",
+    "@cnstra/persist-postgres": "^0.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-panel-ui",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "CNStra DevTools UI — browser panel for debugging neuron graphs",
   "main": "dist/index.js",
   "files": [
@@ -12,6 +12,7 @@
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "license": "MIT",
   "scripts": {
+    "prepublishOnly": "node ../../scripts/check-drift.mjs --gate",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
@@ -25,7 +26,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@cnstra/core": "^2.1.0",
+    "@cnstra/core": "^3.0.0",
     "@exodra/core": "^0.2.0",
     "@exodra/dom": "^0.2.0",
     "@exodra/jsx": "^0.2.0",

@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-server-repository-redis",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Redis repository for CNStra DevTools server (resumable stimulations & hops)",
   "keywords": [
     "cnstra",
@@ -22,6 +22,7 @@
     }
   },
   "scripts": {
+    "prepublishOnly": "node ../../scripts/check-drift.mjs --gate",
     "build": "tsup && tsc --emitDeclarationOnly",
     "build:types": "tsc --emitDeclarationOnly",
     "test": "jest",
@@ -31,14 +32,14 @@
     "dist"
   ],
   "dependencies": {
-    "@cnstra/devtools-dto": "^2.0.0"
+    "@cnstra/devtools-dto": "^3.0.0"
   },
   "peerDependencies": {
-    "@cnstra/devtools-server": "^2.0.0",
+    "@cnstra/devtools-server": "^3.0.0",
     "ioredis": ">=5"
   },
   "devDependencies": {
-    "@cnstra/devtools-server": "^2.0.0",
+    "@cnstra/devtools-server": "^3.0.0",
     "@types/jest": "^29.5.5",
     "ioredis-mock": "^8.9.0",
     "jest": "^29.7.0",
