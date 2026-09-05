@@ -21,7 +21,6 @@ function fakeRedis() {
 
 const progress: TCNSProgress = {
     tasks: [{ neuronName: 'n2', dendriteCollateralName: 'step1Out' }],
-    context: { n2: { attempt: 1 } },
 };
 
 test('save → load round-trips the progress under the prefixed key', async () => {

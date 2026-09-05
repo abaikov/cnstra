@@ -13,7 +13,7 @@ export type TCNSStimulationGateSignal =
     | TCNSSignal<ICNSCollateral<unknown>>[];
 
 export type TCNSStimulationGateOptions<
-    TNeuron extends TCNSNeuron<any, any>,
+    TNeuron extends TCNSNeuron<any>,
     TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
 > = {
     cns: CNS<TNeuron, TDendrite>;
@@ -22,7 +22,7 @@ export type TCNSStimulationGateOptions<
 };
 
 export class CNSStimulationGate<
-    TNeuron extends TCNSNeuron<any, any>,
+    TNeuron extends TCNSNeuron<any>,
     TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
 > {
     private currentStimulation?: CNSStimulation<TNeuron, TDendrite>;

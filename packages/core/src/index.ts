@@ -2,7 +2,6 @@ export { CNS } from './CNS';
 // CNSPersistOptionsRegistry + createPersistRegistry moved to @cnstra/persist;
 // createCNS moved to @cnstra/factory (keeps core a pure, dependency-light engine).
 export { CNSCollateral } from './CNSCollateral';
-export { CNSStimulationContextStore } from './CNSStimulationContextStore';
 export { CNSStimulationGate } from './utils/CNSStimulationGate';
 
 // Shared types/interfaces now live in @cnstra/types and are NOT re-exported here
@@ -15,7 +14,6 @@ export {
     collateral,
     neuron,
     neuronFactory,
-    withCtx,
     withGlobal,
     afferentPath,
     modality,

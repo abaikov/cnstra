@@ -2,7 +2,6 @@ import type { TCNSNeuron } from '../types/TCNSNeuron';
 import type { TCNSDendrite } from '../types/TCNSDendrite';
 import type { TCNSNeuronActivationTask } from '../types/TCNSNeuronActivationTask';
 import type { TCNSNeuronActivationTaskFailure } from '../types/TCNSNeuronActivationTaskFailure';
-import type { ICNSStimulationContextStore } from './ICNSStimulationContextStore';
 
 /**
  * The public contract of a running stimulation, as seen by consumers (via the
@@ -11,8 +10,8 @@ import type { ICNSStimulationContextStore } from './ICNSStimulationContextStore'
  * methods are intentionally not part of the public interface.
  */
 export interface ICNSStimulation<
-    TNeuron extends TCNSNeuron<any, any>,
-    TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
+    TNeuron extends TCNSNeuron<any>,
+    TDendrite extends TCNSDendrite<any, any> = TCNSDendrite<any, any>
 > {
     /** Resolves when the run completes; rejects on failed tasks / abort. */
     waitUntilComplete(): Promise<void>;
@@ -25,6 +24,4 @@ export interface ICNSStimulation<
      * pending) plus failed/aborted ones. The set to persist for resume.
      */
     getOutstandingTasks(): TCNSNeuronActivationTask<TNeuron>[];
-    /** The per-neuron context store for this run. */
-    getContext(): ICNSStimulationContextStore;
 }

@@ -68,16 +68,17 @@ await store.save(runId, progress);                     // your DB / KV / queue-j
 
 // … process restarts …
 
-// 2) HYDRATE the names back into real tasks + a context store
-const { tasks, ctx } = serializer.hydrate(progress);
+// 2) HYDRATE the names back into real tasks
+const { tasks } = serializer.hydrate(progress);
 
-// 3) ACTIVATE — resume ONLY the outstanding branch (not from the entry), with its context
-cns.activate(tasks, { ctx });
+// 3) ACTIVATE — resume ONLY the outstanding branch (not from the entry)
+cns.activate(tasks);
 ```
 
-`cns.activate(tasks, { ctx })` is the resume counterpart of `cns.stimulate(signal)`: instead of
+`cns.activate(tasks)` is the resume counterpart of `cns.stimulate(signal)`: instead of
 starting from an entry signal, it re-injects the exact outstanding tasks. Only the unfinished
-branch runs, and its neurons see their previous context.
+branch runs. Each task carries its own input signal (with payload), so no extra per-run state
+has to be restored — everything the branch needs travels in the signals themselves.
 
 ## Checkpointing as the run advances
 

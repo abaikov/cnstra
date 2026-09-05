@@ -9,7 +9,7 @@
  * No Postgres/Redis needed — this is the resumable-execution ENGINE in-process. The
  * pg-boss variant (queue + Postgres) is in pgboss-resumable.ts.
  */
-import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSProgressSerializer,
@@ -40,18 +40,14 @@ const enrichUser = neuron({ userEnriched }).dendrite({
         return axon.userEnriched.createSignal({ ...p!, plan: 'pro' });
     },
 });
-const persistUser = withCtx<{ attempt: number }>()
-    .neuron({ userSaved })
-    .dendrite({
-        collateral: userEnriched,
-        response: (p, axon, ctx) => {
-            const attempt = (ctx.get()?.attempt ?? 0) + 1;
-            ctx.set({ attempt });
-            console.log(`    ▸ persistUser(${p!.id}) — attempt #${attempt}`);
-            if (control.failPersist) throw new Error('boom: db connection timeout');
-            return axon.userSaved.createSignal({ id: p!.id, ok: true });
-        },
-    });
+const persistUser = neuron({ userSaved }).dendrite({
+    collateral: userEnriched,
+    response: (p, axon) => {
+        console.log(`    ▸ persistUser(${p!.id})`);
+        if (control.failPersist) throw new Error('boom: db connection timeout');
+        return axon.userSaved.createSignal({ id: p!.id, ok: true });
+    },
+});
 
 const cns = new CNS([importUser, enrichUser, persistUser]);
 
@@ -127,7 +123,7 @@ async function main(): Promise<void> {
     line('  🔧 fault fixed — clicking "Retry" resumes the frontier (persistUser only):');
     control.failPersist = false;
     const stimulation = await repository.getStimulation(STIM_ID);
-    const { tasks, ctx } = serializer.hydrate(stimulation!.progress);
+    const { tasks } = serializer.hydrate(stimulation!.progress);
     const p2 = new CNSStimulationPersistor({
         repository,
         registry,
@@ -137,14 +133,14 @@ async function main(): Promise<void> {
         entry: ENTRY,
         volume: 'full',
     });
-    const stim2 = cns.activate(tasks, { ctx, onResponse: p2.onResponse });
+    const stim2 = cns.activate(tasks, { onResponse: p2.onResponse });
     await stim2.waitUntilComplete();
     p2.dispose();
     line('');
     await printAdminView('after retry (attempt #2)');
 
     line('  ✅ Done. importUser/enrichUser did NOT re-run — only the failed');
-    line('     frontier (persistUser) was resumed, with its context intact.');
+    line('     frontier (persistUser) was resumed from its input signal.');
     line('');
 }
 

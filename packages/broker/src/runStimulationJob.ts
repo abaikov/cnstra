@@ -113,10 +113,9 @@ export async function runStimulationJob(
     if (resumeOn) {
         const saved = await p.resumeRepo!.load(p.jobId);
         if (saved) {
-            const { tasks, ctx } = p.serializer!.hydrate(saved);
+            const { tasks } = p.serializer!.hydrate(saved);
             stimulation = p.cns.activate(tasks, {
                 maxNeuronHops: p.maxNeuronHops,
-                ctx,
                 onResponse,
                 stimulationContext,
                 abortSignal: p.abort.signal,

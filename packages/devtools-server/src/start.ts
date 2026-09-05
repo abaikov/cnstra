@@ -89,7 +89,7 @@ export type DevToolsHandle = {
  * // → 🧠 CNStra DevTools: http://localhost:3141
  */
 export async function startDevTools(
-    cns: ICNS<TCNSNeuron<any, any>>,
+    cns: ICNS<TCNSNeuron<any>>,
     registry: CNSPersistOptionsRegistry,
     options: StartDevToolsOptions = {}
 ): Promise<DevToolsHandle> {

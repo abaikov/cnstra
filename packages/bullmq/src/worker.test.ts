@@ -1,4 +1,4 @@
-import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSInMemoryProgressRepository,
@@ -54,14 +54,10 @@ function buildFlow() {
         },
     });
 
-    const n2 = withCtx<{ attempt: number }>()
-        .neuron({ output })
-        .dendrite({
-            collateral: step1Out,
-            response: (p, axon, ctx) => {
-                const attempt = (ctx.get()?.attempt ?? 0) + 1;
-                ctx.set({ attempt });
-                ran.push(`n2#${attempt}`);
+    const n2 = neuron({ output }).dendrite({
+        collateral: step1Out,
+        response: (p, axon) => {
+            ran.push(`n2`);
                 if (control.failStep2) throw new Error('boom');
                 return axon.output.createSignal({ result: `ok-${p!.id}` });
             },
@@ -100,14 +96,14 @@ test('resume: a retried job resumes the failed frontier instead of re-running fr
 
     // First attempt fails; the outstanding frontier is persisted under the job id.
     await expect(worker.run(makeJob(0))).rejects.toBeDefined();
-    expect(ran).toEqual(['n1', 'n2#1']);
+    expect(ran).toEqual(['n1', 'n2']);
     const saved = await repository.load('job-1');
     expect(saved?.tasks?.[0]?.neuronName).toBe('n2');
 
     // Fix the fault and re-run the SAME job id → resume: only n2 re-runs, n1 does not.
     control.failStep2 = false;
     await worker.run(makeJob(1));
-    expect(ran).toEqual(['n1', 'n2#1', 'n2#2']);
+    expect(ran).toEqual(['n1', 'n2', 'n2']);
 
     // Success drops the progress row (lifecycle = job row).
     expect(await repository.load('job-1')).toBeUndefined();
@@ -124,13 +120,13 @@ test('without resume, a retried job re-runs the whole flow from the entry signal
     }).worker as unknown as FakeWorker;
 
     await expect(worker.run(makeJob(0))).rejects.toBeDefined();
-    expect(ran).toEqual(['n1', 'n2#1']);
+    expect(ran).toEqual(['n1', 'n2']);
 
     control.failStep2 = false;
     await worker.run(makeJob(1));
-    // n1 runs again and n2's context resets (attempt back to 1) — no persisted
-    // frontier or context, so it is a brand-new stimulation from the entry.
-    expect(ran).toEqual(['n1', 'n2#1', 'n1', 'n2#1']);
+    // n1 runs again and n2 re-runs from scratch — no persisted frontier, so it is
+    // a brand-new stimulation from the entry.
+    expect(ran).toEqual(['n1', 'n2', 'n1', 'n2']);
 });
 
 test('resume via BullMQ NATIVE job progress (no external repository)', async () => {
@@ -159,7 +155,7 @@ test('resume via BullMQ NATIVE job progress (no external repository)', async () 
 
     // Attempt 1 fails → the frontier is written to job.progress (not a side store).
     await expect(worker.run(job)).rejects.toBeDefined();
-    expect(ran).toEqual(['n1', 'n2#1']);
+    expect(ran).toEqual(['n1', 'n2']);
     expect(
         (job.progress as { tasks?: Array<{ neuronName?: string }> })?.tasks?.[0]
             ?.neuronName
@@ -168,7 +164,7 @@ test('resume via BullMQ NATIVE job progress (no external repository)', async () 
     // Fix the fault; the SAME job (progress carried) → resume only n2.
     control.failStep2 = false;
     await worker.run(job);
-    expect(ran).toEqual(['n1', 'n2#1', 'n2#2']);
+    expect(ran).toEqual(['n1', 'n2', 'n2']);
 });
 
 test('graceful shutdown stops taking new jobs and closes the worker', async () => {

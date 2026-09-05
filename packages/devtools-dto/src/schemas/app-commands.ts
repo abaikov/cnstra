@@ -30,7 +30,7 @@ export const CNSStimulationResumeCommandDTOSchema = z.object({
     attemptNumber: z.number().int().positive(),
     // The stimulation's original entry (the persistor preserves it across attempts).
     entry: z.custom<TCNSSignalJSON>(),
-    // Frontier + context to hydrate against the app's registry and `cns.activate`.
+    // Outstanding frontier to hydrate against the app's registry and `cns.activate`.
     progress: z.custom<TCNSProgress>(),
     options: CNSStimulationActionOptionsDTOSchema.optional(),
 });

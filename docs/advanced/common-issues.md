@@ -143,22 +143,16 @@ If your signal payloads are large and queues grow, memory usage can spike. See [
 
 **Quick fix**: Keep payloads small, use references (IDs) instead of full objects.
 
-### Context Not Cleaning Up
+### Passing State Between Neurons
 
-Context data persists for the entire duration of a stimulation. If stimulations run for a long time or context grows large, memory usage increases.
-
-**Solution**: Context is automatically cleaned up when stimulation completes. **Store only metadata in context**, not business data. Business data should flow through signal payloads:
+CNStra has no mutable per-neuron store — all per-run state flows through signal payloads (and `ctx.global` for app-wide dependencies). If you need a value downstream, put it on the outgoing signal:
 
 ```ts
 .dendrite({
   collateral: process,
-  response: async (payload, axon, ctx) => {
-    // Context stores per-neuron per-stimulation metadata (not business data)
-    const metadata = ctx.get();
-    // Use metadata...
-    
-    // Business data flows through payloads
-    return axon.next.createSignal({ result: payload.data });
+  response: async (payload, axon) => {
+    // All per-run data (including counters/correlation ids) rides on the payload.
+    return axon.next.createSignal({ result: payload.data, attempt: (payload.attempt ?? 0) + 1 });
   }
 });
 ```

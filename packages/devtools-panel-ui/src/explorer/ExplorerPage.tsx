@@ -2,71 +2,51 @@ import type { TExoSchema } from '@exodra/core';
 import { bindable } from '@exodra/reactivity';
 import type { TExoWritableBindable } from '@exodra/reactivity';
 import { combine } from '../exo/oimdb-bind';
-import { fmtTime } from '../utils/format';
 import type { TCNSExplorerController } from './explorerController';
-import { toggleFilter } from './queryState';
-import type {
-    TCNSStimulationRowDTO,
-    TCNSStimulationTimeBucket,
-} from '@cnstra/devtools-dto';
+import type { TCNSExplorerTab } from './queryState';
 import type { ConnectionStatus } from '../app/controllers/socket';
-import { heartbeatMonitor } from './HeartbeatMonitor';
+import { vitalsMonitor } from './VitalsMonitor';
+import { viewList, detailsPane, breadcrumb } from './entityViews';
+import {
+    C,
+    eyebrow,
+    proportionBar,
+    type TProportionSeg,
+} from './parts';
 
-// The Explorer IS the whole DevTools panel — an observability / runs viewer
-// (think Sentry issues · CI runs). One top bar (identity + health · search ·
-// view tabs · metric · heartbeat · run count), ONE secondary column (the compact
-// facet rail = the primary filter/nav), and a main area that shows the runs list
-// (Runs), a selected run's step timeline (Waterfall) or throughput (Chart). All
-// state lives in the controller; this view only reads bindables + dispatches
-// patches. No sidebar, no graph, no landing page — opening the panel lands here.
+// The DevTools panel — a 4-zone dashboard. A full-width STATS strip; a top band of
+// FILTERS (tabs + status/collateral/neuron/text/time) and GRAPHS (throughput chart
+// + signal pulse); and a split main body of the VIEW list beside the DETAILS
+// scope-card. Filters are a global scope over everything (chart + list + details);
+// selecting a row fills the details panel in place — no full-screen navigation.
 
-const ROW_H = 44; // px, fixed → enables windowing
-const OVERSCAN = 6;
-
-/** Connection identity + health, folded into the top bar (was the old sidebar). */
+/** Connection identity + health, folded into the top bar. */
 export interface TCNSExplorerConnection {
     connectionStatus: TExoWritableBindable<ConnectionStatus, ConnectionStatus>;
     appName: TExoWritableBindable<string, string>;
 }
 
-const chip = (
-    label: string,
-    count: number | null,
-    active: boolean,
-    onClick: () => void
-): TExoSchema => (
-    <button
-        static={{
-            class: 'exp-chip',
-            style:
-                `border:1px solid ${active ? 'var(--infection-purple)' : 'var(--border-primary)'};` +
-                `color:${active ? 'var(--bg-primary)' : 'var(--text-secondary)'};` +
-                `background:${active ? 'var(--infection-purple)' : 'var(--bg-card)'};` +
-                'padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap;border-radius:2px',
-        }}
-        handlers={{ onClick }}
-    >
-        {label}
-        {count != null ? ` · ${count}` : ''}
-    </button>
-);
+const CLEAR_SEL = {
+    selected: undefined,
+    selectedNeuron: undefined,
+    selectedCollateral: undefined,
+    selectedTask: undefined,
+};
+
+const TABS: { id: TCNSExplorerTab; label: string }[] = [
+    { id: 'stimulations', label: 'Stimulations' },
+    { id: 'neurons', label: 'Neurons' },
+    { id: 'tasks', label: 'Activation tasks' },
+    { id: 'collaterals', label: 'Collaterals' },
+];
 
 export function explorerPage(
     ctrl: TCNSExplorerController,
     conn: TCNSExplorerConnection
 ): TExoSchema {
-    // Scroll offset drives the window; a ResizeObserver-free height guess is fine
-    // (the container is a fixed flex child).
-    const scrollTop = bindable(0);
-    const viewportH = bindable(600);
-
-    // ── top-bar identity + health (brand · connection dot · app name) ─────────
+    // ── identity + health ──
     const dotColor = (s: ConnectionStatus): string =>
-        s === 'connected'
-            ? 'var(--infection-green)'
-            : s === 'connecting'
-              ? 'var(--infection-yellow)'
-              : 'var(--infection-red)';
+        s === 'connected' ? C.green : s === 'connecting' ? C.yellow : C.red;
     const connBlock = combine([conn.connectionStatus, conn.appName], () => {
         const s = conn.connectionStatus.getValue();
         const name = conn.appName.getValue();
@@ -77,462 +57,140 @@ export function explorerPage(
                   ? 'Connecting…'
                   : 'Disconnected';
         return (
-            <div
-                static={{
-                    title: `Server ${s}`,
-                    style: 'display:flex;align-items:center;gap:8px;flex:none',
-                }}
-            >
-                <span static={{ class: 'brand', style: 'font-size:16px;color:var(--text-primary);white-space:nowrap' }}>
-                    🧠 CNStra
-                </span>
-                <span static={{ style: `width:9px;height:9px;border-radius:50%;flex:none;background:${dotColor(s)};box-shadow:0 0 6px ${dotColor(s)}` }} />
-                <span static={{ style: 'font-size:12px;color:var(--text-secondary);white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis' }}>
-                    {label}
-                </span>
+            <div static={{ style: 'display:flex;align-items:center;gap:8px;flex:none' }}>
+                <span static={{ class: 'brand', style: `font-size:13px;color:${C.text};white-space:nowrap` }}>🧠 CNStra</span>
+                <span static={{ style: `width:8px;height:8px;border-radius:50%;flex:none;background:${dotColor(s)};box-shadow:0 0 6px ${dotColor(s)}` }} />
+                <span static={{ style: `font-size:10px;color:${C.muted};white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis` }}>{label}</span>
             </div>
         );
     });
 
-    // ── facet rail (left), with a Collaterals ⇄ Neurons lens ─────────────────
-    const lensBtn = (
-        lens: 'collaterals' | 'neurons',
-        label: string,
-        active: boolean
+    // ── stats — a COMPACT VERTICAL column that sits beside the chart (saves the
+    // full-width row the pill-cards used to eat). One `label … number` line each,
+    // tabular-nums so a live tick never shifts anything. ──
+    const statMini = (value: number, label: string, color: string): TExoSchema => (
+        <div static={{ style: 'display:flex;align-items:baseline;justify-content:space-between;gap:10px' }}>
+            <span static={{ style: `font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:${C.muted};white-space:nowrap` }}>{label}</span>
+            <span static={{ style: `font-size:16px;font-weight:700;line-height:1;color:${color};font-family:var(--font-body);font-variant-numeric:tabular-nums` }}>{String(value)}</span>
+        </div>
+    );
+    const statsColumn = combine([ctrl.total, ctrl.facets, ctrl.topology, ctrl.snapshot], () => {
+        const f = ctrl.facets.getValue();
+        const countOf = (s: string): number =>
+            f.byStatus.find(x => x.status === s)?.count ?? 0;
+        const topo = ctrl.topology.getValue();
+        const snap = ctrl.snapshot.getValue();
+        return (
+            <div static={{ style: `flex:none;width:150px;display:flex;flex-direction:column;gap:7px;padding:8px 10px;border:1px solid var(--border-primary);border-radius:8px;background:var(--bg-secondary)` }}>
+                {statMini(ctrl.total.getValue(), 'stimulations', C.violet)}
+                {statMini(countOf('completed'), 'completed', C.green)}
+                {statMini(countOf('failed'), 'failed', C.red)}
+                {statMini(countOf('running'), 'running', C.yellow)}
+                <div static={{ style: 'height:1px;background:var(--border-primary);margin:1px 0' }} />
+                {statMini(topo.neurons.length, 'neurons', C.cyan)}
+                {statMini(topo.collaterals.length, 'collaterals', C.pink)}
+                {statMini(snap.tasks.length, 'tasks loaded', C.green)}
+            </div>
+        );
+    });
+
+    // ── status distribution (proportion bar) ──
+    const distribution = combine([ctrl.facets], () => {
+        const f = ctrl.facets.getValue();
+        const countOf = (s: string): number =>
+            f.byStatus.find(x => x.status === s)?.count ?? 0;
+        const segs: TProportionSeg[] = [
+            { label: 'completed', value: countOf('completed'), color: C.green },
+            { label: 'failed', value: countOf('failed'), color: C.red },
+            { label: 'running', value: countOf('running'), color: C.yellow },
+        ];
+        return proportionBar(segs);
+    });
+
+    // ── tabs ──
+    const setTab = (tab: TCNSExplorerTab): void => {
+        ctrl.setQuery({ tab, ...CLEAR_SEL });
+        ctrl.clearNav(); // switching tabs resets the details breadcrumb trail
+    };
+    const tabs = combine([ctrl.query], () => {
+        const active = ctrl.query.getValue().tab;
+        return (
+            <div static={{ style: 'display:flex;gap:4px;flex-wrap:wrap' }}>
+                {TABS.map(t => {
+                    const on = active === t.id;
+                    return (
+                        <button
+                            static={{
+                                class: 'exp-tab' + (on ? ' active' : ''),
+                                style:
+                                    `padding:5px 12px;font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:1px;border-radius:4px;` +
+                                    (on
+                                        ? `background:${C.pink};color:var(--bg-primary);border:1px solid ${C.pink};font-weight:700`
+                                        : `background:var(--bg-card);color:${C.sub};border:1px solid var(--border-primary)`),
+                            }}
+                            handlers={{ onClick: () => setTab(t.id) }}
+                        >
+                            {t.label}
+                        </button>
+                    );
+                })}
+            </div>
+        );
+    });
+
+    // ── status filter pills ──
+    const statusPillBtn = (
+        val: string | undefined,
+        text: string,
+        count: number,
+        active: boolean,
+        color: string
     ): TExoSchema => (
         <button
             static={{
                 style:
-                    'flex:1;padding:4px;font-size:10px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;' +
-                    `border:1px solid var(--border-primary);` +
+                    `display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:10px;` +
+                    `text-transform:uppercase;letter-spacing:.5px;cursor:pointer;white-space:nowrap;` +
+                    `border:1px solid ${active ? color : 'var(--border-primary)'};` +
                     (active
-                        ? 'background:var(--infection-purple);color:var(--bg-primary)'
-                        : 'background:var(--bg-card);color:var(--text-secondary)'),
+                        ? `background:${color}22;color:${color}`
+                        : `background:var(--bg-card);color:${C.muted}`),
             }}
-            handlers={{ onClick: () => ctrl.setQuery({ lens }) }}
+            handlers={{ onClick: () => ctrl.setQuery({ status: val }) }}
         >
-            {label}
+            <span static={{ style: `width:6px;height:6px;border-radius:50%;flex:none;background:${color}` }} />
+            <span>{text}</span>
+            {/* fixed-width count so a live tick never reflows the pill row */}
+            <span static={{ style: 'font-variant-numeric:tabular-nums;min-width:42px;text-align:right' }}>{String(count)}</span>
         </button>
     );
-    // Section labels are HEADINGS → pixel font (.exp-heading) + bright yellow.
-    const label = (t: string): TExoSchema => (
-        <div static={{ class: 'exp-heading', style: 'font-size:11px;letter-spacing:1.5px;color:var(--infection-yellow);text-transform:uppercase;margin-bottom:6px' }}>{t}</div>
-    );
-    const facetRail = combine([ctrl.facets, ctrl.query], () => {
+    const statusFilter = combine([ctrl.facets, ctrl.query], () => {
         const f = ctrl.facets.getValue();
         const q = ctrl.query.getValue();
-        const neurons = q.lens === 'neurons';
-        const dim = neurons ? f.byNeuron : f.byEntryCollateral;
+        const countOf = (s: string): number =>
+            f.byStatus.find(x => x.status === s)?.count ?? 0;
+        const total = f.byStatus.reduce((n, x) => n + x.count, 0);
         return (
-            <div static={{ style: 'display:flex;flex-direction:column;gap:14px' }}>
-                <div static={{ style: 'display:flex;gap:2px' }}>
-                    {[
-                        lensBtn('collaterals', 'Collaterals', !neurons),
-                        lensBtn('neurons', 'Neurons', neurons),
-                    ]}
-                </div>
-                <div>
-                    {label('Status')}
-                    <div static={{ style: 'display:flex;flex-wrap:wrap;gap:5px' }}>
-                        {f.byStatus.map(s =>
-                            chip(s.status, s.count, q.status === s.status, () =>
-                                ctrl.setQuery(toggleFilter(q, 'status', s.status))
-                            )
-                        )}
-                    </div>
-                </div>
-                <div>
-                    {label(neurons ? 'Neuron' : 'Job type')}
-                    <div static={{ style: 'display:flex;flex-direction:column;gap:4px;max-height:50vh;overflow:auto' }}>
-                        {dim.map(c =>
-                            chip(
-                                c.name,
-                                c.count,
-                                (neurons ? q.neuronName : q.entryCollateralName) === c.name,
-                                () =>
-                                    ctrl.setQuery(
-                                        toggleFilter(
-                                            q,
-                                            neurons ? 'neuronName' : 'entryCollateralName',
-                                            c.name
-                                        )
-                                    )
-                            )
-                        )}
-                    </div>
-                </div>
+            <div static={{ style: 'display:flex;gap:5px;flex-wrap:wrap' }}>
+                {[
+                    statusPillBtn(undefined, 'All', total, !q.status, C.pink),
+                    statusPillBtn('completed', 'Completed', countOf('completed'), q.status === 'completed', C.green),
+                    statusPillBtn('failed', 'Failed', countOf('failed'), q.status === 'failed', C.red),
+                    statusPillBtn('running', 'Running', countOf('running'), q.status === 'running', C.yellow),
+                ]}
             </div>
         );
     });
 
-    // ── active filter chips (breadcrumb; shown in the main header only when set) ─
-    const filterChips = combine([ctrl.query], () => {
-        const q = ctrl.query.getValue();
-        const active: TExoSchema[] = [];
-        if (q.status)
-            active.push(
-                chip(`status: ${q.status}`, null, true, () =>
-                    ctrl.setQuery({ status: undefined })
-                )
-            );
-        if (q.entryCollateralName)
-            active.push(
-                chip(`type: ${q.entryCollateralName}`, null, true, () =>
-                    ctrl.setQuery({ entryCollateralName: undefined })
-                )
-            );
-        if (q.neuronName)
-            active.push(
-                chip(`neuron: ${q.neuronName}`, null, true, () =>
-                    ctrl.setQuery({ neuronName: undefined })
-                )
-            );
-        if (q.text)
-            active.push(
-                chip(`"${q.text}"`, null, true, () =>
-                    ctrl.setQuery({ text: undefined })
-                )
-            );
-        if (!active.length) return <div static={{ style: 'display:none' }} />;
-        return (
-            <div static={{ style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border-primary)' }}>
-                <span static={{ style: 'font-size:10px;letter-spacing:1px;color:var(--text-muted);text-transform:uppercase' }}>Filters</span>
-                {active}
-            </div>
-        );
-    });
-
-    // ── run count (top bar; prominent bright yellow) ─────────────────────────
-    const runsCount = combine([ctrl.total], () => (
-        <span static={{ style: 'font-size:13px;color:var(--infection-yellow);white-space:nowrap;font-weight:600' }}>
-            {String(ctrl.total.getValue())} runs
-        </span>
-    ));
-
-    // ── windowed runs list ───────────────────────────────────────────────────
-    const rowView = (r: TCNSStimulationRowDTO, top: number): TExoSchema => {
-        const color =
-            r.status === 'failed'
-                ? 'var(--infection-red)'
-                : r.status === 'completed'
-                  ? 'var(--infection-green)'
-                  : 'var(--infection-yellow)';
-        return (
-            <div
-                static={{
-                    class: 'exp-row',
-                    style:
-                        `position:absolute;top:${top}px;left:0;right:0;height:${ROW_H}px;` +
-                        'display:flex;align-items:center;gap:10px;padding:0 10px;' +
-                        'border-bottom:1px solid var(--border-primary);cursor:pointer;font-size:12px',
-                }}
-                handlers={{ onClick: () => void ctrl.selectRun(r.stimulationId) }}
-            >
-                <span static={{ style: `width:8px;height:8px;border-radius:50%;background:${color};flex:none` }} />
-                <span static={{ style: 'color:var(--text-accent);white-space:nowrap;flex:none' }}>{r.entry.collateralName}</span>
-                {/* the id — what search matches on; dim + truncated so it's scannable but not loud */}
-                <span static={{ style: 'color:var(--text-muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;opacity:.7' }}>{r.stimulationId}</span>
-                <span static={{ style: 'color:var(--text-muted);white-space:nowrap' }}>{fmtTime(r.startedAt)}</span>
-                <span static={{ style: 'color:var(--text-muted);white-space:nowrap' }}>{String(r.hopCount)} hops</span>
-                <span static={{ style: `color:${color};text-transform:uppercase;font-size:10px;white-space:nowrap` }}>{r.status}</span>
-            </div>
-        );
-    };
-
-    const runsList = combine([ctrl.rows, scrollTop, viewportH, ctrl.hasMore], () => {
-        const all = ctrl.rows.getValue();
-        const st = scrollTop.getValue();
-        const vh = viewportH.getValue();
-        const first = Math.max(0, Math.floor(st / ROW_H) - OVERSCAN);
-        const last = Math.min(
-            all.length,
-            Math.ceil((st + vh) / ROW_H) + OVERSCAN
-        );
-        const windowRows = all.slice(first, last).map((r, i) => rowView(r, (first + i) * ROW_H));
-        return (
-            <div
-                static={{
-                    style: 'flex:1;position:relative;overflow:auto',
-                    onExoMount: (n: { element: unknown }) => {
-                        const el = n.element as HTMLElement;
-                        viewportH.setValue(el.clientHeight || 600);
-                    },
-                }}
-                handlers={{
-                    onScroll: (e: Event) => {
-                        const el = e.target as HTMLElement;
-                        scrollTop.setValue(el.scrollTop);
-                        // infinite scroll: near the bottom → load the next page
-                        if (
-                            ctrl.hasMore.getValue() &&
-                            el.scrollTop + el.clientHeight > el.scrollHeight - ROW_H * 8
-                        )
-                            void ctrl.loadMore();
-                    },
-                }}
-            >
-                {/* full-height spacer so the scrollbar reflects the whole list */}
-                <div static={{ style: `height:${all.length * ROW_H}px;position:relative` }}>
-                    {windowRows}
-                </div>
-                {all.length === 0 ? (
-                    <div static={{ style: 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px;text-align:center;padding:24px' }}>
-                        No runs yet — they appear here as the app stimulates (or clear filters if you set any).
-                    </div>
-                ) : (
-                    <div />
-                )}
-            </div>
-        );
-    });
-
-    // ── waterfall (from detail buckets, joined by attempt id on the client) ──
-    const actionBtn = (
-        text: string,
-        run: string,
-        fn: (id: string) => Promise<void>
-    ): TExoSchema => (
-        <button
-            static={{
-                style:
-                    'padding:3px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;' +
-                    'border:1px solid var(--border-primary);background:var(--bg-card);color:var(--text-secondary)',
-            }}
-            handlers={{ onClick: () => void fn(run) }}
-        >
-            {text}
-        </button>
-    );
-    const waterfall = combine(
-        [ctrl.detail, ctrl.query, ctrl.actionError, ctrl.actionNotice],
-        () => {
-            const d = ctrl.detail.getValue();
-            const q = ctrl.query.getValue();
-            const err = ctrl.actionError.getValue();
-            const notice = ctrl.actionNotice.getValue();
-            if (!q.selected)
-                return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Select a run to see its waterfall.</div>;
-            if (!d)
-                return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>Loading…</div>;
-            const run = q.selected;
-            // Retry resumes a FAILED run's unfinished branch. A completed run has no
-            // frontier — Retry is disabled there; Clone (fresh run from entry) is the
-            // action instead.
-            const last = d.attempts[d.attempts.length - 1];
-            const retryable = !!last && (last.status === 'failed' || last.hasError);
-            const retryBtn = (
-                <button
-                    static={{
-                        title: retryable
-                            ? 'Resume this run’s failed step (only the unfinished branch re-runs)'
-                            : 'This run finished — nothing to resume. Use Clone to run it again.',
-                        style:
-                            'padding:3px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;' +
-                            'border:1px solid var(--border-primary);' +
-                            (retryable
-                                ? 'cursor:pointer;background:var(--bg-card);color:var(--infection-green);border-color:var(--infection-green)'
-                                : 'cursor:not-allowed;background:var(--bg-secondary);color:var(--text-muted);opacity:.5'),
-                    }}
-                    handlers={{ onClick: () => retryable && void ctrl.retryRun(run) }}
-                >
-                    Retry
-                </button>
-            );
-            // Visible acknowledgement of Retry/Clone: a green success toast (auto-
-            // clears) or a red error line — the owner must always see the outcome.
-            const feedback = notice ? (
-                <div static={{ class: 'exp-toast', style: 'padding:6px 10px;font-size:12px;color:var(--bg-primary);background:var(--infection-green);border-radius:2px;word-break:break-all' }}>
-                    ✓ {notice}
-                </div>
-            ) : err ? (
-                <div static={{ class: 'exp-toast', style: 'padding:6px 10px;font-size:12px;color:var(--bg-primary);background:var(--infection-red);border-radius:2px;word-break:break-all' }}>
-                    ✕ {err}
-                </div>
-            ) : (
-                <div />
-            );
-            return (
-                <div static={{ style: 'display:flex;flex-direction:column;gap:10px;padding:12px;overflow:auto' }}>
-                    <div static={{ style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' }}>
-                        <div static={{ style: 'color:var(--text-accent);font-size:13px;word-break:break-all;flex:1;min-width:0' }}>{run}</div>
-                        {retryBtn}
-                        {actionBtn('Clone', run, ctrl.cloneRun)}
-                    </div>
-                    {feedback}
-                    {!retryable && !notice && !err ? (
-                        <div static={{ style: 'color:var(--text-muted);font-size:11px' }}>
-                            This run finished — nothing to resume. <b static={{ style: 'color:var(--infection-green)' }}>Clone</b> runs it again from the start.
-                        </div>
-                    ) : (
-                        <div />
-                    )}
-                    {d.attempts.map(a => (
-                        <div static={{ style: 'border:1px solid var(--border-primary);background:var(--bg-card)' }}>
-                            <div static={{ style: 'padding:6px 10px;background:var(--bg-secondary);font-size:11px;color:var(--infection-yellow);text-transform:uppercase;letter-spacing:1px' }}>Attempt #{String(a.attemptNumber)} · {a.status} · {String(a.hopCount)} hops</div>
-                            {d.tasks
-                                .filter(t => t.stimulationAttemptId === a.stimulationAttemptId)
-                                .map(t => (
-                                    <div static={{ style: `padding:6px 10px;font-size:12px;border-top:1px solid var(--border-primary);box-shadow:${t.error ? 'inset 3px 0 0 var(--infection-red)' : 'none'}` }}>
-                                        <span static={{ style: 'color:var(--infection-purple)' }}>{t.neuronName}</span>
-                                        <span static={{ style: 'color:var(--text-muted)' }}> {t.dendriteCollateralName} → {t.output?.collateralName ?? 'no output'}</span>
-                                        {t.error ? <div static={{ style: 'color:var(--infection-red);font-size:11px' }}>{t.error}</div> : <div />}
-                                    </div>
-                                ))}
-                        </div>
-                    ))}
-                </div>
-            );
-        }
-    );
-
-    // ── chart view (legible throughput histogram; div-based bars, no SVG) ─────
-    // Y = run count (stacked completed/failed/running) or, when a metric path is
-    // set, the summed payload metric per time-bucket. Legend, gridlines, a peak
-    // y-label, thin centred bars + hover tooltips → readable, not ambiguous slabs.
-    const chartMode = bindable<'count' | 'metric'>('count');
-    const seg = (h: number, color: string, title: string): TExoSchema =>
-        h <= 0 ? (
-            <div />
-        ) : (
-            <div
-                static={{
-                    title,
-                    style: `height:${h}%;background:${color};min-height:1px`,
-                }}
-            />
-        );
-    const swatch = (color: string, text: string): TExoSchema => (
-        <span static={{ style: 'display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary)' }}>
-            <span static={{ style: `width:10px;height:10px;border-radius:2px;background:${color};flex:none` }} />
-            {text}
-        </span>
-    );
-    const barColumn = (
-        b: TCNSStimulationTimeBucket,
-        maxCount: number,
-        maxMetric: number,
-        mode: 'count' | 'metric'
-    ): TExoSchema => {
-        const t = fmtTime(b.tsBucket);
-        const total = b.completed + b.failed + b.running;
-        const barTitle =
-            mode === 'metric'
-                ? `${t} · Σ ${b.metric ?? 0}`
-                : `${t} · ${b.completed} completed · ${b.failed} failed · ${b.running} running`;
-        const col: TExoSchema[] =
-            mode === 'metric'
-                ? [
-                      seg(
-                          maxMetric ? ((b.metric ?? 0) / maxMetric) * 100 : 0,
-                          'var(--infection-yellow)',
-                          barTitle
-                      ),
-                  ]
-                : [
-                      // column-reverse → first child sits at the bottom
-                      seg(maxCount ? (b.completed / maxCount) * 100 : 0, 'var(--infection-green)', barTitle),
-                      seg(maxCount ? (b.failed / maxCount) * 100 : 0, 'var(--infection-red)', barTitle),
-                      seg(maxCount ? (b.running / maxCount) * 100 : 0, 'var(--infection-purple)', barTitle),
-                  ];
-        return (
-            // slot (flex:1) centres a thin bar → small gaps between bars
-            <div static={{ title: barTitle, style: 'flex:1 1 0;min-width:3px;display:flex;justify-content:center;align-items:flex-end;height:100%' }}>
-                <div static={{ style: `width:64%;max-width:16px;height:100%;display:flex;flex-direction:column-reverse;justify-content:flex-start;opacity:${total || mode === 'metric' ? '1' : '.25'}` }}>
-                    {col}
-                </div>
-            </div>
-        );
-    };
-    const modeToggle = (
-        m: ReturnType<typeof bindable<'count' | 'metric'>>
-    ): TExoSchema => {
-        const btn = (val: 'count' | 'metric', text: string): TExoSchema => (
-            <button
-                static={{
-                    style:
-                        'padding:2px 8px;font-size:10px;text-transform:uppercase;cursor:pointer;border:1px solid var(--border-primary);' +
-                        (m.getValue() === val
-                            ? 'background:var(--infection-purple);color:var(--bg-primary)'
-                            : 'background:var(--bg-card);color:var(--text-secondary)'),
-                }}
-                handlers={{ onClick: () => m.setValue(val) }}
-            >
-                {text}
-            </button>
-        );
-        return (
-            <div static={{ style: 'display:flex;gap:2px' }}>
-                {[btn('count', 'Count'), btn('metric', 'Metric')]}
-            </div>
-        );
-    };
-    const gridline = (pct: number): TExoSchema => (
-        <div static={{ style: `position:absolute;left:0;right:0;bottom:${pct}%;height:1px;background:var(--border-primary);opacity:.5` }} />
-    );
-    const chartView = combine([ctrl.facets, ctrl.query, chartMode], () => {
-        const buckets = ctrl.facets.getValue().byTime;
-        const q = ctrl.query.getValue();
-        const mode: 'count' | 'metric' =
-            q.metricPath && chartMode.getValue() === 'metric'
-                ? 'metric'
-                : 'count';
-        if (!buckets.length)
-            return <div static={{ style: 'padding:16px;color:var(--text-muted);font-size:12px' }}>No runs in range.</div>;
-        const maxCount = Math.max(
-            1,
-            ...buckets.map(b => b.completed + b.failed + b.running)
-        );
-        const maxMetric = Math.max(0, ...buckets.map(b => b.metric ?? 0));
-        const yMax = mode === 'metric' ? maxMetric : maxCount;
-        const legend =
-            mode === 'metric'
-                ? [swatch('var(--infection-yellow)', `Σ ${q.metricPath}`)]
-                : [
-                      swatch('var(--infection-green)', 'completed'),
-                      swatch('var(--infection-red)', 'failed'),
-                      swatch('var(--infection-purple)', 'running'),
-                  ];
-        return (
-            <div static={{ style: 'flex:1;display:flex;flex-direction:column;padding:12px;gap:8px;min-height:0' }}>
-                <div static={{ style: 'display:flex;align-items:baseline;gap:10px;flex-wrap:wrap' }}>
-                    <h3 static={{ class: 'exp-heading', style: 'margin:0;font-size:13px;letter-spacing:1px;color:var(--text-primary);text-transform:uppercase' }}>Throughput</h3>
-                    <span static={{ style: 'font-size:11px;color:var(--text-muted)' }}>{mode === 'metric' ? `Σ ${q.metricPath} per bucket` : 'runs per bucket'} · peak {String(yMax)}</span>
-                    {q.metricPath
-                        ? modeToggle(chartMode)
-                        : <span static={{ style: 'font-size:10px;color:var(--text-muted)' }}>· set a metric path (top bar) to sum a payload field</span>}
-                </div>
-                <div static={{ style: 'display:flex;gap:14px;flex-wrap:wrap' }}>{legend}</div>
-                <div static={{ style: 'flex:1;display:flex;min-height:160px;gap:8px' }}>
-                    {/* y-axis scale (max at top, 0 at bottom) */}
-                    <div static={{ style: 'display:flex;flex-direction:column;justify-content:space-between;font-size:9px;color:var(--text-muted);text-align:right;min-width:22px' }}>
-                        <span>{String(yMax)}</span>
-                        <span>0</span>
-                    </div>
-                    {/* plot: faint gridlines behind, thin bars in front */}
-                    <div static={{ style: 'flex:1;position:relative;border-left:1px solid var(--border-primary);border-bottom:1px solid var(--border-primary)' }}>
-                        {[gridline(25), gridline(50), gridline(75), gridline(100)]}
-                        <div static={{ style: 'position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px;padding:0 2px' }}>
-                            {buckets.map(b => barColumn(b, maxCount, maxMetric, mode))}
-                        </div>
-                    </div>
-                </div>
-                <div static={{ style: 'display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);padding-left:30px' }}>
-                    <span>{fmtTime(buckets[0].tsBucket)}</span>
-                    <span>{fmtTime(buckets[buckets.length - 1].tsBucket)}</span>
-                </div>
-            </div>
-        );
-    });
-
-    // ── search box (uncontrolled; debounced on input) ────────────────────────
+    // ── secondary filters: entry-only toggle · neuron select · search · time range ──
     let debounce: ReturnType<typeof setTimeout> | null = null;
     const searchBox: TExoSchema = (
         <input
             static={{
                 placeholder: 'search stimulationId…',
                 style:
-                    'width:200px;padding:5px 8px;font-size:12px;background:var(--bg-secondary);' +
-                    'border:1px solid var(--border-primary);color:var(--text-primary);border-radius:2px',
+                    'flex:1;min-width:140px;padding:5px 8px;font-size:11px;background:var(--bg-secondary);' +
+                    'border:1px solid var(--border-primary);color:var(--text-primary);border-radius:4px',
             }}
             handlers={{
                 onInput: (e: Event) => {
@@ -546,106 +204,428 @@ export function explorerPage(
             }}
         />
     );
-
-    // ── view-switch (Runs ⇄ Waterfall ⇄ Chart) ───────────────────────────────
-    const paneFor = (view: string): TExoSchema => {
-        if (view === 'waterfall')
-            return <div static={{ style: 'flex:1;display:flex;min-height:0' }} bindable={{ children: waterfall }} />;
-        if (view === 'chart')
-            return <div static={{ style: 'flex:1;display:flex;min-height:0;overflow:auto' }} bindable={{ children: chartView }} />;
-        return <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: runsList }} />;
+    const entryToggle = combine([ctrl.query], () => {
+        const on = !!ctrl.query.getValue().entryOnly;
+        // Active filter selection reads PINK (consistent selection colour).
+        return (
+            <button
+                static={{
+                    title: 'Show only entry collaterals (owner-less)',
+                    style:
+                        `display:inline-flex;align-items:center;gap:6px;padding:5px 10px;font-size:10px;border-radius:4px;cursor:pointer;` +
+                        `text-transform:uppercase;letter-spacing:.5px;border:1px solid ${on ? C.pink : 'var(--border-primary)'};` +
+                        (on ? `background:${C.pink}22;color:${C.pink}` : `background:var(--bg-card);color:${C.muted}`),
+                }}
+                handlers={{ onClick: () => ctrl.setQuery({ entryOnly: on ? undefined : true }) }}
+            >
+                <span static={{ style: `width:8px;height:8px;border-radius:2px;border:1px solid ${on ? C.pink : C.muted};background:${on ? C.pink : 'transparent'}` }} />
+                entry collaterals only
+            </button>
+        );
+    });
+    // Typeahead filter — scales to HUNDREDS of names (a <select> would not). The
+    // input element is STABLE (created once per open/chip toggle) so typing never
+    // yanks focus; only the suggestion dropdown re-renders per keystroke.
+    const makeTypeahead = (cfg: {
+        placeholder: string;
+        accent: string;
+        source: TExoWritableBindable<unknown, unknown>;
+        getNames: () => string[];
+        getCurrent: () => string | undefined;
+        onPick: (name: string) => void;
+        onClear: () => void;
+    }): TExoSchema => {
+        const text = bindable('');
+        const open = bindable(false);
+        const dropdown = combine([text, open, cfg.source], () => {
+            if (!open.getValue()) return <div static={{ style: 'display:none' }} />;
+            const q = text.getValue().trim().toLowerCase();
+            const all = cfg.getNames();
+            const matches = (q ? all.filter(n => n.toLowerCase().includes(q)) : all);
+            const shown = matches.slice(0, 12);
+            if (!shown.length)
+                return (
+                    <div static={{ style: `position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:2px;padding:6px 8px;font-size:10px;color:${C.muted};background:var(--bg-card);border:1px solid var(--border-primary);border-radius:4px` }}>
+                        no matches
+                    </div>
+                );
+            return (
+                <div static={{ style: 'position:absolute;top:100%;left:0;right:0;z-index:20;margin-top:2px;max-height:220px;overflow:auto;background:var(--bg-card);border:1px solid var(--border-accent);border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,.5)' }}>
+                    <div static={{ style: `padding:3px 8px;font-size:8px;letter-spacing:1px;text-transform:uppercase;color:${C.muted};border-bottom:1px solid var(--border-primary)` }}>
+                        {matches.length} match{matches.length === 1 ? '' : 'es'}
+                    </div>
+                    {shown.map(n => (
+                        <div
+                            static={{
+                                class: 'exp-ta-item',
+                                style: `padding:5px 8px;font-size:11px;color:${C.sub};cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`,
+                            }}
+                            handlers={{
+                                onMouseDown: () => {
+                                    cfg.onPick(n);
+                                    text.setValue('');
+                                    open.setValue(false);
+                                },
+                            }}
+                        >
+                            {n}
+                        </div>
+                    ))}
+                </div>
+            );
+        });
+        const inputBlock = (
+            <div static={{ style: 'position:relative;flex:1;min-width:150px' }}>
+                <input
+                    static={{
+                        placeholder: cfg.placeholder,
+                        style:
+                            `width:100%;box-sizing:border-box;padding:5px 8px;font-size:11px;background:var(--bg-secondary);` +
+                            `border:1px solid var(--border-primary);color:var(--text-primary);border-radius:4px`,
+                    }}
+                    handlers={{
+                        onInput: (e: Event) => {
+                            text.setValue((e.target as HTMLInputElement).value);
+                            open.setValue(true);
+                        },
+                        onFocus: () => open.setValue(true),
+                        onBlur: () => setTimeout(() => open.setValue(false), 150),
+                    }}
+                />
+                <div bindable={{ children: dropdown }} />
+            </div>
+        );
+        // The input ALWAYS stays an input — the active filter's removable tag lives
+        // in the filter-chips row below, so there is no second chip up here.
+        return <div static={{ style: 'flex:1;min-width:150px' }}>{inputBlock}</div>;
     };
-    const resultPane = combine([ctrl.query], () =>
-        paneFor(ctrl.query.getValue().view)
+    const neuronTypeahead = makeTypeahead({
+        placeholder: 'filter by neuron…',
+        accent: C.violet,
+        source: ctrl.topology as TExoWritableBindable<unknown, unknown>,
+        getNames: () =>
+            [...new Set(ctrl.topology.getValue().neurons.map(n => n.name))].sort(),
+        getCurrent: () => ctrl.query.getValue().neuronName,
+        onPick: (n: string) => ctrl.setQuery({ neuronName: n }),
+        onClear: () => ctrl.setQuery({ neuronName: undefined }),
+    });
+    const collateralTypeahead = makeTypeahead({
+        placeholder: 'filter by collateral…',
+        accent: C.cyan,
+        source: ctrl.topology as TExoWritableBindable<unknown, unknown>,
+        getNames: () =>
+            [...new Set(ctrl.topology.getValue().collaterals.map(c => c.name))].sort(),
+        getCurrent: () => ctrl.query.getValue().entryCollateralName,
+        // Filtering by a collateral → switch the VIEW to the Collaterals tab.
+        onPick: (n: string) => ctrl.setQuery({ entryCollateralName: n, tab: 'collaterals' }),
+        onClear: () => ctrl.setQuery({ entryCollateralName: undefined }),
+    });
+    // Which SINGLE preset (in ms; 0 = "All") the current query represents. A relative
+    // preset stores `since = now − ms`, so "5m" also falls inside "last 15m/1h/24h" —
+    // deriving with `<=` lit them all. Instead pick the NEAREST preset window and only
+    // if the elapsed offset is close to it (else it's a custom `since`, nothing lit).
+    const PRESET_MS = [5 * 60000, 15 * 60000, 60 * 60000, 24 * 60 * 60000];
+    const activeRangeMs = (): number | null => {
+        const { since, until } = ctrl.query.getValue();
+        if (since == null && until == null) return 0; // All
+        if (since == null || until != null) return null; // custom range → no preset
+        const elapsed = Date.now() - since;
+        let best = PRESET_MS[0];
+        let bestD = Infinity;
+        for (const ms of PRESET_MS) {
+            const d = Math.abs(elapsed - ms);
+            if (d < bestD) {
+                bestD = d;
+                best = ms;
+            }
+        }
+        return bestD <= best * 0.5 ? best : null;
+    };
+    const rangeBtn = (label: string, ms: number): TExoSchema => {
+        const b = combine([ctrl.query], () => {
+            const active = activeRangeMs() === ms;
+            return (
+                <button
+                    static={{
+                        style:
+                            `padding:5px 12px;font-size:11px;cursor:pointer;border-radius:5px;` +
+                            `border:1px solid ${active ? C.pink : 'var(--border-primary)'};` +
+                            (active ? `background:${C.pink}22;color:${C.pink};font-weight:700` : `background:var(--bg-card);color:${C.muted}`),
+                    }}
+                    handlers={{
+                        onClick: () =>
+                            ctrl.setQuery({
+                                since: ms === 0 ? undefined : Date.now() - ms,
+                                until: undefined,
+                            }),
+                    }}
+                >
+                    {label}
+                </button>
+            );
+        });
+        return <div bindable={{ children: b }} />;
+    };
+    // A custom absolute From/To picker alongside the quick presets. `datetime-local`
+    // reads/writes local wall-clock; the element is STABLE (built once in onExoMount)
+    // and value-synced imperatively so spinner edits never yank focus.
+    const toLocalInput = (ms?: number): string => {
+        if (ms == null) return '';
+        const d = new Date(ms);
+        const p = (n: number): string => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    };
+    const fromLocalInput = (v: string): number | undefined => {
+        if (!v) return undefined;
+        const t = new Date(v).getTime();
+        return Number.isFinite(t) ? t : undefined;
+    };
+    const dtField = (label: string, key: 'since' | 'until'): TExoSchema => (
+        <label static={{ style: `display:inline-flex;align-items:center;gap:5px;font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:${C.muted};white-space:nowrap` }}>
+            {label}
+            <input
+                static={{
+                    style:
+                        `padding:4px 6px;font-size:10px;background:var(--bg-secondary);` +
+                        `border:1px solid var(--border-primary);color:var(--text-primary);border-radius:4px;` +
+                        `color-scheme:dark`,
+                    onExoMount: (n: { element: unknown }) => {
+                        const inp = n.element as HTMLInputElement;
+                        inp.type = 'datetime-local';
+                        const sync = (): void => {
+                            const v = ctrl.query.getValue()[key];
+                            const next = v != null ? toLocalInput(v as number) : '';
+                            if (inp.value !== next) inp.value = next;
+                        };
+                        sync();
+                        ctrl.query.subscribe(sync);
+                        inp.addEventListener('change', () =>
+                            ctrl.setQuery({ [key]: fromLocalInput(inp.value) })
+                        );
+                    },
+                }}
+            />
+        </label>
     );
-    // Active tab accent = bright yellow (owner ask); inactive = muted card.
-    const viewBtn = (
-        v: 'runs' | 'waterfall' | 'chart',
-        label: string,
-        active: boolean
-    ): TExoSchema => (
+    const clearRange = combine([ctrl.query], () => {
+        const { since, until } = ctrl.query.getValue();
+        if (since == null && until == null) return <div static={{ style: 'display:none' }} />;
+        return (
+            <button
+                static={{
+                    title: 'Clear time range',
+                    style: `padding:4px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;border-radius:4px;border:1px solid ${C.pink};color:${C.pink};background:${C.pink}1a`,
+                }}
+                handlers={{ onClick: () => ctrl.setQuery({ since: undefined, until: undefined }) }}
+            >
+                ✕ clear
+            </button>
+        );
+    });
+    // Obvious TIME RANGE block — it scopes EVERYTHING (chart + list + the stats
+    // below), so the stat numbers are always "over this range".
+    // Quick presets — sit inline with the "Time range" heading (space-saving).
+    const timePresets: TExoSchema = (
+        <div static={{ style: 'display:flex;gap:5px;align-items:center;flex-wrap:wrap' }}>
+            {[
+                rangeBtn('5m', 5 * 60000),
+                rangeBtn('15m', 15 * 60000),
+                rangeBtn('1h', 60 * 60000),
+                rangeBtn('24h', 24 * 60 * 60000),
+                rangeBtn('All', 0),
+            ]}
+        </div>
+    );
+    // The custom From/To picker — its own row below the heading+presets.
+    const timePicker: TExoSchema = (
+        <div static={{ style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' }}>
+            {[dtField('from', 'since'), dtField('to', 'until')]}
+            <div bindable={{ children: clearRange }} />
+        </div>
+    );
+
+    // ── active filter chips ──
+    const chip = (label: string, onClear: () => void): TExoSchema => (
         <button
             static={{
                 style:
-                    `padding:4px 12px;font-size:11px;cursor:pointer;` +
-                    `text-transform:uppercase;letter-spacing:1px;` +
-                    (active
-                        ? 'background:var(--infection-yellow);color:var(--bg-primary);border:1px solid var(--infection-yellow);font-weight:600'
-                        : 'background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border-primary)'),
+                    `display:inline-flex;align-items:center;gap:5px;padding:2px 8px;font-size:10px;border-radius:999px;cursor:pointer;flex:none;white-space:nowrap;` +
+                    `border:1px solid ${C.violet};color:${C.violet};background:${C.violet}1a`,
             }}
-            handlers={{ onClick: () => ctrl.setQuery({ view: v }) }}
+            handlers={{ onClick: onClear }}
         >
-            {label}
+            {label} ✕
         </button>
     );
-    const viewSwitch = combine([ctrl.query], () => {
-        const v = ctrl.query.getValue().view;
+    const filterChips = combine([ctrl.query], () => {
+        const q = ctrl.query.getValue();
+        const active: TExoSchema[] = [];
+        if (q.status) active.push(chip(`status: ${q.status}`, () => ctrl.setQuery({ status: undefined })));
+        if (q.neuronName) active.push(chip(`neuron: ${q.neuronName}`, () => ctrl.setQuery({ neuronName: undefined })));
+        if (q.entryCollateralName) active.push(chip(`collateral: ${q.entryCollateralName}`, () => ctrl.setQuery({ entryCollateralName: undefined })));
+        if (q.entryOnly) active.push(chip('entry only', () => ctrl.setQuery({ entryOnly: undefined })));
+        if (q.text) active.push(chip(`"${q.text}"`, () => ctrl.setQuery({ text: undefined })));
+        if (q.since != null) active.push(chip('time range', () => ctrl.setQuery({ since: undefined })));
+        if (!active.length) return <div static={{ style: 'display:none' }} />;
+        // ONE nowrap row that scrolls horizontally — active filters never wrap and
+        // so never push the rest of the layout down as you add/remove them.
         return (
-            <div static={{ style: 'display:flex;gap:2px' }}>
-                {[
-                    viewBtn('runs', 'Runs', v === 'runs'),
-                    viewBtn('waterfall', 'Waterfall', v === 'waterfall'),
-                    viewBtn('chart', 'Chart', v === 'chart'),
-                ]}
+            <div static={{ style: 'display:flex;gap:5px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin' }}>
+                {active}
             </div>
         );
     });
 
-    // Metric-path input (chart only; stable element so a live facets refresh never
-    // yanks focus while typing). Shown in the top bar only when the Chart view is
-    // active — it is meaningless elsewhere.
-    let metricDebounce: ReturnType<typeof setTimeout> | null = null;
-    const metricInput: TExoSchema = (
-        <input
-            static={{
-                placeholder: 'chart metric: payload path (e.g. pages)',
-                value: ctrl.query.getValue().metricPath ?? '',
-                style:
-                    'width:220px;padding:5px 8px;font-size:12px;background:var(--bg-secondary);' +
-                    'border:1px solid var(--border-primary);color:var(--text-primary);border-radius:2px',
-            }}
-            handlers={{
-                onInput: (e: Event) => {
-                    const v = (e.target as HTMLInputElement).value.trim();
-                    if (metricDebounce) clearTimeout(metricDebounce);
-                    metricDebounce = setTimeout(() => {
-                        ctrl.setQuery({ metricPath: v || undefined });
-                        if (v) chartMode.setValue('metric');
-                    }, 300);
-                },
-            }}
-        />
-    );
-    const metricSlot = combine([ctrl.query], () =>
-        ctrl.query.getValue().view === 'chart' ? metricInput : <div />
+    // ── zone frame helper ──
+    // An empty label renders NO eyebrow — the filters zone uses its 🧠 CNStra
+    // brand row as its own header (no redundant "FILTERS · VIEWS" band).
+    const zone = (label: string, color: string, body: TExoSchema): TExoSchema => (
+        <div static={{ style: `flex:none;display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--border-primary);border-radius:8px;background:var(--bg-panel)` }}>
+            {label ? eyebrow(label, color) : <span />}
+            {body}
+        </div>
     );
 
+    // Only the filters that DO something for the ACTIVE tab are shown (time range is
+    // common, below). Every control stays mounted in ONE position; the container's
+    // class is toggled to `exp-filters tab-<active>` imperatively (no re-render, so
+    // typing never loses focus) and pure CSS hides the irrelevant ones per tab.
+    const tabFilters = (
+        <div
+            static={{
+                class: 'exp-filters',
+                style: 'display:flex;flex-direction:column;gap:12px',
+                onExoMount: (n: { element: unknown }) => {
+                    const el = n.element as HTMLElement;
+                    const sync = (): void => {
+                        el.className = `exp-filters tab-${ctrl.query.getValue().tab}`;
+                    };
+                    sync();
+                    ctrl.query.subscribe(sync);
+                },
+            }}
+        >
+            {/* status pills (their own row when shown) */}
+            <div static={{ class: 'fg-toggles', style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' }}>
+                <div static={{ class: 'fg-status', style: 'flex:none' }} bindable={{ children: statusFilter }} />
+            </div>
+            {/* inputs row: entry toggle (compact) + search + the two typeaheads — the
+                toggle sits inline so the input beside it just shrinks, no lone row */}
+            <div static={{ class: 'fg-inputs', style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' }}>
+                <div static={{ class: 'fg-entry', style: 'flex:none' }} bindable={{ children: entryToggle }} />
+                <div static={{ class: 'fg-search', style: 'flex:2 1 220px;display:flex;min-width:0' }}>{searchBox}</div>
+                <div static={{ class: 'fg-neuron', style: 'flex:1 1 160px;display:flex;min-width:0' }}>{neuronTypeahead}</div>
+                <div static={{ class: 'fg-collateral', style: 'flex:1 1 160px;display:flex;min-width:0' }}>{collateralTypeahead}</div>
+            </div>
+        </div>
+    );
+
+    // ── FILTERS zone (no eyebrow — the brand row is the header) ──
+    const filtersZone = zone(
+        '',
+        C.yellow,
+        <div static={{ style: 'display:flex;flex-direction:column;gap:12px' }}>
+            {/* header: brand on the left, the VIEW tabs pushed to the right edge */}
+            <div static={{ style: 'display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap' }}>
+                <div static={{ style: 'flex:none' }} bindable={{ children: connBlock }} />
+                <div static={{ style: 'flex:none' }} bindable={{ children: tabs }} />
+            </div>
+            {/* only the filters relevant to the active tab */}
+            {tabFilters}
+            {/* time range (COMMON to every tab): heading + quick presets share one
+                line; the custom picker gets the next line — saves vertical space */}
+            <div static={{ style: 'display:flex;flex-direction:column;gap:8px' }}>
+                <div static={{ style: 'display:flex;gap:12px;align-items:center;flex-wrap:wrap' }}>
+                    {eyebrow('Time range', C.pink)}
+                    {timePresets}
+                </div>
+                {timePicker}
+            </div>
+            {/* active-filter tags — a RESERVED-height strip so tags appearing /
+                disappearing never reflow the layout above */}
+            <div static={{ style: 'min-height:24px;display:flex;align-items:center' }} bindable={{ children: filterChips }} />
+        </div>
+    );
+
+    // ── GRAPHS zone (COLLAPSIBLE — collapse it to give the details panel the room) ──
+    const graphsCollapsed = bindable(false);
+    const graphsBody = (
+        <div static={{ style: 'display:flex;gap:12px;align-items:stretch;flex-wrap:wrap' }}>
+            {/* compact vertical stats beside the chart */}
+            <div bindable={{ children: statsColumn }} />
+            <div static={{ style: 'flex:1;min-width:240px;display:flex;flex-direction:column;gap:10px' }}>
+                {vitalsMonitor(ctrl.facets, ctrl.total, (since, until) =>
+                    ctrl.setQuery({ since, until })
+                )}
+                <div bindable={{ children: distribution }} />
+            </div>
+        </div>
+    );
+    const graphsToggle = combine([graphsCollapsed], () => {
+        const off = graphsCollapsed.getValue();
+        return (
+            <button
+                static={{
+                    title: off ? 'Expand the chart' : 'Collapse the chart (more room for details)',
+                    style:
+                        `display:inline-flex;align-items:center;gap:5px;padding:2px 9px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;` +
+                        `cursor:pointer;border-radius:4px;border:1px solid var(--border-primary);background:var(--bg-card);color:${C.muted}`,
+                }}
+                handlers={{ onClick: () => graphsCollapsed.setValue(!off) }}
+            >
+                {off ? '▸ show chart' : '▾ hide chart'}
+            </button>
+        );
+    });
+    const graphsZone = (
+        <div static={{ style: 'flex:none;display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--border-primary);border-radius:8px;background:var(--bg-panel)' }}>
+            <div static={{ style: 'display:flex;align-items:center;gap:8px' }}>
+                {eyebrow('Graphs · Vitals', C.green)}
+                <div static={{ style: 'flex:1' }} />
+                <div bindable={{ children: graphsToggle }} />
+            </div>
+            <div bindable={{ children: combine([graphsCollapsed], () => (graphsCollapsed.getValue() ? <span static={{ style: 'display:none' }} /> : graphsBody)) }} />
+        </div>
+    );
+
+    // ── VIEW list (NO own header — the active TAB above it in the filters is its
+    // heading; the list is attached under the filters, same column width) ──
+    const viewZone = (
+        <div static={{ style: 'flex:1 1 0;min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--border-primary);border-radius:8px;background:var(--bg-panel);overflow:hidden' }}>
+            <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: viewList(ctrl) as never }} />
+        </div>
+    );
+    const detailsZone = (
+        <div static={{ style: 'flex:1 1 0;min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--border-primary);border-radius:8px;background:var(--bg-panel);overflow:hidden' }}>
+            {/* breadcrumb / back navigation lives in the details header */}
+            <div static={{ style: 'padding:10px 12px;border-bottom:1px solid var(--border-primary)' }} bindable={{ children: breadcrumb(ctrl) as never }} />
+            <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto' }} bindable={{ children: detailsPane(ctrl) as never }} />
+        </div>
+    );
+
+    // Layout: TWO columns filling the viewport (never page-scrolls). LEFT = filters
+    // (natural height) + the view list (fills, scrolls internally) at ONE width.
+    // RIGHT = the collapsible chart + the details panel (fills, scrolls internally).
+    // `min-height:0` on every flex ancestor lets the inner scrollers bound (the
+    // classic flexbox gotcha). Collapsing the chart hands its height to details.
     return (
         <div
             static={{
-                style: 'display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden;background:var(--bg-primary)',
+                class: 'exp-root',
+                style: 'display:flex;flex:1;gap:10px;min-height:0;height:100%;overflow:hidden;padding:10px;box-sizing:border-box;background:var(--bg-primary)',
                 onExoMount: () => ctrl.start(),
                 onExoUnmount: () => ctrl.stop(),
             }}
         >
-            {/* ── ONE top bar: identity/health · search · tabs · metric · beat · count ── */}
-            <div static={{ style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border-primary);background:var(--bg-panel)' }}>
-                <div bindable={{ children: connBlock }} />
-                <div static={{ style: 'width:1px;height:20px;background:var(--border-primary)' }} />
-                {searchBox}
-                <div bindable={{ children: viewSwitch }} />
-                <div bindable={{ children: metricSlot }} />
-                <div static={{ style: 'flex:1' }} />
-                {heartbeatMonitor(ctrl.total)}
-                <div bindable={{ children: runsCount }} />
+            {/* LEFT column: filters + the list it drives (same width) */}
+            <div static={{ style: 'flex:1 1 360px;min-width:300px;display:flex;flex-direction:column;gap:10px;min-height:0' }}>
+                {filtersZone}
+                {viewZone}
             </div>
-            {/* ── body: compact facet rail (only secondary column) + main area ── */}
-            <div static={{ style: 'flex:1;display:flex;min-height:0;overflow:hidden' }}>
-                <div static={{ style: 'width:200px;flex:none;border-right:1px solid var(--border-primary);padding:12px;overflow:auto;background:var(--bg-panel)' }} bindable={{ children: facetRail }} />
-                <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-width:0' }}>
-                    <div bindable={{ children: filterChips }} />
-                    <div static={{ style: 'flex:1;display:flex;flex-direction:column;min-height:0' }} bindable={{ children: resultPane }} />
-                </div>
+            {/* RIGHT column: collapsible chart + details */}
+            <div static={{ style: 'flex:1.5 1 440px;min-width:360px;display:flex;flex-direction:column;gap:10px;min-height:0' }}>
+                {graphsZone}
+                {detailsZone}
             </div>
         </div>
     );

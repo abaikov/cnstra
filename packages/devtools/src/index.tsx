@@ -2,7 +2,6 @@ import type { CNSCollateral } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry, TCNSSignalJSON } from '@cnstra/persist';
 import { CNSStimulationPersistor, CNSProgressSerializer } from '@cnstra/persist';
 import type { ICNS, TCNSNeuron } from '@cnstra/types';
-import { CNSStimulationContextStore } from '@cnstra/core';
 import type { ICNSDevToolsTransport } from './interfaces/ICNSDevToolsTransport';
 import { CNSWireStimulationRepository } from './CNSWireStimulationRepository';
 import { buildAttemptId } from '@cnstra/devtools-dto';
@@ -56,7 +55,7 @@ export type CNSDevToolsOptions = {
     trackStimulations?: boolean;
 };
 
-type AnyNeuron = TCNSNeuron<any, any>;
+type AnyNeuron = TCNSNeuron<any>;
 type AnyCollateral = CNSCollateral<unknown>;
 
 let stimulationCounter = 0;
@@ -281,8 +280,6 @@ export class CNSDevTools {
             return;
         }
 
-        const ctx = new CNSStimulationContextStore();
-
         const signal = targetCollateral.createSignal(cmd.payload);
         const stimulation = cns.stimulate(signal, {
             ...(cmd.options?.maxHops ? { maxNeuronHops: cmd.options.maxHops } : {}),
@@ -291,7 +288,6 @@ export class CNSDevTools {
                 if (ac) setTimeout(() => ac.abort(), cmd.options!.timeoutMs);
                 return ac ? { abortSignal: ac.signal } : {};
             })() : {}),
-            ctx,
         });
 
         // The stimulation.started for this run is emitted by listenToStimulations;
@@ -333,7 +329,7 @@ export class CNSDevTools {
         if (cmd.type === 'cns.stimulation.resume') {
             // Resume the stored frontier as a new attempt of the SAME stimulation.
             const serializer = new CNSProgressSerializer(registry);
-            const { tasks, ctx } = serializer.hydrate(cmd.progress);
+            const { tasks } = serializer.hydrate(cmd.progress);
             if (tasks.length === 0) {
                 if (this.options.consoleLogEnabled)
                     console.warn(`[DevTools] Resume: empty frontier for ${cmd.stimulationId}`);
@@ -347,7 +343,6 @@ export class CNSDevTools {
                 scopeName: cmd.scopeName ?? cnsId,
             };
             const stimulation = cns.activate(tasks, {
-                ctx,
                 stimulationContext: {
                     stimulationId: cmd.stimulationId,
                     attemptNumber: cmd.attemptNumber,

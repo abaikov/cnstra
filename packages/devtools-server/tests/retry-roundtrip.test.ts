@@ -61,7 +61,6 @@ const failedStim = (id: string, scopeName: string): TCNSStimulationState => ({
                 input: { collateralName: 'enriched', payload: { id: '42' } },
             },
         ],
-        context: {},
     },
 });
 const attempt = (id: string): TCNSStimulationAttempt => ({
@@ -143,7 +142,7 @@ describe('stimulation retry round-trip (panel → server → app)', () => {
         await connectApp();
         await store.saveStimulation({
             ...failedStim('s2', CNS_ID),
-            progress: { tasks: [], context: {} },
+            progress: { tasks: [] },
         });
         const ui = makeWs('ui');
         await server.handleMessage(

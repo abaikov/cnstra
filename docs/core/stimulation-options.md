@@ -9,7 +9,6 @@ slug: /core/stimulation-options
 - `onResponse?: (response) => void | Promise<void>` — tap into flow and completion (async supported)
 - `abortSignal?: AbortSignal` — graceful cancel
 - `concurrency?: number` — per-run concurrency limit
-- `ctx?: ICNSStimulationContextStore` — reuse context store (in‑process)
 - `modality?: TCNSModality` — optional modality routing for `modalityDendrite`
 - `afferentPath?: TCNSAfferentPath` — optional afferent path selection for `modalityDendrite`
 - `stimulationContext?: object` — optional user-defined bag for listeners/handlers

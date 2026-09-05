@@ -2,7 +2,7 @@ import {
     CNS,
     collateral,
     neuron,
-    withCtx,
+    neuronFactory,
     afferentPath,
     modality,
     CNSStimulationGate,
@@ -304,11 +304,7 @@ describe('CNStra Core Tests', () => {
                         cardTitle: 'Card 1',
                     },
                     testNeuron.axon,
-                    {
-                        get: () => undefined,
-                        set: () => {},
-                        delete: () => {},
-                    }
+                    {}
                 );
 
                 expect(signal1).toEqual({
@@ -327,11 +323,7 @@ describe('CNStra Core Tests', () => {
                         cardTitle: 'Card 2',
                     },
                     testNeuron.axon,
-                    {
-                        get: () => undefined,
-                        set: () => {},
-                        delete: () => {},
-                    }
+                    {}
                 );
 
                 expect(signal2).toEqual({
@@ -352,17 +344,14 @@ describe('CNStra Core Tests', () => {
             });
         });
 
-        describe('withCtx', () => {
-            it('should create a context-aware neuron builder', () => {
-                const ctxBuilder = withCtx<{
-                    userId: string;
-                    sessionId: string;
-                }>();
+        describe('neuronFactory', () => {
+            it('should create a neuron builder', () => {
+                const ctxBuilder = neuronFactory();
                 expect(typeof ctxBuilder.neuron).toBe('function');
             });
 
-            it('should create neurons with typed context', () => {
-                const ctxBuilder = withCtx<{ userId: string }>();
+            it('should create neurons', () => {
+                const ctxBuilder = neuronFactory();
                 const output = collateral<{ result: string }>();
                 const testNeuron = ctxBuilder.neuron( { output });
 
@@ -370,8 +359,8 @@ describe('CNStra Core Tests', () => {
                 expect(testNeuron.dendrites).toEqual([]);
             });
 
-            it('should allow adding dendrites with context access', () => {
-                const ctxBuilder = withCtx<{ counter: number }>();
+            it('should allow adding dendrites', () => {
+                const ctxBuilder = neuronFactory();
                 const input = collateral<{ increment: number }>();
                 const output = collateral<{ result: number }>();
 
@@ -379,12 +368,9 @@ describe('CNStra Core Tests', () => {
                     .neuron( { output })
                     .dendrite({
                         collateral: input,
-                        response: async (payload, axon, ctx) => {
-                            const current = ctx.get()?.counter || 0;
-                            const newValue = current + payload.increment;
-                            ctx.set({ counter: newValue });
+                        response: async (payload, axon) => {
                             return axon.output.createSignal({
-                                result: newValue,
+                                result: payload.increment,
                             });
                         },
                     });
@@ -1184,11 +1170,7 @@ describe('CNStra Core Tests', () => {
                 const result = await dendrite.response(
                     { message: 'Hello' },
                     processor.axon,
-                    {
-                        get: () => undefined,
-                        set: () => {},
-                        delete: () => {},
-                    }
+                    {}
                 );
 
                 expect(result).toEqual({
@@ -1611,103 +1593,6 @@ describe('CNStra Core Tests', () => {
         });
     });
 
-    describe('Context Integration', () => {
-        describe('Context Operations', () => {
-            it('should set and get context values', async () => {
-                const ctxBuilder = withCtx<{
-                    message: string;
-                    count: number;
-                }>();
-                const input = collateral<{ text: string }>();
-                const output = collateral<{ result: string }>();
-
-                const testNeuron = ctxBuilder
-                    .neuron( { output })
-                    .dendrite({
-                        collateral: input,
-                        response: async (payload, axon, ctx) => {
-                            ctx.set({ message: payload.text, count: 1 });
-
-                            const context = ctx.get();
-                            expect(context?.message).toBe(payload.text);
-                            expect(context?.count).toBe(1);
-
-                            return axon.output.createSignal({
-                                result: context?.message || '',
-                            });
-                        },
-                    });
-
-                const dendrite = testNeuron.dendrites[0];
-                let contextValue:
-                    | { message: string; count: number }
-                    | undefined;
-                const mockCtx = {
-                    get: () => contextValue,
-                    set: (value: { message: string; count: number }) => {
-                        contextValue = value;
-                    },
-                };
-
-                const result = await dendrite.response(
-                    { text: 'Hello Context' },
-                    testNeuron.axon,
-                    {
-                        ...mockCtx,
-                        delete: () => {},
-                    }
-                );
-
-                expect(result).toEqual({
-                    collateral: output,
-                    payload: { result: 'Hello Context' },
-                });
-            });
-
-            it('should handle undefined context gracefully', async () => {
-                const ctxBuilder = withCtx<{ data: string }>();
-                const input = collateral<{ value: string }>();
-                const output = collateral<{ result: string }>();
-
-                const testNeuron = ctxBuilder
-                    .neuron( { output })
-                    .dendrite({
-                        collateral: input,
-                        response: async (payload, axon, ctx) => {
-                            const context = ctx.get();
-                            const safeData = context?.data || 'default';
-                            return axon.output.createSignal({
-                                result: safeData,
-                            });
-                        },
-                    });
-
-                const dendrite = testNeuron.dendrites[0];
-                let contextValue: { data: string } | undefined;
-                const mockCtx = {
-                    get: () => contextValue,
-                    set: (value: { data: string }) => {
-                        contextValue = value;
-                    },
-                };
-
-                const result = await dendrite.response(
-                    { value: 'test' },
-                    testNeuron.axon,
-                    {
-                        ...mockCtx,
-                        delete: () => {},
-                    }
-                );
-
-                expect(result).toEqual({
-                    collateral: output,
-                    payload: { result: 'default' },
-                });
-            });
-        });
-    });
-
     describe('Edge Cases', () => {
         it('should handle neurons with no dendrites', async () => {
             const input = collateral<{ data: string }>();
@@ -2026,9 +1911,7 @@ describe('CNStra Core Tests', () => {
                 },
             });
 
-            const cns = new CNS([neuronA, neuronB, neuronC], {
-                autoCleanupContexts: true,
-            });
+            const cns = new CNS([neuronA, neuronB, neuronC]);
 
             expect(cns.network.stronglyConnectedComponents).toHaveLength(3);
             expect(cns.network.getSCCSetByNeuron(neuronA)?.size).toBe(1);
@@ -2539,50 +2422,33 @@ describe('CNStra Core Tests', () => {
     });
 
     describe('Abort and Retry with activate', () => {
-        it('should allow aborting and retrying with same tasks and context', async () => {
-            const ctxBuilder = withCtx<{ processed: string[]; step: number }>();
+        it('should allow aborting and retrying from the outstanding frontier', async () => {
             const input = collateral<{ value: number }>();
             const intermediate = collateral<{ value: number }>();
             const output = collateral<{ result: string }>();
 
-            let step1Executed = false;
-            let step2Executed = false;
-            // Assigned below; aborted from inside step1 so the abort
-            // deterministically lands while step1 is still in flight (instead
-            // of racing two setTimeout()s, which made this test flaky).
+            // Aborted from inside step1 so the abort deterministically lands
+            // while step1 is still in flight (instead of racing two
+            // setTimeout()s, which made this test flaky).
             let abortController: AbortController;
 
-            const step1 = ctxBuilder
-                .neuron( { intermediate })
-                .dendrite({
-                    collateral: input,
-                    response: async (payload, axon, ctx) => {
-                        step1Executed = true;
-                        const current = ctx.get() || { processed: [], step: 0 };
-                        ctx.set({
-                            processed: [...current.processed, 'step1'],
-                            step: 1,
-                        });
-                        // Abort while this step is in flight: when it resolves,
-                        // step2 will be enqueued but never started, so it ends
-                        // up as a failed (aborted) task.
-                        abortController.abort();
-                        await new Promise(resolve => setTimeout(resolve, 2));
-                        return axon.intermediate.createSignal({
-                            value: payload.value,
-                        });
-                    },
-                });
-
-            const step2 = ctxBuilder.neuron( { output }).dendrite({
-                collateral: intermediate,
-                response: async (payload, axon, ctx) => {
-                    step2Executed = true;
-                    const current = ctx.get() || { processed: [], step: 0 };
-                    ctx.set({
-                        processed: [...current.processed, 'step2'],
-                        step: 2,
+            const step1 = neuron({ intermediate }).dendrite({
+                collateral: input,
+                response: async (payload, axon) => {
+                    // Abort while this step is in flight: when it resolves,
+                    // step2 will be enqueued but never started, so it ends up
+                    // as a failed (aborted) task in the outstanding frontier.
+                    abortController.abort();
+                    await new Promise(resolve => setTimeout(resolve, 2));
+                    return axon.intermediate.createSignal({
+                        value: payload.value,
                     });
+                },
+            });
+
+            const step2 = neuron({ output }).dendrite({
+                collateral: intermediate,
+                response: async (payload, axon) => {
                     await new Promise(resolve => setTimeout(resolve, 2));
                     return axon.output.createSignal({
                         result: `Result: ${payload.value}`,
@@ -2606,19 +2472,16 @@ describe('CNStra Core Tests', () => {
                 'Stimulation aborted'
             );
 
-            // Get failed tasks
+            // The outstanding frontier is step2's aborted task; its input
+            // signal still carries the payload, so no extra state is needed.
             const failedTasks = stimulation1.getFailedTasks();
             expect(failedTasks.length).toBeGreaterThan(0);
 
-            // Reuse context store from first stimulation (in-process snapshot)
-            const ctxFromFirst = stimulation1.getContext();
-
-            // Retry with activate using failed tasks and saved context
+            // Retry with activate re-drives only the outstanding frontier.
             const results: string[] = [];
             const stimulation2 = cns.activate(
                 failedTasks.map(ft => ft.task),
                 {
-                    ctx: ctxFromFirst,
                     onResponse: r => {
                         if (r.outputSignal?.collateral === output) {
                             results.push(
@@ -2632,60 +2495,33 @@ describe('CNStra Core Tests', () => {
 
             await stimulation2.waitUntilComplete();
 
-            // Verify step1 was not re-executed (context should show it was already processed)
-            const finalContext = stimulation2.getContext().getAll();
-            expect(finalContext).toBeDefined();
-            // step2 should have executed
+            // step2 completes on resume.
             expect(results.length).toBeGreaterThan(0);
+            expect(results[0]).toBe('Result: 42');
         });
 
-        it('should allow retrying after error with same tasks and context', async () => {
-            const ctxBuilder = withCtx<{
-                processed: string[];
-                attempts: number;
-            }>();
+        it('should allow retrying after error from the outstanding frontier', async () => {
             const input = collateral<{ value: number }>();
             const intermediate = collateral<{ value: number }>();
             const output = collateral<{ result: string }>();
 
-            let attemptCount = 0;
+            // Fail step2 only on its first invocation; the retry re-runs the
+            // failed task and succeeds. No per-neuron context involved.
+            let step2Attempts = 0;
 
-            const step1 = ctxBuilder
-                .neuron( { intermediate })
-                .dendrite({
-                    collateral: input,
-                    response: async (payload, axon, ctx) => {
-                        attemptCount++;
-                        const current = ctx.get() || {
-                            processed: [],
-                            attempts: 0,
-                        };
-                        ctx.set({
-                            processed: ['step1'],
-                            attempts: current.attempts + 1,
-                        });
-                        return axon.intermediate.createSignal({
-                            value: payload.value,
-                        });
-                    },
-                });
+            const step1 = neuron({ intermediate }).dendrite({
+                collateral: input,
+                response: async (payload, axon) =>
+                    axon.intermediate.createSignal({ value: payload.value }),
+            });
 
-            const step2 = ctxBuilder.neuron( { output }).dendrite({
+            const step2 = neuron({ output }).dendrite({
                 collateral: intermediate,
-                response: async (payload, axon, ctx) => {
-                    const current = ctx.get() || { processed: [], attempts: 0 };
-                    // Simulate error on first attempt
-                    if (current.attempts === 0) {
-                        ctx.set({
-                            processed: [...current.processed, 'step2'],
-                            attempts: current.attempts + 1,
-                        });
+                response: async (payload, axon) => {
+                    step2Attempts++;
+                    if (step2Attempts === 1) {
                         throw new Error('Simulated error');
                     }
-                    ctx.set({
-                        processed: [...current.processed, 'step2'],
-                        attempts: current.attempts,
-                    });
                     return axon.output.createSignal({
                         result: `Result: ${payload.value}`,
                     });
@@ -2694,44 +2530,29 @@ describe('CNStra Core Tests', () => {
 
             const cns = new CNS([step1, step2]);
 
-            // First stimulation - will error
-            const results1: string[] = [];
+            // First stimulation - will error at step2
             const errors1: Error[] = [];
             const stimulation1 = cns.stimulate(
                 input.createSignal({ value: 42 }),
                 {
                     onResponse: r => {
-                        if (r.error) {
-                            errors1.push(r.error);
-                        }
-                        if (r.outputSignal?.collateral === output) {
-                            results1.push(
-                                (r.outputSignal.payload as { result: string })
-                                    .result
-                            );
-                        }
+                        if (r.error) errors1.push(r.error);
                     },
                 }
             );
 
             await expect(stimulation1.waitUntilComplete()).rejects.toThrow();
-
-            // Should have error
             expect(errors1.length).toBeGreaterThan(0);
 
-            // Get failed tasks
+            // Outstanding frontier is the failed step2 task.
             const failedTasks = stimulation1.getFailedTasks();
             expect(failedTasks.length).toBeGreaterThan(0);
 
-            // Reuse context store from first stimulation
-            const ctxFromFirst = stimulation1.getContext();
-
-            // Retry with activate using failed tasks and saved context
+            // Retry re-runs only step2 (step1 does NOT re-run).
             const results2: string[] = [];
             const stimulation2 = cns.activate(
                 failedTasks.map(ft => ft.task),
                 {
-                    ctx: ctxFromFirst,
                     onResponse: r => {
                         if (r.outputSignal?.collateral === output) {
                             results2.push(
@@ -2745,21 +2566,11 @@ describe('CNStra Core Tests', () => {
 
             await stimulation2.waitUntilComplete();
 
-            // Should succeed on retry
             expect(results2.length).toBeGreaterThan(0);
             expect(results2[0]).toBe('Result: 42');
-
-            // Context should be preserved
-            const finalContext = stimulation2.getContext().getAll();
-            expect(finalContext).toBeDefined();
-            expect(
-                (finalContext.get(step1) as { processed: string[] } | undefined)
-                    ?.processed
-            ).toContain('step1');
         });
 
-        it('should preserve context and not re-execute completed tasks on retry', async () => {
-            const ctxBuilder = withCtx<{ executed: string[] }>();
+        it('should not re-execute completed tasks on retry (frontier resume)', async () => {
             const input = collateral<{ id: number }>();
             const step1Out = collateral<{ id: number }>();
             const step2Out = collateral<{ id: number }>();
@@ -2767,46 +2578,28 @@ describe('CNStra Core Tests', () => {
 
             const executionLog: string[] = [];
 
-            const step1 = ctxBuilder.neuron( { step1Out }).dendrite({
+            const step1 = neuron({ step1Out }).dendrite({
                 collateral: input,
-                response: async (payload, axon, ctx) => {
+                response: async (payload, axon) => {
                     executionLog.push(`step1-${payload.id}`);
-                    ctx.set({
-                        executed: [
-                            ...(ctx.get()?.executed || []),
-                            `step1-${payload.id}`,
-                        ],
-                    });
                     await new Promise(resolve => setTimeout(resolve, 5));
                     return axon.step1Out.createSignal({ id: payload.id });
                 },
             });
 
-            const step2 = ctxBuilder.neuron( { step2Out }).dendrite({
+            const step2 = neuron({ step2Out }).dendrite({
                 collateral: step1Out,
-                response: async (payload, axon, ctx) => {
+                response: async (payload, axon) => {
                     executionLog.push(`step2-${payload.id}`);
-                    ctx.set({
-                        executed: [
-                            ...(ctx.get()?.executed || []),
-                            `step2-${payload.id}`,
-                        ],
-                    });
                     await new Promise(resolve => setTimeout(resolve, 5));
                     return axon.step2Out.createSignal({ id: payload.id });
                 },
             });
 
-            const step3 = ctxBuilder.neuron( { output }).dendrite({
+            const step3 = neuron({ output }).dendrite({
                 collateral: step2Out,
-                response: async (payload, axon, ctx) => {
+                response: async (payload, axon) => {
                     executionLog.push(`step3-${payload.id}`);
-                    ctx.set({
-                        executed: [
-                            ...(ctx.get()?.executed || []),
-                            `step3-${payload.id}`,
-                        ],
-                    });
                     return axon.output.createSignal({
                         result: `Final: ${payload.id}`,
                     });
@@ -2837,20 +2630,18 @@ describe('CNStra Core Tests', () => {
             expect(executionLog).not.toContain('step2-100');
             expect(executionLog).not.toContain('step3-100');
 
-            // Get failed tasks and context
+            // Outstanding frontier: step2's aborted task.
             const failedTasks = stimulation1.getFailedTasks();
             expect(failedTasks.length).toBe(1);
-            const ctxFromFirst = stimulation1.getContext();
 
             // Clear execution log to verify retry doesn't re-execute step1
             executionLog.length = 0;
 
-            // Retry with activate
+            // Retry with activate re-drives the frontier only.
             const results: string[] = [];
             const stimulation2 = cns.activate(
                 failedTasks.map(ft => ft.task),
                 {
-                    ctx: ctxFromFirst,
                     onResponse: r => {
                         if (r.outputSignal?.collateral === output) {
                             results.push(
@@ -2868,15 +2659,11 @@ describe('CNStra Core Tests', () => {
             expect(results.length).toBeGreaterThan(0);
             expect(results[0]).toBe('Final: 100');
 
-            // Verify context preserved
-            const finalContext = stimulation2.getContext().getAll();
-            expect(finalContext).toBeDefined();
-            const executed = Array.from(finalContext.values())
-                .map((v: any) => v.executed)
-                .flat();
-            expect(executed).toContain('step1-100');
-            expect(executed).toContain('step2-100');
-            expect(executed).toContain('step3-100');
+            // Frontier resume: step1 (already completed) is NOT re-run; only
+            // the outstanding step2 → step3 tail runs.
+            expect(executionLog).not.toContain('step1-100');
+            expect(executionLog).toContain('step2-100');
+            expect(executionLog).toContain('step3-100');
         });
     });
 

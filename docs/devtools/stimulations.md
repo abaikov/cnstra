@@ -62,7 +62,8 @@ a Postgres store the panel survives restarts and becomes a real admin.
 Select a run to open its waterfall; the two actions are on the header:
 
 - **Retry** — resumes the run's outstanding **frontier** as a new attempt (only the unfinished
-  branch re-runs, with its context). Over the wire the server reads the stored `progress`,
+  branch re-runs; each task carries its own input signal, so nothing extra is restored). Over the
+  wire the server reads the stored `progress`,
   mints attempt *n+1*, and forwards a resume command to the owning app, which hydrates and runs
   `cns.activate(...)`. Rejected if the run has no frontier (nothing to resume).
 - **Clone** — a fresh run from the original **entry** (a clean re-do), new id, attempt 1.

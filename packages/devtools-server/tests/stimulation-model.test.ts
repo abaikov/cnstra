@@ -1,6 +1,6 @@
 // Full chain: producer (@cnstra/devtools, trackStimulations) → wire batch →
 // CNSDevToolsServer.handleMessage → injected CNSInMemoryStimulationRepository.
-import { CNS, collateral, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuronFactory } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSInMemoryStimulationRepository,
@@ -13,13 +13,13 @@ import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-rep
 function buildCNS() {
     const entryCol = collateral<{ n: number }>();
     const midCol = collateral<{ n: number }>();
-    const neuronOne = withCtx()
+    const neuronOne = neuronFactory()
         .neuron({ midCol })
         .bind(
             { entryCol },
             { entryCol: ({ n }, axon) => axon.midCol.createSignal({ n: n + 1 }) }
         );
-    const neuronTwo = withCtx()
+    const neuronTwo = neuronFactory()
         .neuron({})
         .bind(
             { midCol },

@@ -5,12 +5,16 @@ import type {
     TCNSStimulationFacetsDTO,
     TCNSStimulationAttempt,
     TCNSStimulationTask,
+    TCNSNeuronDTO,
+    TCNSCollateralDTO,
+    TCNSDendriteDTO,
 } from '@cnstra/devtools-dto';
 import { toServerFilter, type TCNSExplorerQuery } from './queryState';
 
-// Talks the explorer BUCKET protocol (list / facets / detail) to the devtools-server
-// over the shared socket. Each call is one request/reply; responses are flat buckets
-// the caller upserts into OIMDB — no tree assembly here.
+// Talks the explorer BUCKET protocol (list / facets / detail / snapshot) plus the
+// lightweight topology feed (topology.query) to the devtools-server over the shared
+// socket. Each call is one request/reply; responses are flat buckets the caller
+// keeps in bindables — no tree assembly here.
 
 const genId = (): string =>
     `ex-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -23,6 +27,18 @@ export interface TCNSExplorerListResult {
 export interface TCNSExplorerDetail {
     attempts: TCNSStimulationAttempt[];
     tasks: TCNSStimulationTask[];
+}
+/** The bounded newest-first run set as flat buckets — feeds the Tasks list + aggregates. */
+export interface TCNSExplorerSnapshot {
+    stimulations: TCNSStimulationRowDTO[];
+    attempts: TCNSStimulationAttempt[];
+    tasks: TCNSStimulationTask[];
+}
+/** Lightweight topology (neurons/collaterals/dendrites), flattened over all cns scopes. */
+export interface TCNSExplorerTopology {
+    neurons: TCNSNeuronDTO[];
+    collaterals: TCNSCollateralDTO[];
+    dendrites: TCNSDendriteDTO[];
 }
 
 export class CNSExplorerWsClient {
@@ -94,6 +110,53 @@ export class CNSExplorerWsClient {
                     resolve(m.newStimulationId as string);
                 else if (m.type === 'stimulation.clone.rejected')
                     reject(new Error(m.reason ?? 'clone rejected'));
+            }
+        );
+    }
+
+    /** Lightweight topology feed (neurons/collaterals/dendrites), flattened. */
+    topology(scopeName?: string): Promise<TCNSExplorerTopology> {
+        return socketRequest<TCNSExplorerTopology>(
+            this.socket,
+            {
+                type: 'topology.query',
+                requestId: genId(),
+                ...(scopeName ? { cnsId: scopeName } : {}),
+            },
+            (m, resolve) => {
+                if (m.type === 'topology.result') {
+                    const neurons: TCNSNeuronDTO[] = [];
+                    const collaterals: TCNSCollateralDTO[] = [];
+                    const dendrites: TCNSDendriteDTO[] = [];
+                    for (const s of m.snapshots ?? []) {
+                        neurons.push(...(s.neurons ?? []));
+                        collaterals.push(...(s.collaterals ?? []));
+                        dendrites.push(...(s.dendrites ?? []));
+                    }
+                    resolve({ neurons, collaterals, dendrites });
+                }
+            }
+        );
+    }
+
+    /** The bounded newest-first run set as flat buckets (Tasks list + aggregates). */
+    snapshot(q: TCNSExplorerQuery, limit = 200): Promise<TCNSExplorerSnapshot> {
+        return socketRequest<TCNSExplorerSnapshot>(
+            this.socket,
+            {
+                type: 'cns.stimulations.snapshot',
+                requestId: genId(),
+                scopeName: q.scopeName,
+                filter: toServerFilter(q),
+                limit,
+            },
+            (m, resolve) => {
+                if (m.type === 'cns.stimulations.snapshot.result')
+                    resolve({
+                        stimulations: m.stimulations,
+                        attempts: m.attempts,
+                        tasks: m.tasks,
+                    });
             }
         );
     }

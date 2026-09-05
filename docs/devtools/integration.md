@@ -125,7 +125,6 @@ Once connected:
 - **Stimulations** — list of all stimulations with full hop traces
 - **Signal Debugger** — inject signals manually to test flows
 - **Performance** — response times, queue lengths, error rates
-- **Context Inspector** — per-stimulation context at each hop
 - **Snapshot & Replay** — record a session and replay it deterministically
 
 ## Production

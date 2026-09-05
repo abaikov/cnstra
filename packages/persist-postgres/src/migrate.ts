@@ -2,10 +2,9 @@
  * Schema / migrations for the CNStra stimulation/attempt/task relational store.
  *
  * The package OWNS this schema — run it explicitly via `cnstra-persist-postgres migrate`
- * or `ensureSchema(db)`, or let the repository auto-create it on first use. Five tables
+ * or `ensureSchema(db)`, or let the repository auto-create it on first use. Tables
  * under a configurable prefix (default `cns_`); the stimulation's `progress` is
- * NORMALISED into `stimulation_frontier` (one row per outstanding task) +
- * `stimulation_context` (one row per neuron).
+ * NORMALISED into `stimulation_frontier` (one row per outstanding task).
  */
 
 /** Minimal pg client surface (a `pg` Pool or Client satisfies it). */
@@ -47,13 +46,6 @@ CREATE TABLE IF NOT EXISTS ${p}stimulation_frontier (
     dendrite_collateral_name text NOT NULL,
     input jsonb,
     PRIMARY KEY (stimulation_id, ord)
-);
-
-CREATE TABLE IF NOT EXISTS ${p}stimulation_context (
-    stimulation_id text NOT NULL REFERENCES ${p}stimulation(stimulation_id) ON DELETE CASCADE,
-    neuron_name text NOT NULL,
-    value jsonb NOT NULL,
-    PRIMARY KEY (stimulation_id, neuron_name)
 );
 
 -- NOTE: no FK on stimulation_id — over the devtools wire the persistor's

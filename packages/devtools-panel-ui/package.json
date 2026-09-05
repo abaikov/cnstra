@@ -19,6 +19,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "e2e": "playwright test",
+    "e2e:bigdata": "playwright test --config playwright.bigdata.config.ts",
     "e2e:headed": "playwright test --headed --project=chromium",
     "e2e:ui": "playwright test --ui",
     "test:e2e": "playwright test"

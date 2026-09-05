@@ -3,72 +3,11 @@ id: best-practices
 title: Best Practices
 sidebar_label: Best Practices
 slug: /advanced/best-practices
-description: Best practices for building robust CNStra applications. Domain neuron ownership, collateral naming, intent collaterals, neuron focus, context store, idempotency.
-keywords: [best practices, context store, idempotency, collaterals, non-serializable data, domain neuron, neuron ownership, event naming, intent collateral, afferent path, mapper layer, auxiliary neuron, design patterns]
+description: Best practices for building robust CNStra applications. Domain neuron ownership, collateral naming, intent collaterals, neuron focus, idempotency.
+keywords: [best practices, idempotency, collaterals, domain neuron, neuron ownership, event naming, intent collateral, afferent path, mapper layer, auxiliary neuron, design patterns]
 ---
 
 This guide covers best practices for building robust, maintainable CNStra applications.
-
-## Context Store Usage
-
-### Store Only Per-Neuron Per-Stimulation Metadata
-
-**Don't store business data in context store.** Context is designed for per-neuron per-stimulation metadata (retry attempts, debounce state, processing stats), not for passing business data between neurons.
-
-**Why?** Signals can arrive unexpectedly and out of order. If you store business data in context, you risk:
-- Data inconsistency when signals arrive in unexpected order
-- Race conditions when multiple signals process the same context
-- Memory leaks if context grows large with business data
-- Difficult debugging when context contains mixed metadata and business data
-
-**✅ Good**: Store only metadata in context
-
-```ts
-const processor = withCtx<{ attempt: number; startTime: number }>()
-  .neuron({ output })
-  .dendrite({
-    collateral: input,
-    response: async (payload, axon, ctx) => {
-      // Context stores per-neuron per-stimulation metadata
-      const attempt = (ctx.get()?.attempt || 0) + 1;
-      ctx.set({ attempt, startTime: ctx.get()?.startTime || Date.now() });
-      
-      // Business data flows through payloads
-      return axon.output.createSignal({ 
-        userId: payload.userId,
-        result: `Processed (attempt ${attempt})` 
-      });
-    }
-  });
-```
-
-**❌ Bad**: Storing business data in context
-
-```ts
-const processor = withCtx<{ users: User[]; orders: Order[] }>()
-  .neuron({ output })
-  .dendrite({
-    collateral: input,
-    response: async (payload, axon, ctx) => {
-      // ❌ Don't store business data in context
-      const users = ctx.get()?.users || [];
-      users.push(payload.user);
-      ctx.set({ users, orders: ctx.get()?.orders || [] });
-      
-      return axon.output.createSignal({ done: true });
-    }
-  });
-```
-
-**Use context for:**
-- Retry attempt counters
-- Debounce timers and state
-- Processing statistics (counters, timestamps)
-- Temporary flags and state
-
-**Pass business data through:**
-- Signal payloads (recommended)
-- External storage (database, cache) if persistence is needed
 
 ## One Collateral Per Response Type
 
@@ -181,115 +120,6 @@ const processPayment = neuron({ paymentProcessed })
 - **Database constraints**: Use unique constraints to prevent duplicates
 - **Status checks**: Check current state before modifying
 - **Compare-and-swap**: Use atomic operations when updating state
-
-## Non-Serializable Payloads in Separate Stimulations
-
-**When working with message brokers (BullMQ, SQS, etc.), signals must be serializable (JSON).** For non-serializable data (blobs, file handles, database connections), use separate stimulations with shared context store.
-
-**Key insight**: You can pass the entire context store (not just values) to a new stimulation. The new stimulation will update the same context store, making it behave as if it's part of the original stimulation. This is especially useful for retries with persistence.
-
-**✅ Good**: Separate stimulation with shared context store
-
-```ts
-import { Queue, Worker, Job } from 'bullmq';
-import { CNS, neuron, withCtx, collateral } from '@cnstra/core';
-
-// Serializable data for the queue
-const processRequest = collateral<{ userId: string; blobId: string }>();
-const processResult = collateral<{ userId: string; success: boolean }>();
-
-// Non-serializable data (only within the process)
-const blobData = collateral<{ userId: string; blob: Blob }>();
-const blobProcessed = collateral<{ userId: string; success: boolean }>();
-
-// Transaction neuron: creates inner stimulation with blob
-const ctxBuilder = withCtx<{ innerStimulation?: Promise<void> }>();
-
-const transactionNeuron = ctxBuilder.neuron({ processResult }).dendrite({
-  collateral: processRequest,
-  response: async (payload, axon, ctx) => {
-    // Get blob from storage (non-serializable)
-    const blob = await blobStorage.get(payload.blobId);
-    
-    // Create inner stimulation with blob
-    // Pass the entire context store (not just values)
-    // This allows the inner stimulation to update the same context store
-    const innerStimulation = ctx.cns.stimulate(
-      blobData.createSignal({ userId: payload.userId, blob }),
-      {
-        // Pass the entire context store - inner stimulation updates the same store
-        ctx: ctx, // This is the context store instance, not ctx.get()
-      }
-    );
-    
-    // Store stimulation promise in context
-    ctx.set({ innerStimulation: innerStimulation.waitUntilComplete() });
-    
-    // Wait for inner stimulation to complete
-    await innerStimulation.waitUntilComplete();
-    
-    // Return serializable result
-    return axon.processResult.createSignal({ 
-      userId: payload.userId, 
-      success: true 
-    });
-  },
-});
-
-// Neuron for processing blob (runs only within the process)
-const blobProcessor = neuron({ blobProcessed }).dendrite({
-  collateral: blobData,
-  response: async (payload, axon, ctx) => {
-    // Process blob (non-serializable object)
-    await processBlob(payload.blob);
-    
-    // Update shared context store (same instance as parent stimulation)
-    const metadata = ctx.get() || { processedCount: 0 };
-    ctx.set({ processedCount: metadata.processedCount + 1 });
-    
-    return axon.blobProcessed.createSignal({ 
-      userId: payload.userId, 
-      success: true 
-    });
-  },
-});
-
-const cns = new CNS([transactionNeuron, blobProcessor]);
-
-// BullMQ worker
-const worker = new Worker('jobs', async (job: Job<{ signal: any }>) => {
-  const { signal } = job.data;
-  
-  // Stimulation runs in this process
-  // If an error occurs, blob won't be in results
-  const stimulation = cns.stimulate(signal);
-  await stimulation.waitUntilComplete();
-  
-  // Return only serializable results
-  return { success: true };
-});
-
-// Enqueue job (only serializable data)
-await queue.add('process', {
-  signal: processRequest.createSignal({ 
-    userId: '42', 
-    blobId: 'blob-123' // only ID, not the blob itself
-  })
-});
-```
-
-**Key points:**
-- **Pass entire context store**: Use `ctx: ctx` (the store instance)
-- **Shared context**: Inner stimulation updates the same context store as parent
-- **Behaves as one stimulation**: For retries with persistence, both stimulations share the same context
-- **Non-serializable data stays in process**: Blobs and handles never leave the process memory
-- **Only serializable data in queue**: Queue only contains IDs and metadata
-
-**When to use:**
-- Working with message brokers that require JSON serialization
-- Processing large files or blobs
-- Using database connections or other non-serializable resources
-- Need to maintain context state across inner stimulations for retries
 
 ## Unique Signals for User Interactions
 
@@ -526,14 +356,13 @@ This separation keeps domain neurons readable, testable, and focused — and mak
 
 ## Summary
 
-1. **Context store**: Store only per-neuron per-stimulation metadata, not business data
+1. **Data flow**: All per-run data (including retry counters) flows through signal payloads; use `ctx.global` for app-wide dependencies
 2. **Collaterals**: Create separate collaterals for each response type
 3. **Idempotency**: Ensure neurons are idempotent when using retries
-4. **Non-serializable data**: Use separate stimulations with shared context store for non-serializable payloads
-5. **User interactions**: Each user interaction should be a unique signal with unique responses for better traceability and system visibility
-6. **Domain ownership**: Each domain model has one owning neuron — all mutations live there, nowhere else
-7. **Event naming**: Collaterals describe past events, not commands; keep afferent paths separate instead of merging them into intent collaterals
-8. **Neuron focus**: Keep dendrite responses focused on mutations; extract mappings to utility functions and I/O to auxiliary neurons
+4. **User interactions**: Each user interaction should be a unique signal with unique responses for better traceability and system visibility
+5. **Domain ownership**: Each domain model has one owning neuron — all mutations live there, nowhere else
+6. **Event naming**: Collaterals describe past events, not commands; keep afferent paths separate instead of merging them into intent collaterals
+7. **Neuron focus**: Keep dendrite responses focused on mutations; extract mappings to utility functions and I/O to auxiliary neurons
 
 Following these practices will help you build robust, maintainable CNStra applications that handle edge cases gracefully.
 

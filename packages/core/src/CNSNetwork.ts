@@ -4,15 +4,16 @@ import { TCNSSubscriber } from '@cnstra/types';
 import { TCNSDendrite } from '@cnstra/types';
 
 export class CNSNetwork<
-    TNeuron extends TCNSNeuron<any, any>,
+    TNeuron extends TCNSNeuron<any>,
     TDendrite extends TCNSDendrite<any, any, any>
 > {
     /**
      * Strongly Connected Components of the neuron graph.
      * Each component is a set of neuron objects that can reach each other.
      *
-     * Computed lazily on first access: the SCC machinery is only needed for
-     * `autoCleanupContexts` (off by default), so most networks never pay for it.
+     * Computed lazily on first access: the SCC machinery only drives graph
+     * introspection (`getSCCSetByNeuron`, `canNeuronBeGuaranteedDone`), so a
+     * network that never inspects reachability never pays for it.
      */
     private _stronglyConnectedComponents: Set<TNeuron>[] = [];
     private sccBuilt = false;

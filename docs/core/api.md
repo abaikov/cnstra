@@ -59,9 +59,9 @@ Add a dendrite bound to a collateral.
 myNeuron.dendrite({
   collateral: inputCollateral,
   response: async (payload, axon, ctx) => {
-    // ctx: per-neuron per-stimulation context (metadata storage)
+    // ctx: { abortSignal, cns, stimulation, stimulationContext, global }
     if (ctx.abortSignal?.aborted) return;
-    // Business data flows through payloads, not context
+    // Business/run data flows through payloads (and ctx.global for app-wide deps)
     return axon.output.createSignal(result);
   }
 });
@@ -71,15 +71,10 @@ myNeuron.dendrite({
 Exhaustive bind to every collateral of another neuron's axon (compile-time safety).
 
 ```ts
-// Context is for per-neuron per-stimulation metadata, not business data
-withCtx<{ attempt: number }>().neuron({})
+// Data flows through signal payloads; app-wide dependencies via ctx.global.
+neuron({})
   .bind(order, {
-    created: (payload, axon, ctx) => { 
-      // Context stores per-neuron per-stimulation metadata
-      const attempt = (ctx.get()?.attempt || 0) + 1;
-      ctx.set({ attempt });
-      // Business data flows through payloads
-    },
+    created: (payload, axon) => { /* ... */ },
     updated: (payload) => { /* ... */ },
     cancelled: (payload) => { /* ... */ },
   });
@@ -108,12 +103,7 @@ const worker = neuron({ out })
 ### `CNS`
 Main orchestrator. `new CNS(neurons, options?)`
 
-**Constructor options:**
-```ts
-const cns = new CNS(neurons, {
-  autoCleanupContexts: false // Auto-cleanup unused contexts (builds SCC analysis lazily on first use; adds per-hop runtime cost — see performance docs)
-});
-```
+**Constructor options:** see `TCNSOptions`.
 
 **Properties:**
 - `cns.network` — Access to network graph analysis (SCC, subscribers, etc.)
@@ -151,7 +141,6 @@ const stimulation = cns.stimulate(signal, {
   abortSignal,                 // Abort the whole run cooperatively
   concurrency: 4,              // Per-stimulation parallelism
   maxNeuronHops:  undefined,   // Disabled by default; set to cap traversal length
-  ctx,                         // Optional: reuse an existing context store (in‑process)
   modality,                    // Optional: modality selection for modalityDendrite
   afferentPath,                // Optional: afferent path selection for modalityDendrite
 });
@@ -165,7 +154,6 @@ Both `onResponse` and global listeners receive the same object:
 {
   inputSignal?: TCNSSignal;    // when a signal is ingested
   outputSignal?: TCNSSignal;   // when a dendrite returns a continuation
-  contextValue: Map<object, unknown>; // per-neuron per-stimulation metadata (not business data)
   queueLength: number;         // all activations still owned = pending + active
   pendingActivations: number;  // body not invoked yet
   activeActivations: number;   // body invoked, awaiting an unsettled promise
@@ -301,13 +289,11 @@ Wait for the stimulation to complete. Returns a Promise that resolves when all t
 await stimulation.waitUntilComplete();
 ```
 
-#### `stimulation.getContext()`
-Get the context store for this stimulation. Useful for saving/restoring stimulation state.
+#### `stimulation.getOutstandingTasks()`
+Get the current outstanding frontier — not-yet-completed tasks (queued, active, pending) plus failed/aborted ones. This is the set to persist for resume: re-activating it via `cns.activate(tasks)` re-runs exactly the not-yet-done work. Each task carries its own input signal (with payload), so no extra state is needed.
 
 ```ts
-const ctx = stimulation.getContext();
-// Save for retry
-const savedCtx = ctx;
+const frontier = stimulation.getOutstandingTasks();
 ```
 
 #### `stimulation.getFailedTasks()`

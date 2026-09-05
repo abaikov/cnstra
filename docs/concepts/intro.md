@@ -20,11 +20,10 @@ Analogy: biology ↔ application
 - Collateral (channel) ↔ typed output channel that mints signals
 - Signal (impulse) ↔ typed payload traveling the graph
 - Stimulation (nerve firing) ↔ `cns.stimulate(signal, options)` run
-- Context (local chemistry) ↔ per‑run context store passed to dendrites
 - Queues (conduction control) ↔ ordered/batched/parallel execution with backpressure
 
 Key properties
-- Deterministic routing: signal routing over the registered graph is reproducible for a given input + context (execution is reproducible when your dendrite handlers are deterministic); hop‑bounded; no hidden listeners
+- Deterministic routing: signal routing over the registered graph is reproducible for a given input (execution is reproducible when your dendrite handlers are deterministic); hop‑bounded; no hidden listeners
 - SRP by construction: actors are visible; responsibilities are local and explicit
 - Ownership: a neuron emits only its axon’s collaterals; others bind via dendrites
 

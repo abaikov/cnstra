@@ -1,4 +1,3 @@
-import { ICNSStimulationContextStore } from '../interfaces/ICNSStimulationContextStore';
 import { TCNSModality } from './TCNSModality';
 import { TCNSAfferentPath } from './TCNSAfferentPath';
 import { TCNSStimulationDrain } from './TCNSStimulationDrain';
@@ -27,7 +26,6 @@ export type TCNSStimulationOptions<
      */
     onDrain?: (drain: TCNSStimulationDrain) => void;
     abortSignal?: AbortSignal;
-    ctx?: ICNSStimulationContextStore;
     concurrency?: number;
     modality?: TCNSModality;
     afferentPath?: TCNSAfferentPath;

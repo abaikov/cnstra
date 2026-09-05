@@ -76,14 +76,13 @@ import { CNSPersistOptionsRegistry } from '@cnstra/core';
 export const registry = new CNSPersistOptionsRegistry();
 
 // src/neurons/deck.ts — each neuron registers itself
-import { collateral, withCtx } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { registry } from './registry';
 
 const deckCreated = collateral<{ deckId: string }>();
 const importStarted = collateral<{ importId: string }>(); // external entry point
 
-const deckNeuron = withCtx()
-    .neuron({ deckCreated })
+const deckNeuron = neuron({ deckCreated })
     .bind({ importStarted }, {
         importStarted: ({ importId }, axon) => axon.deckCreated.createSignal({ deckId: importId }),
     });
@@ -122,7 +121,7 @@ const { cns, registry } = createCNS({ deckNeuron, cardNeuron });
 - **[API Reference](https://cnstra.org/docs/core/api)** — Complete API documentation
 - **[Concepts](https://cnstra.org/docs/core/concepts)** — Neurons, collaterals, signals, and the CNS model (Central Neural Network of your app)
 - **[Recipes](https://cnstra.org/docs/recipes)** — Common patterns and use cases
-- **[Advanced Topics](https://cnstra.org/docs/advanced)** — Performance, context stores, integrations
+- **[Advanced Topics](https://cnstra.org/docs/advanced)** — Performance, integrations
 
 ---
 

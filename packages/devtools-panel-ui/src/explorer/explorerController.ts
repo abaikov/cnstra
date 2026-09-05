@@ -3,6 +3,8 @@ import type { TExoWritableBindable } from '@exodra/reactivity';
 import type {
     CNSExplorerWsClient,
     TCNSExplorerDetail,
+    TCNSExplorerSnapshot,
+    TCNSExplorerTopology,
 } from './explorerClient';
 import {
     DEFAULT_QUERY,
@@ -15,6 +17,16 @@ import type {
     TCNSStimulationRowDTO,
     TCNSStimulationFacetsDTO,
 } from '@cnstra/devtools-dto';
+
+/** An entity the DETAILS panel can show — one crumb in the navigation stack. */
+export type TCNSNavKind = 'stimulation' | 'neuron' | 'collateral' | 'task';
+export interface TCNSNavEntry {
+    kind: TCNSNavKind;
+    /** The entity id/name (stimulationId, neuronName, collateralName, task key). */
+    id: string;
+    /** Human label for the breadcrumb crumb. */
+    label: string;
+}
 
 // The explorer's data-layer: owns the query-state (⇄ URL) and everything projected
 // from it (roster rows, facet counts, selected-run detail). The UI (slice 3) only
@@ -35,15 +47,36 @@ export interface TCNSExplorerController {
     rows: TExoWritableBindable<TCNSStimulationRowDTO[], TCNSStimulationRowDTO[]>;
     facets: TExoWritableBindable<TCNSStimulationFacetsDTO, TCNSStimulationFacetsDTO>;
     detail: TExoWritableBindable<TCNSExplorerDetail | null, TCNSExplorerDetail | null>;
+    /** Lightweight topology (neurons/collaterals/dendrites) — feeds Neurons/Collaterals. */
+    topology: TExoWritableBindable<TCNSExplorerTopology, TCNSExplorerTopology>;
+    /** Bounded newest-first run set as flat buckets — feeds Tasks + client aggregates. */
+    snapshot: TExoWritableBindable<TCNSExplorerSnapshot, TCNSExplorerSnapshot>;
+    /** A NEURON-scoped snapshot: the selected neuron's full RECENT activation history
+     *  (a server snapshot filtered by neuronName, larger than the global one). Null
+     *  when no neuron is open — the detail then falls back to the global snapshot. */
+    neuronScope: TExoWritableBindable<
+        TCNSExplorerSnapshot | null,
+        TCNSExplorerSnapshot | null
+    >;
     loading: TExoWritableBindable<boolean, boolean>;
     total: TExoWritableBindable<number, number>;
     hasMore: TExoWritableBindable<boolean, boolean>;
-    /** Patch the query (updates URL, refetches list+facets, resets the page). */
+    /** Patch the query (updates URL, refetches list+facets+snapshot, resets the page). */
     setQuery: (patch: Partial<TCNSExplorerQuery>) => void;
     /** Append the next page (infinite scroll). */
     loadMore: () => Promise<void>;
-    /** Select a run → fetch its attempts/tasks and switch to the waterfall. */
+    /** Select a run → fetch its attempts/tasks (fills the details split-panel). */
     selectRun: (stimulationId: string) => Promise<void>;
+    /** Breadcrumb navigation stack of visited detail entities (top = shown). */
+    navStack: TExoWritableBindable<TCNSNavEntry[], TCNSNavEntry[]>;
+    /** Open an entity in the details panel. `fresh` resets the stack (list click); else push. */
+    openEntity: (entry: TCNSNavEntry, fresh?: boolean) => void;
+    /** Go back one crumb (or clear the details panel when at the root). */
+    navBack: () => void;
+    /** Jump to a crumb by index (truncates the stack). */
+    navTo: (index: number) => void;
+    /** Clear the details panel + nav stack (e.g. on a tab switch). */
+    clearNav: () => void;
     /** Resume a run's frontier (retry) — then refresh the roster + detail. */
     retryRun: (stimulationId: string) => Promise<void>;
     /** Clone a run from its entry — then refresh the roster. */
@@ -72,6 +105,17 @@ export function createExplorerController(
         byTime: [],
     });
     const detail = bindable<TCNSExplorerDetail | null>(null);
+    const topology = bindable<TCNSExplorerTopology>({
+        neurons: [],
+        collaterals: [],
+        dendrites: [],
+    });
+    const snapshot = bindable<TCNSExplorerSnapshot>({
+        stimulations: [],
+        attempts: [],
+        tasks: [],
+    });
+    const neuronScope = bindable<TCNSExplorerSnapshot | null>(null);
     const loading = bindable(false);
     const total = bindable(0);
     const nextCursor = bindable<string | null>(null);
@@ -105,11 +149,43 @@ export function createExplorerController(
         }
     };
 
+    // Lightweight topology feed (once per scope) — powers the Neurons/Collaterals
+    // lists + the node-link detail diagrams. Guarded so mock clients (unit tests)
+    // that don't implement it are a no-op.
+    const loadTopology = async (): Promise<void> => {
+        if (typeof client.topology !== 'function') return;
+        try {
+            topology.setValue(await client.topology(query.getValue().scopeName));
+        } catch {
+            /* topology is best-effort; the lists degrade gracefully */
+        }
+    };
+    // Bounded run snapshot (flat buckets) — the Tasks list + per-neuron/collateral
+    // error & fire aggregates derive from these tasks. Refreshed with the roster.
+    const loadSnapshot = async (): Promise<void> => {
+        if (typeof client.snapshot !== 'function') return;
+        const mine = epoch;
+        try {
+            const snap = await client.snapshot(query.getValue());
+            if (mine === epoch) snapshot.setValue(snap);
+        } catch {
+            /* snapshot is best-effort */
+        }
+    };
+
+    // While TRUE (during a URL→state sync) we must NOT write back to the URL, or a
+    // back/forward navigation would push a fresh history entry and corrupt history.
+    let suppressUrlWrite = false;
+    const writeUrl = (q: TCNSExplorerQuery): void => {
+        if (!suppressUrlWrite) opts.writeSearch?.(encodeQuery(q));
+    };
+
     const setQuery = (patch: Partial<TCNSExplorerQuery>): void => {
         const q = withPatch(query.getValue(), patch);
         query.setValue(q);
-        opts.writeSearch?.(encodeQuery(q));
+        writeUrl(q);
         void refetchList();
+        void loadSnapshot();
     };
 
     const loadMore = async (): Promise<void> => {
@@ -124,11 +200,113 @@ export function createExplorerController(
         hasMore.setValue(Boolean(list.nextCursor));
     };
 
-    const selectRun = async (stimulationId: string): Promise<void> => {
-        setQuery({ selected: stimulationId, view: 'waterfall' });
+    // ── DETAILS selection + breadcrumb navigation ─────────────────────────────
+    // Selection does NOT change the filtered set, so it must NOT refetch the list /
+    // facets (that would be wasteful at scale and could yank the roster) — it only
+    // patches the query (for the URL) and, for a stimulation, fetches its detail.
+    const navStack = bindable<TCNSNavEntry[]>([]);
+    const CLEAR_SEL = {
+        selected: undefined,
+        selectedNeuron: undefined,
+        selectedCollateral: undefined,
+        selectedTask: undefined,
+    };
+    const setSelection = (patch: Partial<TCNSExplorerQuery>): void => {
+        const q = withPatch(query.getValue(), patch);
+        query.setValue(q);
+        writeUrl(q);
+    };
+    // Serialize the current trail so every selection patch also persists the
+    // breadcrumb to the URL (top = last). Read at apply-time from navStack, which
+    // openEntity/navBack/navTo set BEFORE calling applySelection.
+    const curTrail = (): string[] =>
+        navStack.getValue().map(e => `${e.kind}:${e.id}`);
+    const applySelection = (entry: TCNSNavEntry): void => {
+        const navTrail = curTrail();
+        // A neuron scope is only meaningful while a neuron is open.
+        if (entry.kind !== 'neuron') neuronScope.setValue(null);
+        switch (entry.kind) {
+            case 'stimulation':
+                setSelection({ ...CLEAR_SEL, selected: entry.id, navTrail });
+                detail.setValue(null);
+                void client.detail(entry.id).then(d => {
+                    if (query.getValue().selected === entry.id) detail.setValue(d);
+                });
+                break;
+            case 'neuron': {
+                setSelection({ ...CLEAR_SEL, selectedNeuron: entry.id, navTrail });
+                // Full recent activation history: a snapshot filtered by THIS neuron
+                // (far more than the neuron's slice of the bounded global snapshot).
+                neuronScope.setValue(null);
+                if (typeof client.snapshot === 'function') {
+                    const q = query.getValue();
+                    void client
+                        .snapshot(
+                            {
+                                tab: 'stimulations',
+                                neuronName: entry.id,
+                                scopeName: q.scopeName,
+                                since: q.since,
+                                until: q.until,
+                            },
+                            500
+                        )
+                        .then(s => {
+                            if (query.getValue().selectedNeuron === entry.id)
+                                neuronScope.setValue(s);
+                        })
+                        .catch(() => {
+                            /* scope is best-effort; detail falls back to global */
+                        });
+                }
+                break;
+            }
+            case 'collateral':
+                setSelection({ ...CLEAR_SEL, selectedCollateral: entry.id, navTrail });
+                break;
+            case 'task':
+                setSelection({ ...CLEAR_SEL, selectedTask: entry.id, navTrail });
+                break;
+        }
+    };
+    const openEntity = (entry: TCNSNavEntry, fresh = false): void => {
+        const cur = navStack.getValue();
+        // A fresh open (list-row click) resets the trail; a cross-link pushes.
+        const stack = fresh ? [entry] : [...cur, entry];
+        navStack.setValue(stack);
+        applySelection(entry);
+    };
+    const navBack = (): void => {
+        const s = navStack.getValue();
+        if (s.length <= 1) {
+            navStack.setValue([]);
+            setSelection({ ...CLEAR_SEL, navTrail: undefined });
+            detail.setValue(null);
+            neuronScope.setValue(null);
+            return;
+        }
+        const ns = s.slice(0, -1);
+        navStack.setValue(ns);
+        applySelection(ns[ns.length - 1]);
+    };
+    const navTo = (index: number): void => {
+        const s = navStack.getValue();
+        if (index < 0 || index >= s.length) return;
+        const ns = s.slice(0, index + 1);
+        navStack.setValue(ns);
+        applySelection(ns[ns.length - 1]);
+    };
+    const clearNav = (): void => {
+        navStack.setValue([]);
+        setSelection({ ...CLEAR_SEL, navTrail: undefined });
         detail.setValue(null);
-        const d = await client.detail(stimulationId);
-        if (query.getValue().selected === stimulationId) detail.setValue(d);
+        neuronScope.setValue(null);
+    };
+    const selectRun = async (stimulationId: string): Promise<void> => {
+        openEntity(
+            { kind: 'stimulation', id: stimulationId, label: stimulationId },
+            true
+        );
     };
 
     const actionError = bindable<string | null>(null);
@@ -176,6 +354,10 @@ export function createExplorerController(
         const q = query.getValue();
         const fac = await client.facets(q);
         facets.setValue(fac);
+        void loadSnapshot(); // keep the Tasks list + aggregates fresh
+        // Topology arrives once the app connects (which may be after our first load) —
+        // keep polling until it populates, then stop.
+        if (!topology.getValue().neurons.length) void loadTopology();
         if (expanded) return; // don't disturb a scrolled list
         const list = await client.list(q, undefined, limit);
         rows.setValue(list.stimulations);
@@ -184,16 +366,79 @@ export function createExplorerController(
         total.setValue(list.total ?? list.stimulations.length);
     };
 
+    // Rebuild the DETAILS panel (selection + breadcrumb) from a query — used on the
+    // initial load AND whenever the URL changes underneath us (back/forward).
+    const hydrateNavFromQuery = (q0: TCNSExplorerQuery): void => {
+        const KINDS = ['stimulation', 'neuron', 'collateral', 'task'];
+        if (q0.navTrail?.length) {
+            const stack: TCNSNavEntry[] = q0.navTrail
+                .map(c => {
+                    const i = c.indexOf(':');
+                    const kind = c.slice(0, i) as TCNSNavEntry['kind'];
+                    const id = c.slice(i + 1);
+                    return { kind, id, label: id };
+                })
+                .filter(e => KINDS.includes(e.kind) && e.id);
+            if (stack.length) {
+                navStack.setValue(stack);
+                const top = stack[stack.length - 1];
+                // A task/neuron drilled from a run resolves against that run's
+                // detail — preload it so the restored deep-link renders.
+                const stimCrumb = stack.find(e => e.kind === 'stimulation');
+                if (stimCrumb && top.kind !== 'stimulation') {
+                    void client.detail(stimCrumb.id).then(d => {
+                        const q = query.getValue();
+                        if (q.selectedTask || q.selectedNeuron || q.selectedCollateral)
+                            detail.setValue(d);
+                    });
+                }
+                applySelection(top);
+                return;
+            }
+        }
+        if (q0.selected) {
+            void selectRun(q0.selected); // bare deep-linked run
+        } else {
+            // The URL carries no selection → clear the panel.
+            navStack.setValue([]);
+            detail.setValue(null);
+        }
+    };
+
+    // URL → state reactivity: when the address changes underneath us (browser
+    // back/forward, or a hand-edited hash), re-decode and apply. The equality guard
+    // breaks the write→hashchange→read loop our own navigations would otherwise cause.
+    const syncFromUrl = (): void => {
+        if (!opts.readSearch) return;
+        const incoming = decodeQuery(opts.readSearch());
+        if (encodeQuery(incoming) === encodeQuery(query.getValue())) return;
+        suppressUrlWrite = true;
+        try {
+            query.setValue(incoming);
+            void refetchList();
+            void loadSnapshot();
+            hydrateNavFromQuery(incoming);
+        } finally {
+            suppressUrlWrite = false;
+        }
+    };
+
     const start = (): void => {
         void refetchList();
-        const sel = query.getValue().selected;
-        if (sel) void selectRun(sel); // restore a deep-linked waterfall
+        void loadTopology();
+        void loadSnapshot();
+        // Restore the DETAILS panel from the URL (trail → deep-link → nothing).
+        hydrateNavFromQuery(query.getValue());
+        if (typeof window !== 'undefined')
+            window.addEventListener('hashchange', syncFromUrl);
         const ms = opts.liveMs ?? 2000;
         if (ms > 0) timer = setInterval(() => void liveTick(), ms);
     };
     const stop = (): void => {
         if (timer) clearInterval(timer);
         timer = null;
+        if (typeof window !== 'undefined')
+            window.removeEventListener('hashchange', syncFromUrl);
     };
 
     return {
@@ -201,12 +446,20 @@ export function createExplorerController(
         rows,
         facets,
         detail,
+        topology,
+        snapshot,
+        neuronScope,
         loading,
         total,
         hasMore,
         setQuery,
         loadMore,
         selectRun,
+        navStack,
+        openEntity,
+        navBack,
+        navTo,
+        clearNav,
         retryRun,
         cloneRun,
         actionError,

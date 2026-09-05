@@ -33,12 +33,8 @@ if (root) {
     const socket = createDevtoolsSocket();
     const selection = createAppSelection({ router, send: socket.send });
 
-    // The Explorer IS the whole tool — land directly on it (no landing page, no
-    // graph, no nav click). A bare reload (empty hash → pathname '/') always lands
-    // here too, so refresh keeps you in the Explorer.
-    if (router.getLocation().pathname === '/') {
-        void router.navigate('/explorer', { replace: true });
-    }
-
+    // The Explorer IS the whole tool and lives at the ROOT `/` — no landing page,
+    // no redirect. A bare reload (empty hash → pathname '/') lands right here, and
+    // a legacy `#/explorer?…` link still resolves via the alias route.
     mount(createShell({ router, socket, selection }), root);
 }

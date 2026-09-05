@@ -16,7 +16,7 @@ When a neuron's axon evolves (new collaterals are added), any neurons that react
 ## Basic Example
 
 ```ts
-import { withCtx, collateral, neuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 
 // Order domain model (axon)
 const order = {
@@ -26,8 +26,7 @@ const order = {
 };
 
 // Mailer neuron must react to ALL order events
-const orderMailer = withCtx()
-  .neuron({})
+const orderMailer = neuron({})
   .bind(order, {
     created: (payload) => {
       sendEmail(`Order created #${payload.id} for $${payload.amount}`);
@@ -59,8 +58,7 @@ TypeScript will immediately error on the `orderMailer` bind:
 
 ```ts
 // ❌ TypeScript Error: Property 'refunded' is missing in type '{ created: ...; updated: ...; cancelled: ...; }'
-const orderMailer = withCtx()
-  .neuron({})
+const orderMailer = neuron({})
   .bind(order, {
     created: (payload) => { /* ... */ },
     updated: (payload) => { /* ... */ },
@@ -73,8 +71,7 @@ You must add the handler:
 
 ```ts
 // ✅ Fixed: All collaterals handled
-const orderMailer = withCtx()
-  .neuron({})
+const orderMailer = neuron({})
   .bind(order, {
     created: (payload) => { /* ... */ },
     updated: (payload) => { /* ... */ },
@@ -225,7 +222,7 @@ const metricsCollector = neuron({})
 
 4. **Leverage type inference**: Don't manually annotate payload types; let TypeScript infer them from the axon.
 
-5. **Context for per-neuron per-stimulation metadata**: Use `withCtx()` if you need to store per-neuron per-stimulation metadata (retry attempts, debounce state) across multiple bind handlers. **Business data should flow through signal payloads**, not context.
+5. **Data flows through payloads**: All per-run data (including retry counters and correlation IDs) flows through signal payloads; reach app-wide dependencies via `ctx.global`.
 
 ![Eye Wired](/img/skull_wired.png)
 

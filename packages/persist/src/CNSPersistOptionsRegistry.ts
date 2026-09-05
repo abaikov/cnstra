@@ -10,33 +10,33 @@ import {
 import type { TCNSCollateralNameMap } from './types/TCNSCollateralNameMap';
 
 export class CNSPersistOptionsRegistry {
-    private neurons = new Map<string, TCNSNeuron<unknown, TCNSAxon>>();
-    private neuronNames = new WeakMap<TCNSNeuron<unknown, TCNSAxon>, string>();
+    private neurons = new Map<string, TCNSNeuron<TCNSAxon>>();
+    private neuronNames = new WeakMap<TCNSNeuron<TCNSAxon>, string>();
 
     private collaterals = new Map<string, ICNSCollateral<unknown>>();
 
     private stimulations = new Map<
         string,
-        ICNSStimulation<TCNSNeuron<unknown, TCNSAxon>>
+        ICNSStimulation<TCNSNeuron<TCNSAxon>>
     >();
 
     addNeuron(
-        neuron: TCNSNeuron<unknown, TCNSAxon>,
-        options: TCNSNeuronPersistOptions<TCNSNeuron<unknown, TCNSAxon>>
+        neuron: TCNSNeuron<TCNSAxon>,
+        options: TCNSNeuronPersistOptions<TCNSNeuron<TCNSAxon>>
     ): void {
         this.neurons.set(options.name, neuron);
         this.neuronNames.set(neuron, options.name);
     }
 
-    getNeuron(name: string): TCNSNeuron<unknown, TCNSAxon> | undefined {
+    getNeuron(name: string): TCNSNeuron<TCNSAxon> | undefined {
         return this.neurons.get(name);
     }
 
-    getNeuronName(neuron: TCNSNeuron<unknown, TCNSAxon>): string | undefined {
+    getNeuronName(neuron: TCNSNeuron<TCNSAxon>): string | undefined {
         return this.neuronNames.get(neuron);
     }
 
-    getNamedNeurons(): ReadonlyMap<string, TCNSNeuron<unknown, TCNSAxon>> {
+    getNamedNeurons(): ReadonlyMap<string, TCNSNeuron<TCNSAxon>> {
         return this.neurons;
     }
 
@@ -69,7 +69,7 @@ export class CNSPersistOptionsRegistry {
     }
 
     addStimulation(
-        stimulation: ICNSStimulation<TCNSNeuron<unknown, TCNSAxon>>,
+        stimulation: ICNSStimulation<TCNSNeuron<TCNSAxon>>,
         options: TCNSStimulationPersistOptions
     ): void {
         this.stimulations.set(options.stimulationId, stimulation);
@@ -77,7 +77,7 @@ export class CNSPersistOptionsRegistry {
 
     getStimulation(
         stimulationId: string
-    ): ICNSStimulation<TCNSNeuron<unknown, TCNSAxon>> | undefined {
+    ): ICNSStimulation<TCNSNeuron<TCNSAxon>> | undefined {
         return this.stimulations.get(stimulationId);
     }
 
@@ -87,10 +87,10 @@ export class CNSPersistOptionsRegistry {
 
     register<TAxon extends TCNSAxon>(
         name: string,
-        neuron: TCNSNeuron<any, TAxon>,
+        neuron: TCNSNeuron<TAxon>,
         collateralNames?: TCNSCollateralNameMap<TAxon>
     ): this {
-        this.addNeuron(neuron as unknown as TCNSNeuron<unknown, TCNSAxon>, { name, neuron: neuron as unknown as TCNSNeuron<unknown, TCNSAxon> });
+        this.addNeuron(neuron as unknown as TCNSNeuron<TCNSAxon>, { name, neuron: neuron as unknown as TCNSNeuron<TCNSAxon> });
         for (const [key, col] of Object.entries(neuron.axon)) {
             this.addCollateral(col as ICNSCollateral<unknown>, {
                 name: (collateralNames as Record<string, string> | undefined)?.[key] ?? key,

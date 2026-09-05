@@ -11,8 +11,8 @@ import type { ICNSStimulation } from './ICNSStimulation';
 import type { ICNSCollateral } from './ICNSCollateral';
 
 export interface ICNS<
-    TNeuron extends TCNSNeuron<any, any>,
-    TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
+    TNeuron extends TCNSNeuron<any>,
+    TDendrite extends TCNSDendrite<any, any> = TCNSDendrite<any, any>
 > {
     options?: TCNSOptions;
 
@@ -46,7 +46,8 @@ export interface ICNS<
      * Resume a run from a set of activation tasks (e.g. an outstanding frontier
      * hydrated from persisted progress, or `getFailedTasks()` for a partial
      * retry). Unlike {@link stimulate}, no entry signal is derived — the given
-     * tasks are enqueued directly. Pass `options.ctx` to restore neuron context.
+     * tasks are enqueued directly. Each task carries its own input signal (with
+     * payload), so re-driving the frontier needs no extra state.
      */
     activate(
         tasks: TCNSNeuronActivationTask<TNeuron>[],

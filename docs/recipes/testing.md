@@ -282,46 +282,38 @@ const prodCns = new CNS([dbReadNeuron, businessLogic]);
 // Both work the same way!
 ```
 
-## Testing with Context
+## Testing data that flows on payloads
 
-If neurons use context, it can also be mocked:
+All per-run data flows through signal payloads, so tests just assert on the input/output signals — there is no per-neuron context to mock:
 
 ```ts
-import { withCtx } from '@cnstra/core';
+import { neuron, collateral, CNS } from '@cnstra/core';
 
-const ctxNeuron = withCtx<{ sessionId: string }>()
-  .neuron({
-    output: collateral<{ result: string }>(),
-  })
-  .dendrite({
-    collateral: collateral<{ action: string }>(),
-    response: (payload, axon, ctx) => {
-      // Context stores per-neuron per-stimulation metadata (session tracking)
-      const sessionId = ctx.get()?.sessionId || 'default';
-      // Business data flows through payloads
-      return axon.output.createSignal({
-        result: `${payload.action} (session: ${sessionId})`,
-      });
-    },
-  });
+const action = collateral<{ action: string; sessionId?: string }>();
+const output = collateral<{ result: string }>();
 
-describe('Context-aware neuron', () => {
-  it('should use provided context', async () => {
-    const cns = new CNS([ctxNeuron]);
-    
+const sessionNeuron = neuron({ output }).dendrite({
+  collateral: action,
+  response: (payload, axon) => {
+    // Session id rides on the payload (or defaults) — no ctx needed.
+    const sessionId = payload.sessionId ?? 'default';
+    return axon.output.createSignal({
+      result: `${payload.action} (session: ${sessionId})`,
+    });
+  },
+});
+
+describe('session neuron', () => {
+  it('uses the payload session id', async () => {
+    const cns = new CNS([sessionNeuron]);
+
     const responses: unknown[] = [];
-    await cns.stimulate(
-      collateral<{ action: string }>().createSignal({ action: 'test' }),
-      {
-        ctx: {
-          get: () => ({ sessionId: 'test-session-123' }),
-          set: () => {},
-          delete: () => {},
-        },
+    await cns
+      .stimulate(action.createSignal({ action: 'test', sessionId: 'test-session-123' }), {
         onResponse: (r) => responses.push(r),
-      }
-    );
-    
+      })
+      .waitUntilComplete();
+
     expect(responses[0]?.outputSignal?.payload.result).toBe(
       'test (session: test-session-123)'
     );

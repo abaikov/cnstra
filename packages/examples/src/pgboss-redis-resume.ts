@@ -12,7 +12,7 @@
  * Needs BOTH Postgres (for the pg-boss queue) and Redis (for the checkpoint).
  */
 import { PgBoss } from 'pg-boss';
-import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import { createCNSWorker, enqueueStimulation, stimulationJob } from '@cnstra/pg-boss';
 import { CNSRedisProgressRepository } from '@cnstra/progress-redis';
@@ -37,15 +37,11 @@ const importUser = neuron({ userFetched }).dendrite({
         return axon.userFetched.createSignal({ id: p!.userId });
     },
 });
-const persistUser = withCtx<{ tries: number }>()
-    .neuron({ userSaved })
-    .dendrite({
+const persistUser = neuron({ userSaved }).dendrite({
         collateral: userFetched,
-        response: (p, axon, ctx) => {
-            const tries = (ctx.get()?.tries ?? 0) + 1;
-            ctx.set({ tries });
+        response: (p, axon) => {
             attempt++;
-            console.log(`    ▸ persistUser(${p!.id}) — global attempt #${attempt}, ctx.tries=${tries}`);
+            console.log(`    ▸ persistUser(${p!.id}) — global attempt #`);
             if (attempt === 1) throw new Error('boom: db connection timeout');
             return axon.userSaved.createSignal({ id: p!.id, ok: true });
         },

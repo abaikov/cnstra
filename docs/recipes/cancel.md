@@ -65,7 +65,7 @@ There are two ways to finish active runs:
     - New queued items do not start (cancel gate).
     - Once active tasks finish, the run resolves even if there are queued items that never started.
   - Implications:
-    - Not‑started items are skipped; if you need them later, persist them (e.g., in your context store or an external queue) and restart explicitly.
+    - Not‑started items are skipped; if you need them later, persist the outstanding frontier (see [Resumable execution](../advanced/resumable-execution.md)) or an external queue and restart explicitly.
 
 Example: graceful shutdown on process signals
 

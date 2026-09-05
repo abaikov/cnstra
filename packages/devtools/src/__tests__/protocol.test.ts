@@ -1,6 +1,6 @@
 import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
-import { collateral, withCtx } from '@cnstra/core';
+import { collateral, neuronFactory } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import type { TCNSAppBatchMessageDTO, TCNSAppBatchItemDTO } from '@cnstra/devtools-dto';
 
@@ -12,11 +12,11 @@ function buildRegistry() {
     const emailSent = collateral<{ to: string }>();
     const userLogin = collateral<{ email: string }>();
 
-    const userNeuron = withCtx()
+    const userNeuron = neuronFactory()
         .neuron({ userCreated, userUpdated })
         .bind({}, {});
 
-    const emailNeuron = withCtx()
+    const emailNeuron = neuronFactory()
         .neuron({ emailSent })
         .bind({ userCreated }, { userCreated: (_, axon) => axon.emailSent.createSignal({ to: 'test@test.com' }) });
 

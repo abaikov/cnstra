@@ -26,7 +26,7 @@ const stim = (
     stimulationId: id,
     entry: { collateralName: entryCollateral, payload: { n: 1 } },
     status: status as TCNSStimulationState['status'],
-    progress: { tasks: [], context: {} },
+    progress: { tasks: [] },
     scopeName: 'app:main',
 });
 const attempt = (

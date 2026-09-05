@@ -1,4 +1,4 @@
-import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from './CNSPersistOptionsRegistry';
 import { CNSProgressSerializer } from './CNSProgressSerializer';
 import { CNSStimulationPersistor } from './CNSStimulationPersistor';
@@ -19,16 +19,13 @@ function buildFlow() {
         collateral: input,
         response: (p, axon) => axon.step1Out.createSignal({ id: p!.id }),
     });
-    const n2 = withCtx<{ attempt: number }>()
-        .neuron({ output })
-        .dendrite({
-            collateral: step1Out,
-            response: (p, axon, ctx) => {
-                ctx.set({ attempt: (ctx.get()?.attempt ?? 0) + 1 });
-                if (control.failStep2) throw new Error('boom');
-                return axon.output.createSignal({ result: `ok-${p!.id}` });
-            },
-        });
+    const n2 = neuron({ output }).dendrite({
+        collateral: step1Out,
+        response: (p, axon) => {
+            if (control.failStep2) throw new Error('boom');
+            return axon.output.createSignal({ result: `ok-${p!.id}` });
+        },
+    });
 
     const cns = new CNS([n1, n2]);
     const registry = new CNSPersistOptionsRegistry();
@@ -69,7 +66,7 @@ test('persistor: records a failed stimulation with a resumable frontier, then a 
 
     // Resume — hydrate the persisted frontier and activate as attempt 2.
     control.failStep2 = false;
-    const { tasks, ctx } = serializer.hydrate(stimulation!.progress);
+    const { tasks } = serializer.hydrate(stimulation!.progress);
     const p2 = new CNSStimulationPersistor({
         repository,
         registry,
@@ -78,7 +75,7 @@ test('persistor: records a failed stimulation with a resumable frontier, then a 
         attemptNumber: 2,
         entry: ENTRY,
     });
-    const stim2 = cns.activate(tasks, { ctx, onResponse: p2.onResponse });
+    const stim2 = cns.activate(tasks, { onResponse: p2.onResponse });
     await stim2.waitUntilComplete();
     p2.dispose();
 

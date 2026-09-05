@@ -4,7 +4,6 @@ import { TCNSNeuronResponseReturn } from './TCNSNeuronResponseReturn';
 import { TCNSHandlerContext } from './TCNSHandlerContext';
 
 export type TCNSDendrite<
-    TContextValue,
     TSenderCollateral extends ICNSCollateral<unknown>,
     // We need axon type to be able to redirect to different collaterals
     TAxonType extends TCNSAxon,
@@ -16,6 +15,6 @@ export type TCNSDendrite<
     response: (
         payload: TSenderCollateral extends ICNSCollateral<infer P> ? P : never,
         axon: TAxonType,
-        ctx: TCNSHandlerContext<TContextValue, TExt>
+        ctx: TCNSHandlerContext<TExt>
     ) => TCNSNeuronResponseReturn<TAxonType>;
 };

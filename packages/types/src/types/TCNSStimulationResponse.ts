@@ -13,7 +13,6 @@ export type TCNSStimulationResponse<
     outputSignal?: TCNSSignal<TOutputCollateral>;
     modality?: TCNSModality;
     afferentPath?: TCNSAfferentPath;
-    contextValue: Map<object, unknown>;
     /**
      * Every activation this stimulation still owns, in any state:
      * `pendingActivations + activeActivations`.
@@ -64,7 +63,7 @@ export type TCNSStimulationResponse<
      * task's neuron reliably — including for sink/failed tasks that have no output
      * collateral to trace an owner from.
      */
-    neuron?: TCNSNeuron<any, any>;
+    neuron?: TCNSNeuron<any>;
 
     error?: Error;
     // hops passed only if maxHops is set

@@ -8,8 +8,8 @@ import type { ICNSCollateral } from './ICNSCollateral';
  * The concrete `CNSNetwork` class in `@cnstra/core` implements it.
  */
 export interface ICNSNetwork<
-    TNeuron extends TCNSNeuron<any, any>,
-    TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
+    TNeuron extends TCNSNeuron<any>,
+    TDendrite extends TCNSDendrite<any, any> = TCNSDendrite<any, any>
 > {
     readonly stronglyConnectedComponents: Set<TNeuron>[];
     getSCCSetByNeuron(neuron: TNeuron): Set<TNeuron> | undefined;

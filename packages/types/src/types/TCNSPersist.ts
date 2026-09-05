@@ -4,7 +4,7 @@ import { TCNSNeuron } from './TCNSNeuron';
 type CNSCollateralLike = ICNSCollateral<unknown>;
 
 export type TCNSNeuronPersistOptions<
-    TNeuron extends TCNSNeuron<unknown, any> = TCNSNeuron<unknown, any>
+    TNeuron extends TCNSNeuron<any> = TCNSNeuron<any>
 > = {
     name: string;
     neuron: TNeuron;

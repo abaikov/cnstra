@@ -1,41 +1,38 @@
 import type {
     ICNSStimulation,
-    ICNSStimulationContextStore,
     TCNSNeuronActivationTask,
 } from '@cnstra/types';
 import { CNSPersistOptionsRegistry } from './CNSPersistOptionsRegistry';
-import { CNSStimulationContextStore } from '@cnstra/core';
 import type { TCNSProgress, TCNSPlannedTaskJSON } from '@cnstra/persist-dto';
 
 /**
- * Turns CNStra's in-memory frontier (live neuron/collateral object references plus
- * a `Map<object, unknown>` context) into a JSON-safe {@link TCNSProgress} keyed by
- * **registry names**, and back. Names are the only thing stable across a process
- * boundary — that is why resume needs the registry.
+ * Turns CNStra's in-memory frontier (live neuron/collateral object references)
+ * into a JSON-safe {@link TCNSProgress} keyed by **registry names**, and back.
+ * Names are the only thing stable across a process boundary — that is why resume
+ * needs the registry.
  *
  * Bind it to a registry once, then `serialize()` a stimulation's current outstanding
- * frontier and `hydrate()` a stored progress record into `{ tasks, ctx }` for
- * `cns.activate(...)`. The `cns` itself is the caller's — the serializer never needs it.
+ * frontier and `hydrate()` a stored progress record into `{ tasks }` for
+ * `cns.activate(tasks)`. The `cns` itself is the caller's — the serializer never
+ * needs it. Each task carries its own input signal (with payload), so re-driving
+ * the frontier needs no extra state.
  */
 export class CNSProgressSerializer {
     constructor(private readonly registry: CNSPersistOptionsRegistry) {}
 
-    /** Snapshot a stimulation's current outstanding frontier + context. */
+    /** Snapshot a stimulation's current outstanding frontier. */
     serialize(stimulation: ICNSStimulation<any>): TCNSProgress {
         return {
             tasks: this.serializeTasks(stimulation.getOutstandingTasks()),
-            context: this.serializeContext(stimulation.getContext().getAll()),
         };
     }
 
-    /** Rebuild `{ tasks, ctx }` to pass straight into `cns.activate(tasks, { ctx })`. */
+    /** Rebuild `{ tasks }` to pass straight into `cns.activate(tasks)`. */
     hydrate(progress: TCNSProgress): {
         tasks: TCNSNeuronActivationTask<any>[];
-        ctx: ICNSStimulationContextStore;
     } {
         return {
             tasks: this.hydrateTasks(progress.tasks),
-            ctx: this.hydrateContext(progress.context),
         };
     }
 
@@ -74,18 +71,6 @@ export class CNSProgressSerializer {
                 : undefined;
             return { neuronName, dendriteCollateralName, input };
         });
-    }
-
-    private serializeContext(ctx: Map<object, unknown>): Record<string, unknown> {
-        const out: Record<string, unknown> = {};
-        for (const [neuron, value] of ctx) {
-            const name = this.registry.getNeuronName(neuron as never);
-            // Unregistered context keys can't be restored by name; skip them
-            // rather than fail — a missing key just means the resumed neuron
-            // starts from its own default.
-            if (name) out[name] = value;
-        }
-        return out;
     }
 
     private hydrateTasks(
@@ -129,16 +114,5 @@ export class CNSProgressSerializer {
                 input,
             } as unknown as TCNSNeuronActivationTask;
         });
-    }
-
-    private hydrateContext(
-        record: Record<string, unknown>
-    ): CNSStimulationContextStore {
-        const map = new Map<object, unknown>();
-        for (const [name, value] of Object.entries(record)) {
-            const neuron = this.registry.getNeuron(name);
-            if (neuron) map.set(neuron as object, value);
-        }
-        return new CNSStimulationContextStore(map);
     }
 }

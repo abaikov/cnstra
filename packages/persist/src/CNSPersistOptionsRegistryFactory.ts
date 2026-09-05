@@ -18,7 +18,7 @@ import type { TCNSRegistryValue } from './types/TCNSRegistryValue';
  * });
  */
 export class CNSPersistOptionsRegistryFactory {
-    static create<TMap extends Record<string, TCNSNeuron<any, any>>>(
+    static create<TMap extends Record<string, TCNSNeuron<any>>>(
         namedNeurons: { [K in keyof TMap]: TCNSRegistryValue<TMap[K]> }
     ): CNSPersistOptionsRegistry {
         const registry = new CNSPersistOptionsRegistry();
@@ -27,7 +27,7 @@ export class CNSPersistOptionsRegistryFactory {
                 'neuron' in (entry as object) && !('axon' in (entry as object));
             const neuron = isEntry
                 ? (entry as TCNSNeuronRegistryEntry).neuron
-                : (entry as TCNSNeuron<any, any>);
+                : (entry as TCNSNeuron<any>);
             const colNames = isEntry
                 ? ((entry as TCNSNeuronRegistryEntry).collaterals ?? {})
                 : {};

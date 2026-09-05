@@ -19,20 +19,19 @@ Powerful debugging and monitoring tools for CNStra applications. Visualize your 
 
 ### 📊 Signal Flow Monitoring
 - **Live Stimulation Tracking**: Watch signals propagate through your neural network
-- **Response Inspection**: Examine payloads, context, and timing for each response
+- **Response Inspection**: Examine input/output payloads and timing for each response
 - **Queue Visualization**: Monitor signal queues and processing order
 
 ### 🔍 Advanced Debugging
 - **Signal Filtering**: Filter by input collateral name with partial matching
 - **Signal Injection**: Manually inject signals for testing via Signal Debugger
 - **Neuron Inspection**: Click neurons to see detailed metrics and recent activity
-- **Context Inspection**: Deep dive into stimulation context and state
 - **Performance Metrics**: Measure response times and identify bottlenecks
 - **Error Tracking**: Catch and analyze errors in your neural network
 - **Trace View**: Step-by-step signal flow visualization per stimulation
 
 ### 🧪 Snapshots & Replay
-- **Record Sessions**: Capture full stimulation sessions with inputs, responses, and context deltas
+- **Record Sessions**: Capture full stimulation sessions with inputs and responses
 - **Deterministic Replay**: Re-run captured sessions to reproduce issues exactly
 - **Shareable Artifacts**: Export/import snapshots for team debugging and CI reproduction
 

@@ -30,10 +30,17 @@ export function createShell({
     const explorerCtrl = createExplorerController(
         new CNSExplorerWsClient(socket),
         {
-            readSearch: () =>
-                typeof window !== 'undefined' ? window.location.search : '',
-            writeSearch: s =>
-                void router.navigate('/explorer' + (s ? `?${s}` : '')),
+            // The router uses HASH history, so the query lives in the hash
+            // ("#/explorer?st=…"), NOT window.location.search — read it from there
+            // or a reload restores nothing (empty details, lost breadcrumb).
+            readSearch: () => {
+                if (typeof window === 'undefined') return '';
+                const h = window.location.hash;
+                const i = h.indexOf('?');
+                return i >= 0 ? h.slice(i) : '';
+            },
+            // Canonical URL is the root `#/?…` (the `/explorer` segment is gone).
+            writeSearch: s => void router.navigate('/' + (s ? `?${s}` : '')),
         }
     );
 

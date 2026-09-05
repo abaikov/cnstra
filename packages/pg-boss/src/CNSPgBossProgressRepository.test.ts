@@ -28,7 +28,6 @@ function fakePool() {
 
 const progress: TCNSProgress = {
     tasks: [{ neuronName: 'n2', dendriteCollateralName: 'step1Out' }],
-    context: { n2: { attempt: 1 } },
 };
 
 test('save → load → delete round-trips, auto-migrates once', async () => {

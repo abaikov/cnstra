@@ -14,21 +14,19 @@ CNStra is designed to be memory-efficient and fast for reactive orchestration.
 - **Zero dependencies**: No third-party packages, minimal bundle size.
 - **No error storage**: Errors are delivered via callbacks, not accumulated in memory.
 - **Streaming responses**: Signal traces are delivered via `onResponse` callbacks, not buffered.
-- **Context on-demand**: Context stores are created only when needed via `withCtx()`.
 - **No global state**: Each stimulation starts with a clean slate; no ambient listeners.
 
 ## Memory overhead per stimulation
 
 Each active `CNSStimulation` instance carries some internal overhead, but most
 of it is **allocated lazily** — a minimal synchronous fire-and-forget run
-(no listener, no context, never awaited) allocates only the object itself plus a
+(no listener, never awaited) allocates only the object itself plus a
 small ring-buffer array.
 
-### Base overhead (minimal context, ~2-3 keys)
+### Base overhead
 
 - **CNSStimulation object**: ~0.6-1.5 KB depending on what's actually used
   - Activation queue: a small ring-buffer array (lazily allocated on first enqueue); the active-tasks `Set` is only created while an async task is in flight
-  - Context store (`Map`): lazily created — only when a neuron reads/writes `ctx`
   - Pending/failed task tracking: lazily created — only on async `onResponse` or an actual failure
   - Completion `Promise`: created only if you call `waitUntilComplete()`
 
@@ -37,9 +35,7 @@ small ring-buffer array.
 - Task structure: `{ neuron, dendriteCollateral, input: { collateral, payload } }`
   - Typical stimulation has 5-10 tasks simultaneously: ~500-1500 bytes (metadata) + **payload size**
 
-- **Context data**: ~100-200 bytes (for minimal context with 2-3 simple values)
-
-**Total per stimulation (minimal context, small payloads)**: ~1.8-3.2 KB
+**Total per stimulation (small payloads)**: ~1.8-3.2 KB
 
 ### Queue size and payload impact
 
@@ -126,16 +122,11 @@ This way CNStra's queue never holds more than the tasks for a single job, regard
 | **10,000** | ~18-32 MB | ~22-50 MB |
 | **1,000,000** | ~1.8-3.2 GB | ~2.2-5 GB |
 
-### Context size impact
+### Payload size impact
 
-Context growth significantly impacts memory usage:
+Payload growth significantly impacts memory usage, because each queued task stores its full input signal:
 
-- **Minimal context** (2-3 keys, primitives): +100-200 bytes per stimulation
-- **Small context** (5-10 keys, primitives): +300-500 bytes per stimulation
-- **Medium context** (10-20 keys, small objects): +500-1500 bytes per stimulation
-- **Large context** (20+ keys, complex objects): +1.5-5 KB per stimulation
-
-**Example**: If you store full user objects (5-10 KB each) in context instead of just IDs:
+**Example**: If you ship full user objects (5-10 KB each) on payloads instead of just IDs:
 - 1,000 stimulations: +5-10 MB → **~7-15 MB total**
 - 10,000 stimulations: +50-100 MB → **~70-130 MB total**
 - 1,000,000 stimulations: +5-10 GB → **~7-15 GB total**
@@ -164,14 +155,13 @@ Context growth significantly impacts memory usage:
    return axon.process.createSignal({ document: fullDocumentObject });
    ```
 
-3. **Context stores per-neuron per-stimulation metadata only** (retry attempts, debounce state), not business data:
+3. **Keep signal payloads small** — pass identifiers and metadata, not large objects:
    ```ts
-   // ✅ Good: Context stores metadata (~50 bytes)
-   ctx.set({ attempt: 2, startTime: Date.now() });
-   
-   // ❌ Bad: Don't store business data in context
-   // Business data should flow through signal payloads
-   ctx.set({ user: fullUserObject, history: lotsOfData });
+   // ✅ Good: pass only what downstream needs (~50 bytes)
+   return axon.process.createSignal({ userId: '123', attempt: 2 });
+
+   // ❌ Bad: don't ship large objects on the signal
+   return axon.process.createSignal({ user: fullUserObject, history: lotsOfData });
    ```
 
 4. **Monitor and limit queue size** to prevent memory bloat. `queueLength`
@@ -248,34 +238,31 @@ Context growth significantly impacts memory usage:
    
    See [Integrations](/docs/integrations/bullmq) for examples.
 
-10. **Context is per-neuron per-stimulation and automatically cleaned up**:
-    
-    Each neuron in each stimulation has its own context instance. Contexts hold memory for the entire duration of a stimulation and are automatically cleaned up when the stimulation completes. **Use context for metadata only**, not business data:
-    
+10. **Carry per-run state on the signal payload**:
+
+    CNStra has no mutable per-neuron store — counters, timestamps, and correlation ids ride on the signal, so nothing is held for the whole run:
+
     ```ts
-          // Context stores per-neuron per-stimulation metadata (processing stats)
-    const processor = withCtx<{ processedCount: number; startTime: number }>()
-      .neuron({ next })
+    const processor = neuron({ next })
       .dendrite({
         collateral: input,
-        response: async (payload, axon, ctx) => {
-          // Context stores per-neuron per-stimulation metadata
-          const metadata = ctx.get() ?? { processedCount: 0, startTime: Date.now() };
-          ctx.set({ ...metadata, processedCount: metadata.processedCount + 1 });
-          
-          // Business data flows through payloads
+        response: async (payload, axon) => {
+          // Processing stats ride on the payload, not a per-neuron store.
+          const processedCount = (payload.processedCount ?? 0) + 1;
+
           const batch = await fetchBatch(payload.batchId);
           const results = await processBatch(batch);
-          
-          return axon.next.createSignal({ 
+
+          return axon.next.createSignal({
             batchId: payload.nextBatchId,
-            results // Business data in payload
+            processedCount,
+            results,
           });
         }
       });
     ```
-    
-    **Best practice**: Context is automatically cleaned up when stimulation completes. Store only metadata in context, pass business data through signal payloads.
+
+    **Best practice**: pass all per-run data through signal payloads; use `ctx.global` only for app-wide dependencies.
 
 11. **Use batch processing with recursive self-calls** (instead of fan-out):
     
@@ -314,7 +301,6 @@ Context growth significantly impacts memory usage:
           }
           
           // Done
-          ctx.delete('offset');
           return undefined;
         }
       });
@@ -341,16 +327,16 @@ Context growth significantly impacts memory usage:
 
 ## Best practices
 
-### Keep context data minimal
+### Keep signal payloads minimal
 
-Store only essential data (IDs, counters, flags) in context. Avoid large objects or full entities.
+Put only essential data (IDs, counters, flags) on signal payloads. Avoid large objects or full entities.
 
 ```ts
-// ✅ Good: minimal context
-ctx.set({ userId: '123', attempt: 2 });
+// ✅ Good: minimal payload
+return axon.next.createSignal({ userId: '123', attempt: 2 });
 
-// ❌ Bad: bloated context
-ctx.set({ user: fullUserObject, history: lotsOfData });
+// ❌ Bad: bloated payload
+return axon.next.createSignal({ user: fullUserObject, history: lotsOfData });
 ```
 
 ### Use synchronous responses when possible
@@ -398,21 +384,6 @@ const stimulation = cns.stimulate(signal, {
 });
 await stimulation.waitUntilComplete();
 ```
-
-### Avoid `autoCleanupContexts` in production
-
-The CNS `autoCleanupContexts` option adds overhead:
-
-- **Initialization cost**: the SCC (Strongly Connected Components) analysis is built lazily on first use — so it is only paid when this option is enabled (or you read the SCC APIs), not on every `new CNS()`. Building it is `O(V + E)` for the graph/SCC pass plus the SCC-ancestor transitive closure (up to `O(V²)` for densely connected graphs).
-- **O(1 + A) runtime cost** per cleanup check (where A = number of SCC ancestors)
-- **Memory overhead** for storing SCC graphs and ancestor relationships
-
-**Use only when:**
-- Memory leaks are a critical issue
-- You have a small to medium-sized neuron graph (< 1000 neurons)
-- Performance is less critical than memory management
-
-**For production systems**, prefer manual context cleanup or custom cleanup strategies.
 
 ## Measuring performance
 

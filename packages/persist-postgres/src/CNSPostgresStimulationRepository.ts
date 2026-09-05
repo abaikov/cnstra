@@ -1,9 +1,8 @@
 /**
  * Postgres relational store for the CNStra stimulation/attempt/task resumable model
  * (`ICNSStimulationRepository`). The stimulation's `progress` is NORMALISED: the
- * outstanding frontier into `<prefix>stimulation_frontier` (one row per task) and
- * per-neuron context into `<prefix>stimulation_context` — rebuilt into `TCNSProgress`
- * on read.
+ * outstanding frontier into `<prefix>stimulation_frontier` (one row per task) —
+ * rebuilt into `TCNSProgress` on read.
  *
  * Reuses the `IPgQueryable` seam so `pg` is an optional peer: inject any pg
  * client/pool, or pass a `connectionString` for the repo to own a Pool. Behaviourally
@@ -141,20 +140,6 @@ export class CNSPostgresStimulationRepository
                     ]
                 );
             }
-            // Replace the normalised context.
-            await db.query(
-                `DELETE FROM ${p}stimulation_context WHERE stimulation_id = $1`,
-                [s.stimulationId]
-            );
-            for (const [neuronName, value] of Object.entries(
-                s.progress.context
-            )) {
-                await db.query(
-                    `INSERT INTO ${p}stimulation_context (stimulation_id, neuron_name, value)
-                     VALUES ($1, $2, $3::jsonb)`,
-                    [s.stimulationId, neuronName, j(value)]
-                );
-            }
         });
     }
 
@@ -228,25 +213,16 @@ export class CNSPostgresStimulationRepository
               }
             | undefined;
         if (!row) return undefined;
-        const [frontier, context] = await Promise.all([
-            this.db.query(
-                `SELECT ord, neuron_name, dendrite_collateral_name, input
-                 FROM ${p}stimulation_frontier WHERE stimulation_id = $1 ORDER BY ord`,
-                [stimulationId]
-            ),
-            this.db.query(
-                `SELECT neuron_name, value FROM ${p}stimulation_context WHERE stimulation_id = $1`,
-                [stimulationId]
-            ),
-        ]);
+        const frontier = await this.db.query(
+            `SELECT ord, neuron_name, dendrite_collateral_name, input
+             FROM ${p}stimulation_frontier WHERE stimulation_id = $1 ORDER BY ord`,
+            [stimulationId]
+        );
         return {
             stimulationId,
             entry: row.entry,
             status: row.status,
-            progress: this.buildProgress(
-                frontier.rows as TFrontierRow[],
-                context.rows as TContextRow[]
-            ),
+            progress: this.buildProgress(frontier.rows as TFrontierRow[]),
             ...(row.scope_name != null ? { scopeName: row.scope_name } : {}),
         };
     }
@@ -266,24 +242,13 @@ export class CNSPostgresStimulationRepository
         const stims = stimsRes.rows as TStimulationRow[];
         if (stims.length === 0) return [];
         const ids = stims.map(r => r.stimulation_id);
-        const [frontierRes, contextRes] = await Promise.all([
-            this.db.query(
-                `SELECT stimulation_id, ord, neuron_name, dendrite_collateral_name, input
-                 FROM ${p}stimulation_frontier WHERE stimulation_id = ANY($1) ORDER BY stimulation_id, ord`,
-                [ids]
-            ),
-            this.db.query(
-                `SELECT stimulation_id, neuron_name, value
-                 FROM ${p}stimulation_context WHERE stimulation_id = ANY($1)`,
-                [ids]
-            ),
-        ]);
+        const frontierRes = await this.db.query(
+            `SELECT stimulation_id, ord, neuron_name, dendrite_collateral_name, input
+             FROM ${p}stimulation_frontier WHERE stimulation_id = ANY($1) ORDER BY stimulation_id, ord`,
+            [ids]
+        );
         const frontierBy = groupBy(
             frontierRes.rows as TFrontierRow[],
-            r => r.stimulation_id
-        );
-        const contextBy = groupBy(
-            contextRes.rows as TContextRow[],
             r => r.stimulation_id
         );
         return stims.map(r => ({
@@ -291,8 +256,7 @@ export class CNSPostgresStimulationRepository
             entry: r.entry,
             status: r.status,
             progress: this.buildProgress(
-                frontierBy.get(r.stimulation_id) ?? [],
-                contextBy.get(r.stimulation_id) ?? []
+                frontierBy.get(r.stimulation_id) ?? []
             ),
             ...(r.scope_name != null ? { scopeName: r.scope_name } : {}),
         }));
@@ -462,7 +426,7 @@ export class CNSPostgresStimulationRepository
                 `DELETE FROM ${p}stimulation_attempt WHERE stimulation_id = $1`,
                 [stimulationId]
             );
-            // FK ON DELETE CASCADE removes frontier/context.
+            // FK ON DELETE CASCADE removes the frontier.
             await db.query(
                 `DELETE FROM ${p}stimulation WHERE stimulation_id = $1`,
                 [stimulationId]
@@ -472,7 +436,7 @@ export class CNSPostgresStimulationRepository
 
     /**
      * Retention: prune stimulations not updated for `olderThanMs` (with their
-     * attempts/tasks/frontier/context). A run's `updated_at` stops advancing once it
+     * attempts/tasks/frontier). A run's `updated_at` stops advancing once it
      * settles, so old finished runs age out while an active one stays fresh — the same
      * semantics as the in-memory store's `ttlMs` and the pg-boss checkpoint's
      * `deleteStale`. Run it on a schedule (cron). Returns the number removed.
@@ -485,7 +449,7 @@ export class CNSPostgresStimulationRepository
         const staleIds = `SELECT stimulation_id FROM ${p}stimulation WHERE ${cond}`;
         return this.tx(async db => {
             // tasks + attempts have no FK → delete explicitly (tasks first), then the
-            // stimulations (FK cascade removes frontier/context).
+            // stimulations (FK cascade removes the frontier).
             await db.query(
                 `DELETE FROM ${p}task WHERE stimulation_attempt_id IN
                     (SELECT stimulation_attempt_id FROM ${p}stimulation_attempt
@@ -510,10 +474,7 @@ export class CNSPostgresStimulationRepository
 
     // ── helpers ──
 
-    private buildProgress(
-        frontier: TFrontierRow[],
-        context: TContextRow[]
-    ): TCNSProgress {
+    private buildProgress(frontier: TFrontierRow[]): TCNSProgress {
         const tasks: TCNSPlannedTaskJSON[] = [...frontier]
             .sort((a, b) => a.ord - b.ord)
             .map(f => ({
@@ -521,9 +482,7 @@ export class CNSPostgresStimulationRepository
                 dendriteCollateralName: f.dendrite_collateral_name,
                 ...(f.input != null ? { input: f.input } : {}),
             }));
-        const ctx: Record<string, unknown> = {};
-        for (const c of context) ctx[c.neuron_name] = c.value;
-        return { tasks, context: ctx };
+        return { tasks };
     }
 }
 
@@ -540,11 +499,6 @@ type TFrontierRow = {
     neuron_name: string;
     dendrite_collateral_name: string;
     input: TCNSSignalJSON | null;
-};
-type TContextRow = {
-    stimulation_id: string;
-    neuron_name: string;
-    value: unknown;
 };
 type TAttemptRow = {
     stimulation_attempt_id: string;

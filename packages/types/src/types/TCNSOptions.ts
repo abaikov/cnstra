@@ -1,10 +1,7 @@
-export type TCNSOptions = {
-    /**
-     * Automatically cleanup context stores when the stimulation is finished.
-     * Default is false.
-     *
-     * CAN AFFECT PERFORMANCE!
-     * Better to use only to solve problems with memory quickly.
-     */
-    autoCleanupContexts?: boolean;
-};
+/**
+ * Options bag for `new CNS(...)`. Currently empty — the former
+ * `autoCleanupContexts` flag was removed together with the per-neuron mutable
+ * context store. Kept as a named type so the constructor signature and future
+ * engine-level options have a stable home.
+ */
+export type TCNSOptions = Record<never, never>;

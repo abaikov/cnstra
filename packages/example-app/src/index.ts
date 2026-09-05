@@ -1,5 +1,10 @@
-import { CNS, collateral, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuronFactory } from '@cnstra/core';
 import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+import {
+    generateBigTopology,
+    generateBigStimulations,
+    SeedBigStimulationRepository,
+} from './seed-big.js';
 // DevTools client is loaded dynamically when enabled
 import { WebSocket as NodeWebSocket, WebSocketServer } from 'ws';
 import { createServer } from 'http';
@@ -20,6 +25,14 @@ const DEVTOOLS_SERVER_ENABLED =
     process.env.CNSTRA_DEVTOOLS_SERVER !== undefined
         ? parseFlag(process.env.CNSTRA_DEVTOOLS_SERVER)
         : DEVTOOLS_ENABLED;
+
+// Big synthetic dataset mode (SEED_BIG=1): populate hundreds of neurons/collaterals
+// + ~18k stimulations over ~90 days, and SKIP the live e-commerce demo/client so the
+// dataset stays pure + deterministic. Run: `SEED_BIG=1 PORT=8080 node dist/index.js`.
+const SEED_BIG =
+    process.env.SEED_BIG === '1' || process.env.SEED_BIG === 'true';
+const SEED_APP_ID = 'bigdata-app';
+const SEED_CNS_ID = 'bigdata:core';
 
 // E-commerce domain collaterals
 const userLogin = collateral<{ email: string; password: string }>();
@@ -128,6 +141,8 @@ const products = new Map<string, Product>();
 const carts = new Map<string, CartItem[]>();
 const orders = new Map<string, any>();
 const inventory = new Map<string, { available: number; reserved: number }>();
+// Session store (was a per-neuron ctx bag; now a plain module map for the demo).
+const sessions = new Map<string, string>();
 
 // Initialize sample data
 const sampleProducts: Product[] = [
@@ -210,7 +225,7 @@ const sampleUsers: User[] = [
 sampleUsers.forEach(user => users.set(user.id, user));
 
 // Authentication Service
-const authNeuron = withCtx()
+const authNeuron = neuronFactory()
     .neuron({
         userAuthenticated,
         recordMetric,
@@ -220,7 +235,7 @@ const authNeuron = withCtx()
     .bind(
         { userLogin },
         {
-            userLogin: ({ email, password }, axon, { set, get }) => {
+            userLogin: ({ email, password }, axon) => {
                 console.log(`🔐 Auth attempt for: ${email}`);
 
                 // Find user
@@ -234,7 +249,7 @@ const authNeuron = withCtx()
                     user.isAuthenticated = true;
 
                     // Store session
-                    set({ sessions: { [token]: user.id } });
+                    sessions.set(token, user.id);
 
                     // Record metric
                     axon.recordMetric.createSignal({
@@ -285,7 +300,7 @@ const authNeuron = withCtx()
     );
 
 // Product Search Service
-const searchNeuron = withCtx()
+const searchNeuron = neuronFactory()
     .neuron({
         productsFound,
         recordMetric,
@@ -343,7 +358,7 @@ const searchNeuron = withCtx()
     );
 
 // Shopping Cart Service
-const cartNeuron = withCtx()
+const cartNeuron = neuronFactory()
     .neuron({
         cartUpdated,
         recordMetric,
@@ -353,11 +368,7 @@ const cartNeuron = withCtx()
     .bind(
         { addToCart },
         {
-            addToCart: (
-                { userId, productId, quantity },
-                axon,
-                { get, set }
-            ) => {
+            addToCart: ({ userId, productId, quantity }, axon) => {
                 console.log(
                     `🛒 Adding to cart: ${quantity}x ${productId} for user ${userId}`
                 );
@@ -424,7 +435,7 @@ const cartNeuron = withCtx()
     );
 
 // Order Service
-const orderNeuron = withCtx()
+const orderNeuron = neuronFactory()
     .neuron({
         orderCreated,
         processPayment,
@@ -490,7 +501,7 @@ const orderNeuron = withCtx()
     );
 
 // Payment Service
-const paymentNeuron = withCtx()
+const paymentNeuron = neuronFactory()
     .neuron({
         paymentProcessed,
         sendNotification,
@@ -554,7 +565,7 @@ const paymentNeuron = withCtx()
     );
 
 // Notification Service
-const notificationNeuron = withCtx()
+const notificationNeuron = neuronFactory()
     .neuron({
         notificationSent,
         recordMetric,
@@ -597,7 +608,7 @@ const notificationNeuron = withCtx()
     );
 
 // Inventory Service
-const inventoryNeuron = withCtx()
+const inventoryNeuron = neuronFactory()
     .neuron({
         inventoryUpdated,
         recordMetric,
@@ -658,7 +669,7 @@ const inventoryNeuron = withCtx()
     );
 
 // Analytics Service
-const analyticsNeuron = withCtx()
+const analyticsNeuron = neuronFactory()
     .neuron({})
     .bind(
         { recordMetric },
@@ -679,7 +690,7 @@ const analyticsNeuron = withCtx()
     );
 
 // Audit Service
-const auditNeuron = withCtx()
+const auditNeuron = neuronFactory()
     .neuron({})
     .bind(
         { auditLog },
@@ -730,6 +741,11 @@ const httpServer = createServer((req, res) => {
             html: 'text/html',
             js: 'application/javascript',
             css: 'text/css',
+            svg: 'image/svg+xml',
+            ico: 'image/x-icon',
+            png: 'image/png',
+            ttf: 'font/ttf',
+            json: 'application/json',
         };
         res.writeHead(200, {
             'Content-Type': contentTypes[ext || ''] || 'text/plain',
@@ -828,7 +844,32 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
             process.env.ADMIN_STORE === 'postgres' ||
             !!process.env.DATABASE_URL;
         let stimulationRepository: any;
-        if (usePostgres) {
+        if (SEED_BIG) {
+            console.log('🌱 SEED_BIG: generating big synthetic dataset…');
+            const topo = generateBigTopology(
+                SEED_APP_ID,
+                SEED_CNS_ID,
+                'Big Data Demo (SEED_BIG)'
+            );
+            const buckets = generateBigStimulations(topo, SEED_CNS_ID);
+            stimulationRepository = new SeedBigStimulationRepository(buckets);
+            // Inject the synthetic app + topology so topology.query returns hundreds
+            // of neurons/collaterals and the entity lists/typeaheads populate.
+            repository.upsertApp({
+                id: SEED_APP_ID,
+                name: topo.appName,
+                version: topo.version,
+                connectedAt: Date.now(),
+                lastSeenAt: Date.now(),
+            } as any);
+            repository.addCnsToApp(SEED_APP_ID, SEED_CNS_ID);
+            repository.saveTopology(topo as any);
+            console.log(
+                `🌱 SEED_BIG ready: ${topo.neurons.length} neurons · ` +
+                    `${topo.collaterals.length} collaterals · ` +
+                    `${buckets.stimulations.length} stimulations over ~90 days`
+            );
+        } else if (usePostgres) {
             const { CNSPostgresStimulationRepository } = await import(
                 '@cnstra/persist-postgres'
             );
@@ -1033,9 +1074,10 @@ registry.registerCollateral('searchProducts', searchProducts);
 registry.registerCollateral('addToCart', addToCart);
 registry.registerCollateral('checkout', checkout);
 
-// Setup DevTools with WebSocket transport (optional)
-console.log('🔧 DevTools CLIENT enabled:', DEVTOOLS_CLIENT_ENABLED);
-if (DEVTOOLS_CLIENT_ENABLED) {
+// Setup DevTools with WebSocket transport (optional). Under SEED_BIG we do NOT
+// register the live CNS/demo — the synthetic dataset IS the data.
+console.log('🔧 DevTools CLIENT enabled:', DEVTOOLS_CLIENT_ENABLED, 'SEED_BIG:', SEED_BIG);
+if (DEVTOOLS_CLIENT_ENABLED && !SEED_BIG) {
     const { CNSDevTools } = await import('@cnstra/devtools');
     const { CNSDevToolsTransportWs } = await import(
         '@cnstra/devtools-transport-ws'
@@ -1224,4 +1266,11 @@ async function runDemo() {
     setTimeout(runDemo, nextRunDelay);
 }
 
-runDemo();
+// Under SEED_BIG the synthetic dataset is the data — don't run the live demo.
+if (!SEED_BIG) {
+    runDemo();
+} else {
+    console.log(
+        '🌱 SEED_BIG mode: live demo skipped. Open http://localhost:8080 to explore ~18k stimulations over ~90 days.'
+    );
+}

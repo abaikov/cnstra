@@ -20,19 +20,19 @@ import type { TCNSNeuron, TCNSOptions } from '@cnstra/types';
  */
 export class CNSFactory {
     static create<
-        TMap extends Record<string, TCNSNeuron<any, any>>,
+        TMap extends Record<string, TCNSNeuron<any>>,
         TGlobal = undefined
     >(
         namedNeurons: { [K in keyof TMap]: TCNSRegistryValue<TMap[K]> },
         options?: TCNSOptions & { global?: TGlobal }
     ): {
-        cns: CNS<TCNSNeuron<any, any>>;
+        cns: CNS<TCNSNeuron<any>>;
         registry: CNSPersistOptionsRegistry;
     } {
         const neurons = Object.values(namedNeurons).map(entry =>
             entry && typeof entry === 'object' && 'neuron' in (entry as object)
                 ? (entry as TCNSNeuronRegistryEntry).neuron
-                : (entry as TCNSNeuron<any, any>)
+                : (entry as TCNSNeuron<any>)
         );
         const cns = new CNS(neurons, options, options?.global);
         const registry = CNSPersistOptionsRegistryFactory.create(namedNeurons);

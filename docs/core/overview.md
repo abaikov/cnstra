@@ -184,7 +184,7 @@ while keeping everything explicit.
 > **New to the vocabulary?** In one breath: a **neuron** is an isolated handler, a **collateral** is a named typed signal, a neuron's **axon** is the collaterals it may emit, a **dendrite** binds a handler to an incoming collateral, and **`stimulate`** fires a signal into the graph. See the full nervous-system analogy in the [Introduction](/docs/concepts/intro).
 
 ```ts
-import { CNS, collateral, neuron, withCtx, TCNSSignal } from '../src/index';
+import { CNS, collateral, neuron, TCNSSignal } from '../src/index';
 
 const uiAxon = {
     userEntersApp: collateral<{

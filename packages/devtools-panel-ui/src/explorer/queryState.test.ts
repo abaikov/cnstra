@@ -16,9 +16,12 @@ describe('explorer queryState', () => {
             text: 'stim-42',
             since: 1000,
             until: 2000,
-            view: 'waterfall',
-            lens: 'neurons',
+            entryOnly: true,
+            tab: 'neurons',
             selected: 'stim-42',
+            selectedNeuron: 'importer',
+            selectedCollateral: 'import-doc',
+            selectedTask: 'att-1:3',
         };
         expect(decodeQuery(encodeQuery(q))).toEqual(q);
     });
@@ -28,16 +31,20 @@ describe('explorer queryState', () => {
         expect(decodeQuery('')).toEqual(DEFAULT_QUERY);
     });
 
-    it('ignores unknown view/lens, falling back to defaults', () => {
-        const q = decodeQuery('view=bogus&lens=bogus');
-        expect(q.view).toBe('runs');
-        expect(q.lens).toBe('collaterals');
+    it('ignores an unknown tab, falling back to the default', () => {
+        const q = decodeQuery('tab=bogus');
+        expect(q.tab).toBe('stimulations');
     });
 
     it('tolerates a leading ? and non-numeric ranges', () => {
         const q = decodeQuery('?status=running&since=nope');
         expect(q.status).toBe('running');
         expect(q.since).toBeUndefined();
+    });
+
+    it('decodes the collaterals entry-only boolean filter', () => {
+        expect(decodeQuery('tab=collaterals&entry=1').entryOnly).toBe(true);
+        expect(decodeQuery('tab=collaterals').entryOnly).toBeUndefined();
     });
 
     it('toggleFilter sets then clears a facet value', () => {

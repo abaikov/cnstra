@@ -15,7 +15,7 @@ import { CNSDebouncedProgressRecordingStrategy } from './CNSDebouncedProgressRec
  * Write side of the resumable-execution layer. Wire its `onResponse` into a run
  * (`cns.stimulate(sig, { onResponse })` / `cns.activate(tasks, { onResponse })`).
  *
- * Always keeps the run's `progress` (frontier + context) current for resume — on a
+ * Always keeps the run's `progress` (the outstanding frontier) current for resume — on a
  * cadence decided by a {@link ICNSProgressRecordingStrategy}, plus an immediate flush
  * on the terminal response — and upserts the attempt marker. At `'full'` volume it
  * additionally appends every settled task as a history row: the firing neuron comes

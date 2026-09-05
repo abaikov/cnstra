@@ -23,10 +23,22 @@ function makeClient(): CNSExplorerWsClient {
         facets: jest.fn(async () => ({
             byEntryCollateral: [{ name: 'import-doc', count: 2 }],
             byStatus: [{ status: 'failed', count: 1 }],
+            byNeuron: [],
+            byTime: [],
         })),
         detail: jest.fn(async (id: string) => ({
             attempts: [{ stimulationId: id } as any],
             tasks: [{ neuronName: 'n' } as any],
+        })),
+        topology: jest.fn(async () => ({
+            neurons: [],
+            collaterals: [],
+            dendrites: [],
+        })),
+        snapshot: jest.fn(async () => ({
+            stimulations: [],
+            attempts: [],
+            tasks: [],
         })),
         clone: jest.fn(async (_id: string) => 'new-run-42'),
         retry: jest.fn(async (_id: string) => undefined),
@@ -63,7 +75,6 @@ describe('explorerController', () => {
         await flush();
         await c.selectRun('s2');
         expect(c.query.getValue().selected).toBe('s2');
-        expect(c.query.getValue().view).toBe('waterfall');
         expect(c.detail.getValue()?.attempts[0].stimulationId).toBe('s2');
     });
 

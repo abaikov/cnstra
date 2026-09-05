@@ -47,7 +47,6 @@ Manually inject signals into your neural network for testing and debugging.
 
 - **Select Collateral**: Choose the collateral to inject into
 - **Payload Editor**: JSON editor for signal payload
-- **Context Editor**: JSON editor for stimulation context (optional)
 - **Options Editor**: JSON editor for stimulation options (optional)
 - **History**: Track all injected signals with success/failure status
 
@@ -120,16 +119,6 @@ Comprehensive analytics for your neural network.
 - **Error Analysis**: Error rates and patterns
 - **Performance Trends**: Historical performance data
 
-## Context Store Monitor
-
-Monitor and inspect context stores in real-time.
-
-### Features
-
-- **Context Inspection**: View all active context stores
-- **Context Values**: Real-time context value tracking
-- **Context Deltas**: Track changes in context over time
-
 ## Export & Share
 
 Export data for offline analysis or sharing.
@@ -153,7 +142,7 @@ Capture and replay complete stimulation sessions.
 
 ### Snapshots
 
-- Capture snapshots of signals, responses, and context transitions
+- Capture snapshots of signals and responses
 - Export snapshots as JSON files
 - Import snapshots for analysis
 - Share snapshots with your team

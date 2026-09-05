@@ -7,7 +7,7 @@ description: Explore CQRS patterns with CNStra. Learn how to separate commands a
 keywords: [CQRS, command query responsibility segregation, architecture patterns, commands, queries]
 ---
 
-CNStra's architecture naturally supports Command Query Responsibility Segregation (CQRS) patterns. The separation between commands (signals that trigger neurons) and queries (reading from external stores) aligns well with CQRS principles. **Note**: Context stores per-neuron per-stimulation metadata, not business aggregates.
+CNStra's architecture naturally supports Command Query Responsibility Segregation (CQRS) patterns. The separation between commands (signals that trigger neurons) and queries (reading from external stores) aligns well with CQRS principles. **Note**: per-run data travels in signal payloads, not in any shared mutable store — business aggregates live in your own read/write models.
 
 ### CQRS with CNStra
 

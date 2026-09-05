@@ -1,6 +1,4 @@
 import type { ICNSCollateral } from '@cnstra/types';
-import { CNSStimulationContextStore } from './CNSStimulationContextStore';
-import { ICNSStimulationContextStore } from '@cnstra/types';
 import { TCNSStimulationOptions } from '@cnstra/types';
 import { TCNSNeuron } from '@cnstra/types';
 import { TCNSDendrite } from '@cnstra/types';
@@ -27,21 +25,18 @@ const TASK_DENDRITE = Symbol('cnstra.taskDendrite');
 
 /**
  * Per-activation context handed to a dendrite's `response`. Implemented as a
- * class so get/set/delete live once on the prototype and each activation
- * allocates a single object instead of an object plus three closures.
- *
- * NOTE: methods rely on `this`; call them as `ctx.get()` (not destructured).
+ * class so the accessors live once on the prototype and each activation
+ * allocates a single object.
  */
 class CNSDendriteContext {
     constructor(
         public readonly stimulation: any,
-        private readonly neuron: any,
         public readonly abortSignal: AbortSignal | undefined,
         public readonly cns: any
     ) {}
-    // Prototype getter, not a constructor field: the per-activation allocation is
-    // unchanged (still 4 fields) and you only pay a single `cns.global` read on the
-    // dendrites that actually reach for it. Value getter, so `{ global }` destructuring is safe.
+    // Prototype getter, not a constructor field: you only pay a single `cns.global`
+    // read on the dendrites that actually reach for it. Value getter, so
+    // `{ global }` destructuring is safe.
     get global(): unknown {
         return this.cns.global;
     }
@@ -52,28 +47,15 @@ class CNSDendriteContext {
     get stimulationContext(): unknown {
         return this.stimulation.options?.stimulationContext;
     }
-    get(): unknown {
-        return this.stimulation.getContext().get(this.neuron);
-    }
-    set(value: unknown): void {
-        this.stimulation.getContext().set(this.neuron, value);
-    }
-    delete(): void {
-        this.stimulation.getContext().delete(this.neuron);
-    }
 }
 
 /**
- * Response object handed to onResponse listeners. Implemented as a class so the
- * `contextValue` accessor lives once on the prototype (not re-created per
- * response) and instances share a single monomorphic hidden class. `contextValue`
- * is computed lazily: cloning the context Map is the heaviest part of the
- * response and most listeners never read it.
+ * Response object handed to onResponse listeners. Implemented as a class so
+ * instances share a single monomorphic hidden class.
  */
 class CNSStimulationResponseImpl {
     constructor(
         public readonly stimulation: CNSStimulation<any, any>,
-        private readonly store: ICNSStimulationContextStore | undefined,
         public readonly inputSignal: TCNSSignal<ICNSCollateral<unknown>> | undefined,
         public readonly outputSignal:
             | TCNSSignal<ICNSCollateral<unknown>>
@@ -86,22 +68,14 @@ class CNSStimulationResponseImpl {
         // The neuron that produced this response (present on both success and
         // throw paths). Lets name-based consumers resolve the task's neuron
         // reliably instead of guessing via the output collateral's owner.
-        public readonly neuron: TCNSNeuron<any, any> | undefined
+        public readonly neuron: TCNSNeuron<any> | undefined
     ) {}
-
-    get contextValue(): Map<object, unknown> {
-        return this.store ? this.store.getAll() : new Map();
-    }
 }
 
 export class CNSStimulation<
-    TNeuron extends TCNSNeuron<any, any>,
+    TNeuron extends TCNSNeuron<any>,
     TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
 > {
-    // Lazily allocated: most stimulations never touch neuron context, so we
-    // avoid allocating the store object (and its Map) until something reads or
-    // writes it. An externally supplied store (options.ctx) is kept eagerly.
-    private ctxStore?: ICNSStimulationContextStore;
 
     // --- Inlined activation queue (formerly CNSNeuronActivationPump) ---
     // Folded into the stimulation so a single run allocates one object instead
@@ -164,12 +138,6 @@ export class CNSStimulation<
      */
     private readonly onDrain?: (drain: TCNSStimulationDrain) => void;
 
-    /**
-     * Track active SCCs: SCC index -> count of active neurons in that SCC.
-     * Only allocated when context auto-cleanup is enabled.
-     */
-    private readonly activeSccCounts?: Map<number, number>;
-
     constructor(
         public readonly cns: CNS<TNeuron, TDendrite>,
         instanceNeuronQueue: CNSInstanceNeuronQueue<TNeuron>,
@@ -180,18 +148,11 @@ export class CNSStimulation<
         onDrain?: (drain: TCNSStimulationDrain) => void
     ) {
         this.onDrain = onDrain;
-        // Keep an externally supplied store eagerly; otherwise defer creation.
-        this.ctxStore = options?.ctx;
-
         this.instanceNeuronQueue = instanceNeuronQueue;
         this.onResponse = onResponse;
 
         if (this.options?.maxNeuronHops) {
             this.neuronVisitMap = new Map();
-        }
-
-        if (this.autoCleanupContextsEnabled) {
-            this.activeSccCounts = new Map();
         }
     }
 
@@ -210,11 +171,6 @@ export class CNSStimulation<
         this.completionRejected = true;
         this.completionError = error;
         this.rejectCompleted?.(error);
-    }
-
-    /** Lazily-created neuron context store (see {@link ctxStore}). */
-    private get ctx(): ICNSStimulationContextStore {
-        return (this.ctxStore ??= new CNSStimulationContextStore());
     }
 
     // ----- Inlined activation queue / pump -----
@@ -503,13 +459,6 @@ export class CNSStimulation<
     }
 
     /**
-     * Get the context store for this stimulation
-     */
-    public getContext(): ICNSStimulationContextStore {
-        return this.ctx;
-    }
-
-    /**
      * Enqueue activation tasks directly into the stimulation queue
      */
     public enqueueTasks(
@@ -531,84 +480,6 @@ export class CNSStimulation<
             this.options?.concurrency !== undefined &&
             this.options?.concurrency > 0
         );
-    }
-
-    protected get autoCleanupContextsEnabled(): boolean {
-        return this.cns?.options?.autoCleanupContexts ?? false;
-    }
-
-    /**
-     * Mark a neuron as active (being processed)
-     */
-    protected markNeuronActive(neuron: TNeuron): void {
-        if (!this.autoCleanupContextsEnabled) return;
-
-        this.incrementSccCount(neuron);
-    }
-
-    /**
-     * Mark a neuron as inactive (finished processing)
-     */
-    protected markNeuronInactive(neuron: TNeuron): void {
-        if (!this.autoCleanupContextsEnabled) return;
-
-        this.decrementSccCount(neuron);
-    }
-
-    /**
-     * Increment the active count for the SCC containing this neuron
-     */
-    private incrementSccCount(neuron: TNeuron): void {
-        const counts = this.activeSccCounts;
-        if (!counts) return;
-        const sccIndex = this.cns.network.getSccIndexByNeuron(neuron);
-        if (sccIndex === undefined) return;
-
-        const currentCount = counts.get(sccIndex) || 0;
-        counts.set(sccIndex, currentCount + 1);
-    }
-
-    /**
-     * Decrement the active count for the SCC containing this neuron
-     */
-    private decrementSccCount(neuron: TNeuron): void {
-        const counts = this.activeSccCounts;
-        if (!counts) return;
-        const sccIndex = this.cns.network.getSccIndexByNeuron(neuron);
-        if (sccIndex === undefined) return;
-
-        const currentCount = counts.get(sccIndex) || 0;
-        const nextCount = Math.max(0, currentCount - 1);
-        counts.set(sccIndex, nextCount);
-
-        // Log warning if we're trying to decrement below 0
-        if (currentCount === 0) {
-            console.warn(
-                `[CNSStimulation] Attempting to decrement SCC count below 0 for neuron`
-            );
-        }
-    }
-
-    /**
-     * Check if a neuron can be guaranteed not to be visited again
-     */
-    protected canNeuronBeGuaranteedDone(neuron: TNeuron): boolean {
-        if (!this.autoCleanupContextsEnabled || !this.activeSccCounts)
-            return false;
-        return this.cns.network.canNeuronBeGuaranteedDone(
-            neuron,
-            this.activeSccCounts
-        );
-    }
-
-    protected cleanupCtxIfNeeded(neuron: TNeuron): void {
-        if (
-            this.autoCleanupContextsEnabled &&
-            this.canNeuronBeGuaranteedDone(neuron)
-        ) {
-            // Nothing to clean if no context was ever stored.
-            this.ctxStore?.delete(neuron);
-        }
     }
 
     protected createSubscriberQueueItem(
@@ -717,9 +588,6 @@ export class CNSStimulation<
         inputSignal: TCNSSignal<ICNSCollateral<unknown>> | undefined,
         neuronActivationTask: TCNSNeuronActivationTask<TNeuron>
     ): (() => void) | Promise<() => void> {
-        // Mark neuron as active only when we actually start processing (after gate allows it)
-        this.markNeuronActive(neuron);
-
         let response: TCNSNeuronResponseReturn<TCNSAxon>;
         try {
             response = dendrite.response(
@@ -727,14 +595,12 @@ export class CNSStimulation<
                 neuron.axon,
                 new CNSDendriteContext(
                     this,
-                    neuron,
                     this.options?.abortSignal,
                     this.cns
                 ) as any
             );
         } catch (error) {
             // Sync error occurred
-            this.markNeuronInactive(neuron);
             const isAborted = this.options?.abortSignal?.aborted ?? false;
             this.pushFailedTask({
                 task: neuronActivationTask,
@@ -803,8 +669,6 @@ export class CNSStimulation<
             return timedPromise.then(
                 signal => {
                     return () => {
-                        // Mark neuron as inactive when async processing completes
-                        this.markNeuronInactive(neuron);
                         return this.processResponseOrResponses(
                             neuron,
                             inputSignal as any,
@@ -817,8 +681,6 @@ export class CNSStimulation<
                 },
                 error => {
                     return () => {
-                        // Mark neuron as inactive when async processing fails
-                        this.markNeuronInactive(neuron);
                         // Track failed task
                         const isAborted =
                             this.options?.abortSignal?.aborted ?? false;
@@ -841,8 +703,6 @@ export class CNSStimulation<
             );
         } else {
             return () => {
-                // Mark neuron as inactive when sync processing completes
-                this.markNeuronInactive(neuron);
                 return this.processResponseOrResponses(
                     neuron,
                     inputSignal as any,
@@ -920,11 +780,10 @@ export class CNSStimulation<
         const onResponse = this.onResponse;
 
         // Fast path: with no response listener there is nothing to observe the
-        // intermediate state, so we skip building the response object, snapshotting
-        // the context (getAll allocates a Map), and tracking pending tasks.
+        // intermediate state, so we skip building the response object and
+        // tracking pending tasks.
         if (!onResponse) {
             if (collateral && !error) {
-                if (emitter) this.cleanupCtxIfNeeded(emitter);
                 const n = subscribers.length;
                 if (n > 0) {
                     const tasks: TCNSNeuronActivationTask<TNeuron>[] =
@@ -950,8 +809,6 @@ export class CNSStimulation<
             [];
 
         if (collateral && !error) {
-            if (emitter) this.cleanupCtxIfNeeded(emitter);
-
             const pending = (this.pendingTasks ??= new Set());
             for (let i = 0; i < subscribers.length; i++) {
                 const task = this.createSubscriberQueueItem(
@@ -970,7 +827,6 @@ export class CNSStimulation<
             maybePromise = onResponse(
                 new CNSStimulationResponseImpl(
                     this,
-                    this.ctxStore,
                     inputSignal,
                     outputSignal,
                     this.pendingActivations + this.activeOperations,

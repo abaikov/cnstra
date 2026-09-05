@@ -12,7 +12,7 @@ import type { CNSCollateral } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import type { ICNS, TCNSNeuron } from '@cnstra/types';
 
-type AnyNeuron = TCNSNeuron<any, any>;
+type AnyNeuron = TCNSNeuron<any>;
 type AnyCollateral = CNSCollateral<unknown>;
 
 export type CNSMCPServerOptions = {

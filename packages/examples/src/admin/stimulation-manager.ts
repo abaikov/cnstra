@@ -17,7 +17,7 @@
  * Execution is serialized through a tiny mutex so the per-attempt fault flag is
  * deterministic (no interleaving between concurrent stimulations in this demo).
  */
-import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSProgressSerializer,
@@ -45,17 +45,14 @@ const enrichUser = neuron({ userEnriched }).dendrite({
     response: (p, axon) =>
         axon.userEnriched.createSignal({ ...p!, plan: 'pro' }),
 });
-const persistUser = withCtx<{ attempt: number }>()
-    .neuron({ userSaved })
-    .dendrite({
-        collateral: userEnriched,
-        response: (p, axon, ctx) => {
-            ctx.set({ attempt: (ctx.get()?.attempt ?? 0) + 1 });
-            if (currentShouldFail)
-                throw new Error('boom: db connection timeout');
-            return axon.userSaved.createSignal({ id: p!.id, ok: true });
-        },
-    });
+const persistUser = neuron({ userSaved }).dendrite({
+    collateral: userEnriched,
+    response: (p, axon) => {
+        if (currentShouldFail)
+            throw new Error('boom: db connection timeout');
+        return axon.userSaved.createSignal({ id: p!.id, ok: true });
+    },
+});
 
 /** A transport-agnostic admin command. */
 export type TStimulationCommand =
@@ -167,7 +164,7 @@ export class StimulationRunManager {
         await this.serialize(async () => {
             // "The fault is fixed" — a retry from the admin clears it.
             currentShouldFail = false;
-            const { tasks, ctx } = this.serializer.hydrate(stimulation.progress);
+            const { tasks } = this.serializer.hydrate(stimulation.progress);
             const persistor = new CNSStimulationPersistor({
                 repository: this.repository,
                 registry: this.registry,
@@ -178,7 +175,6 @@ export class StimulationRunManager {
                 volume: 'full',
             });
             const stim = this.cns.activate(tasks, {
-                ctx,
                 onResponse: persistor.onResponse,
                 abortSignal: this.abort.signal,
             });

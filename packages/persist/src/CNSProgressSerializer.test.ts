@@ -1,4 +1,4 @@
-import { CNS, collateral, neuron, withCtx } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from './CNSPersistOptionsRegistry';
 import { CNSProgressSerializer } from './CNSProgressSerializer';
 import { CNSInMemoryProgressRepository } from './CNSInMemoryProgressRepository';
@@ -6,9 +6,9 @@ import { CNSDebouncedProgressRecordingStrategy } from './CNSDebouncedProgressRec
 
 // A tiny two-step flow: n1 → n2. n2 fails on the first pass. We snapshot the
 // outstanding frontier, JSON round-trip it (as a real resumable store would), then
-// resume via cns.activate(). Proof points:
-//   - n1 does NOT re-run on resume (only the failed frontier is re-activated)
-//   - n2's context (attempt counter) is restored across the JSON boundary
+// resume via cns.activate(). Proof point:
+//   - n1 does NOT re-run on resume (only the failed frontier is re-activated);
+//     the task's input signal carries its payload, so no extra state is needed.
 function buildFlow() {
     const input = collateral<{ id: number }>();
     const step1Out = collateral<{ id: number }>();
@@ -25,20 +25,16 @@ function buildFlow() {
         },
     });
 
-    const n2 = withCtx<{ attempt: number }>()
-        .neuron({ output })
-        .dendrite({
-            collateral: step1Out,
-            response: (p, axon, ctx) => {
-                const attempt = (ctx.get()?.attempt ?? 0) + 1;
-                ctx.set({ attempt });
-                ran.push(`n2#${attempt}`);
-                if (control.failStep2) throw new Error('boom');
-                return axon.output.createSignal({
-                    result: `ok-${p!.id}-a${attempt}`,
-                });
-            },
-        });
+    const n2 = neuron({ output }).dendrite({
+        collateral: step1Out,
+        response: (p, axon) => {
+            ran.push('n2');
+            if (control.failStep2) throw new Error('boom');
+            return axon.output.createSignal({
+                result: `ok-${p!.id}`,
+            });
+        },
+    });
 
     const cns = new CNS([n1, n2]);
 
@@ -50,26 +46,24 @@ function buildFlow() {
     return { cns, registry, input, output, ran, control };
 }
 
-test('resume: serialize outstanding frontier + context by name, hydrate, activate re-runs only the failed branch', async () => {
+test('resume: serialize outstanding frontier by name, hydrate, activate re-runs only the failed branch', async () => {
     const { cns, registry, input, output, ran, control } = buildFlow();
     const serializer = new CNSProgressSerializer(registry);
 
     const stim1 = cns.stimulate(input.createSignal({ id: 1 }));
     await expect(stim1.waitUntilComplete()).rejects.toBeDefined();
-    expect(ran).toEqual(['n1', 'n2#1']);
+    expect(ran).toEqual(['n1', 'n2']);
 
     const progress = serializer.serialize(stim1);
     expect(progress.tasks).toHaveLength(1);
     expect(progress.tasks[0].neuronName).toBe('n2');
-    expect(progress.context).toEqual({ n2: { attempt: 1 } });
     const roundTripped = JSON.parse(JSON.stringify(progress));
 
     control.failStep2 = false;
-    const { tasks, ctx } = serializer.hydrate(roundTripped);
+    const { tasks } = serializer.hydrate(roundTripped);
 
     const outputs: string[] = [];
     const stim2 = cns.activate(tasks, {
-        ctx,
         onResponse: r => {
             if (r.outputSignal?.collateral === output) {
                 outputs.push(
@@ -80,8 +74,9 @@ test('resume: serialize outstanding frontier + context by name, hydrate, activat
     });
     await stim2.waitUntilComplete();
 
-    expect(ran).toEqual(['n1', 'n2#1', 'n2#2']);
-    expect(outputs).toEqual(['ok-1-a2']);
+    // n1 does NOT re-run; only the failed n2 branch is re-driven and succeeds.
+    expect(ran).toEqual(['n1', 'n2', 'n2']);
+    expect(outputs).toEqual(['ok-1']);
 });
 
 test('serialize throws a clear error when a frontier neuron is unregistered', async () => {
@@ -108,7 +103,7 @@ test('serialize throws a clear error when a frontier neuron is unregistered', as
 
 test('CNSInMemoryProgressRepository save/load/delete round-trips', async () => {
     const repo = new CNSInMemoryProgressRepository();
-    const p = { tasks: [], context: {} };
+    const p = { tasks: [] };
 
     expect(await repo.load('job-1')).toBeUndefined();
     await repo.save('job-1', p);

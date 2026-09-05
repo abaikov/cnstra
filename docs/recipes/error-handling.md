@@ -63,60 +63,48 @@ await cns.stimulate(signal).waitUntilComplete();
 
 Rule of thumb: **await `waitUntilComplete()`** when a caller drives a single run and cares about its outcome; register a **global `addResponseListener`** for long-lived, fire-and-forget producers where awaiting each run is impractical. Do at least one — otherwise dendrite failures are invisible.
 
-## Error recovery with context
+## Error recovery: resume the frontier
 
-Save context for retry on failure:
+On failure, snapshot the outstanding frontier and re-drive it with `cns.activate(tasks)`. Each task carries its own input signal (with payload), so completed neurons do **not** re-run — only the failed/outstanding ones do. (For a full name-based, cross-process resume story see [@cnstra/persist](/docs/advanced/persistence).)
 
 ```ts
-let savedContext: ICNSStimulationContextStore | undefined;
-
-const stimulation = cns.stimulate(signal, {
-  onResponse: (response) => {
-    if (response.error) {
-      savedContext = response.stimulation.getContext(); // save for retry
-    }
-  }
-});
-await stimulation.waitUntilComplete();
-
-// Retry with preserved context
-if (savedContext) {
-  const retryStimulation = cns.stimulate(retrySignal, { ctx: savedContext });
-  await retryStimulation.waitUntilComplete();
+const stimulation = cns.stimulate(signal);
+try {
+  await stimulation.waitUntilComplete();
+} catch {
+  // Re-run only the not-yet-done work (queued/active/pending + failed tasks).
+  const frontier = stimulation.getOutstandingTasks();
+  const retry = cns.activate(frontier);
+  await retry.waitUntilComplete();
 }
 ```
 
 ## Retry with backoff (self-loop)
 
-Use a self-looping neuron with context to track **per-neuron per-stimulation retry attempts** (metadata), while business data flows through payloads:
+Use a self-looping neuron and carry the retry attempt count **in the signal payload** — all per-run data flows through payloads:
 
 ```ts
-import { withCtx, collateral } from '@cnstra/core';
+import { neuron, collateral } from '@cnstra/core';
 
-const tryTask = collateral<{ taskId: string }>();
+const tryTask = collateral<{ taskId: string; attempt?: number }>();
 const completed = collateral<{ taskId: string }>();
 const failed = collateral<{ taskId: string; reason: string }>();
 
-const taskRunner = withCtx<{ attempt: number }>()
-  .neuron({ tryTask, completed, failed })
+const taskRunner = neuron({ tryTask, completed, failed })
   .dendrite({
     collateral: tryTask,
-    response: async (payload, axon, ctx) => {
-      // Context stores per-neuron per-stimulation metadata (retry attempts)
-      const prev = ctx.get() ?? { attempt: 0 };
-      const attempt = prev.attempt + 1;
-      ctx.set({ attempt });
+    response: async (payload, axon) => {
+      const attempt = (payload.attempt ?? 0) + 1;
 
       try {
-        // Business data (taskId) comes from payload
         await performTask(payload.taskId);
         return axon.completed.createSignal({ taskId: payload.taskId });
       } catch (err) {
         if (attempt < 5) {
           const backoff = Math.pow(2, attempt) * 100; // exponential backoff
           await new Promise(resolve => setTimeout(resolve, backoff));
-          // Business data flows through payload, not context
-          return axon.tryTask.createSignal(payload); // self-loop retry
+          // Carry the new attempt count on the payload.
+          return axon.tryTask.createSignal({ taskId: payload.taskId, attempt });
         }
         return axon.failed.createSignal({ taskId: payload.taskId, reason: String(err) });
       }
@@ -124,13 +112,13 @@ const taskRunner = withCtx<{ attempt: number }>()
   });
 ```
 
-**Key point**: Context stores **per-neuron per-stimulation metadata** (attempt count), while **business data** (taskId) flows through signal payloads.
+**Key point**: all per-run data (taskId, attempt count) flows through signal payloads — CNStra has no mutable per-neuron store.
 
 ## Tips
 
 - Use `onResponse` for real-time error logging/monitoring; make it `async` if you need to persist.
-- Store minimal retry state in context (attempt count, correlation IDs).
-- For long-lived sagas, persist context to a DB/OIMDB and re-stimulate on external triggers.
+- Carry retry state (attempt count, correlation IDs) on signal payloads.
+- For long-lived sagas, persist the frontier via [@cnstra/persist](/docs/advanced/persistence) and resume on external triggers.
 - Always set a max retry limit to avoid infinite loops.
 
 ### Global listeners

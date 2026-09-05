@@ -3,7 +3,7 @@ import type { TCNSStimulationResponse } from '@cnstra/types';
 /**
  * Write side of the resumable-execution layer. Wire its `onResponse` into a run
  * (`cns.stimulate(sig, { onResponse })` / `cns.activate(tasks, { onResponse })`).
- * As the run advances it keeps the run's `progress` (frontier + context) current
+ * As the run advances it keeps the run's `progress` (the outstanding frontier) current
  * for resume, and — when the volume is `'full'` — appends settled tasks as history
  * rows, updating the attempt and run status. Cadence is delegated to a
  * {@link ICNSProgressRecordingStrategy}; volume to {@link ECNSStimulationVolume}.

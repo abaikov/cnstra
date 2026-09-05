@@ -13,7 +13,7 @@ import { CNSNetwork } from './CNSNetwork';
 import { ICNS } from '@cnstra/types';
 
 export class CNS<
-    TNeuron extends TCNSNeuron<any, any>,
+    TNeuron extends TCNSNeuron<any>,
     TDendrite extends TCNSDendrite<any, any, any> = TCNSDendrite<any, any, any>
 > implements ICNS<TNeuron, TDendrite>
 {

@@ -25,7 +25,7 @@ const stim = (
     stimulationId: id,
     entry: { collateralName: entryCollateral, payload },
     status,
-    progress: { tasks: [], context: {} },
+    progress: { tasks: [] },
     scopeName: 'app:main',
 });
 const attempt = (
@@ -93,7 +93,6 @@ d('CNSPostgresStimulationRepository roster pushdown (live Postgres)', () => {
             'task',
             'stimulation_attempt',
             'stimulation_frontier',
-            'stimulation_context',
             'stimulation',
         ])
             await pool.query(`DROP TABLE IF EXISTS ${prefix}${t} CASCADE`);

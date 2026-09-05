@@ -14,11 +14,11 @@
 :root {
   /* === NERV NEON COLORS === */
   /* Main background colors — cool indigo-black, not warm blood */
-  --bg-primary: #181818;           /* Deep terminal night */
-  --bg-secondary: #1e1e1e;         /* Slightly lifted panel ground */
-  --bg-tertiary: #2a2a2a;          /* Raised surface */
-  --bg-panel: #202020;             /* Panels */
-  --bg-card: #262626;              /* Cards */
+  --bg-primary: #0c0c11;           /* Deep terminal night (cool indigo-black) */
+  --bg-secondary: #131319;         /* Slightly lifted panel ground */
+  --bg-tertiary: #20202a;          /* Raised surface */
+  --bg-panel: #15151b;             /* Panels */
+  --bg-card: #1b1b22;              /* Cards */
   /* Structure — cool slate/violet (was "flesh") */
   --flesh-dark: #303030;           /* Dark structural */
   --flesh-medium: #3c3c3c;         /* Medium structural */
@@ -51,8 +51,8 @@
   --text-warning: #F5C344;         /* Warning — bright terminal yellow */
   --text-error: #cf6f63;           /* Error — neon red-pink */
   /* Borders and dividers */
-  --border-primary: #333333;       /* Primary borders */
-  --border-secondary: #262626;     /* Secondary borders */
+  --border-primary: #2a2a34;       /* Primary borders (cool) */
+  --border-secondary: #1e1e26;     /* Secondary borders */
   --border-accent: #454545;        /* Accent borders */
   --border-infected: #b486f6;      /* Strong frame — Eva violet */
   /* Neon glows */
@@ -129,6 +129,77 @@ h1, h2, h3, h4,
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: unset;
   font-smooth: never;
+}
+
+/* === EXPLORER: alive micro-interactions === */
+.exp-row {
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+/* Hover = a NEUTRAL lift (never pink) so it can't be mistaken for selection. */
+.exp-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+/* Selected row reads PINK — a soft pink WASH + glow (no hard 1px ring, which drew
+   a line on the boundary that fought the neighbour's hover) + its pink left bar. */
+.exp-row.active {
+  background: rgba(217, 143, 208, 0.1);
+  box-shadow: 0 0 14px rgba(217, 143, 208, 0.14);
+}
+.exp-row.active:hover {
+  background: rgba(217, 143, 208, 0.15);
+}
+.exp-chip {
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+/* Active tab glow (pink selection) + live pulse. */
+.exp-tab {
+  transition: all 0.14s ease;
+}
+.exp-tab.active {
+  box-shadow: 0 0 12px rgba(217, 143, 208, 0.4);
+}
+@keyframes exp-live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+.exp-live-dot {
+  animation: exp-live-pulse 1.4s ease-in-out infinite;
+}
+
+/* Status dots pulse a subtle glow by semantic colour. */
+@keyframes exp-glow-green {
+  0%, 100% { box-shadow: 0 0 3px var(--infection-green); }
+  50% { box-shadow: 0 0 9px var(--infection-green), 0 0 3px var(--infection-green); }
+}
+@keyframes exp-glow-red {
+  0%, 100% { box-shadow: 0 0 3px var(--infection-red); }
+  50% { box-shadow: 0 0 9px var(--infection-red), 0 0 3px var(--infection-red); }
+}
+@keyframes exp-glow-yellow {
+  0%, 100% { box-shadow: 0 0 3px var(--infection-yellow); }
+  50% { box-shadow: 0 0 9px var(--infection-yellow), 0 0 3px var(--infection-yellow); }
+}
+.exp-glow-green { animation: exp-glow-green 1.8s ease-in-out infinite; }
+.exp-glow-red { animation: exp-glow-red 1.4s ease-in-out infinite; }
+.exp-glow-yellow { animation: exp-glow-yellow 1.6s ease-in-out infinite; }
+
+/* Node-link diagram nodes: obvious clickability (cursor + hover glow/lift). */
+.dg-node { transition: filter 0.14s ease; }
+.dg-click:hover { filter: brightness(1.28) drop-shadow(0 0 6px rgba(217,143,208,.5)); }
+.dg-click:hover .dg-open { opacity: 1; }
+.dg-open { transition: opacity 0.14s ease; }
+
+/* Typeahead suggestion + breadcrumb crumb hovers. */
+.exp-ta-item { transition: background 0.1s ease, color 0.1s ease; }
+.exp-ta-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.exp-crumb:hover { text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .exp-live-dot,
+  .exp-glow-green,
+  .exp-glow-red,
+  .exp-glow-yellow { animation: none; }
 }
 
 #root {
@@ -214,3 +285,49 @@ h1, h2, h3, h4,
 ::-webkit-scrollbar-corner {
   background: var(--bg-secondary);
 }
+
+/* Per-tab filter relevance: only the filters that DO something for the active
+   view are shown (the TIME RANGE is common and lives outside this block). The
+   container's class is set imperatively to `exp-filters tab-<active>` so the
+   controls stay mounted in ONE position each — visibility is pure CSS. */
+/* `!important` because the cells carry an inline `display:flex` (for their flex
+   ratios) which would otherwise beat a plain class rule. fg-toggles = the status
+   pills; the entry toggle lives inline in the inputs row (fg-entry). */
+.exp-filters.tab-stimulations .fg-entry { display: none !important; }
+.exp-filters.tab-neurons .fg-toggles,
+.exp-filters.tab-neurons .fg-entry,
+.exp-filters.tab-neurons .fg-search,
+.exp-filters.tab-neurons .fg-collateral { display: none !important; }
+.exp-filters.tab-tasks .fg-entry,
+.exp-filters.tab-tasks .fg-search,
+.exp-filters.tab-tasks .fg-collateral { display: none !important; }
+.exp-filters.tab-collaterals .fg-toggles,
+.exp-filters.tab-collaterals .fg-search,
+.exp-filters.tab-collaterals .fg-neuron { display: none !important; }
+
+/* ── A drop of cyberpunk ────────────────────────────────────────────────────
+   The panel root gets a darkened base + a faint neon grid + soft corner blooms
+   (cyan / violet / pink). Kept low-opacity so it reads as atmosphere, not noise. */
+.exp-root {
+  background:
+    radial-gradient(70% 55% at 12% -5%, rgba(82, 167, 201, 0.06), transparent 60%),
+    radial-gradient(65% 55% at 100% 12%, rgba(201, 166, 248, 0.06), transparent 55%),
+    radial-gradient(60% 50% at 70% 108%, rgba(217, 143, 208, 0.05), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(82, 167, 201, 0.022) 0 1px, transparent 1px 42px),
+    repeating-linear-gradient(90deg, rgba(82, 167, 201, 0.022) 0 1px, transparent 1px 42px),
+    var(--bg-primary) !important;
+}
+/* faint neon on the brand wordmark */
+.brand {
+  text-shadow: 0 0 7px rgba(201, 166, 248, 0.35), 0 0 2px rgba(82, 167, 201, 0.4);
+}
+/* the section eyebrows glow just a touch */
+.exp-heading {
+  text-shadow: 0 0 8px currentColor;
+  opacity: 0.96;
+}
+
+/* neuron ACTIVATIONS rows + generic detail links: obvious clickability */
+.exp-act-row { transition: background 0.12s ease, border-color 0.12s ease; }
+.exp-act-row:hover { background: rgba(255, 255, 255, 0.04); border-color: var(--border-accent); }
+.exp-link:hover { text-decoration: underline; }

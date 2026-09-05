@@ -26,7 +26,6 @@ type CollateralPayloadUnion<
 }[number];
 
 type InterNeuronAPI<
-    TContextValue,
     TAxonType extends TCNSAxon = TCNSAxon,
     TGlobal = unknown
 > = {
@@ -34,30 +33,28 @@ type InterNeuronAPI<
     concurrency?: number;
     maxDuration?: number;
     dendrites: TCNSDendrite<
-        TContextValue,
         ICNSCollateral<unknown>,
         TAxonType,
         TGlobal
     >[];
     setConcurrency: (
         n: number | undefined
-    ) => InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+    ) => InterNeuronAPI<TAxonType, TGlobal>;
     setMaxDuration: (
         ms: number | undefined
-    ) => InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+    ) => InterNeuronAPI<TAxonType, TGlobal>;
     bind: <TFollowAxon extends Record<string, ICNSCollateral<unknown>>>(
         axon: TFollowAxon,
         dendrites: {
             [K in keyof TFollowAxon]:
-                | TCNSDendrite<TContextValue, TFollowAxon[K], TAxonType, TGlobal>
+                | TCNSDendrite<TFollowAxon[K], TAxonType, TGlobal>
                 | TCNSDendrite<
-                      TContextValue,
                       TFollowAxon[K],
                       TAxonType,
                       TGlobal
                   >['response'];
         }
-    ) => InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+    ) => InterNeuronAPI<TAxonType, TGlobal>;
     dendrite: {
         <TSenderCollateral extends ICNSCollateral<unknown>>(s: {
             collateral: TSenderCollateral;
@@ -66,9 +63,9 @@ type InterNeuronAPI<
                     ? P
                     : never,
                 axon: TAxonType,
-                ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                ctx: TCNSHandlerContext<TGlobal>
             ) => TCNSNeuronResponseReturn<TAxonType>;
-        }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+        }): InterNeuronAPI<TAxonType, TGlobal>;
         <
             TCollaterals extends readonly [
                 ICNSCollateral<unknown>,
@@ -79,25 +76,24 @@ type InterNeuronAPI<
             response: (
                 payload: CollateralPayloadUnion<TCollaterals>,
                 axon: TAxonType,
-                ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                ctx: TCNSHandlerContext<TGlobal>
             ) => TCNSNeuronResponseReturn<TAxonType>;
-        }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+        }): InterNeuronAPI<TAxonType, TGlobal>;
         <TPayloadUnion>(s: {
             collateral: ICNSCollateral<unknown>[];
             response: (
                 payload: TPayloadUnion,
                 axon: TAxonType,
-                ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                ctx: TCNSHandlerContext<TGlobal>
             ) => TCNSNeuronResponseReturn<TAxonType>;
-        }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+        }): InterNeuronAPI<TAxonType, TGlobal>;
         (
             s: TCNSDendrite<
-                TContextValue,
                 ICNSCollateral<unknown>,
                 TAxonType,
                 TGlobal
             >
-        ): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+        ): InterNeuronAPI<TAxonType, TGlobal>;
     };
     modalityDendrite: {
         <TSenderCollateral extends ICNSCollateral<unknown>, TResult>(s: {
@@ -110,7 +106,7 @@ type InterNeuronAPI<
                         ? P
                         : never,
                     axon: TAxonType,
-                    ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                    ctx: TCNSHandlerContext<TGlobal>
                 ) => TResult | Promise<TResult>
             >;
             default?: (
@@ -118,14 +114,14 @@ type InterNeuronAPI<
                     ? P
                     : never,
                 axon: TAxonType,
-                ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                ctx: TCNSHandlerContext<TGlobal>
             ) => TResult | Promise<TResult>;
             output: (
                 result: TResult,
                 axon: TAxonType,
-                ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                ctx: TCNSHandlerContext<TGlobal>
             ) => TCNSNeuronResponseReturn<TAxonType>;
-        }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+        }): InterNeuronAPI<TAxonType, TGlobal>;
         <TSenderCollateral extends ICNSCollateral<unknown>, TResult>(s: {
             collateral: TSenderCollateral;
             modalities: Array<{
@@ -139,7 +135,7 @@ type InterNeuronAPI<
                             ? P
                             : never,
                         axon: TAxonType,
-                        ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                        ctx: TCNSHandlerContext<TGlobal>
                     ) => TResult | Promise<TResult>
                 >;
                 default?: (
@@ -147,7 +143,7 @@ type InterNeuronAPI<
                         ? P
                         : never,
                     axon: TAxonType,
-                    ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                    ctx: TCNSHandlerContext<TGlobal>
                 ) => TResult | Promise<TResult>;
             }>;
             default?: (
@@ -155,14 +151,14 @@ type InterNeuronAPI<
                     ? P
                     : never,
                 axon: TAxonType,
-                ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                ctx: TCNSHandlerContext<TGlobal>
             ) => TResult | Promise<TResult>;
             output: (
                 result: TResult,
                 axon: TAxonType,
-                ctx: TCNSHandlerContext<TContextValue, TGlobal>
+                ctx: TCNSHandlerContext<TGlobal>
             ) => TCNSNeuronResponseReturn<TAxonType>;
-        }): InterNeuronAPI<TContextValue, TAxonType, TGlobal>;
+        }): InterNeuronAPI<TAxonType, TGlobal>;
     };
 };
 
@@ -176,20 +172,18 @@ type ExtractResultFromOutput<T> = T extends (
 
 // Concrete builder
 export const neuron = <
-    TContextValue,
     TProvidedAxon extends Record<string, ICNSCollateral<unknown>>,
     TGlobal = unknown
 >(
     axon: TProvidedAxon
-): InterNeuronAPI<TContextValue, TCNSAxon<TProvidedAxon>, TGlobal> => {
+): InterNeuronAPI<TCNSAxon<TProvidedAxon>, TGlobal> => {
     const dendrites: TCNSDendrite<
-        TContextValue,
         ICNSCollateral<unknown>,
         TCNSAxon<TProvidedAxon>,
         TGlobal
     >[] = [];
 
-    const api: InterNeuronAPI<TContextValue, TCNSAxon<TProvidedAxon>, TGlobal> = {
+    const api: InterNeuronAPI<TCNSAxon<TProvidedAxon>, TGlobal> = {
         setConcurrency: (n: number | undefined) => {
             api.concurrency = n;
             return api;
@@ -210,7 +204,6 @@ export const neuron = <
                         : value;
                 dendrites.push(
                     dendrite as TCNSDendrite<
-                        TContextValue,
                         ICNSCollateral<unknown>,
                         TCNSAxon<TProvidedAxon>,
                         TGlobal
@@ -219,7 +212,6 @@ export const neuron = <
             }
             return api;
         }) as InterNeuronAPI<
-            TContextValue,
             TCNSAxon<TProvidedAxon>,
             TGlobal
         >['bind'],
@@ -239,14 +231,13 @@ export const neuron = <
                     dendrites.push({
                         collateral,
                         response: s.response,
-                    } as TCNSDendrite<TContextValue, ICNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
+                    } as TCNSDendrite<ICNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
                 }
             } else {
                 // Either full dendrite object or shorthand with single collateral
                 // Both have the same structure, so we handle them the same way
                 dendrites.push(
                     s as TCNSDendrite<
-                        TContextValue,
                         ICNSCollateral<unknown>,
                         TCNSAxon<TProvidedAxon>,
                         TGlobal
@@ -378,7 +369,7 @@ export const neuron = <
             dendrites.push({
                 collateral,
                 response,
-            } as TCNSDendrite<TContextValue, ICNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
+            } as TCNSDendrite<ICNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
 
             return api;
         },
@@ -402,7 +393,7 @@ export const neuron = <
  * @example
  * // src/neurons/factory.ts — ctx shape baked once
  * type TGlobal = { store: Store; now(): number; newId(): string };
- * export const { neuron } = neuronFactory().withGlobal<TGlobal>().withCtx<TCtx>();
+ * export const { neuron } = neuronFactory().withGlobal<TGlobal>();
  *
  * // any neuron file — plain value, reaches deps via ctx.global
  * export const taskNeuron = neuron({ taskCreated }).bind({ createTask }, {
@@ -410,38 +401,27 @@ export const neuron = <
  *     axon.taskCreated.createSignal({ id: global.newId(), title, at: global.now() }),
  * });
  */
-export type TNeuronFactory<TContextValue, TExt = unknown> = {
-    /** Bake the per-stimulation, per-neuron context value type (`ctx.get()/set()`). */
-    withCtx: <T>() => TNeuronFactory<T, TExt>;
+export type TNeuronFactory<TExt = unknown> = {
     /** Add `{ global: T }` to ctx; the value is injected once at `createCNS`/`new CNS`. */
-    withGlobal: <T>() => TNeuronFactory<TContextValue, TExt & { global: T }>;
+    withGlobal: <T>() => TNeuronFactory<TExt & { global: T }>;
     neuron: <TProvidedAxon extends Record<string, ICNSCollateral<unknown>>>(
         axon: TProvidedAxon
-    ) => InterNeuronAPI<TContextValue, TCNSAxon<TProvidedAxon>, TExt>;
+    ) => InterNeuronAPI<TCNSAxon<TProvidedAxon>, TExt>;
 };
 
-export const neuronFactory = <
-    TContextValue = undefined,
-    TExt = unknown
->(): TNeuronFactory<TContextValue, TExt> => {
+export const neuronFactory = <TExt = unknown>(): TNeuronFactory<TExt> => {
     // Single stateless object reused across every layer call: `.withX()` only
     // re-types it, so there is nothing to allocate or carry at runtime.
-    const factory: TNeuronFactory<TContextValue, TExt> = {
-        withCtx: () => factory as unknown as TNeuronFactory<any, TExt>,
-        withGlobal: () =>
-            factory as unknown as TNeuronFactory<TContextValue, any>,
+    const factory: TNeuronFactory<TExt> = {
+        withGlobal: () => factory as unknown as TNeuronFactory<any>,
         neuron: axon => neuron(axon) as any,
     };
     return factory;
 };
 
-/** Sugar: `neuronFactory().withCtx<T>()`. Still exposes `.neuron`, so existing usage is unchanged. */
-export const withCtx = <TContextValue>(): TNeuronFactory<TContextValue> =>
-    neuronFactory<TContextValue>();
-
 /** Sugar: `neuronFactory().withGlobal<T>()`. */
-export const withGlobal = <T>(): TNeuronFactory<undefined, { global: T }> =>
-    neuronFactory<undefined, { global: T }>();
+export const withGlobal = <T>(): TNeuronFactory<{ global: T }> =>
+    neuronFactory<{ global: T }>();
 
 export const afferentPath = (
     parentAfferentPath?: TCNSAfferentPath

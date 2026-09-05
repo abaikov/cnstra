@@ -379,7 +379,7 @@ describe('CNSDevToolsTransportWs', () => {
             stimulationAttemptId: 's1#2',
             attemptNumber: 2,
             entry: { collateralName: 'c', payload: {} },
-            progress: { tasks: [], context: {} },
+            progress: { tasks: [] },
         };
 
         test('calls onStimulationCommand for cns.stimulation.resume / launch', async () => {
