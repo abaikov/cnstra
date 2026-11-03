@@ -1,6 +1,6 @@
 {
     "name": "@cnstra/devtools-server",
-    "version": "3.5.0",
+    "version": "3.5.1",
     "description": "CNStra DevTools server (WebSocket only for now)",
     "repository": {
         "type": "git",
