@@ -12,6 +12,7 @@ import { join, dirname } from 'path';
 import { createRequire } from 'module';
 import { WebSocketServer, WebSocket } from 'ws';
 import { CNSDevToolsServer } from './index';
+import { createCNSDevToolsServerRepositoryInMemory } from './createCNSDevToolsServerRepositoryInMemory';
 
 const _require = createRequire(join(process.cwd(), 'package.json'));
 
@@ -51,10 +52,7 @@ const httpServer = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer });
 
-const { CNSDevToolsServerRepositoryInMemory } = await import(
-    '@cnstra/devtools-server-repository-in-memory'
-);
-const dtServer = new CNSDevToolsServer(new CNSDevToolsServerRepositoryInMemory());
+const dtServer = new CNSDevToolsServer(await createCNSDevToolsServerRepositoryInMemory());
 
 wss.on('connection', (ws) => {
     ws.on('message', async (data) => {

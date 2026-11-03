@@ -4,6 +4,7 @@ import { join, dirname } from 'path';
 import { createRequire } from 'module';
 import { WebSocketServer, WebSocket } from 'ws';
 import { CNSDevToolsServer } from './index';
+import { createCNSDevToolsServerRepositoryInMemory } from './createCNSDevToolsServerRepositoryInMemory';
 import { CNSDevToolsPollingTransport } from './pollingTransport';
 import type { TCNSPollingOptions } from './pollingTransport';
 import type { TCNSUiConfig } from './index';
@@ -134,11 +135,8 @@ export async function startCNSDevTools(
         );
     }
 
-    const { CNSDevToolsServerRepositoryInMemory } = await import(
-        '@cnstra/devtools-server-repository-in-memory'
-    );
     const dtServer = new CNSDevToolsServer(
-        new CNSDevToolsServerRepositoryInMemory(),
+        await createCNSDevToolsServerRepositoryInMemory(),
         options.stimulationRepository,
         options.actions,
         options.ui,
