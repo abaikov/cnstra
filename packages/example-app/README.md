@@ -6,7 +6,7 @@
 - ✅ **Example CNS App** with DevTools integration
 - ✅ **Real-time monitoring** of CNS signals and topology
 
-📚 **[Full Documentation](https://cnstra.org/)** | [DevTools Guide](https://cnstra.org/docs/examples/devtools) | [Backend Examples](https://cnstra.org/docs/examples/backend-queues)
+📚 **[Full Documentation](https://cnstra.org/)** | [DevTools Guide](https://cnstra.org/docs/devtools/overview) | [Backend Examples](https://cnstra.org/docs/examples/runnable)
 
 ## What This Demonstrates
 
@@ -44,10 +44,6 @@ This will:
 4. ✅ Show real-time communication in terminal
 
 **Watch terminal output to see DevTools protocol in action!**
-
-### Want the full UI?
-
-The full UI demo requires workspace setup. For now, the standalone demo shows the core functionality working.
 
 ## What You'll See
 
@@ -165,17 +161,34 @@ If you prefer step-by-step:
 
 ## Code Highlights
 
+```ts setup
+import type { WebSocket } from 'ws';
+import type { CNS } from '@cnstra/core';
+import type { TCNSNeuron } from '@cnstra/types';
+import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+import { CNSDevToolsServer } from '@cnstra/devtools-server';
+import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-repository-in-memory';
+import { CNSDevTools } from '@cnstra/devtools';
+import { CNSDevToolsTransportWs } from '@cnstra/devtools-transport-ws';
+
+declare const ws: WebSocket;
+declare const message: unknown;
+declare const cns: CNS<TCNSNeuron<any>>;
+declare const registry: CNSPersistOptionsRegistry;
+```
+
 ### **DevTools Server (3 lines!)**
 ```typescript
 const repository = new CNSDevToolsServerRepositoryInMemory();
 const devToolsServer = new CNSDevToolsServer(repository);
-const response = await devToolsServer.handleMessage(ws, message);
+await devToolsServer.handleMessage(ws, message);
 ```
 
-### **App Integration (2 lines!)**
+### **App Integration (3 lines!)**
 ```typescript
 const transport = new CNSDevToolsTransportWs({ url: 'ws://localhost:8080' });
-const devtools = new CNSDevTools(cns, transport, { ... });
+const devtools = new CNSDevTools('ecommerce-app', transport, { appName: 'E-commerce Demo App' });
+devtools.registerCNS(cns, registry);
 ```
 
 **That's it!** Our packages handle all the complexity.

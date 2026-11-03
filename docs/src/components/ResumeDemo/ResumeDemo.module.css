@@ -1,0 +1,42 @@
+.phase {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.phase[data-phase='running'],
+.phase[data-phase='resuming'] { color: var(--neon-yellow); }
+.phase[data-phase='crashed'] { color: var(--neon-red); }
+.phase[data-phase='completed'] { color: var(--neon-green); }
+
+.log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-height: 168px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.log li {
+  animation: arrive 0.25s ease-out;
+}
+
+@keyframes arrive {
+  from { background: rgba(180, 134, 246, 0.14); }
+  to { background: transparent; }
+}
+
+.command { color: var(--neon-cyan); }
+.ok { color: var(--neon-green); }
+.bad { color: var(--neon-red); }
+.note { color: var(--neon-violet); }
+
+@media (prefers-reduced-motion: reduce) {
+  .log li { animation: none; }
+}

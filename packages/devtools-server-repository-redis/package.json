@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/devtools-server-repository-redis",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Redis repository for CNStra DevTools server (resumable stimulations & hops)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/devtools-server-repository-redis"
+  },
   "keywords": [
     "cnstra",
     "devtools",

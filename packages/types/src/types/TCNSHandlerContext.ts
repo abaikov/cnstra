@@ -1,3 +1,4 @@
+import { TCNSContextStore } from './TCNSContextStore';
 import { ICNS } from '../interfaces/ICNS';
 
 /**
@@ -13,14 +14,22 @@ type TCNSHandlerContextBase = {
     cns?: ICNS<any, any>;
     stimulation?: any;
     /**
-     * The caller-supplied value passed as `stimulate(sig, { stimulationContext })`
-     * (or `activate(...)`) — the same object on every hop of this stimulation, in
-     * any environment (sync or async, node or browser). Use it to correlate logs
-     * to a run: pass `{ stimulationId, attemptNumber }` and read it here. Typed
-     * `unknown` because the neuron doesn't own the shape — the caller does; cast at
-     * the read site.
+     * The context store of the whole run — what the caller passed as
+     * `stimulate(sig, { stimulationContext })` plus whatever the run has written
+     * into it since, the same object on every hop in any environment (sync or
+     * async, node or browser). Keyed by namespace; the values inside are
+     * `unknown`, so cast at the read site.
      */
-    stimulationContext?: unknown;
+    stimulationContext?: TCNSContextStore;
+    /**
+     * The context store of the activation currently running — data a response
+     * listener attached to THIS activation before it started. Unset when nobody
+     * wrote anything.
+     *
+     * Same shape as {@link stimulationContext}, shorter life: this one is gone
+     * when the activation returns.
+     */
+    activationContext?: TCNSContextStore;
 };
 
 /**

@@ -1,11 +1,9 @@
+import { TCNSContextStore } from './TCNSContextStore';
 import { TCNSModality } from './TCNSModality';
 import { TCNSAfferentPath } from './TCNSAfferentPath';
 import { TCNSStimulationDrain } from './TCNSStimulationDrain';
 
-export type TCNSStimulationOptions<
-    TResponse,
-    TStimulationContext extends Object = {}
-> = {
+export type TCNSStimulationOptions<TResponse> = {
     maxNeuronHops?: number;
     onResponse?: (response: TResponse) => void | Promise<void>;
     /**
@@ -29,5 +27,12 @@ export type TCNSStimulationOptions<
     concurrency?: number;
     modality?: TCNSModality;
     afferentPath?: TCNSAfferentPath;
-    stimulationContext?: TStimulationContext;
+    /**
+     * Data attached to the whole run, in namespaced compartments — the same
+     * object on every hop. Its per-activation sibling is `activationContext`.
+     *
+     * What is portable travels with the serialized frontier, so a run resumed in
+     * another process reads back what the previous attempt left here.
+     */
+    stimulationContext?: TCNSContextStore;
 };

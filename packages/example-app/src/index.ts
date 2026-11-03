@@ -1,5 +1,8 @@
-import { CNS, collateral, neuronFactory } from '@cnstra/core';
+import { CNS, cnsCollateral, cnsNeuronFactory } from '@cnstra/core';
 import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+import { CNSInMemoryJobRepository } from '@cnstra/jobs';
+import { CNSJobs } from '@cnstra/jobs-adapter';
+import type { ICNSScheduledStimulationReader, TCNSDevToolsActionMiddleware } from '@cnstra/persist-dto';
 import {
     generateBigTopology,
     generateBigStimulations,
@@ -35,77 +38,66 @@ const SEED_APP_ID = 'bigdata-app';
 const SEED_CNS_ID = 'bigdata:core';
 
 // E-commerce domain collaterals
-const userLogin = collateral<{ email: string; password: string }>();
-const userAuthenticated = collateral<{
+const userLogin = cnsCollateral<{ email: string; password: string }>();
+const userAuthenticated = cnsCollateral<{
     userId: string;
     token: string;
     email: string;
 }>();
-const searchProducts = collateral<{
+const searchProducts = cnsCollateral<{
     query: string;
     category?: string;
     userId?: string;
 }>();
-const productsFound = collateral<{
+const productsFound = cnsCollateral<{
     products: Product[];
     query: string;
     totalCount: number;
 }>();
-const addToCart = collateral<{
+const addToCart = cnsCollateral<{
     userId: string;
     productId: string;
     quantity: number;
 }>();
-const cartUpdated = collateral<{
+const cartUpdated = cnsCollateral<{
     userId: string;
     cartItems: CartItem[];
     total: number;
 }>();
-const checkout = collateral<{
+const checkout = cnsCollateral<{
     userId: string;
     cartItems: CartItem[];
     paymentMethod: string;
 }>();
-const orderCreated = collateral<{
+const orderCreated = cnsCollateral<{
     orderId: string;
     userId: string;
     items: CartItem[];
     total: number;
 }>();
-const processPayment = collateral<{
+const processPayment = cnsCollateral<{
     orderId: string;
     amount: number;
     paymentMethod: string;
 }>();
-const paymentProcessed = collateral<{
+const paymentProcessed = cnsCollateral<{
     orderId: string;
     status: 'success' | 'failed';
     transactionId?: string;
 }>();
-const sendNotification = collateral<{
+const sendNotification = cnsCollateral<{
     userId: string;
     type: string;
     message: string;
     email?: string;
 }>();
-const notificationSent = collateral<{
+const notificationSent = cnsCollateral<{
     userId: string;
     type: string;
     status: 'sent' | 'failed';
 }>();
-const recordMetric = collateral<{
-    event: string;
-    userId?: string;
-    metadata?: any;
-}>();
-const auditLog = collateral<{
-    action: string;
-    userId?: string;
-    details: any;
-    timestamp: number;
-}>();
-const inventoryCheck = collateral<{ productId: string; quantity: number }>();
-const inventoryUpdated = collateral<{
+const inventoryCheck = cnsCollateral<{ productId: string; quantity: number }>();
+const inventoryUpdated = cnsCollateral<{
     productId: string;
     available: number;
     reserved: number;
@@ -225,12 +217,9 @@ const sampleUsers: User[] = [
 sampleUsers.forEach(user => users.set(user.id, user));
 
 // Authentication Service
-const authNeuron = neuronFactory()
+const authNeuron = cnsNeuronFactory()
     .neuron({
         userAuthenticated,
-        recordMetric,
-        auditLog,
-        sendNotification,
     })
     .bind(
         { userLogin },
@@ -251,46 +240,12 @@ const authNeuron = neuronFactory()
                     // Store session
                     sessions.set(token, user.id);
 
-                    // Record metric
-                    axon.recordMetric.createSignal({
-                        event: 'user_login_success',
-                        userId: user.id,
-                        metadata: { email },
-                    });
-
-                    // Audit log
-                    axon.auditLog.createSignal({
-                        action: 'user_login',
-                        userId: user.id,
-                        details: { email, success: true },
-                        timestamp: Date.now(),
-                    });
-
-                    // Send welcome notification
-                    axon.sendNotification.createSignal({
-                        userId: user.id,
-                        type: 'welcome',
-                        message: `Welcome back, ${user.name}!`,
-                        email: user.email,
-                    });
-
                     return axon.userAuthenticated.createSignal({
                         userId: user.id,
                         token,
                         email: user.email,
                     });
                 } else {
-                    // Record failed login
-                    axon.recordMetric.createSignal({
-                        event: 'user_login_failed',
-                        metadata: { email },
-                    });
-
-                    axon.auditLog.createSignal({
-                        action: 'user_login_failed',
-                        details: { email },
-                        timestamp: Date.now(),
-                    });
 
                     console.log(`❌ Auth failed for: ${email}`);
                     return undefined;
@@ -300,11 +255,9 @@ const authNeuron = neuronFactory()
     );
 
 // Product Search Service
-const searchNeuron = neuronFactory()
+const searchNeuron = cnsNeuronFactory()
     .neuron({
         productsFound,
-        recordMetric,
-        auditLog,
     })
     .bind(
         { searchProducts },
@@ -333,21 +286,6 @@ const searchNeuron = neuronFactory()
                     );
                 }
 
-                // Record search metric
-                axon.recordMetric.createSignal({
-                    event: 'product_search',
-                    userId,
-                    metadata: { query, category, resultCount: results.length },
-                });
-
-                // Audit log
-                axon.auditLog.createSignal({
-                    action: 'product_search',
-                    userId,
-                    details: { query, category, resultCount: results.length },
-                    timestamp: Date.now(),
-                });
-
                 return axon.productsFound.createSignal({
                     products: results,
                     query,
@@ -358,11 +296,9 @@ const searchNeuron = neuronFactory()
     );
 
 // Shopping Cart Service
-const cartNeuron = neuronFactory()
+const cartNeuron = cnsNeuronFactory()
     .neuron({
         cartUpdated,
-        recordMetric,
-        auditLog,
         inventoryCheck,
     })
     .bind(
@@ -410,21 +346,6 @@ const cartNeuron = neuronFactory()
                     0
                 );
 
-                // Record metric
-                axon.recordMetric.createSignal({
-                    event: 'add_to_cart',
-                    userId,
-                    metadata: { productId, quantity, cartTotal: total },
-                });
-
-                // Audit log
-                axon.auditLog.createSignal({
-                    action: 'add_to_cart',
-                    userId,
-                    details: { productId, quantity, newTotal: total },
-                    timestamp: Date.now(),
-                });
-
                 return axon.cartUpdated.createSignal({
                     userId,
                     cartItems: cart,
@@ -435,12 +356,10 @@ const cartNeuron = neuronFactory()
     );
 
 // Order Service
-const orderNeuron = neuronFactory()
+const orderNeuron = cnsNeuronFactory()
     .neuron({
         orderCreated,
         processPayment,
-        recordMetric,
-        auditLog,
     })
     .bind(
         { checkout },
@@ -468,21 +387,6 @@ const orderNeuron = neuronFactory()
                 // Clear cart
                 carts.delete(userId);
 
-                // Record metric
-                axon.recordMetric.createSignal({
-                    event: 'order_created',
-                    userId,
-                    metadata: { orderId, total, itemCount: cartItems.length },
-                });
-
-                // Audit log
-                axon.auditLog.createSignal({
-                    action: 'order_created',
-                    userId,
-                    details: { orderId, total, items: cartItems.length },
-                    timestamp: Date.now(),
-                });
-
                 // Trigger payment processing
                 axon.processPayment.createSignal({
                     orderId,
@@ -501,12 +405,9 @@ const orderNeuron = neuronFactory()
     );
 
 // Payment Service
-const paymentNeuron = neuronFactory()
+const paymentNeuron = cnsNeuronFactory()
     .neuron({
         paymentProcessed,
-        sendNotification,
-        recordMetric,
-        auditLog,
     })
     .bind(
         { processPayment },
@@ -527,32 +428,9 @@ const paymentNeuron = neuronFactory()
                     order.transactionId = transactionId;
                 }
 
-                // Record metric
-                axon.recordMetric.createSignal({
-                    event: 'payment_processed',
-                    userId: order?.userId,
-                    metadata: { orderId, amount, status, paymentMethod },
-                });
-
-                // Audit log
-                axon.auditLog.createSignal({
-                    action: 'payment_processed',
-                    userId: order?.userId,
-                    details: { orderId, amount, status, transactionId },
-                    timestamp: Date.now(),
-                });
-
                 // Send notification
                 if (order) {
                     const user = users.get(order.userId);
-                    axon.sendNotification.createSignal({
-                        userId: order.userId,
-                        type: success ? 'order_confirmation' : 'payment_failed',
-                        message: success
-                            ? `Your order ${orderId} has been confirmed!`
-                            : `Payment failed for order ${orderId}. Please try again.`,
-                        email: user?.email,
-                    });
                 }
 
                 return axon.paymentProcessed.createSignal({
@@ -565,11 +443,9 @@ const paymentNeuron = neuronFactory()
     );
 
 // Notification Service
-const notificationNeuron = neuronFactory()
+const notificationNeuron = cnsNeuronFactory()
     .neuron({
         notificationSent,
-        recordMetric,
-        auditLog,
     })
     .bind(
         { sendNotification },
@@ -583,21 +459,6 @@ const notificationNeuron = neuronFactory()
                 const success = Math.random() > 0.05; // 95% success rate
                 const status = success ? 'sent' : 'failed';
 
-                // Record metric
-                axon.recordMetric.createSignal({
-                    event: 'notification_sent',
-                    userId,
-                    metadata: { type, status, email },
-                });
-
-                // Audit log
-                axon.auditLog.createSignal({
-                    action: 'notification_sent',
-                    userId,
-                    details: { type, status, message },
-                    timestamp: Date.now(),
-                });
-
                 return axon.notificationSent.createSignal({
                     userId,
                     type,
@@ -608,11 +469,9 @@ const notificationNeuron = neuronFactory()
     );
 
 // Inventory Service
-const inventoryNeuron = neuronFactory()
+const inventoryNeuron = cnsNeuronFactory()
     .neuron({
         inventoryUpdated,
-        recordMetric,
-        auditLog,
     })
     .bind(
         { inventoryCheck },
@@ -642,23 +501,6 @@ const inventoryNeuron = neuronFactory()
                     );
                 }
 
-                // Record metric
-                axon.recordMetric.createSignal({
-                    event: 'inventory_check',
-                    metadata: {
-                        productId,
-                        quantity,
-                        available: currentInventory.available,
-                    },
-                });
-
-                // Audit log
-                axon.auditLog.createSignal({
-                    action: 'inventory_check',
-                    details: { productId, quantity, currentInventory },
-                    timestamp: Date.now(),
-                });
-
                 return axon.inventoryUpdated.createSignal({
                     productId,
                     available: currentInventory.available,
@@ -669,47 +511,39 @@ const inventoryNeuron = neuronFactory()
     );
 
 // Analytics Service
-const analyticsNeuron = neuronFactory()
+const domainEvents = {
+    userAuthenticated,
+    productsFound,
+    cartUpdated,
+    orderCreated,
+    paymentProcessed,
+    notificationSent,
+    inventoryUpdated,
+};
+
+const analyticsNeuron = cnsNeuronFactory()
     .neuron({})
-    .bind(
-        { recordMetric },
-        {
-            recordMetric: ({ event, userId, metadata }) => {
-                console.log(
-                    `📊 Recording metric: ${event} for user ${
-                        userId || 'anonymous'
-                    }`
-                );
-                console.log(`   📈 Metadata:`, metadata);
+    .bind(domainEvents, {
+        userAuthenticated: ({ userId }) => console.log(`📊 metric user_login_success for user ${userId}`),
+        productsFound: ({ query, totalCount }) => console.log(`📊 metric product_search "${query}": ${totalCount} results`),
+        cartUpdated: ({ userId, total }) => console.log(`📊 metric add_to_cart for user ${userId}, cart total ${total}`),
+        orderCreated: ({ orderId, total }) => console.log(`📊 metric order_created ${orderId}: ${total}`),
+        paymentProcessed: ({ orderId, status }) => console.log(`📊 metric payment_${status} for order ${orderId}`),
+        notificationSent: ({ userId, type, status }) => console.log(`📊 metric notification_${status} ${type} for user ${userId}`),
+        inventoryUpdated: ({ productId, available }) => console.log(`📊 metric inventory ${productId}: ${available} available`),
+    });
 
-                // Here you would typically send to analytics platform
-                // For demo, just log it
-                return undefined;
-            },
-        }
-    );
-
-// Audit Service
-const auditNeuron = neuronFactory()
+const auditNeuron = cnsNeuronFactory()
     .neuron({})
-    .bind(
-        { auditLog },
-        {
-            auditLog: ({ action, userId, details, timestamp }) => {
-                const logEntry = {
-                    timestamp: new Date(timestamp).toISOString(),
-                    action,
-                    userId: userId || 'system',
-                    details,
-                };
-
-                console.log(`📋 Audit Log:`, JSON.stringify(logEntry, null, 2));
-
-                // Here you would typically persist to audit database
-                return undefined;
-            },
-        }
-    );
+    .bind(domainEvents, {
+        userAuthenticated: payload => console.log(`📋 Audit user_login`, JSON.stringify({ userId: payload.userId, email: payload.email })),
+        productsFound: payload => console.log(`📋 Audit product_search`, JSON.stringify({ query: payload.query, totalCount: payload.totalCount })),
+        cartUpdated: payload => console.log(`📋 Audit cart_updated`, JSON.stringify({ userId: payload.userId, total: payload.total })),
+        orderCreated: payload => console.log(`📋 Audit order_created`, JSON.stringify({ orderId: payload.orderId, userId: payload.userId, total: payload.total })),
+        paymentProcessed: payload => console.log(`📋 Audit payment_processed`, JSON.stringify(payload)),
+        notificationSent: payload => console.log(`📋 Audit notification_sent`, JSON.stringify(payload)),
+        inventoryUpdated: payload => console.log(`📋 Audit inventory_updated`, JSON.stringify(payload)),
+    });
 
 // Create DevTools server + UI HTTP server first (only when devtools enabled)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -855,14 +689,6 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
             stimulationRepository = new SeedBigStimulationRepository(buckets);
             // Inject the synthetic app + topology so topology.query returns hundreds
             // of neurons/collaterals and the entity lists/typeaheads populate.
-            repository.upsertApp({
-                id: SEED_APP_ID,
-                name: topo.appName,
-                version: topo.version,
-                connectedAt: Date.now(),
-                lastSeenAt: Date.now(),
-            } as any);
-            repository.addCnsToApp(SEED_APP_ID, SEED_CNS_ID);
             repository.saveTopology(topo as any);
             console.log(
                 `🌱 SEED_BIG ready: ${topo.neurons.length} neurons · ` +
@@ -887,9 +713,21 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
             console.log('🗄️  Resumable stimulation store: in-memory');
         }
 
+        let jobsReader: ICNSScheduledStimulationReader | undefined;
+        const scheduledStimulationReader: ICNSScheduledStimulationReader = {
+            list: (filter, cursor, limit) => (jobsReader ??= jobs.scheduledStimulationReader()).list(filter, cursor, limit),
+        };
+        let jobsActions: TCNSDevToolsActionMiddleware | undefined;
+        const jobsActionLink: TCNSDevToolsActionMiddleware = (action, next) =>
+            action.type === 'command' || (action.type === 'launch' && action.replayOf === undefined)
+                ? (jobsActions ??= jobs.actions())(action, next)
+                : next();
         devToolsServer = new CNSDevToolsServer(
             repository,
-            stimulationRepository
+            stimulationRepository,
+            [jobsActionLink],
+            {},
+            scheduledStimulationReader
         );
         console.log('🔧 DevTools server core is initialized');
 
@@ -1063,16 +901,35 @@ export const registry = CNSPersistOptionsRegistryFactory.create({
     inventoryNeuron,
     analyticsNeuron,
     auditNeuron,
+    userLogin,
+    searchProducts,
+    addToCart,
+    checkout,
+    sendNotification,
 });
 
-// Entry collaterals are external triggers — they are no neuron's axon, so the
-// factory (which registers axon collaterals) does not name them. The serializer
-// needs a name for every collateral that can appear in an outstanding frontier,
-// including a stimulation's entry collateral, so register them explicitly.
-registry.registerCollateral('userLogin', userLogin);
-registry.registerCollateral('searchProducts', searchProducts);
-registry.registerCollateral('addToCart', addToCart);
-registry.registerCollateral('checkout', checkout);
+const jobRepository = new CNSInMemoryJobRepository();
+const jobs = new CNSJobs({ cns, registry, repository: jobRepository })
+    .type(checkout)
+    .type(processPayment)
+    .type(sendNotification, {
+        description: 'Sends a notification to a user',
+        payloadSchema: {
+            type: 'object',
+            properties: {
+                userId: { type: 'string' },
+                type: { type: 'string', enum: ['reminder', 'digest', 'promo'] },
+                message: { type: 'string' },
+                email: { type: 'string' },
+            },
+            required: ['userId', 'type', 'message'],
+        },
+    });
+await jobRepository.upsertSchedules('sendNotification', [{ scheduleId: 'daily-digest', cron: '0 9 * * *', tz: 'UTC' }], false);
+const hour = 3_600_000;
+await jobs.enqueue(checkout, { userId: 'user-1', cartItems: [], paymentMethod: 'card' }, { jobId: 'checkout-later', runAfter: Date.now() + hour });
+await jobs.enqueue(processPayment, { orderId: 'order-42', amount: 99, paymentMethod: 'card' }, { jobId: 'payment-later', runAfter: Date.now() + 2 * hour, jobKey: 'order-42' });
+await jobs.enqueue(sendNotification, { userId: 'user-2', type: 'reminder', message: 'Your cart is waiting' }, { jobId: 'reminder-tomorrow', runAfter: Date.now() + 24 * hour });
 
 // Setup DevTools with WebSocket transport (optional). Under SEED_BIG we do NOT
 // register the live CNS/demo — the synthetic dataset IS the data.
@@ -1091,16 +948,8 @@ if (DEVTOOLS_CLIENT_ENABLED && !SEED_BIG) {
 
     const devtools = new CNSDevTools('ecommerce-app', transport as any, {
         cnsId: 'ecommerce-app:core',
+        appName: 'E-commerce Demo App',
         trackStimulations: true,
-        devToolsInstanceName: 'E-commerce Demo App',
-        takeDataSnapshot: () => ({
-            timestamp: Date.now(),
-            activeUsers: Array.from(users.values()).filter(
-                u => u.isAuthenticated
-            ).length,
-            totalProducts: products.size,
-            totalOrders: orders.size,
-        }),
     });
     devtools.registerCNS(cns, registry);
 
@@ -1215,21 +1064,13 @@ async function runDemo() {
 
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Scenario 5: Direct audit log test (ensure audit-service gets stimulated)
-        console.log(
-            `📋 Triggering direct audit log for demo scenario completion`
-        );
+        console.log(`📧 Sending the demo completion notification`);
         await cns.stimulate(
-            auditLog.createSignal({
-                action: 'demo_scenario_completed',
+            sendNotification.createSignal({
                 userId: user.id,
-                details: {
-                    scenario: 'e-commerce-demo',
-                    query,
-                    productId: randomProductId,
-                    completedAt: new Date().toISOString(),
-                },
-                timestamp: Date.now(),
+                type: 'demo_scenario_completed',
+                message: `Thanks for shopping, ${user.name}!`,
+                email: user.email,
             })
         );
 

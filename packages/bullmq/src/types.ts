@@ -5,7 +5,7 @@
  * builds without bullmq/ioredis installed. Your real `Queue` / `Worker` / `Job`
  * satisfy these shapes structurally — pass them in.
  */
-export interface IBullJob<TData = unknown> {
+export interface ICNSBullJob<TData = unknown> {
     /** BullMQ assigns this before the processor runs; stable across retries. */
     id?: string;
     name: string;
@@ -22,10 +22,10 @@ export interface IBullJob<TData = unknown> {
 }
 
 /** The function BullMQ calls per job. One job = one stimulation. */
-export type TBullProcessor<TData> = (job: IBullJob<TData>) => Promise<unknown>;
+export type TCNSBullProcessor<TData> = (job: ICNSBullJob<TData>) => Promise<unknown>;
 
 /** Structural view of a constructed BullMQ `Worker`. */
-export interface IBullWorkerLike {
+export interface ICNSBullWorkerLike {
     close(): Promise<void>;
     on(event: string, listener: (...args: unknown[]) => void): unknown;
 }
@@ -34,21 +34,21 @@ export interface IBullWorkerLike {
  * Structural view of the BullMQ `Worker` **class** — pass the class itself so
  * this package can construct the worker without importing bullmq.
  */
-export interface IBullWorkerCtor {
+export interface ICNSBullWorkerCtor<TWorkerOptions> {
     new <TData extends object>(
         name: string,
-        processor: TBullProcessor<TData>,
-        opts?: Record<string, unknown>
-    ): IBullWorkerLike;
+        processor: TCNSBullProcessor<TData>,
+        opts: TWorkerOptions
+    ): ICNSBullWorkerLike;
 }
 
 /** Structural view of a BullMQ `Queue` (producer side). */
-export interface IBullQueueLike {
+export interface ICNSBullQueueLike {
     add(
         name: string,
         data: object,
         opts?: Record<string, unknown>
-    ): Promise<IBullJob>;
+    ): Promise<ICNSBullJob>;
 }
 
 // The job payload + response shapes are broker-agnostic — defined once in

@@ -5,50 +5,32 @@
  */
 
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { db, dbEventQueue } from '../model';
-import type {
-    TCNSAppDTO,
-    TCNSNeuronDTO,
-    TCNSServerMessageDTO,
-} from '@cnstra/devtools-dto';
+import { db } from '../model/db';
+import type { TCNSAppDTO, TCNSServerMessageDTO } from '@cnstra/devtools-dto';
 import { mainCNS } from '../cns';
 import { wsAxon } from '../cns/ws/WsAxon';
 
-// Deterministic: await the whole ingest → data-layer chain, then flush the queue.
+// Deterministic: await the whole ingest → data-layer chain.
 const feed = async (msg: TCNSServerMessageDTO) => {
     await mainCNS
         .stimulate(wsAxon.message.createSignal(JSON.stringify(msg)))
         .waitUntilComplete();
-    dbEventQueue.flush();
 };
 
 const makeApp = (id: string, name: string): TCNSAppDTO => ({
     id,
     name,
     version: '1.0.0',
-    connectedAt: Date.now(),
-    lastSeenAt: Date.now(),
 });
 
-const makeNeuron = (appId: string, name: string): TCNSNeuronDTO => ({
-    name,
-    cnsId: `${appId}:main`,
-    appId,
-});
+const connectedApps = () => db.allApps.getEntitiesByKey('all');
 
-const clearDatabase = () => {
-    db.apps.clear();
-    db.neurons.clear();
-    db.collaterals.clear();
-    db.dendrites.clear();
-    db.cns.clear();
-    db.stimulations.clear();
-    db.responses.clear();
-    dbEventQueue.flush();
+const clearApps = () => {
+    for (const app of connectedApps()) db.apps.deleteEntityByKey(app.id);
 };
 
 describe('E2E Late-Joining Apps', () => {
-    beforeEach(() => clearDatabase());
+    beforeEach(() => clearApps());
 
     it('runs the full connect → list → late-join flow', async () => {
         // Step 1: initial apps list (server's response to the connect).
@@ -57,37 +39,19 @@ describe('E2E Late-Joining Apps', () => {
             requestId: '__init__',
             items: [makeApp('existing-app', 'Existing App')],
         });
-        expect(db.apps.getAll().map(a => a.id)).toEqual(['existing-app']);
+        expect(connectedApps().map(a => a.id)).toEqual(['existing-app']);
 
-        // Step 2: a new app connects with a topology.
+        // Step 2: a new app connects.
         await feed({
             type: 'app.connected',
             app: makeApp('late-app', 'Late App'),
-            topology: {
-                cnsId: 'late-app:main',
-                neurons: [makeNeuron('late-app', 'api')],
-                collaterals: [
-                    {
-                        name: 'done',
-                        ownerNeuronName: 'api',
-                        cnsId: 'late-app:main',
-                        appId: 'late-app',
-                    },
-                ],
-                dendrites: [],
-            },
+            topology: { cnsId: 'late-app:main', neurons: [], collaterals: [], dendrites: [] },
         });
 
-        // Both apps present, and the late app's topology landed.
-        expect(db.apps.getAll().map(a => a.id).sort()).toEqual([
+        // Both apps present.
+        expect(connectedApps().map(a => a.id).sort()).toEqual([
             'existing-app',
             'late-app',
         ]);
-        // Neurons are keyed by the composite pk [cnsId, name].
-        expect(
-            Array.from(db.neurons.indexes.appId.getPksByKey('late-app'))
-        ).toEqual([['late-app:main', 'api']]);
-        expect(db.collaterals.getAll().length).toBe(1);
-        expect(db.cns.getOneByPk('late-app:main')?.appId).toBe('late-app');
     });
 });

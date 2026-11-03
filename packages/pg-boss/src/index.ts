@@ -1,12 +1,15 @@
 export { createCNSWorker } from './worker';
 export type { TCNSWorkerOptions, TCNSPgBossWorkerHandle } from './worker';
 
-export { enqueueStimulation, stimulationJob } from './enqueue';
+export { enqueueCNSStimulation, cnsStimulationJob } from './enqueue';
+
+export { createCNSPgBossActions } from './actions';
+export type { ICNSPgBossActionsLike } from './actions';
 export type { TCNSSendOptions } from './enqueue';
 
 export type {
-    IPgBossLike,
-    IPgBossJob,
+    ICNSPgBossLike,
+    ICNSPgBossJob,
     TCNSStimulationJobData,
     ICNSResponseLike,
 } from './types';

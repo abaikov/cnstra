@@ -2,6 +2,9 @@
 // shared by @cnstra/persist (engine) and the devtools. Topology is referenced by
 // name only — it is never persisted (the code is its source of truth).
 
+// ── id grammar (shared by the engine, the brokers, the server and the panel) ──
+export { buildCNSAttemptId, buildCNSCloneId } from './ids';
+
 // ── shared leaf types ──
 export type { TCNSSignalJSON } from './types/TCNSSignalJSON';
 export type { ECNSStimulationStatus } from './types/ECNSStimulationStatus';
@@ -26,6 +29,35 @@ export type {
     TCNSStimulationRosterTimeBucket,
     TCNSStimulationRosterFacets,
 } from './types/TCNSStimulationRoster';
+
+export type { ECNSScheduledStimulationStatus } from './types/ECNSScheduledStimulationStatus';
+export type { TCNSScheduledStimulationState } from './types/TCNSScheduledStimulationState';
+export type { TCNSStimulationScheduleState } from './types/TCNSStimulationScheduleState';
+export type { TCNSScheduledStimulationFilter } from './types/TCNSScheduledStimulationFilter';
+export type { TCNSScheduledStimulationPage } from './types/TCNSScheduledStimulationPage';
+export type { TCNSScheduledStimulationTypeState } from './types/TCNSScheduledStimulationTypeState';
+export type { ICNSScheduledStimulationReader } from './interfaces/ICNSScheduledStimulationReader';
+
+// ── DevTools actions: the chain that carries them out in a deployment ──
+export type {
+    TCNSDevToolsAction,
+    TCNSDevToolsActionMiddleware,
+    TCNSResumeRunAction,
+    TCNSLaunchRunAction,
+    TCNSCommandRunAction,
+} from './messages/TCNSDevToolsAction';
+export type { TCNSStimulationCommand } from './types/TCNSStimulationCommand';
+export type { TCNSStimulationCommandRequest } from './messages/TCNSStimulationCommandRequest';
+export type { TCNSStimulationCommandAccepted } from './messages/TCNSStimulationCommandAccepted';
+export type { TCNSStimulationCommandRejected } from './messages/TCNSStimulationCommandRejected';
+export type { TCNSStimulationLaunchRequest } from './messages/TCNSStimulationLaunchRequest';
+export type { TCNSStimulationLaunchAccepted } from './messages/TCNSStimulationLaunchAccepted';
+export type { TCNSStimulationLaunchRejected } from './messages/TCNSStimulationLaunchRejected';
+export {
+    runCNSDevToolsAction,
+    onCNSResume,
+    onCNSLaunch,
+} from './messages/runCNSDevToolsAction';
 
 // ── wire actions: retry / clone (panel ↔ server) ──
 export type { TCNSStimulationActionOptions } from './messages/TCNSStimulationActionOptions';

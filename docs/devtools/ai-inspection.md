@@ -15,7 +15,23 @@ AI tools like Claude and Cursor understand your CNStra application much better w
 
 `dumpCNSGraph` produces a Markdown description of your neuron graph: which collaterals each neuron emits, where those collaterals go, and what each neuron reacts to.
 
-```ts
+```ts file=cns.ts setup
+import type { CNS } from '@cnstra/core';
+export declare const cns: CNS<any>;
+```
+
+```ts file=neurons.ts setup
+import type { TCNSNeuron } from '@cnstra/types';
+export declare const deckNeuron: TCNSNeuron<any>;
+export declare const cardNeuron: TCNSNeuron<any>;
+```
+
+```ts file=src/neurons/registry.ts setup
+import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+export declare const registry: CNSPersistOptionsRegistry;
+```
+
+```ts file=cns.debug.ts
 // cns.debug.ts  ← excluded from your prod entry point
 import { writeFileSync } from 'fs';
 import { dumpCNSGraph } from '@cnstra/devtools';
@@ -26,6 +42,18 @@ writeFileSync('CNS_GRAPH.md', dumpCNSGraph(cns, registry));
 ```
 
 If you don't have a shared registry yet, create one inline:
+
+```ts setup
+import { writeFileSync } from 'fs';
+import { dumpCNSGraph, CNSHistoryLogger } from '@cnstra/devtools';
+import type { CNS } from '@cnstra/core';
+import type { TCNSNeuron } from '@cnstra/types';
+
+declare const cns: CNS<any>;
+declare const deckNeuron: TCNSNeuron<any>;
+declare const cardNeuron: TCNSNeuron<any>;
+declare const uiNeuron: TCNSNeuron<any>;
+```
 
 ```ts
 import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
@@ -63,7 +91,7 @@ Run `npm run graph` whenever your neuron structure changes. Commit `CNS_GRAPH.md
 
 `CNSHistoryLogger` subscribes to a CNS instance and records the stimulation history.
 
-```ts
+```ts file=history.debug.ts
 import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { CNSHistoryLogger } from '@cnstra/devtools';
 import { cns } from './cns';
@@ -84,7 +112,9 @@ logger.stop();
 ### Options
 
 ```ts
-new CNSHistoryLogger(cns, registry, {
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+
+new CNSHistoryLogger(cns, CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron }), {
     maxRecords: 50, // keep last N stimulations (default: 100)
 });
 ```

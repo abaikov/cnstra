@@ -1,3 +1,4 @@
+import type { TCNSContextStore } from '@cnstra/types';
 import type { TCNSSignalJSON } from './TCNSSignalJSON';
 
 /**
@@ -13,4 +14,11 @@ export type TCNSPlannedTaskJSON = {
     dendriteCollateralName: string;
     /** The input signal that drives the task, if any (a {@link TCNSSignalJSON}). */
     input?: TCNSSignalJSON;
+    /**
+     * The activation's context store — the portable part of it. Whatever could
+     * not survive the trip (a function, a symbol, a cycle, a live handle) was
+     * left behind when this was written, the way a browser form drops what it
+     * cannot carry.
+     */
+    activationContext?: TCNSContextStore;
 };

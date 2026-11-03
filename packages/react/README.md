@@ -2,7 +2,7 @@
 
 React bindings for CNS neural network-inspired event flow system.
 
-📚 **[Full Documentation](https://cnstra.org/)** | [React Integration Guide](https://cnstra.org/docs/examples/react) | [Frontend with OIMDB](https://cnstra.org/docs/frontend/oimdb)
+📚 **[Full Documentation](https://cnstra.org/)** | [React Integration Guide](https://cnstra.org/docs/frontend/react-patterns) | [Frontend with OIMDB](https://cnstra.org/docs/frontend/oimdb)
 
 ## Installation
 
@@ -14,17 +14,18 @@ npm install @cnstra/react @cnstra/core
 
 ### Basic Setup
 
-```tsx
+```tsx file=App.tsx
 import React from 'react';
 import { CNSProvider, useCNS } from '@cnstra/react';
-import { CNS, neuron, collateral } from '@cnstra/core';
+import { CNS, cnsNeuron, cnsCollateral } from '@cnstra/core';
+import { Counter } from './Counter';
 
 // Create your CNS instance
 const cns = new CNS([
   (() => {
-    const increment = collateral();
-    const decrement = collateral();
-    return neuron({
+    const increment = cnsCollateral();
+    const decrement = cnsCollateral();
+    return cnsNeuron({
       increment,
       decrement
     }).dendrite({
@@ -54,16 +55,16 @@ function App() {
 
 ### Using the Hook
 
-```tsx
+```tsx file=Counter.tsx
 import { useCNS } from '@cnstra/react';
-import { collateral } from '@cnstra/core';
+import { cnsCollateral } from '@cnstra/core';
 
-function Counter() {
+export function Counter() {
   const cns = useCNS();
 
   // Keep collaterals in module scope or component state; don't re-create them per call.
-  const increment = collateral();
-  const decrement = collateral();
+  const increment = cnsCollateral();
+  const decrement = cnsCollateral();
 
   const handleIncrement = () => {
     cns.stimulate(increment.createSignal());
@@ -89,6 +90,7 @@ You can create multiple CNS instances and use them in different parts of your ap
 ```tsx
 import React from 'react';
 import { CNSProvider, useCNS } from '@cnstra/react';
+import { CNS } from '@cnstra/core';
 
 // First CNS instance
 const cns1 = new CNS([/* neurons */]);
@@ -111,11 +113,13 @@ function App() {
 function Component1() {
   const cns = useCNS(); // Uses cns1
   // ...
+  return null;
 }
 
 function Component2() {
   const cns = useCNS(); // Uses cns2
   // ...
+  return null;
 }
 ```
 
@@ -139,16 +143,19 @@ A React hook that returns the CNS instance from the nearest `CNSProvider`.
 
 ## TypeScript Support
 
-The package is fully typed and supports generic types for your CNS instances:
+The package is fully typed. `useCNS()` takes no type arguments and returns `CNS<any, any>`, because a provider accepts any instance; narrow it to the type of yours:
 
 ```tsx
-import { CNSProvider, useCNS } from '@cnstra/react';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { useCNS } from '@cnstra/react';
 
-// With custom types
-const cns = new CNS<MyCollateralName, MyNeuronId, MyNeuron, MyDendrite>([/* neurons */]);
+const clicked = cnsCollateral<{ id: string }>();
+const clickNeuron = cnsNeuron({}).dendrite({ collateral: clicked, response: () => {} });
+
+const appCNS = new CNS([clickNeuron]);
 
 function MyComponent() {
-  const cns = useCNS<MyCollateralName, MyNeuronId, MyNeuron, MyDendrite>();
-  // cns is fully typed
+  const cns = useCNS() as typeof appCNS;
+  return <button onClick={() => cns.stimulate(clicked.createSignal({ id: '1' }))}>Click</button>;
 }
 ```

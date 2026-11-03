@@ -7,9 +7,28 @@ description: "Learn the fundamental design principles of CNStra: single-process 
 keywords: [basics, fundamentals, design principles, single process, command pattern, dependency injection, data mutations, data reads, domain neurons, architecture basics, CNStra principles]
 ---
 
+```ts setup
+import { CNS, CNSCollateral, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import type { TCNSNeuron } from '@cnstra/types';
+
+type Item = { sku: string; quantity: number };
+type Order = { id: string; items: Item[]; status: string };
+type OrderFilters = { status?: string };
+
+declare const cns: CNS<TCNSNeuron>;
+declare const createOrder: CNSCollateral<{ items: Item[] }>;
+declare const db: {
+  orders: {
+    create(input: { items: Item[] }): Promise<Order>;
+    findById(id: string): Promise<Order | undefined>;
+    findMany(filters: OrderFilters): Promise<Order[]>;
+  };
+};
+```
+
 ## Single-Process Stimulation Execution
 
-Stimulation lives in a single process to guarantee stable execution without unnecessary overhead. This design choice ensures:
+Stimulation lives in a single process to guarantee stable execution without unnecessary overhead. What that buys:
 
 - **Deterministic execution**: All neurons within a stimulation run in the same execution context, eliminating cross-process synchronization complexity
 - **Performance**: No serialization/deserialization overhead for signal passing between neurons
@@ -38,6 +57,8 @@ CNStra implements a large-scale command pattern where each stimulation is a comm
 This approach combines the benefits of the command pattern (encapsulation, decoupling, extensibility) with automatic signal routing through the explicit neuron graph structure.
 
 ```ts
+const orderCreated = cnsCollateral<{ orderId: string }>();
+
 // Each stimulation is a command
 const signal = orderCreated.createSignal({ orderId: '123' });
 
@@ -80,11 +101,11 @@ This separation provides the best of both worlds:
 
 ```ts
 // Domain neuron: owns mutations for Order model
-const orderCreated = collateral<{ id: string; items: Item[] }>();
-const orderUpdated = collateral<{ id: string; changes: Partial<Order> }>();
-const orderCancelled = collateral<{ id: string; reason: string }>();
+const orderCreated = cnsCollateral<{ id: string; items: Item[] }>();
+const orderUpdated = cnsCollateral<{ id: string; changes: Partial<Order> }>();
+const orderCancelled = cnsCollateral<{ id: string; reason: string }>();
 
-const orderDomain = neuron({
+const orderDomain = cnsNeuron({
   created: orderCreated,
   updated: orderUpdated,
   cancelled: orderCancelled,
@@ -112,7 +133,7 @@ class OrderService {
 }
 ```
 
-This pattern ensures that:
+What the pattern gives you:
 - All order mutations flow through the `orderDomain` neuron (traceable, testable)
 - Order reads use the most efficient method for each use case (flexible, optimized)
 - The system remains maintainable as it grows (clear separation of concerns)

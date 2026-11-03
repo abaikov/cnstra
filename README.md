@@ -8,7 +8,7 @@ Build explicit backend workflows (jobs, sync, ETL), retries/timeouts, and saga-s
 
 ## What you can use it for
 
-- **Backend jobs**: queue-triggered workers, fan-out/fan-in, concurrency gates
+- **Backend jobs**: queue-triggered workers, fan-out and joins, concurrency gates
 - **Sync / integrations**: webhooks → validation → persistence → side-effects
 - **ETL / pipelines**: step-by-step transforms with checkpoints and retries
 - **Retries / timeouts / cancellation**: deterministic runs with backoff patterns
@@ -24,5 +24,5 @@ workflow engine • orchestrator • orchestration • saga • retries • job 
 
 ## Packages
 
-- `@cnstra/core` — the workflow/orchestration engine (deterministic, hop‑bounded runs). See [packages/core/README.md](packages/core/README.md)
+- `@cnstra/core` — the workflow/orchestration engine (deterministic runs, optional hop limit). See [packages/core/README.md](packages/core/README.md)
 - `@cnstra/react` — React bindings (provider + hooks). See [packages/react/README.md](packages/react/README.md)

@@ -9,7 +9,24 @@ keywords: [React state management, Redux alternative, MobX alternative, Zustand 
 
 # OIMDB: Reactive In-Memory Database for JavaScript
 
-OIMDB (Object In-Memory Database) is a reactive in-memory database library that provides normalized entity storage, intelligent indexing, and automatic change notifications. Unlike traditional state managers that copy entire state trees, OIMDB uses O(1) Map-based lookups and efficient event coalescing to deliver high-performance state management.
+OIMDB (Object In-Memory Database) is a reactive in-memory database: normalized entities filed by key, indexes that fill themselves on write, and effects that hear exactly the slots they read. Nothing copies a state tree. Writes accumulate, and one `flush()` delivers them to every effect as one frame.
+
+In OIMDB 4, **services hold no data; state lives on slots**. A collection service is built once per entity type, and `service.createStoreSlot(db)` makes one instance of that collection on an `OIMDB`. Each entity lives in its own slot, under the key you give it.
+
+```ts setup
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import {
+    OIMDB,
+    OIMEffectService,
+    OIMPositionalArrayBucketContentService,
+    OIMSetBucketContentService,
+    createOIMEntityContentService,
+    createOIMSlotCollectionIndexService,
+    createOIMSlotCollectionService,
+} from '@oimdb/core';
+import type { TOIMEntitySlot } from '@oimdb/core';
+import { OIMDBProvider, useOIMBucketSlotsByKey, useOIMEntity } from '@oimdb/react';
+```
 
 ## Why OIMDB?
 
@@ -22,267 +39,120 @@ Traditional state management approaches like Redux or MobX have limitations:
 
 OIMDB solves these problems with:
 
-- **Normalized storage**: Entities stored by primary key in Maps (O(1) lookups)
-- **Reactive indexes**: Set- and array-based indexes for efficient queries (e.g., "all posts by author")
-- **Event coalescing**: Multiple rapid updates to the same entity trigger only one notification
-- **Configurable scheduling**: Choose when events fire (microtask, animationFrame, timeout, immediate)
+- **Normalized storage**: one slot per entity, found by key in a `Map`
+- **Indexes that fill themselves**: an index files every written entity into the bucket of its key (e.g. "all posts by author")
+- **Frames**: a write that changes nothing wakes nobody, and an effect runs at most once per flush, however many of its slots moved
+- **No default scheduler**: whoever owns the unit of work decides when to flush — under CNStra, the end of every synchronous turn
 
 ## Installation
 
 ```bash
-npm install @oimdb/core
+npm install @oimdb/core @oimdb/react
 ```
 
 ## Core Concepts
 
 ### Collections: Normalized Entity Storage
 
-The canonical entry point is `createOIMCollectionKit`. It wires a collection to an event queue and returns a kit with everything you need — `collection` (reads/writes/subscriptions), `indexFactory` (build indexes), and `select` (selectors). Entities are stored by primary key, providing O(1) lookups:
+A collection is a service over an entity content service, plus a store slot per instance. The keyed write `writeSlotContentByKey` mints the slot on a miss and writes the whole value on a hit. There are no bulk writes: a load is a loop of single writes inside `writeInBatch`, so an index on the collection hears the whole loop in one call.
 
-```typescript
-import {
-    OIMEventQueue,
-    OIMEventQueueSchedulerFactory,
-    createOIMCollectionKit,
-} from '@oimdb/core';
+```ts setup shown
+type User = { id: string; name: string; email: string; teamId: string };
 
-interface User {
-    id: string;
-    name: string;
-    email: string;
-}
+const db = new OIMDB();
+const userService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<User>() });
+const users = userService.createStoreSlot(db);
 
-// Create event queue with microtask scheduler (most common)
-const queue = new OIMEventQueue({
-    scheduler: OIMEventQueueSchedulerFactory.createMicrotask()
+userService.writeInBatch(users, () => {
+    userService.writeSlotContentByKey(users, 'u1', { id: 'u1', name: 'Ann', email: 'ann@example.com', teamId: 'engineering' });
+    userService.writeSlotContentByKey(users, 'u2', { id: 'u2', name: 'Bob', email: 'bob@example.com', teamId: 'engineering' });
 });
-
-// Create a collection kit
-const users = createOIMCollectionKit<User, string>(queue, {
-    selectPk: (user) => user.id
-});
-
-// CRUD operations go through users.collection
-users.collection.upsertOne({ id: 'user1', name: 'John Doe', email: 'john@example.com' });
-users.collection.upsertMany([
-    { id: 'user2', name: 'Jane Smith', email: 'jane@example.com' },
-    { id: 'user3', name: 'Bob Wilson', email: 'bob@example.com' }
-]);
-
-// O(1) lookups
-const user = users.collection.getOneByPk('user1');
-const multipleUsers = users.collection.getManyByPks(['user1', 'user2']);
 ```
 
-### Reactive Updates: Key-Specific Subscriptions
+Reads take the store slot first. `peekSlotByKey` mints nothing; `getSlotByKey` always returns a slot. `updateEntity` on a slot takes a **patch** — named columns move, the rest stay — while `writeSlotContentByKey` takes a **whole value**:
 
-Subscribe directly on the collection to changes for specific entities. Handlers receive no payload — read the current value from the collection when they fire:
+```ts
+const bob = userService.peekSlotByKey(users, 'u2')?.entity;
 
-```typescript
-// Subscribe to changes for a specific user
-users.collection.subscribeOnKey('user1', () => {
-    console.log('User1 changed!', users.collection.getOneByPk('user1'));
-});
-
-// Subscribe to changes for multiple users
-users.collection.subscribeOnKeys(['user1', 'user2'], () => {
-    console.log('Users changed!');
-});
-
-// Updates trigger notifications
-users.collection.upsertOne({ id: 'user1', name: 'John Updated' });
-// Notification fires in next microtask
+const annSlot = userService.getSlotByKey(users, 'u1');
+annSlot.updateEntity({ email: 'ann@team.dev' });
 ```
+
+### Effects: Reacting to Writes
+
+An effect names the slots it reads and runs when any of them moves. It receives no payload — read the current value from the slot:
+
+```ts
+const annSlot = userService.getSlotByKey(users, 'u1');
+const effect = OIMEffectService.INSTANCE.createEffect(db, () => console.log(annSlot.entity?.name), [annSlot]);
+
+annSlot.updateEntity({ name: 'Ann B.' });
+annSlot.updateEntity({ email: 'ann@team.dev' });
+db.flush();
+
+OIMEffectService.INSTANCE.disposeEffect(effect);
+```
+
+Both writes are delivered in the one frame `db.flush()` runs, so the effect runs once for them.
 
 ### Indexes: Efficient Queries
 
-Indexes are created through the kit's `indexFactory`. OIMDB provides two manual index types optimized for different use cases, plus **derived** indexes that maintain themselves from an entity field.
+#### An index that fills itself
 
-#### SetBased Indexes: For Incremental Updates
+An index is a collection of buckets over an entity collection. `selectKey` (or `columns`) is the index's key of an entity; `createIndexStoreSlot(users)` registers it on that store slot, and from then on every write files the entity into the bucket of its key. A bucket is minted on first read and filled from the entities already written.
 
-Use when you frequently add/remove individual items:
-
-```typescript
-// Create a manual Set-based index for user roles
-const userRoleIndex = users.indexFactory.setBasedIndex<string>();
-
-// Build the index
-userRoleIndex.setPks('admin', ['user1']);
-userRoleIndex.setPks('user', ['user2', 'user3']);
-
-// Efficient incremental updates
-userRoleIndex.addPks('admin', ['user2']); // O(1)
-userRoleIndex.removePks('admin', ['user1']); // O(1)
-
-// Query returns Set<TPk>
-const adminUsers = userRoleIndex.getPksByKey('admin'); // Set(['user2'])
-
-// Subscribe to a specific index key
-userRoleIndex.subscribeOnKey('admin', () => {
-    console.log('Admins changed:', userRoleIndex.getPksByKey('admin'));
+```ts
+const usersByTeamService = createOIMSlotCollectionIndexService({
+    entityService: userService,
+    selectKey: (user: User) => user.teamId,
 });
+const usersByTeam = usersByTeamService.createIndexStoreSlot(users);
+
+const engineering = usersByTeamService.holdSlotByKey(usersByTeam, 'engineering');
+OIMEffectService.INSTANCE.createEffect(db, () => console.log(engineering.getBucketMemberSlotCount()), [engineering]);
+
+const engineers = usersByTeamService.getEntitiesByKey(usersByTeam, 'engineering');
+
+const teamMembersService = createOIMSlotCollectionIndexService({
+    entityService: userService,
+    columns: ['teamId'],
+    slotContentService: new OIMSetBucketContentService<TOIMEntitySlot<User>, string>(),
+});
+const teamMembers = teamMembersService.createIndexStoreSlot(users);
 ```
 
-#### ArrayBased Indexes: For Full Replacements
+**Which bucket content:**
+- **Positional array** (`OIMPositionalArrayBucketContentService`, the default): members in an array, with reads by position
+- **Set** (`OIMSetBucketContentService`): membership without positions
 
-Use when you typically replace entire arrays (e.g., ordered lists):
+With `columns`, a patch that moves none of the named columns keeps the entity's key and costs the index nothing; `selectKey` is read again on every write.
 
-```typescript
-// Create a manual Array-based index for deck cards
-const cardsByDeckIndex = cards.indexFactory.arrayBasedIndex<string>();
+#### Buckets you order yourself
 
-// Set full array (O(1) - direct assignment, no diff computation)
-cardsByDeckIndex.setPks('deck1', ['card1', 'card2', 'card3']);
+When the order is yours — a ranked list, a playlist — use a collection of buckets and write the member slots in the order you want. A bucket's slots are the caller's: a write to an entity files nothing into it.
 
-// Query returns TPk[]
-const deckCards = cardsByDeckIndex.getPksByKey('deck1'); // ['card1', 'card2', 'card3']
+```ts
+const teamOrderService = createOIMSlotCollectionService({
+    slotContentService: new OIMPositionalArrayBucketContentService<TOIMEntitySlot<User>>(),
+});
+const teamOrder = teamOrderService.createStoreSlot(db);
 
-// For ArrayBased, prefer setPks for updates
-cardsByDeckIndex.setPks('deck1', ['card1', 'card2', 'card4']); // Recommended
-// addPks/removePks work but are O(n) - less efficient than SetBased
+const engineeringOrder = teamOrderService.holdSlotByKey(teamOrder, 'engineering');
+engineeringOrder.writeSlotContent([userService.getSlotByKey(users, 'u2'), userService.getSlotByKey(users, 'u1')]);
+engineeringOrder.unholdSlot();
 ```
 
-**When to use which:**
-- **SetBased**: Frequent add/remove operations, order doesn't matter
-- **ArrayBased**: Full array replacements, need to preserve order/sorting
+### Frames and Scheduling
 
-#### Derived Indexes: Maintained Automatically
+An `OIMDB` built without a `channelScheduler` delivers nothing until `db.flush()` runs. Every write since the last flush lands in one frame: each effect runs at most once for it, and a write that moves no column wakes nobody.
 
-When the index key is a field of the entity, use a derived index — it updates itself on every upsert/remove, so you never call `setPks` manually:
+Without an orchestrator, choose a scheduler at construction. A `TOIMChannelScheduler` is `(flush) => void`: the channel calls it on the first write of a frame, and it decides when `flush` runs:
 
-```typescript
-// Automatically groups users by their `teamId` field
-const usersByTeam = users.indexFactory.derivedSetIndex((user) => user.teamId);
-
-// Query returns Set<TPk>, always in sync with the collection
-const engineering = usersByTeam.getPksByKey('engineering');
+```ts
+const scheduledDb = new OIMDB({ channelScheduler: flush => queueMicrotask(flush) });
 ```
 
-### Event Coalescing: Performance Optimization
-
-Multiple rapid updates to the same entity are automatically coalesced into a single notification:
-
-```typescript
-// These three updates...
-users.collection.upsertOne({ id: 'user1', name: 'John' });
-users.collection.upsertOne({ id: 'user1', email: 'john@test.com' });
-users.collection.upsertOne({ id: 'user1', name: 'John Doe' });
-
-// ...result in only one notification with the final state
-// This prevents unnecessary re-renders and improves performance
-```
-
-### Event Queue and Schedulers
-
-Control when events fire with different schedulers:
-
-```typescript
-// Microtask (most common) - executes before next browser render
-const microtaskQueue = new OIMEventQueue({
-    scheduler: OIMEventQueueSchedulerFactory.createMicrotask()
-});
-
-// AnimationFrame - syncs with browser rendering (60fps)
-const animationFrameQueue = new OIMEventQueue({
-    scheduler: OIMEventQueueSchedulerFactory.createAnimationFrame()
-});
-
-// Timeout - configurable delay for custom batching
-const timeoutQueue = new OIMEventQueue({
-    scheduler: OIMEventQueueSchedulerFactory.createTimeout(100)
-});
-
-// Immediate - fastest execution
-const immediateQueue = new OIMEventQueue({
-    scheduler: OIMEventQueueSchedulerFactory.createImmediate()
-});
-
-// Manual queue (no scheduler)
-const manualQueue = new OIMEventQueue();
-manualQueue.enqueue(() => console.log('Task 1'));
-manualQueue.flush(); // Execute when ready
-```
-
-## Advanced Patterns
-
-### Collections with Indexes
-
-A kit already exposes `indexFactory` — create as many indexes as you need and keep references to them:
-
-```typescript
-import {
-    OIMEventQueue,
-    OIMEventQueueSchedulerFactory,
-    createOIMCollectionKit,
-} from '@oimdb/core';
-
-interface User {
-    id: string;
-    name: string;
-    teamId: string;
-    role: 'admin' | 'user';
-}
-
-const queue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-
-// Create the collection kit
-const users = createOIMCollectionKit<User, string>(queue, {
-    selectPk: (user) => user.id,
-});
-
-// Derived index: auto-maintained from the `teamId` field
-const usersByTeam = users.indexFactory.derivedSetIndex((user) => user.teamId);
-// Manual index: you control membership explicitly
-const usersByRole = users.indexFactory.setBasedIndex<string>();
-
-// Subscribe to index changes
-usersByTeam.subscribeOnKey('engineering', () => {
-    console.log('Engineering team changed:', usersByTeam.getPksByKey('engineering'));
-});
-
-// Writing entities keeps the derived index in sync automatically
-users.collection.upsertMany([
-    { id: 'u1', name: 'Ann', teamId: 'engineering', role: 'admin' },
-    { id: 'u2', name: 'Bob', teamId: 'engineering', role: 'user' },
-]);
-
-// Manual index is updated by hand
-usersByRole.setPks('admin', ['u1']);
-```
-
-### Custom Entity Updaters
-
-By default an upsert replaces the stored entity. To merge instead, pass an `updateEntity` updater. OIMDB ships factories for the common cases, and you can supply your own `(draft, prevEntity) => entity`:
-
-```typescript
-import { createOIMCollectionKit, createMergeEntityUpdater } from '@oimdb/core';
-
-// Built-in shallow merge: partial upserts merge into the existing entity
-const users = createOIMCollectionKit<User, string>(queue, {
-    selectPk: (user) => user.id,
-    updateEntity: createMergeEntityUpdater<User>(),
-});
-
-// Updates merge with existing
-users.collection.upsertOne({ id: 'user1', name: 'John' });
-users.collection.upsertOneByPk('user1', { email: 'john@example.com' }); // merges
-
-// Or a custom updater, e.g. a deep merge
-const deepMerge: (draft: Partial<User>, prev: User) => User = (draft, prev) => {
-    const result = { ...prev };
-    for (const [key, value] of Object.entries(draft)) {
-        if (value !== undefined) {
-            (result as any)[key] = value;
-        }
-    }
-    return result;
-};
-
-const usersDeep = createOIMCollectionKit<User, string>(queue, {
-    selectPk: (user) => user.id,
-    updateEntity: deepMerge,
-});
-```
+A microtask ends a frame at the first `await`, so a change that spans an `await` is delivered as two frames. Under CNStra the drain listener flushes, so the db needs no scheduler — see below; the server-sync binding commits the same way.
 
 ## Integration with CNStra
 
@@ -297,312 +167,236 @@ CNStra provides orchestration for OIMDB, replacing reducers, slices, thunks, and
 
 **Our Approach:**
 - A controlling neuron orchestrates the sequence of updates across models
-- OIMDB stores normalized data with reactive indexes (no tree copies)
-- After all model updates in a run, we flush the OIMDB event queue once, so the UI updates efficiently in batches
+- OIMDB stores normalized data with self-filling indexes (no tree copies)
+- CNStra calls a drain listener at the end of every synchronous turn of every stimulation; flushing there makes each turn exactly one OIMDB frame
 
 ### Minimal Setup
 
+The whole connection is one line: `cns.addDrainListener(() => db.flush())`. Application code carries no `flush()` call anywhere.
+
 ```ts
-import { CNS, neuron, collateral } from '@cnstra/core';
-import { OIMEventQueue, OIMEventQueueSchedulerFactory, createOIMCollectionKit } from '@oimdb/core';
+const userRenamed = cnsCollateral<{ id: string; name: string }>();
 
-const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const users = createOIMCollectionKit<{ id: string; name: string }, string>(dbEventQueue, {
-  selectPk: (u) => u.id,
+const userModel = cnsNeuron({}).dendrite({
+    collateral: userRenamed,
+    response: ({ id, name }) => {
+        userService.peekSlotByKey(users, id)?.updateEntity({ name });
+    },
 });
 
-// Define UI/update collateral
-const userUpdated = collateral<{ id: string; name: string }>();
+const cns = new CNS([userModel]);
+cns.addDrainListener(() => db.flush());
 
-// Controlling neuron updates models and returns nothing (end of branch)
-export const usersNeuron = neuron({}).dendrite({
-  collateral: userUpdated,
-  response: (payload) => {
-    users.collection.upsertOne({ id: payload.id, name: payload.name });
-    // OIMDB event queue will flush after the run completes
-    return undefined;
-  },
-});
-
-const cns = new CNS([usersNeuron]);
+cns.stimulate(userRenamed.createSignal({ id: 'u1', name: 'Ann B.' }));
 ```
+
+A turn that awaits ends early, and the drain flushes what it wrote so far: a loading state written before an `await` is shown at once, and the data written after it arrives in the next frame.
+
+**Every mutation goes through a domain neuron.** A write from a click handler, a socket callback or a timer is not flushed by anyone — route the event into a stimulation and let the neuron write.
 
 ### React Usage
 
-React hooks take the **reactive collection** (`users.collection`), not the kit:
+`OIMDBProvider` carries the database; every hook takes the store slot it reads:
 
 ```tsx
-import { useSelectEntityByPk } from '@oimdb/react';
-
 function UserName({ id }: { id: string }) {
-  const user = useSelectEntityByPk(users.collection, id) || null;
-  return <span>{user?.name ?? ''}</span>;
+    const user = useOIMEntity(users, id);
+    return <span>{user?.name ?? ''}</span>;
 }
+
+export const App = () => (
+    <OIMDBProvider db={db}>
+        <UserName id="u1" />
+    </OIMDBProvider>
+);
 ```
 
 ### Updating Multiple Collections
 
 Best practice: each model is updated by its own domain neuron. The controller emits one controller-owned signal with both payloads; each domain neuron listens and updates its model.
 
-```ts
-import { collateral, neuron } from '@cnstra/core';
-import { OIMEventQueue, OIMEventQueueSchedulerFactory, createOIMCollectionKit } from '@oimdb/core';
+```tsx
+type Post = { id: string; title: string; authorId: string };
 
-type UserEntity = { id: string; name: string };
-type PostEntity = { id: string; title: string; authorId: string };
-
-const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const users = createOIMCollectionKit<UserEntity, string>(dbEventQueue, {
-  selectPk: (u) => u.id,
+const postService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<Post>() });
+const posts = postService.createStoreSlot(db);
+const postsByAuthorService = createOIMSlotCollectionIndexService({
+    entityService: postService,
+    selectKey: (post: Post) => post.authorId,
 });
-export const posts = createOIMCollectionKit<PostEntity, string>(dbEventQueue, {
-  selectPk: (p) => p.id,
-});
-// Derived index: posts grouped by author, kept in sync automatically
-export const postsByAuthor = posts.indexFactory.derivedSetIndex((p) => p.authorId);
+const postsByAuthor = postsByAuthorService.createIndexStoreSlot(posts);
 
-// Single incoming signal with both payloads
-const userAndPostUpdated = collateral<{
-  user: UserEntity;
-  post: PostEntity;
-}>();
+const userAndPostUpdated = cnsCollateral<{ user: User; post: Post }>();
+const controllerUpdated = cnsCollateral<{ user: User; post: Post }>();
 
-// Controller-owned single update signal
-const controllerUpdated = collateral<{
-  user: UserEntity;
-  post: PostEntity;
-}>();
-
-// Controller receives inbound and emits one outbound
-export const controller = neuron({ controllerUpdated })
-  .dendrite({
+const controller = cnsNeuron({ controllerUpdated }).dendrite({
     collateral: userAndPostUpdated,
     response: (payload, axon) => axon.controllerUpdated.createSignal(payload),
-  });
-
-// Domain neurons update their own collections
-export const userModel = neuron({}).dendrite({
-  collateral: controllerUpdated,
-  response: (p) => {
-    users.collection.upsertOne(p.user);
-    return undefined;
-  },
 });
 
-export const postModel = neuron({}).dendrite({
-  collateral: controllerUpdated,
-  response: (p) => {
-    posts.collection.upsertOne(p.post);
-    return undefined;
-  },
+const userModel = cnsNeuron({}).dendrite({
+    collateral: controllerUpdated,
+    response: ({ user }) => {
+        userService.writeSlotContentByKey(users, user.id, user);
+    },
 });
-```
 
-React selectors will observe a single batched change after the run completes, not N re-renders during the sequence. Index hooks take the **index object** (not a string name):
+const postModel = cnsNeuron({}).dendrite({
+    collateral: controllerUpdated,
+    response: ({ post }) => {
+        postService.writeSlotContentByKey(posts, post.id, post);
+    },
+});
 
-```tsx
-import { useSelectEntityByPk, useSelectEntitiesByIndexKeySetBased } from '@oimdb/react';
+const cns = new CNS([controller, userModel, postModel]);
+cns.addDrainListener(() => db.flush());
 
 function AuthorWithPosts({ authorId }: { authorId: string }) {
-  const user = useSelectEntityByPk(users.collection, authorId) || null;
-  const postsByAuthorList =
-    useSelectEntitiesByIndexKeySetBased(posts.collection, postsByAuthor, authorId) ?? [];
-  return (
-    <section>
-      <h4>{user?.name}</h4>
-      <ul>{postsByAuthorList.map(p => p && <li key={p.id}>{p.title}</li>)}</ul>
-    </section>
-  );
+    const author = useOIMEntity(users, authorId);
+    const postSlots = useOIMBucketSlotsByKey(postsByAuthor, authorId);
+    return (
+        <section>
+            <h4>{author?.name}</h4>
+            <ul>{postSlots.map(slot => <li key={String(slot.key)}>{slot.entity?.title}</li>)}</ul>
+        </section>
+    );
 }
 ```
 
+Every response here is synchronous, so both writes land in one turn and one flush: `AuthorWithPosts` sees the author and the post in the same frame, not one write at a time. An index store slot fits `useOIMBucketSlotsByKey` as a bucket collection's store slot does.
+
 ### Example: Create Deck then Card
 
-Goal: on UI click, create a deck first (to obtain `deckId`), then create a card that needs that `deckId`. We orchestrate this with a controlling neuron; OIMDB persists models; the event queue flushes once after the run.
+Goal: on UI click, create a deck first (to obtain `deckId`), then create a card that needs that `deckId`. A controlling neuron orchestrates; OIMDB keeps the models. The collections are shared by this example and the next one:
 
-```ts
-import { CNS, collateral, neuron } from '@cnstra/core';
-import {
-  OIMEventQueue,
-  OIMEventQueueSchedulerFactory,
-  createOIMCollectionKit,
-} from '@oimdb/core';
+```ts setup shown
+type Deck = { id: string; title: string };
+type Card = { id: string; deckId: string; title: string };
 
-type DeckEntity = { id: string; title: string };
-type CardEntity = { id: string; deckId: string; title: string };
-
-// OIMDB setup
-const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const decks = createOIMCollectionKit<DeckEntity, string>(dbEventQueue, {
-  selectPk: (d) => d.id,
+const deckService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<Deck>() });
+const decks = deckService.createStoreSlot(db);
+const cardService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<Card>() });
+const cards = cardService.createStoreSlot(db);
+const cardsByDeckService = createOIMSlotCollectionIndexService({
+    entityService: cardService,
+    selectKey: (card: Card) => card.deckId,
 });
-export const cards = createOIMCollectionKit<CardEntity, string>(dbEventQueue, {
-  selectPk: (c) => c.id,
-});
-// Cards grouped by deck, maintained automatically
-export const cardsByDeck = cards.indexFactory.derivedSetIndex((c) => c.deckId);
+const cardsByDeck = cardsByDeckService.createIndexStoreSlot(cards);
 
-// Collaterals
-const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>();
-const controllerCreateDeckForCard = collateral<{ title: string; cardTitle: string }>();
-const controllerCreateCard = collateral<{ deckId: string; title: string }>();
-const deckCreatedForCard = collateral<{ deckId: string; title: string; cardTitle: string }>();
-
-// Services (mocked)
 const generateDeckId = () => 'deck-' + Math.random().toString(36).slice(2);
 const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
-
-// Deck neuron: listens controller:deck:createForCard, emits deck:createdForCard, upserts OIMDB
-export const deckNeuron = neuron({ deckCreatedForCard }).dendrite({
-  collateral: controllerCreateDeckForCard,
-  response: async (payload, axon) => {
-    const deckId = generateDeckId();
-    decks.collection.upsertOne({ id: deckId, title: payload.title });
-    return axon.deckCreatedForCard.createSignal({ deckId, title: payload.title, cardTitle: payload.cardTitle });
-  },
-});
-
-// Card neuron: listens controller:card:create, upserts OIMDB
-export const cardNeuron = neuron({}).dendrite({
-  collateral: controllerCreateCard,
-  response: async (payload) => {
-    const cardId = generateCardId();
-    cards.collection.upsertOne({ id: cardId, deckId: payload.deckId, title: payload.title });
-    return undefined;
-  },
-});
-
-// Controller neuron: emits only its own collaterals (controller:*)
-// Pass cardTitle through signal payloads, not context
-export const controller = neuron({ controllerCreateDeckForCard, controllerCreateCard })
-  .dendrite({
-    collateral: uiCreateCardClick,
-    response: (payload, axon) => {
-      // Pass cardTitle along with deck creation through payload
-      return axon.controllerCreateDeckForCard.createSignal({
-        title: payload.deckTitle,
-        cardTitle: payload.cardTitle
-      });
-    },
-  })
-  .dendrite({
-    collateral: deckCreatedForCard,
-    response: (payload, axon) => {
-      return axon.controllerCreateCard.createSignal({ deckId: payload.deckId, title: payload.cardTitle });
-    },
-  });
-
-// CNS
-const cns = new CNS([controller, deckNeuron, cardNeuron]);
-
-// UI click starts the run; OIMDB event queue flushes once after both upserts
-await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTitle: 'First task' }));
 ```
+
+```ts
+const uiCreateCardClick = cnsCollateral<{ deckTitle: string; cardTitle: string }>();
+const controllerCreateDeckForCard = cnsCollateral<{ title: string; cardTitle: string }>();
+const controllerCreateCard = cnsCollateral<{ deckId: string; title: string }>();
+const deckCreatedForCard = cnsCollateral<{ deckId: string; cardTitle: string }>();
+
+const deckNeuron = cnsNeuron({ deckCreatedForCard }).dendrite({
+    collateral: controllerCreateDeckForCard,
+    response: (payload, axon) => {
+        const deckId = generateDeckId();
+        deckService.writeSlotContentByKey(decks, deckId, { id: deckId, title: payload.title });
+        return axon.deckCreatedForCard.createSignal({ deckId, cardTitle: payload.cardTitle });
+    },
+});
+
+const cardNeuron = cnsNeuron({}).dendrite({
+    collateral: controllerCreateCard,
+    response: payload => {
+        const cardId = generateCardId();
+        cardService.writeSlotContentByKey(cards, cardId, { id: cardId, deckId: payload.deckId, title: payload.title });
+    },
+});
+
+const controller = cnsNeuron({ controllerCreateDeckForCard, controllerCreateCard })
+    .dendrite({
+        collateral: uiCreateCardClick,
+        response: (payload, axon) =>
+            axon.controllerCreateDeckForCard.createSignal({ title: payload.deckTitle, cardTitle: payload.cardTitle }),
+    })
+    .dendrite({
+        collateral: deckCreatedForCard,
+        response: (payload, axon) =>
+            axon.controllerCreateCard.createSignal({ deckId: payload.deckId, title: payload.cardTitle }),
+    });
+
+const cns = new CNS([controller, deckNeuron, cardNeuron]);
+cns.addDrainListener(() => db.flush());
+
+await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTitle: 'First task' })).waitUntilComplete();
+```
+
+The card title travels in the signal payloads, not in a context. The whole run is one synchronous turn, so the deck, the card and the `cardsByDeck` bucket arrive in one frame.
 
 ### Simplified Example: Direct Neuron Communication (No Controller)
 
 For simpler flows, you can skip the controller and have neurons communicate directly:
 
 ```ts
-import { CNS, collateral, neuron } from '@cnstra/core';
-import {
-  OIMEventQueue,
-  OIMEventQueueSchedulerFactory,
-  createOIMCollectionKit,
-} from '@oimdb/core';
+const uiCreateCardClick = cnsCollateral<{ deckTitle: string; cardTitle: string }>();
+const deckCreatedForCard = cnsCollateral<{ deckId: string; cardTitle: string }>();
 
-type DeckEntity = { id: string; title: string };
-type CardEntity = { id: string; deckId: string; title: string };
-
-// OIMDB setup
-const dbEventQueue = new OIMEventQueue({ scheduler: OIMEventQueueSchedulerFactory.createMicrotask() });
-export const decks = createOIMCollectionKit<DeckEntity, string>(dbEventQueue, {
-  selectPk: (d) => d.id,
-});
-export const cards = createOIMCollectionKit<CardEntity, string>(dbEventQueue, {
-  selectPk: (c) => c.id,
+const deckNeuron = cnsNeuron({ deckCreatedForCard }).dendrite({
+    collateral: uiCreateCardClick,
+    response: (payload, axon) => {
+        const deckId = generateDeckId();
+        deckService.writeSlotContentByKey(decks, deckId, { id: deckId, title: payload.deckTitle });
+        return axon.deckCreatedForCard.createSignal({ deckId, cardTitle: payload.cardTitle });
+    },
 });
 
-// Collaterals
-const uiCreateCardClick = collateral<{ deckTitle: string; cardTitle: string }>();
-const deckCreatedForCard = collateral<{ deckId: string; cardTitle: string }>();
-
-// Services (mocked)
-const generateDeckId = () => 'deck-' + Math.random().toString(36).slice(2);
-const generateCardId = () => 'card-' + Math.random().toString(36).slice(2);
-
-// Deck neuron: listens to UI click, creates deck, emits deckCreatedForCard
-export const deckNeuron = neuron({ deckCreatedForCard }).dendrite({
-  collateral: uiCreateCardClick,
-  response: async (payload, axon) => {
-    const deckId = generateDeckId();
-    decks.collection.upsertOne({ id: deckId, title: payload.deckTitle });
-    return axon.deckCreatedForCard.createSignal({ deckId, cardTitle: payload.cardTitle });
-  },
+const cardNeuron = cnsNeuron({}).dendrite({
+    collateral: deckCreatedForCard,
+    response: payload => {
+        const cardId = generateCardId();
+        cardService.writeSlotContentByKey(cards, cardId, { id: cardId, deckId: payload.deckId, title: payload.cardTitle });
+    },
 });
 
-// Card neuron: listens to deckCreatedForCard, creates card
-export const cardNeuron = neuron({}).dendrite({
-  collateral: deckCreatedForCard,
-  response: async (payload) => {
-    const cardId = generateCardId();
-    cards.collection.upsertOne({ id: cardId, deckId: payload.deckId, title: payload.cardTitle });
-    return undefined;
-  },
-});
-
-// CNS (no controller needed)
 const cns = new CNS([deckNeuron, cardNeuron]);
+cns.addDrainListener(() => db.flush());
 
-// UI click starts the run; OIMDB event queue flushes once after both upserts
-await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTitle: 'First task' }));
+await cns.stimulate(uiCreateCardClick.createSignal({ deckTitle: 'Inbox', cardTitle: 'First task' })).waitUntilComplete();
 ```
 
 **Rule of ownership:**
 - A neuron emits only collaterals from its own axon
 - Other neurons subscribe to those collaterals via dendrites
-- In this example, controller emits `controller:*` requests; deck emits `deck:createdForCard`; card writes data on `controller:card:create`
+- In the controller example, the controller emits `controllerCreateDeckForCard` and `controllerCreateCard`; the deck neuron emits `deckCreatedForCard`; the card neuron writes data on `controllerCreateCard`
+
+### Server Data: `@cnstra/oimdb`
+
+To keep OIMDB collections equal to a server, `@cnstra/oimdb` binds the `@cnstra/sync` homeostat to OIMDB: a query is an OIMDB computed, its record lives in an OIMDB collection, and a domain collection can keep its read slots fresh while they are read. Start from `createCNSOIMDBHomeostatEnvironment({ db, cns })`; the full guide is [Sync (homeostat)](/docs/frontend/sync). It commits through the graph, like your own neurons: `cns.addDrainListener(() => db.flush())`.
 
 ## Performance Characteristics
 
-- **Collections**: O(1) primary key lookups using Map-based storage
-- **Reactive Collections**: O(1) lookups + efficient event coalescing
-- **Indices**: O(1) index lookups with lazy evaluation
-- **Event System**: Smart coalescing prevents redundant notifications
-- **Memory**: Efficient key-based subscriptions, no global listeners
-- **Schedulers**: Configurable timing for optimal batching:
-  - **Microtask**: ~1-5ms delay, ideal for UI updates
-  - **Immediate**: &lt;1ms, fastest execution  
-  - **Timeout**: Custom delay for batching strategies
-  - **AnimationFrame**: 16ms, synced with 60fps rendering
+- **Lookups**: one `Map` lookup per key in the default store
+- **Indexes**: filed on write; a `writeInBatch` reaches each index in one call, which moves each group of entities with one bucket write
+- **No-op writes**: a write that moves no column wakes nobody
+- **Effects**: each runs at most once per flush, however many of its slots moved
+- **Memory**: a slot nobody refers to is released; a read that mints a slot leaves it to the unused-slot collector unless something holds it
 
-### Index Performance
+### Bucket Performance
 
-**SetBased Indexes** (`indexFactory.setBasedIndex()` / `derivedSetIndex()`):
-- Returns `Set<TPk>` for efficient membership checks
-- O(1) add/remove operations
-- Best for frequent incremental updates
+**Positional array** (`OIMPositionalArrayBucketContentService`, the index default):
+- Members in an array; `getBucketMemberSlotAt` is O(1)
+- `getBucketMemberSlotPosition` walks the array, O(n)
 
-**ArrayBased Indexes** (`indexFactory.arrayBasedIndex()` / `derivedArrayIndex()`):
-- Returns `TPk[]` for direct array access
-- O(1) `setPks` operation (direct assignment, no diff computation)
-- Best for full array replacements
-- Note: `addPks`/`removePks` are O(n) - prefer `setPks` for better performance
+**Set** (`OIMSetBucketContentService`):
+- Membership without positions
 
 ## Integration with Other Libraries
 
 ### React (@oimdb/react)
 
-The core library integrates seamlessly with React through dedicated hooks. All hooks take the **reactive collection** (`kit.collection`) and, for index queries, the **index object**:
+Every hook that reads a collection by key takes the store slot alone:
 
-```typescript
-import { useSelectEntityByPk, useSelectEntitiesByPks } from '@oimdb/react';
-
-// Single entity by primary key
-const user = useSelectEntityByPk(users.collection, 'user1');
-// Many entities by primary keys
-const teamUsers = useSelectEntitiesByPks(users.collection, userIds);
-```
+- `useOIMEntity(entityStoreSlot, key)` — one entity
+- `useOIMBucketSlotsByKey(bucketStoreSlot, key)` — one bucket's member slots; an index store slot fits too
+- `useOIMField(entityCollectionService, slot, name)` — one column of a slot you hold
+- `useOIMComputedValue(computedSlot)` — one derived value
 
 ### Redux (@oimdb/redux-adapter)
 
@@ -612,81 +406,23 @@ Migrate from Redux to OIMDB gradually or use both systems side-by-side with auto
 
 ## API Reference
 
-### Collection Kit
+The doors this page uses. The full reference is the OIMDB documentation.
 
-#### `createOIMCollectionKit<TEntity, TPk>(queue, opts?)`
-
-Creates a reactive collection and returns a kit:
-
-```typescript
-const kit = createOIMCollectionKit<TEntity, TPk>(queue: OIMEventQueue, opts?: {
-    selectPk?: (entity: TEntity) => TPk;
-    updateEntity?: (draft: Partial<TEntity>, prevEntity: TEntity) => TEntity;
-});
-// kit = { queue, collection, indexFactory, select }
-```
-
-#### `kit.collection` — `OIMReactiveCollection<TEntity, TPk>`
-
-Reactive collection with automatic change notifications and event coalescing.
-
-**Key Methods:**
-- `upsertOne(entity): TOIMEntitySlot` - Insert or update a single entity
-- `upsertOneByPk(pk, partial): TOIMEntitySlot` - Insert or update by primary key
-- `upsertMany(entities): TOIMEntitySlot[]` - Insert or update multiple entities
-- `removeOneByPk(pk): void` / `removeManyByPks(pks): void` - Remove entities
-- `getOneByPk(pk): TEntity | undefined` - Get entity by primary key
-- `getManyByPks(pks): TEntity[]` - Get multiple entities
-- `getAll(): TEntity[]` - Get all entities
-- `subscribeOnKey(pk, handler): () => void` - Subscribe to a single key (handler takes no args)
-- `subscribeOnKeys(pks, handler): () => void` - Subscribe to multiple keys
-
-#### `kit.indexFactory` — `OIMCollectionIndexFactory<TEntity, TPk>`
-
-Builds indexes bound to the collection:
-
-- `setBasedIndex<TKey>(): OIMReactiveCollectionIndexManualSetBased` - Manual Set-based index
-- `arrayBasedIndex<TKey>(): OIMReactiveCollectionIndexManualArrayBased` - Manual Array-based index
-- `derivedSetIndex<TKey>(selectKey): OIMDerivedCollectionIndexSetBased` - Auto-maintained Set index
-- `derivedArrayIndex<TKey>(selectKey): OIMDerivedCollectionIndexArrayBased` - Auto-maintained Array index
-
-**Index methods** (on the returned index):
-- `getPksByKey(key): Set<TPk> | TPk[]` - Query the index
-- `subscribeOnKey(key, handler): () => void` - Subscribe to a key
-- Manual indexes only: `setPks(key, pks)`, `addPks(key, pks)`, `removePks(key, pks)`, `clear(key?)`
-
-#### `kit.select` — `OIMCollectionSelectors<TEntity, TPk>`
-
-Composable selectors (each has a `.watch(cb)` method):
-- `byPk(pk)` / `byPks(pks)`
-- `entitiesBySetIndexKey(index, key)` / `entitiesByArrayIndexKey(index, key)`
-
-### `OIMEventQueue`
-
-Event processing queue with configurable scheduling.
-
-**Constructor:**
-```typescript
-new OIMEventQueue(options?: TOIMEventQueueOptions)
-```
-
-**Methods:**
-- `enqueue(fn: () => void): void` - Add function to queue
-- `flush(): void` - Execute all queued functions
-- `clear(): void` - Clear queue without executing
-
-### Schedulers
-
-#### `OIMEventQueueSchedulerFactory`
-
-Factory for creating different scheduler types:
-
-```typescript
-OIMEventQueueSchedulerFactory.createMicrotask()
-OIMEventQueueSchedulerFactory.createAnimationFrame()
-OIMEventQueueSchedulerFactory.createTimeout(delay?: number)
-OIMEventQueueSchedulerFactory.createImmediate()
-```
+| Call | What it does |
+|---|---|
+| `new OIMDB({ channelScheduler? })` | the database; with no `channelScheduler`, nothing is delivered until `db.flush()` |
+| `createOIMSlotCollectionService({ slotContentService })` | a collection type; `createOIMEntityContentService<TEntity>()` for entities, a bucket content service for buckets |
+| `service.createStoreSlot(db)` | one instance of the collection |
+| `service.writeSlotContentByKey(storeSlot, key, entity)` | the whole value under a key; returns the slot |
+| `service.writeInBatch(storeSlot, write)` | a loop of writes that indexes hear in one call |
+| `service.peekSlotByKey(storeSlot, key)` | the slot or `undefined`; mints nothing |
+| `service.getSlotByKey(storeSlot, key)` / `holdSlotByKey` | the slot, minted if missing; `holdSlotByKey` also holds it until `unholdSlot()` |
+| `slot.updateEntity(patch)` / `slot.clearSlotContent()` | patch the entity / remove it |
+| `createOIMSlotCollectionIndexService({ entityService, selectKey })` | an index type; `columns` instead of or alongside `selectKey`, and an optional `slotContentService` |
+| `indexService.createIndexStoreSlot(entityStoreSlot)` | the index over one collection instance |
+| `indexService.getEntitiesByKey(indexStoreSlot, key)` | the entities in one bucket |
+| `OIMEffectService.INSTANCE.createEffect(db, body, sourceSlots)` / `disposeEffect(effect)` | run `body` when a source slot moves / stop |
+| `cns.addDrainListener(() => db.flush())` | one OIMDB frame per CNStra turn |
 
 ## License
 

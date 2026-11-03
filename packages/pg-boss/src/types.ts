@@ -6,7 +6,7 @@
  * `work` handlers receive an array of jobs (batch). Pass your real `PgBoss`
  * instance — it satisfies this shape structurally.
  */
-export interface IPgBossJob<TData = unknown> {
+export interface ICNSPgBossJob<TData = unknown> {
     id: string;
     name: string;
     data: TData;
@@ -14,7 +14,7 @@ export interface IPgBossJob<TData = unknown> {
     retryCount?: number;
 }
 
-export interface IPgBossLike {
+export interface ICNSPgBossLike {
     send(
         name: string,
         data: object,
@@ -22,13 +22,20 @@ export interface IPgBossLike {
     ): Promise<string | null>;
     work<TData extends object>(
         name: string,
-        handler: (jobs: IPgBossJob<TData>[]) => Promise<unknown>
+        handler: (jobs: ICNSPgBossJob<TData>[]) => Promise<unknown>
     ): Promise<string>;
     work<TData extends object>(
         name: string,
         options: Record<string, unknown>,
-        handler: (jobs: IPgBossJob<TData>[]) => Promise<unknown>
+        handler: (jobs: ICNSPgBossJob<TData>[]) => Promise<unknown>
     ): Promise<string>;
+    /**
+     * Mark jobs finished by id (pg-boss `complete(name, ids)`). The batch handler
+     * calls it for the jobs that succeeded alongside one that did not, so a single
+     * failure does not re-run its neighbours. Optional: a stand-in that never
+     * batches has nothing to settle.
+     */
+    complete?(name: string, ids: string[]): Promise<unknown>;
 }
 
 // The job payload + response shapes are broker-agnostic — defined once in

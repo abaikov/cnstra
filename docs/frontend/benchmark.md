@@ -91,7 +91,7 @@ Memory is where the speed trade-offs become visible:
 Several variants per framework are **different data-access idioms**, not repeats:
 
 - **Cnstra + Oimdb (ids-based)** — the default: a merge updater (each upsert creates a new entity object) + `useSyncExternalStore` hooks. "Like everyone else."
-- **Cnstra + Oimdb (in-place)** — `createInPlaceEntityUpdater` (mutate the object in place, no allocation) + `*Signal` hooks (re-render by key subscription, read the mutated object). Fastest on the data layer.
+- **Cnstra + Oimdb (in-place)** — `createInPlaceEntityUpdater` (mutate the object in place, no allocation) + the OIMDB 3 signal hooks (re-render by key subscription, read the mutated object). Fastest on the data layer.
 - **Oimdb (no cnstra)** — pure OIMDB, writing directly to the collection without CNS orchestration. Included to isolate Cnstra's cost (34.2 vs 33.4 → orchestration ≈ noise).
 - **MobX (ids-based)** — `observable.map`, replace the whole entity, `useObserver` per hook (normalized store, "like everyone else").
 - **MobX (deep/in-place)** — idiomatic MobX: deep observables, mutate a field in place, components in `observer()` (read observables directly in JSX). MobX's best case.

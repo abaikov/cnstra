@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Print the plan and publish nothing
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: npm with trusted publishing
+        run: npm install -g npm@^11.5.1
+      - name: Install
+        run: npm ci
+      - name: Publish what the registry does not have
+        run: npm run publish:bumped -- ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run && '--dry-run' || '' }}

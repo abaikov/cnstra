@@ -1,0 +1,33 @@
+{
+  "name": "@cnstra/postgres-schema",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Schema migrator shared by the CNStra Postgres packages and bundled into each of them.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "test": "jest",
+    "test:types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/jest": "29.5.12",
+    "@types/node": "^24.12.2",
+    "@types/pg": "^8.11.0",
+    "jest": "29.7.0",
+    "pg": "^8.11.0",
+    "ts-jest": "29.1.2",
+    "typescript": "5.7.2",
+    "tsup": "8.5.1"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT",
+  "module": "dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  }
+}

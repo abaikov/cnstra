@@ -1,7 +1,11 @@
 import type { TExoSchema } from '@exodra/core';
 import { bindable } from '@exodra/reactivity';
-import { combine } from '../exo/oimdb-bind';
+import { exoCombine } from '@oimdb/exodra';
 import { fmtTime } from '../utils/format';
+import type { TCNSScheduledStimulationState, TCNSStimulationScheduleState } from '@cnstra/persist-dto';
+import { CNSPayloadForm } from './CNSPayloadForm';
+import type { TCNSPayloadField } from './types/TCNSPayloadField';
+import type { TCNSExplorerScheduled } from './explorerClient';
 import type { TCNSExplorerController } from './explorerController';
 import {
     buildNeuronRows,
@@ -10,10 +14,11 @@ import {
     neuronDetail,
     collateralDetail,
 } from './aggregate';
-import { nodeLinkDiagram, type TDiagramTarget } from './diagram';
+import { nodeLinkDiagram, type TCNSDiagramTarget } from './diagram';
 import {
     C,
     eyebrow,
+    statusColor,
     statusPill,
     bigStat,
     factBullet,
@@ -76,14 +81,14 @@ function windowedScroller<T>(
     deps: unknown[],
     getItems: () => T[],
     renderItem: (item: T, top: number) => TExoSchema,
-    empty: string,
+    empty: string | (() => string),
     onNearBottom?: () => void
 ): TExoSchema {
     const scrollTop = bindable(0);
     const viewportH = bindable(600);
-    const win = combine([...(deps as never[]), scrollTop, viewportH], () => {
+    const win = exoCombine(() => {
         const items = getItems();
-        if (!items.length) return emptyState(empty);
+        if (!items.length) return emptyState(typeof empty === 'string' ? empty : empty());
         const st = scrollTop.getValue();
         const vh = viewportH.getValue();
         const first = Math.max(0, Math.floor(st / ROW_H) - OVERSCAN);
@@ -96,7 +101,7 @@ function windowedScroller<T>(
                 {rows}
             </div>
         );
-    });
+    }, [...(deps as never[]), scrollTop, viewportH]);
     return (
         <div
             static={{
@@ -155,7 +160,7 @@ const emptyState = (msg: string): TExoSchema => (
     <div static={{ style: 'padding:28px 20px;color:var(--text-muted);font-size:12px;text-align:center' }}>{msg}</div>
 );
 
-/** Wrap a reactive `combine(...)` bindable as a mountable schema (children swap). */
+/** Wrap a reactive `exoCombine(...)` bindable as a mountable schema (children swap). */
 const bound = (children: unknown): TExoSchema => (
     <div static={{ style: 'display:contents' }} bindable={{ children: children as never }} />
 );
@@ -168,12 +173,7 @@ export function stimulationsList(ctrl: TCNSExplorerController): TExoSchema {
         (r, top) => {
             const sel = ctrl.query.getValue().selected;
             return rowAbs(top, {
-                accent:
-                    r.status === 'failed'
-                        ? C.red
-                        : r.status === 'completed'
-                          ? C.green
-                          : C.yellow,
+                accent: statusColor(r.status),
                 active: sel === r.stimulationId,
                 onClick: () => void ctrl.selectRun(r.stimulationId),
                 left: (
@@ -347,7 +347,7 @@ const collateralTarget = (
     role: string,
     count: number,
     error: number
-): TDiagramTarget => ({
+): TCNSDiagramTarget => ({
     id: collateralName,
     kind: 'collateral',
     title: collateralName,
@@ -362,7 +362,7 @@ const collateralTarget = (
 });
 
 export function neuronDetailView(ctrl: TCNSExplorerController): unknown {
-    return combine([ctrl.topology, ctrl.snapshot, ctrl.neuronScope, ctrl.facets, ctrl.query], () => {
+    return exoCombine(() => {
         const name = ctrl.query.getValue().selectedNeuron;
         if (!name) return <div />;
         // The neuron-scoped snapshot (its full recent history) when loaded; else the
@@ -459,19 +459,20 @@ export function neuronDetailView(ctrl: TCNSExplorerController): unknown {
         return (
             <div static={{ style: 'display:flex;flex-direction:column' }}>
                 {card}
+                {bound(exoCombine(() => scheduledSection(ctrl, ctrl.scopedScheduled.getValue(), 'at this neuron'), [ctrl.scopedScheduled]))}
                 {activations}
             </div>
         );
-    });
+    }, [ctrl.topology, ctrl.snapshot, ctrl.neuronScope, ctrl.facets, ctrl.query]);
 }
 
 // ── DETAIL: Collateral scope-card ──────────────────────────────────────────────
 export function collateralDetailView(ctrl: TCNSExplorerController): unknown {
-    return combine([ctrl.topology, ctrl.snapshot, ctrl.query], () => {
+    return exoCombine(() => {
         const name = ctrl.query.getValue().selectedCollateral;
         if (!name) return <div />;
         const d = collateralDetail(name, ctrl.topology.getValue(), ctrl.snapshot.getValue());
-        const left: TDiagramTarget[] = d.owner
+        const left: TCNSDiagramTarget[] = d.owner
             ? [
                   {
                       id: d.owner,
@@ -484,7 +485,7 @@ export function collateralDetailView(ctrl: TCNSExplorerController): unknown {
                   },
               ]
             : [];
-        const right: TDiagramTarget[] = d.subscribers.map(s => ({
+        const right: TCNSDiagramTarget[] = d.subscribers.map(s => ({
             id: s.neuronName,
             kind: 'neuron',
             title: s.neuronName,
@@ -591,15 +592,16 @@ export function collateralDetailView(ctrl: TCNSExplorerController): unknown {
         return (
             <div static={{ style: 'display:flex;flex-direction:column' }}>
                 {card}
+                {bound(exoCombine(() => scheduledSection(ctrl, ctrl.scopedScheduled.getValue(), 'on this collateral'), [ctrl.scopedScheduled]))}
                 {dispatchesSection}
             </div>
         );
-    });
+    }, [ctrl.topology, ctrl.snapshot, ctrl.query]);
 }
 
 // ── DETAIL: Activation-task scope-card ─────────────────────────────────────────
 export function taskDetailView(ctrl: TCNSExplorerController): unknown {
-    return combine([ctrl.snapshot, ctrl.detail, ctrl.query], () => {
+    return exoCombine(() => {
         const key = ctrl.query.getValue().selectedTask;
         if (!key) return <div />;
         // Search the live snapshot first; fall back to the currently-open
@@ -738,6 +740,17 @@ export function taskDetailView(ctrl: TCNSExplorerController): unknown {
                         ctrl.openEntity({ kind: 'stimulation', id: t.stimulationId, label: t.stimulationId })
                     )}
                 </div>
+                {/* whatever was attached to THIS activation - a request id, a
+                    traceparent, anything an integration or the app put there.
+                    Absent for an activation nobody wrote to, which is most. */}
+                {raw?.activationContext
+                    ? payloadBlock(
+                          'activation context',
+                          raw.activationContext,
+                          true,
+                          C.violet
+                      )
+                    : (<span />)}
                 {/* input & output SIGNAL payloads for this activation */}
                 {payloadBlock(`◦ ${t.input} — input signal payload`, inputPayload, hasInput, C.cyan)}
                 {payloadBlock(t.output ? `◦ ${t.output} — output signal payload` : 'output signal — no output', outputPayload, hasOutput, C.green)}
@@ -748,7 +761,7 @@ export function taskDetailView(ctrl: TCNSExplorerController): unknown {
                 )}
             </div>
         );
-    });
+    }, [ctrl.snapshot, ctrl.detail, ctrl.query]);
 }
 
 // ── DETAIL: Stimulation pipeline (the elegant waterfall) ───────────────────────
@@ -849,8 +862,7 @@ const actionBtn = (
 );
 
 export function stimulationDetailView(ctrl: TCNSExplorerController): unknown {
-    return combine(
-        [ctrl.detail, ctrl.query, ctrl.actionError, ctrl.actionNotice],
+    return exoCombine(
         () => {
             const q = ctrl.query.getValue();
             const d = ctrl.detail.getValue();
@@ -861,9 +873,28 @@ export function stimulationDetailView(ctrl: TCNSExplorerController): unknown {
             const err = ctrl.actionError.getValue();
             const notice = ctrl.actionNotice.getValue();
             const lastAttempt = d.attempts[d.attempts.length - 1];
-            const retryable = !!lastAttempt && (lastAttempt.status === 'failed' || lastAttempt.hasError);
+            // Both buttons go dead while either action is in flight: the click
+            // otherwise gives no feedback, and a second one sends a second
+            // command carrying the same attempt id.
+            const pending = ctrl.actionPending.getValue();
+            // An action the server turned off is not drawn at all: a greyed-out
+            // button reads as "not right now", which is the wrong story when the
+            // answer is "never here".
+            const allowed = ctrl.allowedActions.getValue();
+            const retryable =
+                !!lastAttempt &&
+                (lastAttempt.status === 'failed' ||
+                    lastAttempt.status === 'aborted' ||
+                    lastAttempt.hasError);
             const entryName = lastAttempt?.entry?.[0]?.collateralName ?? '—';
-            const resultStatus = lastAttempt?.hasError ? 'failed' : lastAttempt?.status ?? 'running';
+            // An aborted attempt carries failed tasks, so `hasError` is true for it
+            // too — the status must win, or the distinction is erased on screen.
+            const resultStatus =
+                lastAttempt?.status === 'aborted'
+                    ? 'aborted'
+                    : lastAttempt?.hasError
+                      ? 'failed'
+                      : lastAttempt?.status ?? 'running';
             const hops = lastAttempt?.hopCount ?? d.tasks.length;
 
             const attemptTasks = d.tasks
@@ -920,8 +951,22 @@ export function stimulationDetailView(ctrl: TCNSExplorerController): unknown {
                     <div static={{ style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' }}>
                         {eyebrow(`STIMULATION · FLOW`, C.yellow)}
                         <div static={{ style: 'flex:1' }} />
-                        {actionBtn('Retry', C.green, retryable, () => void ctrl.retryRun(run))}
-                        {actionBtn('Clone', C.cyan, true, () => void ctrl.cloneRun(run))}
+                        {allowed.retry === false
+                            ? null
+                            : actionBtn(
+                                  pending === 'retry' ? 'Retrying…' : 'Retry',
+                                  C.green,
+                                  retryable && !pending,
+                                  () => void ctrl.retryRun(run)
+                              )}
+                        {allowed.clone === false
+                            ? null
+                            : actionBtn(
+                                  pending === 'clone' ? 'Cloning…' : 'Clone',
+                                  C.cyan,
+                                  !pending,
+                                  () => void ctrl.cloneRun(run)
+                              )}
                     </div>
                     <div static={{ style: `font-size:11px;color:${C.muted};word-break:break-all` }}>{run}</div>
                     {feedback}
@@ -959,7 +1004,346 @@ export function stimulationDetailView(ctrl: TCNSExplorerController): unknown {
                     )}
                 </div>
             );
+        },
+        [ctrl.detail, ctrl.query, ctrl.actionError, ctrl.actionNotice, ctrl.actionPending, ctrl.allowedActions]
+    );
+}
+
+const fmtDue = (runAfter: number, now: number): string => {
+    const ms = runAfter - now;
+    if (ms <= 0) return 'due';
+    const seconds = Math.round(ms / 1000);
+    if (seconds < 60) return `in ${seconds}s`;
+    const minutes = Math.round(ms / 60_000);
+    if (minutes < 60) return `in ${minutes}m`;
+    const hours = Math.round(ms / 3_600_000);
+    if (hours < 24) return `in ${hours}h`;
+    return `in ${Math.round(ms / 86_400_000)}d`;
+};
+
+const fmtEvery = (ms: number): string =>
+    ms % 3_600_000 === 0 ? `${ms / 3_600_000}h` : ms % 60_000 === 0 ? `${ms / 60_000}m` : ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`;
+
+const openScheduled = (ctrl: TCNSExplorerController, row: TCNSScheduledStimulationState, fresh = false): void =>
+    row.resumes || row.attemptCount > 0
+        ? ctrl.openEntity({ kind: 'stimulation', id: row.stimulationId, label: row.stimulationId }, fresh)
+        : openCollateral(ctrl, row.entry.collateralName, fresh);
+
+const scheduledTasksLine = (row: TCNSScheduledStimulationState): TExoSchema => (
+    <div static={{ style: `font-size:10px;color:${C.muted};white-space:nowrap;overflow:hidden;text-overflow:ellipsis` }}>
+        <span static={{ style: `color:${C.muted}` }}>{row.resumes ? '▸ resumes at ' : '▸ into '}</span>
+        <span static={{ style: `color:${C.violet}` }}>
+            {row.tasks.length ? row.tasks.map(task => `${task.neuronName} ◂ ${task.dendriteCollateralName}`).join(' · ') : 'no subscribers'}
+        </span>
+    </div>
+);
+
+const commandBtn = (glyph: string, title: string, color: string, onClick: () => void): TExoSchema => (
+    <button
+        static={{
+            title,
+            class: 'exp-command',
+            style:
+                `flex:none;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:11px;` +
+                `cursor:pointer;border-radius:4px;border:1px solid ${color}66;background:${color}14;color:${color}`,
+        }}
+        handlers={{
+            onClick: (event: Event) => {
+                event.stopPropagation();
+                onClick();
+            },
+        }}
+    >
+        {glyph}
+    </button>
+);
+
+const armedCancels = new WeakMap<TCNSExplorerController, { stimulationId: string; at: number }>();
+
+const cancelScheduled = (ctrl: TCNSExplorerController, stimulationId: string): void => {
+    const armed = armedCancels.get(ctrl);
+    if (armed?.stimulationId === stimulationId && Date.now() - armed.at < 5000) {
+        armedCancels.delete(ctrl);
+        void ctrl.commandScheduled(stimulationId, { name: 'cancel' });
+        return;
+    }
+    armedCancels.set(ctrl, { stimulationId, at: Date.now() });
+    ctrl.actionError.setValue(null);
+    ctrl.actionNotice.setValue(`Press ✕ again to cancel ${stimulationId}`);
+};
+
+const scheduledCommands = (ctrl: TCNSExplorerController, row: TCNSScheduledStimulationState): TExoSchema => (
+    <div static={{ class: 'exp-commands', style: 'display:flex;align-items:center;gap:4px' }}>
+        {row.status === 'scheduled' ? (
+            commandBtn('▶', 'Run now', C.green, () => void ctrl.commandScheduled(row.stimulationId, { name: 'runNow' }))
+        ) : (
+            <span />
+        )}
+        {commandBtn('▲', `Raise priority (now ${row.priority})`, C.violet, () =>
+            void ctrl.commandScheduled(row.stimulationId, { name: 'prioritize', priority: row.priority + 1 })
+        )}
+        {commandBtn('▼', `Lower priority (now ${row.priority})`, C.violet, () =>
+            void ctrl.commandScheduled(row.stimulationId, { name: 'prioritize', priority: row.priority - 1 })
+        )}
+        {commandBtn('✕', 'Cancel (press twice)', C.red, () => cancelScheduled(ctrl, row.stimulationId))}
+    </div>
+);
+
+const scheduledFeedback = (ctrl: TCNSExplorerController): TExoSchema =>
+    bound(
+        exoCombine(() => {
+            const error = ctrl.actionError.getValue();
+            const notice = ctrl.actionNotice.getValue();
+            if (!error && !notice) return <div static={{ style: 'display:none' }} />;
+            const color = error ? C.red : C.green;
+            return (
+                <div static={{ class: 'exp-scheduled-feedback', style: `flex:none;padding:6px 12px;font-size:11px;color:${color};border-bottom:1px solid var(--border-secondary);background:${color}14` }}>
+                    {error ?? notice ?? ''}
+                </div>
+            );
+        }, [ctrl.actionError, ctrl.actionNotice])
+    );
+
+const scheduledTitle = (row: TCNSScheduledStimulationState): TExoSchema => (
+    <div static={{ style: 'display:flex;align-items:baseline;gap:6px;min-width:0;overflow:hidden' }}>
+        <div static={{ style: 'flex:none;display:flex' }}>{rowTitle(row.entry.collateralName, C.cyan)}</div>
+        {row.jobKey !== undefined ? rowTag(`key ${row.jobKey}`, C.violet) : <span />}
+        {row.jobGroup !== undefined ? rowTag(`group ${row.jobGroup}`, C.cyan) : <span />}
+        {rowSub(row.stimulationId)}
+    </div>
+);
+
+const scheduledRight = (ctrl: TCNSExplorerController, row: TCNSScheduledStimulationState): TExoSchema => (
+    <div static={{ style: 'display:flex;align-items:center;gap:12px' }}>
+        <span
+            static={{ style: `font-size:10px;color:${C.muted};white-space:nowrap` }}
+            bindable={{ children: exoCombine(() => (row.status === 'ready' ? 'due' : fmtDue(row.runAfter, ctrl.now.getValue())), [ctrl.now]) as never }}
+        />
+        {row.attemptCount > 0 ? metric(row.attemptCount, row.attemptCount === 1 ? 'try' : 'tries', C.red) : <span />}
+        {row.priority !== 0 ? metric(row.priority, 'prio', C.violet) : <span />}
+        {statusPill(row.status)}
+        {scheduledCommands(ctrl, row)}
+    </div>
+);
+
+const scheduleChip = (schedule: TCNSStimulationScheduleState): TExoSchema => (
+    <span
+        static={{
+            title: schedule.scheduleId,
+            style:
+                `display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;font-size:10px;white-space:nowrap;` +
+                `border:1px solid ${C.violet}66;color:${C.violet};background:${C.violet}14`,
+        }}
+    >
+        {`⏱ ${schedule.collateralName} · ${schedule.cron ?? (schedule.everyMs !== undefined ? `every ${fmtEvery(schedule.everyMs)}` : schedule.scheduleId)}${schedule.tz ? ` ${schedule.tz}` : ''}`}
+    </span>
+);
+
+const formControlStyle =
+    'padding:4px 8px;font-size:11px;background:var(--bg-secondary);border:1px solid var(--border-primary);color:var(--text-primary);border-radius:4px';
+
+const payloadInput = (field: TCNSPayloadField, values: Record<string, string | boolean>): TExoSchema => {
+    const label = (
+        <span static={{ style: `flex:none;width:110px;font-size:10px;color:${C.muted};overflow:hidden;text-overflow:ellipsis;white-space:nowrap` }}>
+            {`${field.name}${field.required ? ' *' : ''}`}
+        </span>
+    );
+    const control: TExoSchema =
+        field.kind === 'boolean' ? (
+            <input
+                static={{ type: 'checkbox', name: field.name }}
+                handlers={{ onChange: (event: Event) => void (values[field.name] = (event.target as HTMLInputElement).checked) }}
+            />
+        ) : field.options ? (
+            <select
+                static={{ name: field.name, style: `flex:1;min-width:0;${formControlStyle}` }}
+                handlers={{ onChange: (event: Event) => void (values[field.name] = (event.target as HTMLSelectElement).value) }}
+            >
+                {[<option static={{ value: '' }}>—</option>, ...field.options.map(option => <option static={{ value: option }}>{option}</option>)]}
+            </select>
+        ) : (
+            <input
+                static={{ name: field.name, placeholder: field.kind, style: `flex:1;min-width:0;${formControlStyle}` }}
+                handlers={{ onInput: (event: Event) => void (values[field.name] = (event.target as HTMLInputElement).value) }}
+            />
+        );
+    return (
+        <label static={{ style: 'display:flex;align-items:center;gap:8px;min-width:0' }}>
+            {label}
+            {control}
+        </label>
+    );
+};
+
+function launchForm(ctrl: TCNSExplorerController): TExoSchema {
+    const open = bindable(false);
+    const selected = bindable('');
+    const typesKey = exoCombine(() => JSON.stringify(ctrl.scheduled.getValue().types), [ctrl.scheduled]);
+    const view = exoCombine(() => {
+        const types = ctrl.scheduled.getValue().types;
+        if (!types.length) return <div static={{ style: 'display:none' }} />;
+        if (!open.getValue()) {
+            return (
+                <div static={{ style: 'flex:none;padding:6px 12px;border-bottom:1px solid var(--border-secondary)' }}>
+                    <button
+                        static={{
+                            title: 'Enqueue a job',
+                            style: `padding:3px 10px;font-size:10px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:4px;border:1px solid ${C.green};background:${C.green}1a;color:${C.green}`,
+                        }}
+                        handlers={{ onClick: () => open.setValue(true) }}
+                    >
+                        + Enqueue a job
+                    </button>
+                </div>
+            );
         }
+        const type = types.find(candidate => candidate.collateralName === selected.getValue()) ?? types[0];
+        const fields = CNSPayloadForm.fieldsOf(type.payloadSchema);
+        const values: Record<string, string | boolean> = {};
+        let json = '{}';
+        const submit = (): void => {
+            const result = fields ? CNSPayloadForm.payloadOf(fields, values) : CNSPayloadForm.jsonPayloadOf(json);
+            if ('error' in result) {
+                ctrl.actionError.setValue(result.error);
+                return;
+            }
+            void ctrl.launchScheduled(type.collateralName, result.payload);
+        };
+        return (
+            <div static={{ class: 'exp-launch-form', style: 'flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 12px;border-bottom:1px solid var(--border-secondary)' }}>
+                <div static={{ style: 'display:flex;align-items:center;gap:8px' }}>
+                    {eyebrow('Enqueue', C.green)}
+                    <select
+                        static={{ name: 'collateral', style: `flex:1;min-width:0;${formControlStyle}` }}
+                        handlers={{ onChange: (event: Event) => selected.setValue((event.target as HTMLSelectElement).value) }}
+                    >
+                        {types.map(candidate => (
+                            <option static={{ value: candidate.collateralName, ...(candidate.collateralName === type.collateralName ? { selected: true } : {}) }}>
+                                {candidate.collateralName}
+                            </option>
+                        ))}
+                    </select>
+                    {commandBtn('✕', 'Close', C.muted, () => open.setValue(false))}
+                </div>
+                {type.description ? <div static={{ style: `font-size:10px;color:${C.muted}` }}>{type.description}</div> : <span />}
+                {fields ? (
+                    <div static={{ style: 'display:flex;flex-direction:column;gap:4px' }}>{fields.map(field => payloadInput(field, values))}</div>
+                ) : (
+                    <textarea
+                        static={{ name: 'payload', rows: 3, style: `resize:vertical;font-family:var(--font-mono, monospace);${formControlStyle}`, textContent: json }}
+                        handlers={{ onInput: (event: Event) => void (json = (event.target as HTMLTextAreaElement).value) }}
+                    />
+                )}
+                <button
+                    static={{ style: `align-self:flex-start;padding:4px 14px;font-size:11px;text-transform:uppercase;letter-spacing:1px;border-radius:4px;cursor:pointer;border:1px solid ${C.green};background:${C.green}1a;color:${C.green}` }}
+                    handlers={{ onClick: submit }}
+                >
+                    Enqueue
+                </button>
+            </div>
+        );
+    }, [typesKey, open, selected]);
+    return bound(view);
+}
+
+const unavailableHint = 'No job queue is connected — pass jobs.scheduledStimulationReader() to startCNSDevTools.';
+
+export function scheduledList(ctrl: TCNSExplorerController): TExoSchema {
+    const schedules = exoCombine(() => {
+        const page = ctrl.scheduled.getValue();
+        if (!page.schedules.length) return <div />;
+        return (
+            <div static={{ style: 'flex:none;display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border-secondary)' }}>
+                {page.schedules.map(scheduleChip)}
+            </div>
+        );
+    }, [ctrl.scheduled]);
+    const rows = windowedScroller(
+        [ctrl.scheduled, ctrl.query],
+        () => ctrl.scheduled.getValue().rows,
+        (row, top) =>
+            rowAbs(top, {
+                accent: statusColor(row.status),
+                active: ctrl.query.getValue().selected === row.stimulationId,
+                onClick: () => openScheduled(ctrl, row, true),
+                left: (
+                    <div static={{ style: 'display:flex;flex-direction:column;gap:3px;min-width:0' }}>
+                        {scheduledTitle(row)}
+                        {scheduledTasksLine(row)}
+                    </div>
+                ),
+                right: scheduledRight(ctrl, row),
+            }),
+        () => (ctrl.scheduled.getValue().available ? 'Nothing is scheduled.' : unavailableHint),
+        () => void ctrl.loadMoreScheduled()
+    );
+    return (
+        <div static={{ style: 'flex:1;min-height:0;display:flex;flex-direction:column' }}>
+            {scheduledFeedback(ctrl)}
+            {launchForm(ctrl)}
+            {bound(schedules)}
+            {rows}
+        </div>
+    );
+}
+
+function scheduledSection(ctrl: TCNSExplorerController, page: TCNSExplorerScheduled | null, what: string): TExoSchema {
+    const rows = page?.rows ?? [];
+    const row = (item: TCNSScheduledStimulationState): TExoSchema => (
+        <div
+            static={{
+                class: 'exp-act-row',
+                style: `display:flex;align-items:center;gap:10px;padding:7px 10px;cursor:pointer;border:1px solid var(--border-primary);border-left:3px solid ${statusColor(item.status)};border-radius:6px;background:var(--bg-secondary)`,
+            }}
+            handlers={{ onClick: () => openScheduled(ctrl, item) }}
+        >
+            <div static={{ style: 'flex:1;min-width:0;display:flex;flex-direction:column;gap:3px' }}>
+                {scheduledTitle(item)}
+                {scheduledTasksLine(item)}
+            </div>
+            {scheduledRight(ctrl, item)}
+        </div>
+    );
+    return (
+        <div static={{ style: 'display:flex;flex-direction:column;gap:8px;padding:16px;padding-top:0' }}>
+            <div static={{ style: 'display:flex;align-items:baseline;gap:8px;flex-wrap:wrap' }}>
+                {eyebrow('Scheduled', C.violet)}
+                {scheduledFeedback(ctrl)}
+                <span static={{ style: `font-size:10px;color:${C.muted}` }}>
+                    {rows.length ? `${rows.length}${page?.nextCursor ? '+' : ''} waiting ${what}` : ''}
+                </span>
+            </div>
+            {page?.schedules.length ? (
+                <div static={{ style: 'display:flex;gap:6px;flex-wrap:wrap' }}>{page.schedules.map(scheduleChip)}</div>
+            ) : (
+                <span />
+            )}
+            {!page ? (
+                <div static={{ style: `font-size:11px;color:${C.muted}` }}>Loading…</div>
+            ) : !page.available ? (
+                <div static={{ style: `font-size:11px;color:${C.muted}` }}>{unavailableHint}</div>
+            ) : rows.length ? (
+                <div static={{ style: 'display:flex;flex-direction:column;gap:6px' }}>{rows.map(row)}</div>
+            ) : (
+                <div static={{ style: `font-size:11px;color:${C.muted}` }}>
+                    {page.nextCursor ? `None ${what} among the jobs scanned so far.` : `Nothing is scheduled ${what}.`}
+                </div>
+            )}
+            {page?.nextCursor ? (
+                <button
+                    static={{
+                        style:
+                            `align-self:flex-start;padding:3px 10px;font-size:10px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-radius:4px;` +
+                            `border:1px solid var(--border-primary);background:var(--bg-card);color:${C.sub}`,
+                    }}
+                    handlers={{ onClick: () => void ctrl.loadMoreScopedScheduled() }}
+                >
+                    {rows.length ? 'Show more' : 'Scan further'}
+                </button>
+            ) : (
+                <span />
+            )}
+        </div>
     );
 }
 
@@ -971,11 +1355,12 @@ export function viewList(ctrl: TCNSExplorerController): unknown {
         neurons: neuronsList(ctrl),
         collaterals: collateralsList(ctrl),
         tasks: tasksList(ctrl),
+        scheduled: scheduledList(ctrl),
     };
-    return combine([ctrl.query], () => {
+    return exoCombine(() => {
         const tab = ctrl.query.getValue().tab;
         return lists[tab];
-    });
+    }, [ctrl.query]);
 }
 
 /** A bindable that swaps the DETAILS scope-card by the current selection. */
@@ -995,7 +1380,7 @@ export function detailsPane(ctrl: TCNSExplorerController): unknown {
             </div>
         </div>
     );
-    return combine([ctrl.query], () => {
+    return exoCombine(() => {
         const q = ctrl.query.getValue();
         let content: TExoSchema = hint;
         if (q.selected) content = stimulation;
@@ -1003,7 +1388,7 @@ export function detailsPane(ctrl: TCNSExplorerController): unknown {
         else if (q.selectedCollateral) content = collateral;
         else if (q.selectedTask) content = task;
         return content;
-    });
+    }, [ctrl.query]);
 }
 
 // ── DETAILS breadcrumb / back navigation ───────────────────────────────────────
@@ -1016,7 +1401,7 @@ const KIND_STYLE: Record<string, { color: string; glyph: string }> = {
 
 /** A bindable header for the DETAILS panel: ← back + a clickable breadcrumb trail. */
 export function breadcrumb(ctrl: TCNSExplorerController): unknown {
-    return combine([ctrl.navStack], () => {
+    return exoCombine(() => {
         const stack = ctrl.navStack.getValue();
         if (!stack.length) return eyebrow('Details', C.violet);
         const back = (
@@ -1078,5 +1463,5 @@ export function breadcrumb(ctrl: TCNSExplorerController): unknown {
                 </div>
             </div>
         );
-    });
+    }, [ctrl.navStack]);
 }

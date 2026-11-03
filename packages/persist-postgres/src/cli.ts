@@ -6,7 +6,7 @@
  *   CNS_TABLE_PREFIX=my_ (optional; default cns_)
  */
 import { Pool } from 'pg';
-import { ensureSchema, DEFAULT_PREFIX } from './migrate';
+import { CNSPostgresStimulationSchema } from './schema/CNSPostgresStimulationSchema';
 
 async function main(): Promise<void> {
     const cmd = process.argv[2];
@@ -19,12 +19,12 @@ async function main(): Promise<void> {
         console.error('DATABASE_URL is required'); // eslint-disable-line no-console
         process.exit(1);
     }
-    const prefix = process.env.CNS_TABLE_PREFIX ?? DEFAULT_PREFIX;
+    const prefix = process.env.CNS_TABLE_PREFIX ?? CNSPostgresStimulationSchema.DEFAULT_TABLE_PREFIX;
     const pool = new Pool({ connectionString: url });
     try {
-        await ensureSchema(pool, prefix);
+        await CNSPostgresStimulationSchema.migrate(pool, prefix);
         // eslint-disable-next-line no-console
-        console.log(`✓ ensured stimulation/attempt/task tables (prefix "${prefix}")`);
+        console.log(`✓ stimulation/attempt/task tables are up to date (prefix "${prefix}")`);
     } finally {
         await pool.end();
     }

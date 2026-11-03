@@ -24,7 +24,7 @@ const CX = VW / 2;
 export type TDiagramState = 'ok' | 'error' | 'idle';
 export type TDiagramNodeKind = 'neuron' | 'collateral';
 
-export interface TDiagramTarget {
+export type TCNSDiagramTarget = {
     id: string;
     kind: TDiagramNodeKind;
     title: string;
@@ -35,16 +35,16 @@ export interface TDiagramTarget {
     weight: number;
     state: TDiagramState;
     onClick?: () => void;
-}
+};
 
-export interface TDiagramConfig {
+export type TCNSDiagramConfig = {
     sourceKind: TDiagramNodeKind;
     sourceLabel: string;
-    left: TDiagramTarget[];
-    right: TDiagramTarget[];
+    left: TCNSDiagramTarget[];
+    right: TCNSDiagramTarget[];
     leftHeading?: string;
     rightHeading?: string;
-}
+};
 
 const el = (
     tag: string,
@@ -71,8 +71,10 @@ const accentFor = (kind: TDiagramNodeKind): string =>
 const tagFor = (kind: TDiagramNodeKind): string =>
     kind === 'neuron' ? '▪ NEURON' : '◦ COLLATERAL';
 
-const trunc = (s: string, n: number): string =>
-    s.length > n ? s.slice(0, n - 1) + '…' : s;
+const trunc = (s: string, n: number): string => {
+    if (s.length <= n) return s;
+    return s.includes('.') ? '…' + s.slice(s.length - n + 1) : s.slice(0, n - 1) + '…';
+};
 
 let uid = 0;
 
@@ -136,6 +138,11 @@ function drawNode(
     });
     title.textContent = trunc(t.title, center ? 18 : 19);
     g.appendChild(title);
+    if (title.textContent !== t.title) {
+        const fullTitle = el('title', {});
+        fullTitle.textContent = t.title;
+        g.appendChild(fullTitle);
+    }
     // role / stat sub-line
     if (t.sub) {
         const sub = el('text', {
@@ -180,7 +187,7 @@ function drawNode(
     svg.appendChild(g);
 }
 
-function buildSvg(host: HTMLElement, cfg: TDiagramConfig): void {
+function buildSvg(host: HTMLElement, cfg: TCNSDiagramConfig): void {
     host.textContent = '';
     const reduced =
         typeof matchMedia === 'function' &&
@@ -233,7 +240,7 @@ function buildSvg(host: HTMLElement, cfg: TDiagramConfig): void {
         y1: number,
         x2: number,
         y2: number,
-        t: TDiagramTarget
+        t: TCNSDiagramTarget
     ): void => {
         const w = t.weight / maxW;
         const has = t.weight > 0;
@@ -325,7 +332,7 @@ function buildSvg(host: HTMLElement, cfg: TDiagramConfig): void {
  * A node-link diagram. Rebuild it reactively by re-invoking the returned schema
  * inside a `combine` (each mount rebuilds the SVG from the passed config).
  */
-export function nodeLinkDiagram(config: TDiagramConfig): TExoSchema {
+export function nodeLinkDiagram(config: TCNSDiagramConfig): TExoSchema {
     return (
         <div
             static={{

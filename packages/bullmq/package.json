@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/bullmq",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "BullMQ (Redis) integration for CNStra: run stimulations as jobs, resume the failed frontier on retry",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/bullmq"
+  },
   "keywords": [
     "cnstra",
     "bullmq",

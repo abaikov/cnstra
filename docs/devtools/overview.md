@@ -8,37 +8,24 @@ slug: /devtools/overview
 
 # CNStra DevTools
 
-Powerful debugging and monitoring tools for CNStra applications. Visualize your neural network topology, inspect signal flows, and monitor performance in real-time.
+Debugging and monitoring for CNStra applications: every run your app makes, task by task, with Retry and Clone on a failed one.
 
 ## Features
 
-### 🧠 Neural Network Visualization
-- **Interactive Graph**: Explore your application's neural network as an interactive graph
-- **Real-time Updates**: See neurons, collaterals, and connections update live
-- **Topology Analysis**: Understand the structure and dependencies of your neural system
+The panel is one Explorer with five tabs:
 
-### 📊 Signal Flow Monitoring
-- **Live Stimulation Tracking**: Watch signals propagate through your neural network
-- **Response Inspection**: Examine input/output payloads and timing for each response
-- **Queue Visualization**: Monitor signal queues and processing order
+- **Stimulations**: every run, newest first, filterable by status, entry collateral, neuron, text and time range. A selected run opens a waterfall of its attempts and tasks, with **Retry** (resume the failed frontier) and **Clone** (a fresh run from the entry).
+- **Neurons** and **Collaterals**: per-entity throughput and errors, and a diagram of what flows in and out of the selected one.
+- **Activation tasks**: every task across runs, with its input and output collaterals and its error.
+- **Scheduled**: jobs waiting in a connected queue, and an **Enqueue** form for a job type.
 
-### 🔍 Advanced Debugging
-- **Signal Filtering**: Filter by input collateral name with partial matching
-- **Signal Injection**: Manually inject signals for testing via Signal Debugger
-- **Neuron Inspection**: Click neurons to see detailed metrics and recent activity
-- **Performance Metrics**: Measure response times and identify bottlenecks
-- **Error Tracking**: Catch and analyze errors in your neural network
-- **Trace View**: Step-by-step signal flow visualization per stimulation
+Above the tabs: connection health, a status breakdown and a throughput chart.
 
-### 🧪 Snapshots & Replay
-- **Record Sessions**: Capture full stimulation sessions with inputs and responses
-- **Deterministic Replay**: Re-run captured sessions to reproduce issues exactly
-- **Shareable Artifacts**: Export/import snapshots for team debugging and CI reproduction
+The desktop app adds a **Server Manager** that starts and stops DevTools servers on custom ports, on macOS, Windows and Linux.
 
-### 🚀 Multi-Instance Support
-- **Server Manager**: Start/stop DevTools servers on custom ports
-- **Multiple Apps**: Connect to multiple CNStra applications simultaneously
-- **Cross-Platform**: Available for macOS, Windows, and Linux
+> Several **replicas of one** service are a different case: they share one `appId`
+> and one graph, and a Retry click reaches all of them unless a broker link is
+> configured. See [Running DevTools in a real deployment](./deployments.md).
 
 ## Quick Start
 
@@ -48,6 +35,15 @@ Powerful debugging and monitoring tools for CNStra applications. Visualize your 
    npm i -D @cnstra/devtools @cnstra/devtools-server @cnstra/devtools-transport-ws
    ```
 3. **Configure** your application to connect to DevTools:
+   ```ts setup
+   import type { CNS } from '@cnstra/core';
+   import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+   import type { TCNSNeuron } from '@cnstra/types';
+
+   declare const cns: CNS<TCNSNeuron>;
+   declare const registry: CNSPersistOptionsRegistry;
+   ```
+
    ```ts
    import { CNSDevTools } from '@cnstra/devtools';
    import { CNSDevToolsTransportWs } from '@cnstra/devtools-transport-ws';
@@ -57,10 +53,10 @@ Powerful debugging and monitoring tools for CNStra applications. Visualize your 
    });
    
    const devtools = new CNSDevTools('my-app', transport, {
-     devToolsInstanceName: 'My App DevTools',
+     appName: 'My App DevTools',
    });
    
-   devtools.registerCNS(cns);
+   devtools.registerCNS(cns, registry); // your CNSPersistOptionsRegistry
    ```
 4. **Launch** DevTools and start debugging!
 
@@ -75,4 +71,4 @@ Powerful debugging and monitoring tools for CNStra applications. Visualize your 
 
 - [Download DevTools](/docs/devtools/download) - Get the desktop application
 - [Integration Guide](/docs/devtools/integration) - Learn how to integrate DevTools
-- [Advanced Features](/docs/devtools/advanced) - Explore advanced debugging capabilities
+- [Stimulations](/docs/devtools/stimulations) - The Explorer, Retry and Clone

@@ -34,7 +34,7 @@ export async function attachPgBossTransport(
 
     // Every admin action becomes a resumable job on Postgres.
     manager.setDispatch(async (cmd: TStimulationCommand) => {
-        await boss.send(QUEUE, cmd as unknown as object);
+        await boss.send(QUEUE, cmd);
     });
 
     return {

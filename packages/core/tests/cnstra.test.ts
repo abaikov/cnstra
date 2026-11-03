@@ -1,39 +1,39 @@
 import {
     CNS,
-    collateral,
-    neuron,
-    neuronFactory,
-    afferentPath,
-    modality,
+    cnsCollateral,
+    cnsNeuron,
+    cnsNeuronFactory,
+    cnsAfferentPath,
+    cnsModality,
     CNSStimulationGate,
 } from '../src/index';
 import type { TCNSSignal } from '@cnstra/types';
 
 const uiAxon = {
-    userEntersApp: collateral<{
+    userEntersApp: cnsCollateral<{
         userId: string;
         deckTitle: string;
         cardTitle: string;
     }>(),
-    createCardWithDeckButtonClicked: collateral<{
+    createCardWithDeckButtonClicked: cnsCollateral<{
         deckTitle: string;
         cardTitle: string;
     }>(),
 };
 
 const deckAxon = {
-    createdAtUserEntersApp: collateral<{
+    createdAtUserEntersApp: cnsCollateral<{
         deckId: string;
         cardTitle: string;
         userId: string;
     }>(),
-    createdAtCreateCardWithDeckButtonClicked: collateral<{
+    createdAtCreateCardWithDeckButtonClicked: cnsCollateral<{
         deckId: string;
         cardTitle: string;
     }>(),
 };
 
-const deck = neuron(deckAxon)
+const deck = cnsNeuron(deckAxon)
     .dendrite({
         collateral: uiAxon.userEntersApp,
         response: (payload, axon) => {
@@ -56,7 +56,7 @@ const deck = neuron(deckAxon)
         },
     });
 
-const card = neuron({})
+const card = cnsNeuron({})
     .dendrite({
         collateral: deckAxon.createdAtCreateCardWithDeckButtonClicked,
         response: payload => {
@@ -93,7 +93,7 @@ describe('CNStra Core Tests', () => {
     describe('Factory Functions', () => {
         describe('collateral', () => {
             it('should create collateral with typed payload', () => {
-                const typedCollateral = collateral<{ message: string }>();
+                const typedCollateral = cnsCollateral<{ message: string }>();
 
                 const signal = typedCollateral.createSignal({
                     message: 'Hello',
@@ -103,7 +103,7 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should create collateral with undefined payload by default', () => {
-                const defaultCollateral = collateral();
+                const defaultCollateral = cnsCollateral();
                 const signal = defaultCollateral.createSignal();
                 expect(signal.collateral).toBe(defaultCollateral);
                 expect(signal.payload).toBeUndefined();
@@ -112,17 +112,17 @@ describe('CNStra Core Tests', () => {
 
         describe('neuron', () => {
             it('should create neuron with axon', () => {
-                const output = collateral<{ result: string }>();
-                const testNeuron = neuron({ output });
+                const output = cnsCollateral<{ result: string }>();
+                const testNeuron = cnsNeuron({ output });
                 expect(testNeuron.axon).toEqual({ output });
                 expect(testNeuron.dendrites).toEqual([]);
             });
 
             it('should allow adding dendrites with response function', () => {
-                const input = collateral<{ data: string }>();
-                const output = collateral<{ result: string }>();
+                const input = cnsCollateral<{ data: string }>();
+                const output = cnsCollateral<{ result: string }>();
 
-                const testNeuron = neuron({ output }).dendrite({
+                const testNeuron = cnsNeuron({ output }).dendrite({
                     collateral: input,
                     response: async (payload, axon) => {
                         const data = payload.data;
@@ -137,11 +137,11 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should support chaining dendrites', () => {
-                const input1 = collateral<{ data1: string }>();
-                const input2 = collateral<{ data2: string }>();
-                const output = collateral<{ result: string }>();
+                const input1 = cnsCollateral<{ data1: string }>();
+                const input2 = cnsCollateral<{ data2: string }>();
+                const output = cnsCollateral<{ result: string }>();
 
-                const testNeuron = neuron({ output })
+                const testNeuron = cnsNeuron({ output })
                     .dendrite({
                         collateral: input1,
                         response: async (payload, axon) => {
@@ -165,12 +165,12 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should support mixing single and multiple collateral dendrites', () => {
-                const input1 = collateral<{ data1: string }>();
-                const input2 = collateral<{ data: string }>();
-                const input3 = collateral<{ data: string }>();
-                const output = collateral<{ result: string }>();
+                const input1 = cnsCollateral<{ data1: string }>();
+                const input2 = cnsCollateral<{ data: string }>();
+                const input3 = cnsCollateral<{ data: string }>();
+                const output = cnsCollateral<{ result: string }>();
 
-                const testNeuron = neuron( { output })
+                const testNeuron = cnsNeuron( { output })
                     .dendrite({
                         collateral: [input1],
                         response: async (payload, axon) => {
@@ -195,18 +195,18 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should support collaterals with different payload types and infer union type', () => {
-                const userCreated = collateral<{
+                const userCreated = cnsCollateral<{
                     userId: string;
                     name: string;
                 }>();
-                const userUpdated = collateral<{
+                const userUpdated = cnsCollateral<{
                     userId: string;
                     email: string;
                 }>();
-                const userDeleted = collateral<{ userId: string }>();
-                const output = collateral<{ result: string }>();
+                const userDeleted = cnsCollateral<{ userId: string }>();
+                const output = cnsCollateral<{ result: string }>();
 
-                const testNeuron = neuron( { output }).dendrite({
+                const testNeuron = cnsNeuron( { output }).dendrite({
                     collateral: [userCreated, userUpdated, userDeleted],
                     response: async (payload, axon) => {
                         const userId = payload.userId;
@@ -238,36 +238,36 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should handle multiple axon outputs', () => {
-                const output1 = collateral<{ result1: string }>();
-                const output2 = collateral<{ result2: string }>();
+                const output1 = cnsCollateral<{ result1: string }>();
+                const output2 = cnsCollateral<{ result2: string }>();
 
-                const testNeuron = neuron( { output1, output2 });
+                const testNeuron = cnsNeuron( { output1, output2 });
 
                 expect(testNeuron.axon.output1).toBeDefined();
                 expect(testNeuron.axon.output2).toBeDefined();
             });
 
             it('should create signals with different payload types for different output collaterals', async () => {
-                const input1 = collateral<{
+                const input1 = cnsCollateral<{
                     userId: string;
                     deckTitle: string;
                     cardTitle: string;
                 }>();
-                const input2 = collateral<{
+                const input2 = cnsCollateral<{
                     deckTitle: string;
                     cardTitle: string;
                 }>();
-                const output1 = collateral<{
+                const output1 = cnsCollateral<{
                     deckId: string;
                     cardTitle: string;
                     userId: string;
                 }>();
-                const output2 = collateral<{
+                const output2 = cnsCollateral<{
                     deckId: string;
                     cardTitle: string;
                 }>();
 
-                const testNeuron = neuron( {
+                const testNeuron = cnsNeuron( {
                     output1,
                     output2,
                 })
@@ -346,13 +346,13 @@ describe('CNStra Core Tests', () => {
 
         describe('neuronFactory', () => {
             it('should create a neuron builder', () => {
-                const ctxBuilder = neuronFactory();
+                const ctxBuilder = cnsNeuronFactory();
                 expect(typeof ctxBuilder.neuron).toBe('function');
             });
 
             it('should create neurons', () => {
-                const ctxBuilder = neuronFactory();
-                const output = collateral<{ result: string }>();
+                const ctxBuilder = cnsNeuronFactory();
+                const output = cnsCollateral<{ result: string }>();
                 const testNeuron = ctxBuilder.neuron( { output });
 
                 expect(testNeuron.axon).toEqual({ output });
@@ -360,9 +360,9 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should allow adding dendrites', () => {
-                const ctxBuilder = neuronFactory();
-                const input = collateral<{ increment: number }>();
-                const output = collateral<{ result: number }>();
+                const ctxBuilder = cnsNeuronFactory();
+                const input = cnsCollateral<{ increment: number }>();
+                const output = cnsCollateral<{ result: number }>();
 
                 const testNeuron = ctxBuilder
                     .neuron( { output })
@@ -382,22 +382,22 @@ describe('CNStra Core Tests', () => {
 
         describe('afferentPath', () => {
             it('should create afferent path without parent', () => {
-                const path = afferentPath();
-                expect(path).toEqual({});
+                const path = cnsAfferentPath();
+                expect(path).toEqual({ index: path.index });
                 expect(path.parentAfferentPath).toBeUndefined();
                 expect('parentAfferentPath' in path).toBe(false);
             });
 
             it('should create afferent path with parent', () => {
-                const parent = afferentPath();
-                const path = afferentPath(parent);
+                const parent = cnsAfferentPath();
+                const path = cnsAfferentPath(parent);
                 expect(path.parentAfferentPath).toBe(parent);
             });
 
             it('should create hierarchical paths', () => {
-                const root = afferentPath();
-                const level1 = afferentPath(root);
-                const level2 = afferentPath(level1);
+                const root = cnsAfferentPath();
+                const level1 = cnsAfferentPath(root);
+                const level2 = cnsAfferentPath(level1);
                 expect(level2.parentAfferentPath).toBe(level1);
                 expect(level1.parentAfferentPath).toBe(root);
                 expect(root.parentAfferentPath).toBeUndefined();
@@ -406,9 +406,9 @@ describe('CNStra Core Tests', () => {
 
         describe('modality', () => {
             it('should create modality with afferent paths', () => {
-                const primary = afferentPath();
-                const secondary = afferentPath(primary);
-                const visualModality = modality({
+                const primary = cnsAfferentPath();
+                const secondary = cnsAfferentPath(primary);
+                const visualModality = cnsModality({
                     primary,
                     secondary,
                 });
@@ -420,8 +420,8 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should create modality with single afferent path', () => {
-                const main = afferentPath();
-                const simpleModality = modality({
+                const main = cnsAfferentPath();
+                const simpleModality = cnsModality({
                     main,
                 });
 
@@ -430,19 +430,19 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should create modality with empty afferent paths object', () => {
-                const emptyModality = modality({});
+                const emptyModality = cnsModality({});
 
                 expect(emptyModality.afferentPaths).toBeDefined();
                 expect(Object.keys(emptyModality.afferentPaths)).toHaveLength(0);
             });
 
             it('should create modality with multiple hierarchical paths', () => {
-                const root = afferentPath();
-                const level1 = afferentPath(root);
-                const level2a = afferentPath(level1);
-                const level2b = afferentPath(level1);
-                const level3 = afferentPath(level2a);
-                const complexModality = modality({
+                const root = cnsAfferentPath();
+                const level1 = cnsAfferentPath(root);
+                const level2a = cnsAfferentPath(level1);
+                const level2b = cnsAfferentPath(level1);
+                const level3 = cnsAfferentPath(level2a);
+                const complexModality = cnsModality({
                     root,
                     level1,
                     level2a,
@@ -463,9 +463,9 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should support numeric keys', () => {
-                const path0 = afferentPath();
-                const path1 = afferentPath(path0);
-                const numericModality = modality({
+                const path0 = cnsAfferentPath();
+                const path1 = cnsAfferentPath(path0);
+                const numericModality = cnsModality({
                     0: path0,
                     1: path1,
                 });
@@ -478,12 +478,12 @@ describe('CNStra Core Tests', () => {
 
         describe('modalityDendrite', () => {
             it('should route to correct afferent path handler', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const onboarding = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const onboarding = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                     onboarding,
                 });
@@ -501,7 +501,7 @@ describe('CNStra Core Tests', () => {
                     }],
                 ]);
 
-                const createCardNeuron = neuron( {
+                const createCardNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -540,12 +540,12 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should use default handler when afferent path not found', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const onboarding = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const onboarding = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                     onboarding,
                 });
@@ -558,7 +558,7 @@ describe('CNStra Core Tests', () => {
                     }],
                 ]);
 
-                const createCardNeuron = neuron( {
+                const createCardNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -603,13 +603,13 @@ describe('CNStra Core Tests', () => {
                 expect(responses[0].cardId).toBe('default-test');
             });
 
-            it('should throw error when no handler matches and no default', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+            it('does not wake the neuron when no handler matches the path and there is no default', async () => {
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const onboarding = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const onboarding = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                     onboarding,
                 });
@@ -622,7 +622,7 @@ describe('CNStra Core Tests', () => {
                     }],
                 ]);
 
-                const createCardNeuron = neuron( {
+                const createCardNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -645,26 +645,23 @@ describe('CNStra Core Tests', () => {
                     }
                 );
 
-                await expect(stimulation.waitUntilComplete()).rejects.toThrow();
+                await stimulation.waitUntilComplete();
 
-                const failedTasks = stimulation.getFailedTasks();
-                expect(failedTasks).toHaveLength(1);
-                expect(failedTasks[0].error.message).toBe(
-                    'modalityDendrite: No handler found for afferent path in modality and no default handler provided'
-                );
+                expect(stimulation.getFailedTasks()).toHaveLength(0);
+                expect(stimulation.getAllActivationTasks()).toHaveLength(0);
             });
 
-            it('should throw error when modality does not match and no default', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+            it('does not wake the neuron when the modality does not match and there is no default', async () => {
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                 });
 
-                const path1 = afferentPath();
-                const otherModality = modality({
+                const path1 = cnsAfferentPath();
+                const otherModality = cnsModality({
                     path1,
                 });
 
@@ -676,7 +673,7 @@ describe('CNStra Core Tests', () => {
                     }],
                 ]);
 
-                const createCardNeuron = neuron( {
+                const createCardNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -699,26 +696,23 @@ describe('CNStra Core Tests', () => {
                     }
                 );
 
-                await expect(stimulation.waitUntilComplete()).rejects.toThrow();
+                await stimulation.waitUntilComplete();
 
-                const failedTasks = stimulation.getFailedTasks();
-                expect(failedTasks).toHaveLength(1);
-                expect(failedTasks[0].error.message).toBe(
-                    'modalityDendrite: No handler found for modality and no default handler provided'
-                );
+                expect(stimulation.getFailedTasks()).toHaveLength(0);
+                expect(stimulation.getAllActivationTasks()).toHaveLength(0);
             });
 
             it('should use default when modality does not match', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                 });
 
-                const path1 = afferentPath();
-                const otherModality = modality({
+                const path1 = cnsAfferentPath();
+                const otherModality = cnsModality({
                     path1,
                 });
 
@@ -730,7 +724,7 @@ describe('CNStra Core Tests', () => {
                     }],
                 ]);
 
-                const createCardNeuron = neuron( {
+                const createCardNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -776,11 +770,11 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should handle async handlers', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                 });
 
@@ -795,7 +789,7 @@ describe('CNStra Core Tests', () => {
                     }],
                 ]);
 
-                const createCardNeuron = neuron( {
+                const createCardNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -839,11 +833,11 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should use default when no modality in stimulation', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                 });
 
@@ -855,7 +849,7 @@ describe('CNStra Core Tests', () => {
                     }],
                 ]);
 
-                const createCardNeuron = neuron( {
+                const createCardNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -898,12 +892,12 @@ describe('CNStra Core Tests', () => {
                 expect(responses[0].cardId).toBe('default-test');
             });
 
-            it('should throw error when no modality in stimulation and no default', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+            it('does not wake the neuron when the stimulation has no modality and there is no default', async () => {
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                 });
 
@@ -915,7 +909,7 @@ describe('CNStra Core Tests', () => {
                     }],
                 ]);
 
-                const createCardNeuron = neuron( {
+                const createCardNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -935,36 +929,33 @@ describe('CNStra Core Tests', () => {
                     {}
                 );
 
-                await expect(stimulation.waitUntilComplete()).rejects.toThrow();
+                await stimulation.waitUntilComplete();
 
-                const failedTasks = stimulation.getFailedTasks();
-                expect(failedTasks).toHaveLength(1);
-                expect(failedTasks[0].error.message).toBe(
-                    'modalityDendrite: No handler found for modality and no default handler provided'
-                );
+                expect(stimulation.getFailedTasks()).toHaveLength(0);
+                expect(stimulation.getAllActivationTasks()).toHaveLength(0);
             });
         });
 
         describe('multiple modalities', () => {
             it('should support multiple modalities in one dendrite', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const onboarding = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const onboarding = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                     onboarding,
                 });
 
-                const fromUI = afferentPath();
-                const fromAPI = afferentPath();
-                const deckModality = modality({
+                const fromUI = cnsAfferentPath();
+                const fromAPI = cnsAfferentPath();
+                const deckModality = cnsModality({
                     fromUI,
                     fromAPI,
                 });
 
-                const createNeuron = neuron( {
+                const createNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -1067,22 +1058,22 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should use modality-specific default handler', async () => {
-                const input = collateral<{ source: string }>();
-                const output = collateral<{ cardId: string }>();
+                const input = cnsCollateral<{ source: string }>();
+                const output = cnsCollateral<{ cardId: string }>();
 
-                const uiButton = afferentPath();
-                const cardModality = modality({
+                const uiButton = cnsAfferentPath();
+                const cardModality = cnsModality({
                     uiButton,
                 });
 
-                const fromUI = afferentPath();
-                const deckModality = modality({
+                const fromUI = cnsAfferentPath();
+                const deckModality = cnsModality({
                     fromUI,
                 });
 
-                const unknownPath = afferentPath();
+                const unknownPath = cnsAfferentPath();
 
-                const createNeuron = neuron( {
+                const createNeuron = cnsNeuron( {
                     output,
                 }).modalityDendrite({
                     collateral: input,
@@ -1151,10 +1142,10 @@ describe('CNStra Core Tests', () => {
 
         describe('Integration', () => {
             it('should work together in a simple flow', async () => {
-                const input = collateral<{ message: string }>();
-                const output = collateral<{ processed: string }>();
+                const input = cnsCollateral<{ message: string }>();
+                const output = cnsCollateral<{ processed: string }>();
 
-                const processor = neuron( { output }).dendrite({
+                const processor = cnsNeuron( { output }).dendrite({
                     collateral: input,
                     response: async (payload, axon) => {
                         return axon.output.createSignal({
@@ -1184,10 +1175,10 @@ describe('CNStra Core Tests', () => {
     describe('CNS Signal Flow', () => {
         describe('Basic Signal Processing', () => {
             it('should process basic signal flow', () => {
-                const input = collateral<{ message: string }>();
-                const output = collateral<{ processed: string }>();
+                const input = cnsCollateral<{ message: string }>();
+                const output = cnsCollateral<{ processed: string }>();
 
-                const processor = neuron( { output }).dendrite({
+                const processor = cnsNeuron( { output }).dendrite({
                     collateral: input,
                     response: (payload, axon) => {
                         return axon.output.createSignal({
@@ -1231,11 +1222,11 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should handle chain processing', () => {
-                const input = collateral<{ value: number }>();
-                const middle = collateral<{ value: number }>();
-                const output = collateral<{ result: number }>();
+                const input = cnsCollateral<{ value: number }>();
+                const middle = cnsCollateral<{ value: number }>();
+                const output = cnsCollateral<{ result: number }>();
 
-                const step1 = neuron( { middle }).dendrite({
+                const step1 = cnsNeuron( { middle }).dendrite({
                     collateral: input,
                     response: (payload, axon) => {
                         return axon.middle.createSignal({
@@ -1244,7 +1235,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-                const step2 = neuron( { output }).dendrite({
+                const step2 = cnsNeuron( { output }).dendrite({
                     collateral: middle,
                     response: (payload, axon) => {
                         return axon.output.createSignal({
@@ -1275,11 +1266,11 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should handle fan-out processing', async () => {
-                const input = collateral<{ data: string }>();
-                const branch1 = collateral<{ result: string }>();
-                const branch2 = collateral<{ result: string }>();
+                const input = cnsCollateral<{ data: string }>();
+                const branch1 = cnsCollateral<{ result: string }>();
+                const branch2 = cnsCollateral<{ result: string }>();
 
-                const processor1 = neuron( { branch1 }).dendrite({
+                const processor1 = cnsNeuron( { branch1 }).dendrite({
                     collateral: input,
                     response: (payload, axon) => {
                         return axon.branch1.createSignal({
@@ -1288,7 +1279,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-                const processor2 = neuron( { branch2 }).dendrite({
+                const processor2 = cnsNeuron( { branch2 }).dendrite({
                     collateral: input,
                     response: (payload, axon) => {
                         return axon.branch2.createSignal({
@@ -1323,10 +1314,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should call global and local onResponse listeners', async () => {
-            const input = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const output = cnsCollateral();
 
-            const n = neuron( { output }).dendrite({
+            const n = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
@@ -1356,14 +1347,14 @@ describe('CNStra Core Tests', () => {
         describe('Stack Safety', () => {
             it('should not blow the stack on long synchronous chains', async () => {
                 const K = 1000;
-                const input = collateral();
-                const output = collateral();
+                const input = cnsCollateral();
+                const output = cnsCollateral();
 
                 const mids = Array.from({ length: K }, (_, i) =>
-                    collateral()
+                    cnsCollateral()
                 );
 
-                const startNeuron = neuron( {
+                const startNeuron = cnsNeuron( {
                     mid_0: mids[0],
                 }).dendrite({
                     collateral: input,
@@ -1371,13 +1362,13 @@ describe('CNStra Core Tests', () => {
                 });
 
                 const midNeurons = mids.slice(0, -1).map((c, i) =>
-                    neuron({ next: mids[i + 1] }).dendrite({
+                    cnsNeuron({ next: mids[i + 1] }).dendrite({
                         collateral: c,
                         response: (_payload, axon) => axon.next.createSignal(),
                     })
                 );
 
-                const tailNeuron = neuron( { output }).dendrite({
+                const tailNeuron = cnsNeuron( { output }).dendrite({
                     collateral: mids[K - 1],
                     response: (_payload, axon) => axon.output.createSignal(),
                 });
@@ -1416,13 +1407,13 @@ describe('CNStra Core Tests', () => {
 
         describe('Correct Ending of Traces', () => {
             it('should handle correct ending of traces', async () => {
-                const input = collateral();
-                const shortBranch = collateral();
-                const longBranch1 = collateral();
-                const longBranch2 = collateral();
-                const output = collateral();
+                const input = cnsCollateral();
+                const shortBranch = cnsCollateral();
+                const longBranch1 = cnsCollateral();
+                const longBranch2 = cnsCollateral();
+                const output = cnsCollateral();
 
-                const shortBranchNeuron = neuron( {
+                const shortBranchNeuron = cnsNeuron( {
                     shortBranch,
                 }).dendrite({
                     collateral: input,
@@ -1431,7 +1422,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-                const longBranch1Neuron = neuron( {
+                const longBranch1Neuron = cnsNeuron( {
                     longBranch1,
                 }).dendrite({
                     collateral: input,
@@ -1440,7 +1431,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-                const longBranch2Neuron = neuron( {
+                const longBranch2Neuron = cnsNeuron( {
                     longBranch2,
                 }).dendrite({
                     collateral: longBranch1,
@@ -1449,7 +1440,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-                const outputNeuron = neuron( { output }).dendrite({
+                const outputNeuron = cnsNeuron( { output }).dendrite({
                     collateral: longBranch2,
                     response: (payload, axon) => {
                         return axon.output.createSignal();
@@ -1488,10 +1479,10 @@ describe('CNStra Core Tests', () => {
     describe('Async Processing', () => {
         describe('Basic Async Operations', () => {
             it('should handle single async response', async () => {
-                const input = collateral<{ delay: number; message: string }>();
-                const output = collateral<{ result: string }>();
+                const input = cnsCollateral<{ delay: number; message: string }>();
+                const output = cnsCollateral<{ result: string }>();
 
-                const asyncNeuron = neuron( { output }).dendrite({
+                const asyncNeuron = cnsNeuron( { output }).dendrite({
                     collateral: input,
                     response: async (payload, axon) => {
                         await new Promise(resolve =>
@@ -1536,11 +1527,11 @@ describe('CNStra Core Tests', () => {
             });
 
             it('should handle async chain processing', async () => {
-                const input = collateral<{ value: number }>();
-                const step1 = collateral<{ value: number }>();
-                const output = collateral<{ result: number }>();
+                const input = cnsCollateral<{ value: number }>();
+                const step1 = cnsCollateral<{ value: number }>();
+                const output = cnsCollateral<{ result: number }>();
 
-                const asyncStep1 = neuron( { step1 }).dendrite({
+                const asyncStep1 = cnsNeuron( { step1 }).dendrite({
                     collateral: input,
                     response: async (payload, axon) => {
                         await new Promise(resolve => setTimeout(resolve, 2));
@@ -1550,7 +1541,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-                const asyncStep2 = neuron( { output }).dendrite({
+                const asyncStep2 = cnsNeuron( { output }).dendrite({
                     collateral: step1,
                     response: async (payload, axon) => {
                         await new Promise(resolve => setTimeout(resolve, 2));
@@ -1595,10 +1586,10 @@ describe('CNStra Core Tests', () => {
 
     describe('Edge Cases', () => {
         it('should handle neurons with no dendrites', async () => {
-            const input = collateral<{ data: string }>();
-            const output = collateral<{ result: string }>();
+            const input = cnsCollateral<{ data: string }>();
+            const output = cnsCollateral<{ result: string }>();
 
-            const neuronWithNoDendrites = neuron( { output });
+            const neuronWithNoDendrites = cnsNeuron( { output });
             const cns = new CNS([neuronWithNoDendrites]);
 
             const responses: Array<{
@@ -1620,10 +1611,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should handle undefined payloads', async () => {
-            const input = collateral();
-            const output = collateral<{ result: string }>();
+            const input = cnsCollateral();
+            const output = cnsCollateral<{ result: string }>();
 
-            const testNeuron = neuron( { output }).dendrite({
+            const testNeuron = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: async (payload, axon) => {
                     return axon.output.createSignal({
@@ -1657,10 +1648,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should work fire-and-forget style', async () => {
-            const input = collateral<{ data: string }>();
-            const output = collateral<{ result: string }>();
+            const input = cnsCollateral<{ data: string }>();
+            const output = cnsCollateral<{ result: string }>();
 
-            const processor = neuron( { output }).dendrite({
+            const processor = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (payload, axon) => {
                     return axon.output.createSignal({
@@ -1679,23 +1670,18 @@ describe('CNStra Core Tests', () => {
     });
 
     describe('Per-Neuron Concurrency', () => {
-        it('should enforce concurrency=1 for a single neuron (sequential processing)', async () => {
-            const start = collateral();
-            const inC = collateral();
-            const out = collateral();
+        it('should enforce concurrency=1 for a single cnsNeuron (sequential processing)', async () => {
+            const start = cnsCollateral();
+            const inC = cnsCollateral();
+            const out = cnsCollateral();
 
-            const u1 = neuron( { in: inC }).dendrite({
+            const upstream = cnsNeuron( { in: inC }).dendrite({
                 collateral: start,
-                response: (_p, axon) => axon.in.createSignal(),
-            });
-
-            const u2 = neuron( { in: inC }).dendrite({
-                collateral: start,
-                response: (_p, axon) => axon.in.createSignal(),
+                response: (_p, axon) => [axon.in.createSignal(), axon.in.createSignal()],
             });
 
             const DELAY = 5;
-            const worker = neuron( { out })
+            const worker = cnsNeuron( { out })
                 .setConcurrency(1)
                 .dendrite({
                     collateral: inC,
@@ -1705,7 +1691,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-            const cns = new CNS([u1, u2, worker]);
+            const cns = new CNS([upstream, worker]);
 
             let outCount = 0;
             let active = 0;
@@ -1731,26 +1717,18 @@ describe('CNStra Core Tests', () => {
             expect(maxActive).toBe(1);
         });
 
-        it('should allow up to N concurrent tasks per neuron (concurrency=2)', async () => {
-            const start = collateral();
-            const inC = collateral();
-            const out = collateral();
+        it('should allow up to N concurrent tasks per cnsNeuron (concurrency=2)', async () => {
+            const start = cnsCollateral();
+            const inC = cnsCollateral();
+            const out = cnsCollateral();
 
-            const u1 = neuron( { in: inC }).dendrite({
+            const upstream = cnsNeuron( { in: inC }).dendrite({
                 collateral: start,
-                response: (_p, axon) => axon.in.createSignal(),
-            });
-            const u2 = neuron( { in: inC }).dendrite({
-                collateral: start,
-                response: (_p, axon) => axon.in.createSignal(),
-            });
-            const u3 = neuron( { in: inC }).dendrite({
-                collateral: start,
-                response: (_p, axon) => axon.in.createSignal(),
+                response: (_p, axon) => [axon.in.createSignal(), axon.in.createSignal(), axon.in.createSignal()],
             });
 
             const DELAY = 5;
-            const worker = neuron( { out })
+            const worker = cnsNeuron( { out })
                 .setConcurrency(2)
                 .dendrite({
                     collateral: inC,
@@ -1760,7 +1738,7 @@ describe('CNStra Core Tests', () => {
                     },
                 });
 
-            const cns = new CNS([u1, u2, u3, worker]);
+            const cns = new CNS([upstream, worker]);
 
             let outCount = 0;
             let active = 0;
@@ -1787,21 +1765,17 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should not limit when concurrency is not set', async () => {
-            const start = collateral();
-            const inC = collateral();
-            const out = collateral();
+            const start = cnsCollateral();
+            const inC = cnsCollateral();
+            const out = cnsCollateral();
 
-            const u1 = neuron( { in: inC }).dendrite({
+            const upstream = cnsNeuron( { in: inC }).dendrite({
                 collateral: start,
-                response: (_p, axon) => axon.in.createSignal(),
-            });
-            const u2 = neuron( { in: inC }).dendrite({
-                collateral: start,
-                response: (_p, axon) => axon.in.createSignal(),
+                response: (_p, axon) => [axon.in.createSignal(), axon.in.createSignal()],
             });
 
             const DELAY = 5;
-            const worker = neuron( { out }).dendrite({
+            const worker = cnsNeuron( { out }).dendrite({
                 collateral: inC,
                 response: async (_payload, axon) => {
                     await new Promise(r => setTimeout(r, DELAY));
@@ -1809,7 +1783,7 @@ describe('CNStra Core Tests', () => {
                 },
             });
 
-            const cns = new CNS([u1, u2, worker]);
+            const cns = new CNS([upstream, worker]);
 
             let outCount = 0;
             let active = 0;
@@ -1836,10 +1810,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should enforce limit across separate stimulations (global gate)', async () => {
-            const input = collateral();
-            const workerOut = collateral();
+            const input = cnsCollateral();
+            const workerOut = cnsCollateral();
 
-            const worker = neuron( { out: workerOut })
+            const worker = cnsNeuron( { out: workerOut })
                 .setConcurrency(1)
                 .dendrite({
                     collateral: input,
@@ -1886,25 +1860,25 @@ describe('CNStra Core Tests', () => {
 
     describe('SCC Tracking', () => {
         it('should correctly identify when neurons can be safely cleaned up', () => {
-            const start = collateral<{ message: string }>();
-            const middle = collateral<{ from: string }>();
-            const end = collateral<{ from: string }>();
+            const start = cnsCollateral<{ message: string }>();
+            const middle = cnsCollateral<{ from: string }>();
+            const end = cnsCollateral<{ from: string }>();
 
-            const neuronA = neuron( { middle }).dendrite({
+            const neuronA = cnsNeuron( { middle }).dendrite({
                 collateral: start,
                 response: (payload, axon) => {
                     return axon.middle.createSignal({ from: 'A' });
                 },
             });
 
-            const neuronB = neuron( { end }).dendrite({
+            const neuronB = cnsNeuron( { end }).dendrite({
                 collateral: middle,
                 response: (payload, axon) => {
                     return axon.end.createSignal({ from: 'B' });
                 },
             });
 
-            const neuronC = neuron( {}).dendrite({
+            const neuronC = cnsNeuron( {}).dendrite({
                 collateral: end,
                 response: (payload, axon) => {
                     // Terminal neuron
@@ -1934,12 +1908,12 @@ describe('CNStra Core Tests', () => {
 
     describe('Array Signal Support', () => {
         it('should handle returning an array of signals from a neuron', async () => {
-            const input = collateral<{ value: number }>();
-            const output1 = collateral<{ result: string }>();
-            const output2 = collateral<{ result: string }>();
-            const final = collateral<{ message: string }>();
+            const input = cnsCollateral<{ value: number }>();
+            const output1 = cnsCollateral<{ result: string }>();
+            const output2 = cnsCollateral<{ result: string }>();
+            const final = cnsCollateral<{ message: string }>();
 
-            const splitter = neuron( { output1, output2 }).dendrite({
+            const splitter = cnsNeuron( { output1, output2 }).dendrite({
                 collateral: input,
                 response: (payload, axon) => {
                     return [
@@ -1953,25 +1927,25 @@ describe('CNStra Core Tests', () => {
                 },
             });
 
-            const collector1 = neuron( { final }).dendrite({
-                collateral: output1,
-                response: (payload, axon) => {
-                    return axon.final.createSignal({
-                        message: `Collected from ${payload.result}`,
-                    });
-                },
-            });
+            const collector = cnsNeuron( { final })
+                .dendrite({
+                    collateral: output1,
+                    response: (payload, axon) => {
+                        return axon.final.createSignal({
+                            message: `Collected from ${payload.result}`,
+                        });
+                    },
+                })
+                .dendrite({
+                    collateral: output2,
+                    response: (payload, axon) => {
+                        return axon.final.createSignal({
+                            message: `Collected from ${payload.result}`,
+                        });
+                    },
+                });
 
-            const collector2 = neuron( { final }).dendrite({
-                collateral: output2,
-                response: (payload, axon) => {
-                    return axon.final.createSignal({
-                        message: `Collected from ${payload.result}`,
-                    });
-                },
-            });
-
-            const cns = new CNS([splitter, collector1, collector2]);
+            const cns = new CNS([splitter, collector]);
 
             const results: string[] = [];
             await new Promise<void>(resolve => {
@@ -1996,10 +1970,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should handle async array of signals', async () => {
-            const input = collateral<{ count: number }>();
-            const output = collateral<{ index: number }>();
+            const input = cnsCollateral<{ count: number }>();
+            const output = cnsCollateral<{ index: number }>();
 
-            const generator = neuron( { output }).dendrite({
+            const generator = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: async (payload, axon) => {
                     await new Promise(r => setTimeout(r, 2));
@@ -2034,10 +2008,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should handle stimulate with array of initial signals', async () => {
-            const input = collateral<{ id: number }>();
-            const output = collateral<{ processed: number }>();
+            const input = cnsCollateral<{ id: number }>();
+            const output = cnsCollateral<{ processed: number }>();
 
-            const processor = neuron( { output }).dendrite({
+            const processor = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (payload, axon) => {
                     return axon.output.createSignal({
@@ -2079,10 +2053,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should handle empty array of signals', async () => {
-            const input = collateral<{ shouldEmit: boolean }>();
-            const output = collateral<{ data: string }>();
+            const input = cnsCollateral<{ shouldEmit: boolean }>();
+            const output = cnsCollateral<{ data: string }>();
 
-            const conditional = neuron( { output }).dendrite({
+            const conditional = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (payload, axon) => {
                     if (payload.shouldEmit) {
@@ -2112,10 +2086,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should handle mixed single and array signal returns', async () => {
-            const input = collateral<{ mode: 'single' | 'array' }>();
-            const output = collateral<{ value: string }>();
+            const input = cnsCollateral<{ mode: 'single' | 'array' }>();
+            const output = cnsCollateral<{ value: string }>();
 
-            const flexible = neuron( { output }).dendrite({
+            const flexible = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (payload, axon) => {
                     if (payload.mode === 'single') {
@@ -2175,41 +2149,51 @@ describe('CNStra Core Tests', () => {
 
     describe('onResponse async and error handling', () => {
         it('should await onResponse when it returns a Promise and run listeners in parallel', async () => {
-            const input = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const output = cnsCollateral();
 
-            const n = neuron( { output }).dendrite({
+            const n = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
             const cns = new CNS([n]);
 
-            // Global async listener.
+            // Ordering, not a clock: if the two run in parallel, the second one
+            // starts before the first one finishes. A wall-clock bound on two
+            // sleeps flakes the moment the machine is busy, and it did.
+            const events: string[] = [];
             cns.addResponseListener(async () => {
+                events.push('global:start');
                 await new Promise<void>(r => setTimeout(r, 5));
+                events.push('global:end');
             });
 
-            const start = Date.now();
             await cns
                 .stimulate(input.createSignal(), {
                     onResponse: async _r => {
-                        // Local async listener.
+                        events.push('local:start');
                         await new Promise<void>(r => setTimeout(r, 5));
+                        events.push('local:end');
                     },
                 })
                 .waitUntilComplete();
 
-            const elapsed = Date.now() - start;
-            // Should be roughly one listener delay because local and global run in parallel.
-            expect(elapsed).toBeGreaterThanOrEqual(1);
-            expect(elapsed).toBeLessThan(30);
+            // Both started before either finished, and the run waited for both.
+            expect(events.indexOf('global:start')).toBeLessThan(
+                events.indexOf('local:end')
+            );
+            expect(events.indexOf('local:start')).toBeLessThan(
+                events.indexOf('global:end')
+            );
+            expect(events).toContain('global:end');
+            expect(events).toContain('local:end');
         });
 
         it('should reject stimulate when local onResponse throws', async () => {
-            const input = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const output = cnsCollateral();
 
-            const n = neuron( { output }).dendrite({
+            const n = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
@@ -2227,10 +2211,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should reject stimulate when a global response listener rejects', async () => {
-            const input = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const output = cnsCollateral();
 
-            const n = neuron( { output }).dendrite({
+            const n = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
@@ -2248,10 +2232,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should not introduce async when onResponse is purely synchronous', async () => {
-            const input = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const output = cnsCollateral();
 
-            const n = neuron( { output }).dendrite({
+            const n = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
@@ -2268,37 +2252,44 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should run multiple global listeners in parallel (time ~ max, not sum)', async () => {
-            const input = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const output = cnsCollateral();
 
-            const n = neuron( { output }).dendrite({
+            const n = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
             const cns = new CNS([n]);
 
-            const DELAY = 30;
-            cns.addResponseListener(async () => {
-                await new Promise<void>(r => setTimeout(r, DELAY));
-            });
-            cns.addResponseListener(async () => {
-                await new Promise<void>(r => setTimeout(r, DELAY));
-            });
+            // Parallel is an ordering claim, so assert the ordering: neither
+            // listener may finish before the other has started. Timing the two
+            // sleeps instead flaked on a busy machine.
+            const events: string[] = [];
+            const listener = (name: string) => async () => {
+                events.push(`${name}:start`);
+                await new Promise<void>(r => setTimeout(r, 5));
+                events.push(`${name}:end`);
+            };
+            cns.addResponseListener(listener('first'));
+            cns.addResponseListener(listener('second'));
 
-            const start = Date.now();
             await cns
                 .stimulate(input.createSignal(), { onResponse: () => {} })
                 .waitUntilComplete();
-            const elapsed = Date.now() - start;
-            expect(elapsed).toBeGreaterThanOrEqual(DELAY - 5);
-            expect(elapsed).toBeLessThan(DELAY * 2 - 5);
+
+            expect(events.indexOf('second:start')).toBeLessThan(
+                events.indexOf('first:end')
+            );
+            expect(events.indexOf('first:start')).toBeLessThan(
+                events.indexOf('second:end')
+            );
         });
 
         it('should still invoke other global listeners when one rejects asynchronously', async () => {
-            const input = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const output = cnsCollateral();
 
-            const n = neuron( { output }).dendrite({
+            const n = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
@@ -2324,15 +2315,15 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should resolve stimulate when aborted and no active tasks remain', async () => {
-            const input = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const output = cnsCollateral();
 
-            const n = neuron( { output }).dendrite({
+            const n = cnsNeuron( { output }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.output.createSignal(),
             });
             let sinkRan = false;
-            const sink = neuron( {}).dendrite({
+            const sink = cnsNeuron( {}).dendrite({
                 collateral: output,
                 response: () => {
                     sinkRan = true;
@@ -2375,15 +2366,15 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should block subscriber enqueue until onResponse resolves', async () => {
-            const input = collateral();
-            const mid = collateral();
-            const output = collateral();
+            const input = cnsCollateral();
+            const mid = cnsCollateral();
+            const output = cnsCollateral();
 
-            const a = neuron( { mid }).dendrite({
+            const a = cnsNeuron( { mid }).dendrite({
                 collateral: input,
                 response: (_p, axon) => axon.mid.createSignal(),
             });
-            const b = neuron( { output }).dendrite({
+            const b = cnsNeuron( { output }).dendrite({
                 collateral: mid,
                 response: (_p, axon) => axon.output.createSignal(),
             });
@@ -2423,16 +2414,16 @@ describe('CNStra Core Tests', () => {
 
     describe('Abort and Retry with activate', () => {
         it('should allow aborting and retrying from the outstanding frontier', async () => {
-            const input = collateral<{ value: number }>();
-            const intermediate = collateral<{ value: number }>();
-            const output = collateral<{ result: string }>();
+            const input = cnsCollateral<{ value: number }>();
+            const intermediate = cnsCollateral<{ value: number }>();
+            const output = cnsCollateral<{ result: string }>();
 
             // Aborted from inside step1 so the abort deterministically lands
             // while step1 is still in flight (instead of racing two
             // setTimeout()s, which made this test flaky).
             let abortController: AbortController;
 
-            const step1 = neuron({ intermediate }).dendrite({
+            const step1 = cnsNeuron({ intermediate }).dendrite({
                 collateral: input,
                 response: async (payload, axon) => {
                     // Abort while this step is in flight: when it resolves,
@@ -2446,7 +2437,7 @@ describe('CNStra Core Tests', () => {
                 },
             });
 
-            const step2 = neuron({ output }).dendrite({
+            const step2 = cnsNeuron({ output }).dendrite({
                 collateral: intermediate,
                 response: async (payload, axon) => {
                     await new Promise(resolve => setTimeout(resolve, 2));
@@ -2501,21 +2492,21 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should allow retrying after error from the outstanding frontier', async () => {
-            const input = collateral<{ value: number }>();
-            const intermediate = collateral<{ value: number }>();
-            const output = collateral<{ result: string }>();
+            const input = cnsCollateral<{ value: number }>();
+            const intermediate = cnsCollateral<{ value: number }>();
+            const output = cnsCollateral<{ result: string }>();
 
             // Fail step2 only on its first invocation; the retry re-runs the
             // failed task and succeeds. No per-neuron context involved.
             let step2Attempts = 0;
 
-            const step1 = neuron({ intermediate }).dendrite({
+            const step1 = cnsNeuron({ intermediate }).dendrite({
                 collateral: input,
                 response: async (payload, axon) =>
                     axon.intermediate.createSignal({ value: payload.value }),
             });
 
-            const step2 = neuron({ output }).dendrite({
+            const step2 = cnsNeuron({ output }).dendrite({
                 collateral: intermediate,
                 response: async (payload, axon) => {
                     step2Attempts++;
@@ -2571,14 +2562,14 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should not re-execute completed tasks on retry (frontier resume)', async () => {
-            const input = collateral<{ id: number }>();
-            const step1Out = collateral<{ id: number }>();
-            const step2Out = collateral<{ id: number }>();
-            const output = collateral<{ result: string }>();
+            const input = cnsCollateral<{ id: number }>();
+            const step1Out = cnsCollateral<{ id: number }>();
+            const step2Out = cnsCollateral<{ id: number }>();
+            const output = cnsCollateral<{ result: string }>();
 
             const executionLog: string[] = [];
 
-            const step1 = neuron({ step1Out }).dendrite({
+            const step1 = cnsNeuron({ step1Out }).dendrite({
                 collateral: input,
                 response: async (payload, axon) => {
                     executionLog.push(`step1-${payload.id}`);
@@ -2587,7 +2578,7 @@ describe('CNStra Core Tests', () => {
                 },
             });
 
-            const step2 = neuron({ step2Out }).dendrite({
+            const step2 = cnsNeuron({ step2Out }).dendrite({
                 collateral: step1Out,
                 response: async (payload, axon) => {
                     executionLog.push(`step2-${payload.id}`);
@@ -2596,7 +2587,7 @@ describe('CNStra Core Tests', () => {
                 },
             });
 
-            const step3 = neuron({ output }).dendrite({
+            const step3 = cnsNeuron({ output }).dendrite({
                 collateral: step2Out,
                 response: async (payload, axon) => {
                     executionLog.push(`step3-${payload.id}`);
@@ -2669,11 +2660,11 @@ describe('CNStra Core Tests', () => {
 
     describe('CNSStimulationGate', () => {
         it('should reuse the same drain while processing is active', async () => {
-            const input = collateral<{ id: number }>();
+            const input = cnsCollateral<{ id: number }>();
             let starts = 0;
             let resolveCurrentRun!: () => void;
 
-            const worker = neuron({}).dendrite({
+            const worker = cnsNeuron({}).dendrite({
                 collateral: input,
                 response: async () => {
                     starts++;
@@ -2713,9 +2704,9 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should abort the current drain when using the guard abort controller', async () => {
-            const input = collateral();
+            const input = cnsCollateral();
 
-            const worker = neuron({}).dendrite({
+            const worker = cnsNeuron({}).dendrite({
                 collateral: input,
                 response: (_payload, _axon, ctx) =>
                     new Promise<void>((_resolve, reject) => {
@@ -2739,10 +2730,10 @@ describe('CNStra Core Tests', () => {
         });
 
         it('should not abort when an external abort signal owns cancellation', async () => {
-            const input = collateral();
+            const input = cnsCollateral();
             const abortController = new AbortController();
 
-            const worker = neuron({}).dendrite({
+            const worker = cnsNeuron({}).dendrite({
                 collateral: input,
                 response: (_payload, _axon, ctx) =>
                     new Promise<void>((_resolve, reject) => {

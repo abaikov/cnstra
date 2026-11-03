@@ -2,27 +2,33 @@
 
 **Orchestration engine for TypeScript — deterministic, embeddable, in-memory.**
 
-📚 **[Full Documentation →](https://cnstra.org/)** | [Quick Start](https://cnstra.org/docs/core/quick-start) | [API Reference](https://cnstra.org/docs/core/api) | [Recipes](https://cnstra.org/docs/recipes)
+📚 **[Full Documentation →](https://cnstra.org/)** | [Quick Start](https://cnstra.org/docs/core/quick-start) | [API Reference](https://cnstra.org/docs/core/api) | [Recipes](https://cnstra.org/docs/recipes/saga)
 
 ## What is CNStra?
 
-**CNStra** (Central Nervous System Orchestrator) models your app's control flow as a graph of **neurons** wired together by **typed signals**. You orchestrate work by wiring the graph — not by standing up an event bus.
+**CNStra** (Central Nervous System Orchestrator) is a library for control flow you can read, type-check, and resume.
 
-Instead of an event bus that broadcasts to whoever happens to be listening, CNStra keeps the flow explicit. You start a run with `cns.stimulate(signal)`, and it walks the graph deterministically — one hop at a time, `collateral → dendrite → returned signal` — until nothing is left to fire. A neuron receives a signal on one of its dendrites, does its work, and returns the next signal; that returned signal **is** the edge to the next neuron. No hidden subscribers, no fan-out you can't trace.
+You wire your app's steps into a graph and start a run with a signal. CNStra walks that graph deterministically, one hop at a time — and every hop is visible while it runs and re-drivable after it fails. It's a library, not a service: no server, no broker, no database to stand up, and no third-party dependencies.
 
-Four primitives:
+**Isolated units.** A neuron owns one responsibility. Change it and the compiler plus the graph show exactly what it affects — no hidden coupling to grep for, no subscriber you didn't wire yourself.
+
+**Typed, and exhaustive.** Signals travel on typed collaterals, and the compiler makes you handle every collateral you subscribe to. An incomplete flow doesn't build.
+
+**Traceable and resumable.** Devtools show every hop of every run and let you retry one. `@cnstra/persist` records what a run still has left to do, so a process that dies halfway comes back with exactly the unfinished work — not with the whole flow replayed.
+
+Which makes it a good fit for:
+
+- **Jobs & workers**, **webhooks & integrations**, **ETL / pipelines**
+- **Retries, timeouts, cancellation**, and **saga-style compensations**
+
+### The four primitives
 
 - **Collateral** — a typed channel; a signal is a payload sent on one.
 - **Neuron** — a unit of logic with one or more dendrites.
 - **Dendrite** — a handler that reacts to a collateral and returns the next signal.
 - **Signal** — what actually flows through a run.
 
-Because traversal is deterministic and hop-bounded, a run is reproducible and easy to reason about — which is what makes CNStra a good fit for:
-
-- **Jobs & workers**, **webhooks & integrations**, **ETL / pipelines**
-- **Retries, timeouts, cancellation**, and **saga-style compensations**
-
-Zero dependencies. No pub/sub. In-memory.
+A dendrite's returned signal **is** the edge to the next neuron. That's the entire wiring model.
 
 👉 **[Read the full documentation →](https://cnstra.org/)**
 
@@ -33,14 +39,14 @@ npm install @cnstra/core
 ```
 
 ```typescript
-import { CNS, collateral, neuron } from '@cnstra/core';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 
 // Define collaterals (communication channels)
-const userCreated = collateral<{ id: string; name: string }>();
-const userRegistered = collateral<{ userId: string; status: string }>();
+const userCreated = cnsCollateral<{ id: string; name: string }>();
+const userRegistered = cnsCollateral<{ userId: string; status: string }>();
 
 // Create a neuron
-const userService = neuron({
+const userService = cnsNeuron({
   userRegistered
 })
 .dendrite({
@@ -66,62 +72,73 @@ await stimulation.waitUntilComplete();
 
 ## Registry & Naming
 
-`CNSPersistOptionsRegistry` maps object references to stable string names — used by devtools, MCP server, and persistence/resume patterns.
+`CNSPersistOptionsRegistry` (from `@cnstra/persist`) maps object references to stable string names — used by devtools, MCP server, and persistence/resume patterns.
 
 **Per-file registration (recommended):**
 
-```ts
+```ts file=registry.ts
 // src/neurons/registry.ts
-import { CNSPersistOptionsRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
+```
 
+```ts file=deck.ts
 // src/neurons/deck.ts — each neuron registers itself
-import { collateral, neuron } from '@cnstra/core';
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
 import { registry } from './registry';
 
-const deckCreated = collateral<{ deckId: string }>();
-const importStarted = collateral<{ importId: string }>(); // external entry point
+const deckCreated = cnsCollateral<{ deckId: string }>();
+const importStarted = cnsCollateral<{ importId: string }>(); // external entry point
 
-const deckNeuron = neuron({ deckCreated })
+const deckNeuron = cnsNeuron({ deckCreated })
     .bind({ importStarted }, {
         importStarted: ({ importId }, axon) => axon.deckCreated.createSignal({ deckId: importId }),
     });
 
 registry
-    .register('deckNeuron', deckNeuron)                    // registers neuron + axon collaterals
-    .register('deckNeuron', deckNeuron, { deckCreated: 'deck-created' }) // explicit collateral names
-    .registerCollateral('importStarted', importStarted);   // standalone collateral (no neuron)
+    .register('deckNeuron', deckNeuron, { deckCreated: 'deck-created' }) // neuron + axon collaterals; default name 'deckNeuron.deckCreated'
+    .registerCollateral('importStarted', importStarted);   // standalone cnsCollateral (no neuron)
 ```
 
 **All at once (simple projects):**
 
-```ts
-import { createPersistRegistry } from '@cnstra/core';
+```ts setup
+import type { TCNSNeuron } from '@cnstra/types';
 
-export const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+declare const deckNeuron: TCNSNeuron<any>;
+declare const cardNeuron: TCNSNeuron<any>;
+```
+
+```ts
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+
+export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron });
 // explicit neuron name:        { 'deck-neuron': deckNeuron }
 // explicit collateral names:   { 'deck-neuron': { neuron: deckNeuron, collaterals: { deckCreated: 'deck-created' } } }
+// entry collaterals and modalities go in the same object; a nested object is a namespace: { decks: { deckNeuron } } → 'decks.deckNeuron'
 ```
 
-**CNS + registry from one map:** if you're going to build both, `createCNS` lists the
+**CNS + registry from one map:** if you're going to build both, `CNSFactory.create` from `@cnstra/factory` lists the
 neuron set once and returns both — they derive from the same map, so the names can never
-drift from the runtime graph. Accepts the same explicit-name syntax as `createPersistRegistry`.
+drift from the runtime graph. Accepts the same explicit-name syntax as `CNSPersistOptionsRegistryFactory.create`.
 
 ```ts
-import { createCNS } from '@cnstra/core';
+import { CNSFactory } from '@cnstra/factory';
 
-const { cns, registry } = createCNS({ deckNeuron, cardNeuron });
+const { cns, registry } = CNSFactory.create({ deckNeuron, cardNeuron });
 // `cns` is the runtime engine; `registry` carries the names for devtools/mcp/persistence.
-// Don't need naming/persistence? Just use `new CNS([deckNeuron, cardNeuron])` directly.
+// Don't need naming/persistence? `new CNS([deckNeuron, cardNeuron])`, or `createCNS(neuronFactories, dependencies)` when the neurons have dependencies.
 ```
+
+**Neurons with dependencies (recommended):** write each neuron as a factory of its dependencies, in its own file, and build the CNS with `createCNS(neuronFactories, dependencies)`. Every factory gets the same dependencies, and TypeScript checks them against each factory's parameter. See [Dependencies](https://cnstra.org/docs/core/api#dependencies-a-store-a-database-a-clock).
 
 ## Documentation
 
 - **[Quick Start Guide](https://cnstra.org/docs/core/quick-start)** — Get up and running in minutes
 - **[API Reference](https://cnstra.org/docs/core/api)** — Complete API documentation
-- **[Concepts](https://cnstra.org/docs/core/concepts)** — Neurons, collaterals, signals, and the CNS model (Central Neural Network of your app)
-- **[Recipes](https://cnstra.org/docs/recipes)** — Common patterns and use cases
-- **[Advanced Topics](https://cnstra.org/docs/advanced)** — Performance, integrations
+- **[Concepts](https://cnstra.org/docs/concepts/basics)** — Neurons, collaterals, signals, and the CNS model (Central Neural Network of your app)
+- **[Recipes](https://cnstra.org/docs/recipes/saga)** — Common patterns and use cases
+- **[Advanced Topics](https://cnstra.org/docs/advanced/performance)** — Performance, integrations
 
 ---
 

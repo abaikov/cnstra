@@ -13,6 +13,7 @@ export class CNSDebouncedProgressRecordingStrategy implements ICNSProgressRecord
     private readonly maxStalenessMs: number;
     private timer?: ReturnType<typeof setTimeout>;
     private pendingSince?: number;
+    private lastResponseAt = 0;
 
     constructor(options: TCNSDebouncedProgressRecordingStrategyOptions = {}) {
         this.debounceMs = options.debounceMs ?? 250;
@@ -30,8 +31,23 @@ export class CNSDebouncedProgressRecordingStrategy implements ICNSProgressRecord
             this.doFlush(flush);
             return;
         }
-        if (this.timer) clearTimeout(this.timer);
-        this.timer = setTimeout(() => this.doFlush(flush), this.debounceMs);
+        // One timer per quiet window, not one per response. Re-arming on every
+        // response allocated and cancelled a Node timer per hop to perform a
+        // single write; instead the armed timer asks on arrival how long the run
+        // has actually been quiet, and re-arms for the remainder if it is early.
+        // Same debounce semantics — the flush still lands `debounceMs` after the
+        // LAST response, not after the first.
+        this.lastResponseAt = now;
+        if (this.timer === undefined) this.arm(flush, this.debounceMs);
+    }
+
+    private arm(flush: () => void, delayMs: number): void {
+        this.timer = setTimeout(() => {
+            this.timer = undefined;
+            const idleMs = Date.now() - this.lastResponseAt;
+            if (idleMs >= this.debounceMs) this.doFlush(flush);
+            else this.arm(flush, this.debounceMs - idleMs);
+        }, delayMs);
     }
 
     private doFlush(flush: () => void): void {
@@ -43,10 +59,18 @@ export class CNSDebouncedProgressRecordingStrategy implements ICNSProgressRecord
         flush();
     }
 
+    /**
+     * Cancel the pending flush. Idempotent, and safe to call mid-run: the
+     * persistor uses it to drop a stale cadence timer before its terminal write,
+     * so the staleness window is cleared here too — after this there is nothing
+     * pending, and the next response starts a fresh one rather than being
+     * treated as already overdue.
+     */
     dispose(): void {
         if (this.timer) {
             clearTimeout(this.timer);
             this.timer = undefined;
         }
+        this.pendingSince = undefined;
     }
 }

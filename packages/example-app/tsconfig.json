@@ -29,7 +29,6 @@
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "src/array-signals-demo.ts"
+    "dist"
   ]
 }

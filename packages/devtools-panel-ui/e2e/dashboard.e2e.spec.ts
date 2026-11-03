@@ -103,7 +103,11 @@ test.describe('Explorer 4-zone dashboard walkthrough', () => {
 
         // ── the entry-only boolean filter on the Collaterals tab ──
         await page.getByRole('button', { name: 'Collaterals', exact: true }).click();
-        await page.getByRole('button', { name: 'entry only', exact: true }).click();
+        // The button reads "entry collaterals only"; asking for "entry only"
+        // with exact:true could never match it, so this step had never run.
+        await page
+            .getByRole('button', { name: 'entry collaterals only', exact: true })
+            .click();
         await expect(page.locator('.exp-row').first()).toBeVisible({
             timeout: 30000,
         });

@@ -9,23 +9,36 @@ export { CNSDebouncedProgressRecordingStrategy } from './CNSDebouncedProgressRec
 
 export { CNSStimulationPersistor } from './CNSStimulationPersistor';
 export { CNSInMemoryStimulationRepository } from './CNSInMemoryStimulationRepository';
+export { CNSFanOutStimulationWriter } from './CNSFanOutStimulationWriter';
+export {
+    withCNSWriteChain,
+    retryCNSWrites,
+    redactCNSPayload,
+    capCNSPayload,
+} from './writerChain';
+export type {
+    TCNSStimulationWrite,
+    TCNSStimulationWriteMiddleware,
+    TCNSRetryWritesOptions,
+} from './writerChain';
 export type { TCNSInMemoryStimulationRepositoryOptions } from './CNSInMemoryStimulationRepository';
 
 export type { ICNSStimulationRosterQuery } from './interfaces/ICNSStimulationRosterQuery';
-export { supportsRosterQuery } from './interfaces/ICNSStimulationRosterQuery';
+export { supportsCNSRosterQuery } from './interfaces/ICNSStimulationRosterQuery';
 export {
-    loadRosterEntries,
-    keysetPage,
-    computeRosterFacets,
-    buildTimeHistogram,
-    matchesRosterFilter,
-    resolvePayloadPath,
-    encodeRosterCursor,
+    loadCNSRosterEntries,
+    cnsKeysetPage,
+    computeCNSRosterFacets,
+    CNS_HISTOGRAM_BUCKETS,
+    buildCNSTimeHistogram,
+    matchesCNSRosterFilter,
+    resolveCNSPayloadPath,
+    encodeCNSRosterCursor,
 } from './CNSStimulationRosterCompute';
 export type { TCNSRosterEntry } from './CNSStimulationRosterCompute';
 export type { ICNSProgressRepository } from './interfaces/ICNSProgressRepository';
 export type { ICNSProgressRecordingStrategy } from './interfaces/ICNSProgressRecordingStrategy';
-export type { TCNSRegistryValue } from './types/TCNSRegistryValue';
+export type { TCNSRegistryNamespace } from './types/TCNSRegistryNamespace';
 export type { TCNSNeuronRegistryEntry } from './types/TCNSNeuronRegistryEntry';
 export type { TCNSProgressRecorderOptions } from './types/TCNSProgressRecorderOptions';
 export type { TCNSDebouncedProgressRecordingStrategyOptions } from './types/TCNSDebouncedProgressRecordingStrategyOptions';
@@ -58,3 +71,5 @@ export type {
 } from './interfaces/ICNSStimulationRepository';
 export type { ICNSStimulationPersistor } from './interfaces/ICNSStimulationPersistor';
 export type { TCNSStimulationPersistorOptions } from './types/TCNSStimulationPersistorOptions';
+
+export { portable } from './portable';

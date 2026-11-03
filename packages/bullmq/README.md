@@ -7,7 +7,7 @@
 retry/backoff/scheduling/concurrency, and — with `resume` — have a **retried job continue
 the failed frontier** instead of re-running from the entry signal.
 
-It follows the same pattern as the [Message Brokers guide](https://cnstra.org/docs/integrations/message-brokers)
+It follows the same pattern as the [BullMQ guide](https://cnstra.org/docs/integrations/bullmq)
 and the sibling [`@cnstra/pg-boss`](../pg-boss): **one job = one stimulation**, reconstructed
 across processes by **name** via a `CNSPersistOptionsRegistry` (neuron/collateral object
 references are not portable).
@@ -20,8 +20,19 @@ npm install @cnstra/bullmq @cnstra/core @cnstra/persist bullmq
 
 ## Worker
 
+```ts setup
+import type { CNS, CNSCollateral } from '@cnstra/core';
+import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+import type { TCNSNeuron } from '@cnstra/types';
+
+declare const cns: CNS<TCNSNeuron>;
+declare const registry: CNSPersistOptionsRegistry;
+declare const importUser: CNSCollateral<{ userId: string }>;
+```
+
 ```ts
 import { Worker } from 'bullmq';
+import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 import { createCNSWorker } from '@cnstra/bullmq';
 
 const connection = { host: '127.0.0.1', port: 6379 };
@@ -31,22 +42,18 @@ const worker = createCNSWorker({
   cns,
   registry,
   queue: 'cns',
-  connection,
+  workerOptions: { connection },
   // Resumable RESUME: a retried job (BullMQ reuses the same job id) continues the
   // outstanding frontier via cns.activate(...) — the failed neuron re-runs with
   // its context, the rest does not. With no `repository`, the checkpoint lives in
   // BullMQ's OWN per-job progress (job.updateProgress / job.progress, in Redis) —
   // no side store. Pass a repository only to store it elsewhere.
   resume: {},
-  // Optional per-hop progress sink; if onHop returns a Promise, CNStra waits
-  // for it before running the next hop (per-hop checkpoint barrier).
-  progress: {
-    onStarted:   (s) => db.insertStimulation(s),
-    onHop:       (h) => db.insertHop(h),
-    onCompleted: (s) => db.finishStimulation(s),
-  },
+  // Optional history store: the name-based Stimulation → Attempt → Task model,
+  // written per hop — the same model the DevTools render.
+  observe: new CNSInMemoryStimulationRepository({ maxStimulations: 1000 }),
 });
-// worker.close() to shut down.
+// worker.shutdown() to drain in-flight runs and close.
 ```
 
 The worker reconstructs the entry signal from the job's `collateralName`, stimulates, and
@@ -57,14 +64,14 @@ awaits completion. If the stimulation fails, the processor rejects and the error
 
 ```ts
 import { Queue } from 'bullmq';
-import { enqueueStimulation, stimulationJob } from '@cnstra/bullmq';
+import { enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/bullmq';
 
-const queue = new Queue('cns', { connection });
+const queue = new Queue('cns', { connection: { host: '127.0.0.1', port: 6379 } });
 
 // Type-safe: throws if the collateral isn't registered
-const job = stimulationJob(registry, importUser, { userId: '42' });
+const job = cnsStimulationJob(registry, importUser, { userId: '42' });
 
-await enqueueStimulation(queue, job, {
+await enqueueCNSStimulation(queue, job, {
   attempts: 5,
   backoff: { type: 'exponential', delay: 1000 },
   jobId: 'user:42', // one in-flight stimulation per entity (dedupe)
@@ -86,11 +93,11 @@ await enqueueStimulation(queue, job, {
 - ✅ Job execution, retry/backoff, scheduling, concurrency → **BullMQ**.
 - ✅ Resumable frontier resume across retries → BullMQ's own job progress by default, or a
   `resume.repository` you supply.
-- ✅ Per-step (hop) progress records → the `progress` sink (your store / OIMDB / logs).
+- ✅ Per-step (hop) history records → the `observe` store (`CNSInMemoryStimulationRepository`, or a Postgres store to keep it).
 - ❌ No built-in Redis schema or admin UI — you own the store. See `@cnstra/examples`
   (`demo:bull`, `demo:admin`) for a runnable worker and the CNStra retry admin.
 
-See the sibling guide: https://cnstra.org/docs/integrations/message-brokers
+See the full guide: https://cnstra.org/docs/integrations/bullmq
 
 ## License
 

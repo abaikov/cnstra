@@ -36,7 +36,34 @@ one process hosts several graphs.
 On a queue worker (`@cnstra/pg-boss` / `@cnstra/bullmq`) these are separate options — use
 either, both, or neither:
 
+```ts setup
+import { CNS, cnsCollateral } from '@cnstra/core';
+import type { TCNSNeuron } from '@cnstra/types';
+import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
+import type { CNSPersistOptionsRegistry, ICNSProgressRepository, ICNSStimulationWriter } from '@cnstra/persist';
+import type { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
+import { createCNSWorker } from '@cnstra/pg-boss';
+import type { ICNSPgBossLike } from '@cnstra/pg-boss';
+
+const entry = cnsCollateral<unknown>();
+
+declare const neurons: TCNSNeuron[];
+declare const boss: ICNSPgBossLike;
+declare const registry: CNSPersistOptionsRegistry;
+declare const queue: string;
+declare const checkpointStore: ICNSProgressRepository;
+declare const historyStore: ICNSStimulationWriter;
+declare const resume: { repository: ICNSProgressRepository };
+declare const observe: ICNSStimulationWriter;
+declare const pgStore: CNSPostgresStimulationRepository;
+declare const app: {
+  post(path: string, handler: (req: { body: unknown }, res: { sendStatus(code: number): void }) => void): void;
+};
+```
+
 ```ts
+const cns = new CNS(neurons);
+
 await createCNSWorker({
   boss, cns, registry, queue: 'cns',
   resume:  { repository: checkpointStore }, // frontier checkpoint → restart continues
@@ -60,19 +87,21 @@ relational history).
 
 `observe` (and the DevTools server) take any `ICNSStimulationRepository`:
 
-```ts
+```ts file=history.ts
 // See it in-process (ephemeral) — @cnstra/persist
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 
 // Keep it across restarts — @cnstra/persist-postgres (owns the run/attempt/task tables)
 import { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
-const history = new CNSPostgresStimulationRepository({ connectionString: DATABASE_URL });
+export const history = new CNSPostgresStimulationRepository({ connectionString: process.env.DATABASE_URL });
 // tables: `cnstra-persist-postgres migrate`, or auto-created on first use.
 ```
 
 Read it back — a ready-made admin waterfall, no schema to write:
 
-```ts
+```ts file=admin.ts
+import { history } from './history';
+
 const runs     = await history.listStimulations();            // newest-first roster
 const attempts = await history.getAttempts(runs[0].stimulationId);
 const tasks    = await history.getTasks(attempts[0].stimulationAttemptId);
@@ -97,9 +126,12 @@ to keep a bounded *recent* history (e.g. to still inspect or retry failed runs).
 The **Postgres** store persists rows, so bound it with retention on a schedule (cron):
 
 ```ts
-// prune runs not updated for a week (attempts/tasks/frontier/context cascade)
+// prune runs not updated for a week, with their attempts and tasks
 await pgStore.deleteStale(7 * 24 * 60 * 60 * 1000);
 ```
+
+With a `pool`, the same call keeps the task table in day partitions: it drops the days older than the window and
+attaches the next seven, so call it at least weekly. Tasks go by their own age, so keep the window above your longest run.
 
 ## Retry & clone
 
@@ -107,17 +139,17 @@ Given a run's history you get two admin actions for free (this is what the DevTo
 [Stimulations](../devtools/stimulations.md) panel does):
 
 - **Retry** — resume the outstanding **frontier** as a new attempt; only the unfinished
-  branch re-runs, with its context.
+  branch re-runs, from the input signal its frontier task carries.
 - **Clone** — a fresh run from the original **entry** (a clean re-do).
 
 ## One CNS, two call sites {#one-cns-two-call-sites}
 
-Durability is attached **per `stimulate()` call**, not baked into the CNS — the CNS is a
-pure graph. So the *same* `cns` can run durably from a worker and plainly from, say, an
+Resume is attached **per `stimulate()` call**, not baked into the CNS — the CNS is a
+pure graph. So the *same* `cns` can run resumably from a worker and plainly from, say, an
 HTTP endpoint:
 
 ```ts
-const cns = new CNS([...]); // one instance for the whole app
+const cns = new CNS(neurons); // one instance for the whole app
 
 // resumable: from the queue worker (persistor + resume + observe wired for you)
 createCNSWorker({ boss, cns, registry, queue, resume, observe });
@@ -128,10 +160,10 @@ app.post('/do', (req, res) => { cns.stimulate(entry.createSignal(req.body)); res
 
 Each `stimulate` is an independent stimulation (its own context + queue); nothing crosses
 over. Two caveats about what *is* shared on the CNS instance: the **per-neuron concurrency
-gate** (both call sites contend on it — usually the point) and **`ctx.global`** (app-wide
-by design). Note also that a *global* `cns.addResponseListener` (what the DevTools attach)
+gate** (both call sites contend on it — usually the point) and **the dependencies the neurons
+were built with** (the factory's closure or `ctx.global`, shared by design). Note also that a *global* `cns.addResponseListener` (what the DevTools attach)
 observes **all** stimulations, whereas a per-call `onResponse`/`observe` is selective — so
-durability stays on the worker path only if you attach it per-call, which the worker does.
+resume and history stay on the worker path only if you attach it per-call, which the worker does.
 
 ## See also
 

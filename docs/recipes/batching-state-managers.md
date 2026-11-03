@@ -17,6 +17,47 @@ CNStra does not have to guess. It *is* the thing that is happening. `onDrain`
 fires exactly when a unit of work has finished everything it can do
 synchronously — so the commit point stops being a heuristic and becomes a fact.
 
+```ts setup
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import type { CNS } from '@cnstra/core';
+import type { TCNSNeuron } from '@cnstra/types';
+import { OIMDB, createOIMEntityContentService, createOIMSlotCollectionService } from '@oimdb/core';
+import { runInAction } from 'mobx';
+import { create } from 'zustand';
+import { atom, createStore } from 'jotai';
+import { useSyncExternalStore } from 'react';
+
+type TCard = { id: string; title?: string; loading?: boolean };
+type TDeck = { id: string; name?: string; loading?: boolean };
+
+const db = new OIMDB();
+const cardService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<TCard>() });
+const deckService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<TDeck>() });
+const cards = cardService.createStoreSlot(db);
+const decks = deckService.createStoreSlot(db);
+
+const cardOpened = cnsCollateral<{ cardId: string; deckId: string }>();
+const loaded = cnsCollateral<{ cardId: string; deckId: string; title: string; name: string }>();
+const userClicked = cnsCollateral<{ id: string }>();
+const userLoaded = cnsCollateral<{ id: string; name: string }>();
+
+const useStore = create(() => ({ count: 0 }));
+const someAtom = atom(0);
+const signal = cardOpened.createSignal({ cardId: 'c1', deckId: 'd1' });
+const controller = new AbortController();
+
+declare const cns: CNS<TCNSNeuron>;
+declare const store: { n: number; commit(): void };
+declare const api: { load(cardId: string): Promise<{ title: string; name: string }> };
+declare const users: { setLoading(id: string, loading: boolean): void };
+declare const tx: { hasWrites(): boolean; commit(): void; close(): void };
+declare const journal: { drain(): unknown[] };
+declare const socket: { send(patch: unknown[]): void };
+declare const state: { dirty: boolean; snapshot(): unknown };
+declare function persist(snapshot: unknown): void;
+declare const analytics: { track(event: string): void };
+```
+
 ```ts
 cns.addDrainListener(() => store.commit());
 ```
@@ -47,25 +88,27 @@ loop. `onDrain` fires once at the end of every turn, including the final one.
 ## OIMDB
 
 The cleanest case, because OIMDB already separates *accumulating* from
-*committing*. An `OIMEventQueue` built without a scheduler never flushes itself:
+*committing*. An `OIMDB` built without a `channelScheduler` never flushes itself:
 
-> If not provided, `flush()` must be called manually.
+> With no `channelScheduler`, nothing is ever delivered until you call `db.flush()` yourself.
 
 So you simply do not give it one, and let CNStra drive:
 
-```ts
-import { OIMEventQueue } from '@oimdb/core';
+```ts file=oimdb-batching.ts
+import { OIMDB } from '@oimdb/core';
 import { CNS } from '@cnstra/core';
+import type { TCNSNeuron } from '@cnstra/types';
+
+declare const neurons: TCNSNeuron[];
 
 // No scheduler - CNStra is the scheduler.
-const queue = new OIMEventQueue();
+const db = new OIMDB();
 const cns = new CNS(neurons);
 
-const stopBatching = cns.addDrainListener(() => queue.flush());
+const stopBatching = cns.addDrainListener(() => db.flush());
 ```
 
-That replaces `OIMEventQueueSchedulerFactory.createMicrotask()` or
-`.createAnimationFrame()` outright. Neurons write to collections exactly as
+That replaces a microtask or animation-frame `channelScheduler` outright. Neurons write to collections exactly as
 before; subscribers are notified once per turn instead of once per guess.
 
 ### What that buys you
@@ -77,17 +120,17 @@ the others exist:
 ```ts
 // --- turn 1: three independent subscribers of the same signal ---
 
-const cardLoading = neuron({}).dendrite({
+const cardLoading = cnsNeuron({}).dendrite({
     collateral: cardOpened,
-    response: p => { cards.upsertOneByPk(p.cardId, { id: p.cardId, loading: true }); },
+    response: p => { cardService.writeSlotContentByKey(cards, p.cardId, { id: p.cardId, loading: true }); },
 });
 
-const deckLoading = neuron({}).dendrite({
+const deckLoading = cnsNeuron({}).dendrite({
     collateral: cardOpened,
-    response: p => { decks.upsertOneByPk(p.deckId, { id: p.deckId, loading: true }); },
+    response: p => { deckService.writeSlotContentByKey(decks, p.deckId, { id: p.deckId, loading: true }); },
 });
 
-const fetcher = neuron({ loaded }).dendrite({
+const fetcher = cnsNeuron({ loaded }).dendrite({
     collateral: cardOpened,
     response: async (p, axon) => {
         const res = await api.load(p.cardId);
@@ -97,17 +140,17 @@ const fetcher = neuron({ loaded }).dendrite({
 
 // --- turn 2: two independent subscribers of the result ---
 
-const applyCard = neuron({}).dendrite({
+const applyCard = cnsNeuron({}).dendrite({
     collateral: loaded,
     response: p => {
-        cards.upsertOneByPk(p.cardId, { id: p.cardId, title: p.title, loading: false });
+        cardService.writeSlotContentByKey(cards, p.cardId, { id: p.cardId, title: p.title, loading: false });
     },
 });
 
-const applyDeck = neuron({}).dendrite({
+const applyDeck = cnsNeuron({}).dendrite({
     collateral: loaded,
     response: p => {
-        decks.upsertOneByPk(p.deckId, { id: p.deckId, name: p.name, loading: false });
+        deckService.writeSlotContentByKey(decks, p.deckId, { id: p.deckId, name: p.name, loading: false });
     },
 });
 ```
@@ -251,9 +294,10 @@ But every top-level `set` opens its own transaction, so a turn in which five
 neurons each call `store.set` still produces five notifications.
 
 ```ts
-const store = createStore();
+const gate = new EventTarget();
+const jotaiStore = createStore();
 let dirty = false;
-store.sub(someAtom, () => { dirty = true; });
+jotaiStore.sub(someAtom, () => { dirty = true; });
 
 cns.addDrainListener(() => {
     if (!dirty) return;
@@ -271,7 +315,7 @@ difference. This pattern earns its keep when the consumer is *not* React — a
 worker, a server renderer, a custom view layer, a network sync loop.
 
 (Do not reach for `batch()` from react-redux to do this. As of v9 it is
-`@deprecated` and typed as `defaultNoopBatch` — it does nothing.)
+`@deprecated` and just calls your callback — it does nothing.)
 
 ## What does not fit: wrapper-only batching
 
@@ -280,7 +324,7 @@ worker, a server renderer, a custom view layer, a network sync loop.
 driving it from CNStra would require the engine to run the whole turn *inside* a
 caller-supplied function:
 
-```ts
+```text
 runTurn: turn => batch(turn)   // not implemented
 ```
 
@@ -288,7 +332,7 @@ CNStra exposes only the end of a turn, so this is currently out of reach. Signal
 already batches within a synchronous stretch on its own, which is the same span a
 turn covers, so the practical loss is small.
 
-Jotai's `store.set(writeAtom, ...)` is wrapper-shaped in the same way, and could
+Jotai's `store.set` on a write atom is wrapper-shaped in the same way, and could
 in principle wrap a whole turn. It is not worth doing: the neurons inside would
 have to reach for the transaction-scoped `set` instead of calling `store.set`
 normally, which leaks the batching strategy into every dendrite. Intercepting the
@@ -309,11 +353,11 @@ Because it does not mean what it looks like it means.
 mark a batch boundary, and the difference is not academic:
 
 ```ts
-neuron({ userLoaded }).dendrite({
+cnsNeuron({ userLoaded }).dendrite({
   collateral: userClicked,
   response: async (payload, axon) => {
-    db.users.setLoading(payload.id, true);   // synchronous write
-    const user = await fetch(`/users/${payload.id}`);
+    users.setLoading(payload.id, true);   // synchronous write
+    const user = await fetch(`/users/${payload.id}`).then(res => res.json());
     return axon.userLoaded.createSignal(user);
   },
 });
@@ -334,7 +378,7 @@ With `onDrain` the commit happens in the same tick as the click, before
 
 ```ts
 cns.addDrainListener(d => {
-  queue.flush();
+  db.flush();
 
   if (d.queueLength === 0) {
     // Nothing pending, nothing in flight: this run is finished.
@@ -381,9 +425,9 @@ commit matters on that path, pair it with the completion promise:
 ```ts
 const stim = cns.stimulate(signal, {
   abortSignal: controller.signal,
-  onDrain: () => queue.flush(),
+  onDrain: () => db.flush(),
 });
-stim.waitUntilComplete().catch(() => queue.flush());
+stim.waitUntilComplete().catch(() => db.flush());
 ```
 
 The promise is created lazily, so runs that pass no `abortSignal` do not pay for
@@ -411,7 +455,7 @@ let scheduled = false;
 cns.addDrainListener(() => {
     if (scheduled) return;
     scheduled = true;
-    queueMicrotask(() => { scheduled = false; queue.flush(); });
+    queueMicrotask(() => { scheduled = false; db.flush(); });
 });
 ```
 
@@ -427,27 +471,10 @@ measured a reason to.
 ### Neuron-level concurrency splits batches
 
 `setConcurrency(n)` on a neuron forces activations past the limit onto a promise,
-even when the dendrite body is synchronous. Those activations land in the next
+even when the dendrite response is synchronous. Those activations land in the next
 turn, so a gated neuron produces more batches than an ungated one. This is
 expected — the gate is a scheduling boundary — but it is worth knowing when a
 render count looks higher than the graph suggests.
-
-## Verified against
-
-Every integration on this page is covered by executable tests in
-`packages/integration-tests`, against the real libraries:
-
-| store | version | what is pinned |
-| --- | --- | --- |
-| OIMDB | 3.10.0 | a queue with no scheduler never flushes itself; one flush per turn; the two-collection example above, frame for frame |
-| MobX | 6.16.1 | one reaction run per turn; the two caveats above |
-| Jotai | 2.20.2 | one notification per turn; `set` transactional for nested writes |
-| Zustand | 5.0.14 | three `setState` calls → one gated notification |
-| Valtio | 2.3.2 | one gated notification; `notifyInSync` really is required |
-| Redux | 5.0.1 | three dispatches → one gated notification |
-
-Each also asserts read-your-writes inside a turn, and the optimistic-write-before-
-`await` case that motivates the whole recipe. If you change the wiring, run them.
 
 ## See also
 

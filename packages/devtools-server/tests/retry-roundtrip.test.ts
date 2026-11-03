@@ -160,6 +160,6 @@ describe('stimulation retry round-trip (panel → server → app)', () => {
             ui as any,
             JSON.stringify({ type: 'stimulation.retry', requestId: 'r', stimulationId: 's3' })
         );
-        expect(ui.ofType('stimulation.retry.rejected').reason).toMatch(/not connected/i);
+        expect(ui.ofType('stimulation.retry.rejected').reason).toMatch(/no runtime accepted/i);
     });
 });

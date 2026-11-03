@@ -1,10 +1,7 @@
 export class CNSInstanceNeuronQueue<
-    TNeuron extends { concurrency?: number }
+    TNeuron extends { readonly index: number; concurrency?: number }
 > {
-    private readonly gates = new Map<
-        TNeuron,
-        { limit: number; active: number; waiters: (() => void)[] }
-    >();
+    private readonly gatesByNeuronIndex: { limit: number; active: number; waiters: (() => void)[] }[] = [];
 
     run(
         neuron: TNeuron,
@@ -15,31 +12,31 @@ export class CNSInstanceNeuronQueue<
             return fn();
         }
 
-        let gate = this.gates.get(neuron);
+        let gate = this.gatesByNeuronIndex[neuron.index];
         if (!gate) {
             gate = { limit, active: 0, waiters: [] };
-            this.gates.set(neuron, gate);
+            this.gatesByNeuronIndex[neuron.index] = gate;
         } else {
             gate.limit = limit;
         }
+        const ownGate = gate;
 
         const wrap = (cb: () => void) => {
             return () => {
                 try {
                     cb();
                 } finally {
-                    const g = this.gates.get(neuron)!;
-                    g.active = Math.max(0, g.active - 1);
-                    if (g.waiters.length > 0) {
-                        const next = g.waiters.shift()!;
+                    ownGate.active = Math.max(0, ownGate.active - 1);
+                    if (ownGate.waiters.length > 0) {
+                        const next = ownGate.waiters.shift()!;
                         next();
                     }
                 }
             };
         };
 
-        if (gate.active < gate.limit) {
-            gate.active++;
+        if (ownGate.active < ownGate.limit) {
+            ownGate.active++;
             const ret = fn();
             if (ret && typeof (ret as any).then === 'function') {
                 return (ret as Promise<() => void>).then(cb => wrap(cb));
@@ -49,8 +46,7 @@ export class CNSInstanceNeuronQueue<
 
         return new Promise<() => void>(resolve => {
             const starter = () => {
-                const g = this.gates.get(neuron)!;
-                g.active++;
+                ownGate.active++;
                 const ret = fn();
                 if (ret && typeof (ret as any).then === 'function') {
                     (ret as Promise<() => void>).then(cb => resolve(wrap(cb)));
@@ -58,7 +54,7 @@ export class CNSInstanceNeuronQueue<
                     resolve(wrap(ret as () => void));
                 }
             };
-            gate!.waiters.push(starter);
+            ownGate.waiters.push(starter);
         });
     }
 }

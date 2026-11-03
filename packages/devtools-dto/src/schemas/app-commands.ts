@@ -32,6 +32,8 @@ export const CNSStimulationResumeCommandDTOSchema = z.object({
     entry: z.custom<TCNSSignalJSON>(),
     // Outstanding frontier to hydrate against the app's registry and `cns.activate`.
     progress: z.custom<TCNSProgress>(),
+    // The attempt this one was forked from — recorded as provenance.
+    replayOf: z.string().optional(),
     options: CNSStimulationActionOptionsDTOSchema.optional(),
 });
 
@@ -43,6 +45,9 @@ export const CNSStimulationLaunchCommandDTOSchema = z.object({
     stimulationId: z.string(),
     stimulationAttemptId: z.string(),
     entry: z.custom<TCNSSignalJSON>(),
+    // A clone mints a NEW stimulationId, so this is the only thing tying it back
+    // to what it was cloned from.
+    replayOf: z.string().optional(),
     options: CNSStimulationActionOptionsDTOSchema.optional(),
 });
 
@@ -51,12 +56,6 @@ export const CNSAppCommandDTOSchema = z.discriminatedUnion('type', [
     CNSStimulationLaunchCommandDTOSchema,
 ]);
 
-export type TCNSStimulationResumeCommandDTO = z.infer<
-    typeof CNSStimulationResumeCommandDTOSchema
->;
-export type TCNSStimulationLaunchCommandDTO = z.infer<
-    typeof CNSStimulationLaunchCommandDTOSchema
->;
 export type TCNSAppCommandDTO = z.infer<typeof CNSAppCommandDTOSchema>;
 
 // Drift guards: the enriched commands must carry the canonical persist-dto shapes.

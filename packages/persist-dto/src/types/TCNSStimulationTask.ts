@@ -1,3 +1,4 @@
+import type { TCNSContextStore } from '@cnstra/types';
 import type { TCNSSignalJSON } from './TCNSSignalJSON';
 import type { ECNSStimulationTaskStatus } from './ECNSStimulationTaskStatus';
 
@@ -28,4 +29,10 @@ export type TCNSStimulationTask = {
     error: string | null;
     startedAt: number;
     duration: number | null;
+    /**
+     * The activation's context store — the portable part of it, as it stood when
+     * the activation settled. The same store the frontier carries; a task is an
+     * activation whether it is still to run or already ran.
+     */
+    activationContext?: TCNSContextStore;
 };

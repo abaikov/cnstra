@@ -1,6 +1,6 @@
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
-import { CNS, neuron, collateral } from '@cnstra/core';
+import { CNS, cnsNeuron, cnsCollateral } from '@cnstra/core';
 import type { TCNSNeuronActivationTask } from '@cnstra/types';
 
 describe('BullMQ Integration Tests', () => {
@@ -35,14 +35,14 @@ describe('BullMQ Integration Tests', () => {
     });
 
     it('should not re-execute completed tasks on retry (BullMQ, frontier resume)', async () => {
-        const input = collateral<{ id: number }>();
-        const step1Out = collateral<{ id: number }>();
-        const step2Out = collateral<{ id: number }>();
-        const output = collateral<{ result: string }>();
+        const input = cnsCollateral<{ id: number }>();
+        const step1Out = cnsCollateral<{ id: number }>();
+        const step2Out = cnsCollateral<{ id: number }>();
+        const output = cnsCollateral<{ result: string }>();
 
         const executionLog: string[] = [];
 
-        const step1 = neuron({ step1Out }).dendrite({
+        const step1 = cnsNeuron({ step1Out }).dendrite({
             collateral: input,
             response: async (payload, axon) => {
                 executionLog.push(`step1-${payload.id}`);
@@ -51,7 +51,7 @@ describe('BullMQ Integration Tests', () => {
             },
         });
 
-        const step2 = neuron({ step2Out }).dendrite({
+        const step2 = cnsNeuron({ step2Out }).dendrite({
             collateral: step1Out,
             response: async (payload, axon) => {
                 executionLog.push(`step2-${payload.id}`);
@@ -60,7 +60,7 @@ describe('BullMQ Integration Tests', () => {
             },
         });
 
-        const step3 = neuron({ output }).dendrite({
+        const step3 = cnsNeuron({ output }).dendrite({
             collateral: step2Out,
             response: async (payload, axon) => {
                 executionLog.push(`step3-${payload.id}`);

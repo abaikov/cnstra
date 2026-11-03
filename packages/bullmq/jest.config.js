@@ -7,5 +7,6 @@ module.exports = {
         '^@cnstra/types$': '<rootDir>/../types/src/index.ts',
         '^@cnstra/core$': '<rootDir>/../core/src/index.ts',
         '^@cnstra/persist$': '<rootDir>/../persist/src/index.ts',
+        '^@cnstra/persist-dto$': '<rootDir>/../persist-dto/src/index.ts',
     },
 };

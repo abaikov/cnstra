@@ -1,5 +1,6 @@
 export * from "./types/TCNSAfferentPath";
 export * from "./types/TCNSAxon";
+export * from "./types/TCNSContextStore";
 export * from "./types/TCNSDendrite";
 export * from "./types/TCNSHandlerContext";
 export * from "./types/TCNSModality";
@@ -8,7 +9,6 @@ export * from "./types/TCNSNeuronActivationTask";
 export * from "./types/TCNSNeuronActivationTaskFailure";
 export * from "./types/TCNSNeuronResponseReturn";
 export * from "./types/TCNSOptions";
-export * from "./types/TCNSPersist";
 export * from "./types/TCNSSignal";
 export * from "./types/TCNSStimulationDrain";
 export * from "./types/TCNSStimulationOptions";

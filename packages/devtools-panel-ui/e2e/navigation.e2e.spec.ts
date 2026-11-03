@@ -19,7 +19,6 @@ test.describe('Diagram distinction + breadcrumb navigation', () => {
         await expect(page.getByText(/NEURON · SCOPE/)).toBeVisible({ timeout: 60000 });
 
         // The diagram labels both kinds: `▪ NEURON` (center) + `◦ COLLATERAL` (sides).
-        await page.locator('svg').last().scrollIntoViewIfNeeded();
         await expect(page.locator('svg text', { hasText: '▪ NEURON' }).first()).toBeVisible();
         await expect(page.locator('svg text', { hasText: '◦ COLLATERAL' }).first()).toBeVisible();
         await page.screenshot({ path: 'e2e/.artifacts/nav-neuron-diagram.png', fullPage: true });
@@ -31,7 +30,6 @@ test.describe('Diagram distinction + breadcrumb navigation', () => {
         await expect(page.getByRole('button', { name: '← back' })).toBeVisible();
 
         // Drill again: click a NEURON node inside the collateral detail → neuron detail.
-        await page.locator('svg').last().scrollIntoViewIfNeeded();
         await page.locator('.dg-click').first().click();
         await expect(page.getByText(/NEURON · SCOPE/)).toBeVisible({ timeout: 60000 });
 

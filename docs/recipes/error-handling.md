@@ -13,6 +13,20 @@ Handle errors gracefully using `onResponse` callbacks (sync or async) and contex
 
 Errors are delivered immediately via `onResponse`, and they also **fail the run**: `stimulation.waitUntilComplete()` rejects if **any dendrite `response` throws or returns a rejected Promise** (a *failed task*) — or if any response listener (local or global) throws or rejects. A dendrite throw fails the run on its own; you do **not** need a listener for `waitUntilComplete()` to reject.
 
+```ts setup
+import type { CNS } from '@cnstra/core';
+import type { ICNSCollateral, TCNSSignal } from '@cnstra/types';
+
+declare const cns: CNS<any>;
+declare const signal: TCNSSignal<ICNSCollateral<unknown>>;
+declare const errorsRepo: {
+  store(entry: { signal: ICNSCollateral<unknown> | undefined; error: string }): Promise<void>;
+};
+declare class ValidationError extends Error {}
+declare function handleValidationError(error: ValidationError): void;
+declare function performTask(taskId: string): Promise<void>;
+```
+
 ```ts
 const stimulation = cns.stimulate(signal, {
   onResponse: async (response) => {
@@ -84,13 +98,13 @@ try {
 Use a self-looping neuron and carry the retry attempt count **in the signal payload** — all per-run data flows through payloads:
 
 ```ts
-import { neuron, collateral } from '@cnstra/core';
+import { cnsNeuron, cnsCollateral } from '@cnstra/core';
 
-const tryTask = collateral<{ taskId: string; attempt?: number }>();
-const completed = collateral<{ taskId: string }>();
-const failed = collateral<{ taskId: string; reason: string }>();
+const tryTask = cnsCollateral<{ taskId: string; attempt?: number }>();
+const completed = cnsCollateral<{ taskId: string }>();
+const failed = cnsCollateral<{ taskId: string; reason: string }>();
 
-const taskRunner = neuron({ tryTask, completed, failed })
+const taskRunner = cnsNeuron({ tryTask, completed, failed })
   .dendrite({
     collateral: tryTask,
     response: async (payload, axon) => {

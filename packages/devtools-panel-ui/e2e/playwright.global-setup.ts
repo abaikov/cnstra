@@ -22,7 +22,7 @@ async function buildWorkspace() {
         });
     // Build panel UI (webpack)
     await run(['run', 'build', '--silent'], panelDir, 'panel build');
-    // Compile example-app TS only (prestart also ensures UI built)
+    // Compile example-app TS only (prestart builds the UI too)
     await run(['run', 'prestart', '--silent'], exampleDir, 'example prestart');
 }
 
@@ -60,7 +60,7 @@ async function startExampleServer() {
 }
 
 export default async function globalSetup(_config: FullConfig) {
-    // Ensure artifacts are built before starting server (CI safety)
+    // Build artifacts before starting the server (CI safety)
     try {
         await buildWorkspace();
     } catch {}

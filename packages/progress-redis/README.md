@@ -19,17 +19,32 @@ npm install @cnstra/progress-redis ioredis
 
 ## Use
 
+```ts setup
+import type { Redis } from 'ioredis';
+import type { CNS } from '@cnstra/core';
+import type { CNSPersistOptionsRegistry, ICNSProgressRepository } from '@cnstra/persist';
+import type { ICNSPgBossLike } from '@cnstra/pg-boss';
+import type { TCNSNeuron } from '@cnstra/types';
+
+declare const cns: CNS<TCNSNeuron>;
+declare const registry: CNSPersistOptionsRegistry;
+declare const boss: ICNSPgBossLike;
+declare const connection: { host: string; port: number };
+declare const myIoRedis: Redis;
+declare const progress: ICNSProgressRepository;
+```
+
 ```ts
 import { CNSRedisProgressRepository } from '@cnstra/progress-redis';
 
 // Own a connection…
-const progress = new CNSRedisProgressRepository({
+const ownedProgress = new CNSRedisProgressRepository({
   connection: { host: '127.0.0.1', port: 6379 },
   prefix: 'cns:progress', // final key = `<prefix>:<key>`
 });
 
 // …or inject an existing ioredis client (share the one the broker already uses):
-const progress2 = new CNSRedisProgressRepository({ redis: myIoRedis });
+const sharedProgress = new CNSRedisProgressRepository({ redis: myIoRedis });
 ```
 
 ### With pg-boss
@@ -42,8 +57,9 @@ createCNSWorker({ boss, cns, registry, queue: 'cns', resume: { repository: progr
 ### With BullMQ (instead of the native job progress)
 
 ```ts
+import { Worker } from 'bullmq';
 import { createCNSWorker } from '@cnstra/bullmq';
-createCNSWorker({ Worker, cns, registry, queue: 'cns', connection, resume: { repository: progress } });
+createCNSWorker({ Worker, cns, registry, queue: 'cns', workerOptions: { connection }, resume: { repository: progress } });
 ```
 
 ## Contract

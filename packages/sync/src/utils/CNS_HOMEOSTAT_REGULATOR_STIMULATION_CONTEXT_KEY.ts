@@ -1,0 +1,1 @@
+export const CNS_HOMEOSTAT_REGULATOR_STIMULATION_CONTEXT_KEY = '@cnstra/sync';

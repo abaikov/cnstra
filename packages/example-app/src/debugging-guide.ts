@@ -93,7 +93,7 @@ function demonstrateCollateralMismatch() {
 From the logs, you can also see:
 
 🔍 NEURON AXON COLLATERALS (camelCase):
-   ✅ "userAuthenticated", "recordMetric", "auditLog"
+   ✅ "userAuthenticated"
 
 ⚠️  ACTUAL COLLATERALS (kebab-case):
    ❌ "user-authenticated", "record-metric", "audit-log"

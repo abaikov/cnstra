@@ -72,7 +72,7 @@ const listFiles = (root, prefix = '') => {
 };
 
 /** Every path where the two trees disagree — missing on either side, or different bytes. */
-const diffTrees = (left, right) => {
+export const diffTrees = (left, right) => {
     const leftFiles = new Set(listFiles(left));
     const rightFiles = new Set(listFiles(right));
     const differences = [];

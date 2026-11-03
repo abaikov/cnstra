@@ -1,6 +1,6 @@
-export type { TCNSStimulationJobData, ICNSResponseLike } from './types';
-export { runStimulationJob } from './runStimulationJob';
-export type { TRunStimulationJobParams } from './runStimulationJob';
-export { createDrainState } from './drain';
+export type { TCNSStimulationJobData, TCNSStimulationJobOptions, ICNSResponseLike } from './types';
+export { runCNSStimulationJob } from './runCNSStimulationJob';
+export type { TCNSRunStimulationJobParams } from './runCNSStimulationJob';
+export { createCNSDrainState } from './drain';
 export type { TCNSDrainState } from './drain';
-export { stimulationJob } from './stimulationJob';
+export { cnsStimulationJob } from './cnsStimulationJob';

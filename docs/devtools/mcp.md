@@ -26,24 +26,54 @@ npm i -D @cnstra/mcp
 
 ### 2. Create cns-mcp.ts
 
+The examples assume your neurons live in `src/neurons/index.ts` and the `CNS` in `src/cns.ts`:
+
+```ts file=src/neurons/index.ts
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+
+export const userLogin = cnsCollateral<{ userId: string }>();
+export const deckCreated = cnsCollateral<{ deckId: string }>();
+export const cardAdded = cnsCollateral<{ deckId: string }>();
+export const deckNeuron = cnsNeuron({ deckCreated }).dendrite({
+    collateral: userLogin,
+    response: ({ userId }, axon) => axon.deckCreated.createSignal({ deckId: userId }),
+});
+export const cardNeuron = cnsNeuron({ cardAdded }).dendrite({
+    collateral: deckCreated,
+    response: (payload, axon) => axon.cardAdded.createSignal(payload),
+});
+export const uiNeuron = cnsNeuron({});
+```
+
+```ts file=src/cns.ts
+import { CNS } from '@cnstra/core';
+import { deckNeuron, cardNeuron, uiNeuron } from './neurons/index';
+
+export const cns = new CNS([deckNeuron, cardNeuron, uiNeuron]);
+```
+
 First, create a registry. Two options:
 
 **Option A — per-file (recommended for larger projects):**
-```ts
+```ts file=src/neurons/registry.ts
 // src/neurons/registry.ts
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
+```
 
+```ts file=src/neurons/deck.ts
 // src/neurons/deck.ts — each neuron registers itself
 import { registry } from './registry';
+import { deckNeuron, cardNeuron, userLogin } from './index';
+
 registry
-    .register('deckNeuron', deckNeuron)
-    .register('cardNeuron', cardNeuron, { deckCreated: 'deck-created' }) // explicit collateral names
+    .register('deckNeuron', deckNeuron, { deckCreated: 'deck-created' }) // explicit collateral names
+    .register('cardNeuron', cardNeuron)
     .registerCollateral('userLogin', userLogin); // standalone collateral (no neuron owner)
 ```
 
 **Option B — all at once (simpler for small projects):**
-```ts
+```ts file=src/neurons/registry-all-at-once.ts
 // src/neurons/registry.ts
 import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { deckNeuron, cardNeuron, uiNeuron } from './index';
@@ -53,7 +83,7 @@ export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, ca
 
 Then the MCP entry point:
 
-```ts
+```ts file=cns-mcp.ts
 // cns-mcp.ts  ← dev-only, not imported from prod entry point
 import { startCNSMCPServer } from '@cnstra/mcp';
 import { cns } from './src/cns';

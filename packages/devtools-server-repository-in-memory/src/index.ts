@@ -1,23 +1,9 @@
-import { TCNSAppDTO } from "@cnstra/devtools-dto";
 import type { ICNSDevToolsServerRepository, TCNSTopologySnapshotDTO } from '@cnstra/devtools-server';
 
 export class CNSDevToolsServerRepositoryInMemory
     implements ICNSDevToolsServerRepository
 {
-    private apps = new Map<string, TCNSAppDTO>();
     private topologies = new Map<string, TCNSTopologySnapshotDTO>(); // cnsId → snapshot
-    private cnsToApp = new Map<string, string>();             // cnsId → appId
-    private appToCns = new Map<string, Set<string>>();        // appId → Set<cnsId>
-
-    // ─── Apps ─────────────────────────────────────────────────────────────────
-
-    upsertApp(app: TCNSAppDTO): void {
-        this.apps.set(app.id, app);
-    }
-
-    listApps(): TCNSAppDTO[] {
-        return [...this.apps.values()];
-    }
 
     // ─── Topology ─────────────────────────────────────────────────────────────
 
@@ -33,28 +19,13 @@ export class CNSDevToolsServerRepositoryInMemory
         return [...this.topologies.values()];
     }
 
-    // ─── CNS mapping ──────────────────────────────────────────────────────────
-
-    addCnsToApp(appId: string, cnsId: string): void {
-        this.cnsToApp.set(cnsId, appId);
-        if (!this.appToCns.has(appId)) this.appToCns.set(appId, new Set());
-        this.appToCns.get(appId)!.add(cnsId);
-    }
-
-    getCnsByApp(appId: string): string[] {
-        return [...(this.appToCns.get(appId) ?? [])];
-    }
-
     findAppByCns(cnsId: string): string | undefined {
-        return this.cnsToApp.get(cnsId);
+        return this.topologies.get(cnsId)?.appId;
     }
 
     // ─── Utility ──────────────────────────────────────────────────────────────
 
     clear(): void {
-        this.apps.clear();
         this.topologies.clear();
-        this.cnsToApp.clear();
-        this.appToCns.clear();
     }
 }

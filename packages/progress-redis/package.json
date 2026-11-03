@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/progress-redis",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Redis-backed progress store (ICNSProgressRepository) for CNStra resumable execution — broker-agnostic, use with pg-boss, BullMQ, or anything",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/progress-redis"
+  },
   "keywords": ["cnstra", "redis", "progress", "resumable", "resume", "checkpoint"],
   "main": "dist/index.js",
   "module": "dist/index.mjs",

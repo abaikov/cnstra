@@ -2,18 +2,21 @@ export { createCNSWorker } from './worker';
 export type { TCNSWorkerOptions, TCNSBullWorkerHandle } from './worker';
 
 export {
-    enqueueStimulation,
-    stimulationJob,
+    enqueueCNSStimulation,
+    cnsStimulationJob,
     CNS_JOB_NAME,
 } from './enqueue';
+
+export { createCNSBullActions } from './actions';
+export type { ICNSBullActionQueueLike, ICNSBullActionJob } from './actions';
 export type { TCNSSendOptions } from './enqueue';
 
 export type {
-    IBullJob,
-    IBullQueueLike,
-    IBullWorkerLike,
-    IBullWorkerCtor,
-    TBullProcessor,
+    ICNSBullJob,
+    ICNSBullQueueLike,
+    ICNSBullWorkerLike,
+    ICNSBullWorkerCtor,
+    TCNSBullProcessor,
     TCNSStimulationJobData,
     ICNSResponseLike,
 } from './types';

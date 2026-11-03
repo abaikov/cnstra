@@ -1,7 +1,12 @@
 {
     "name": "@cnstra/devtools-server",
-    "version": "3.0.0",
+    "version": "3.5.0",
     "description": "CNStra DevTools server (WebSocket only for now)",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/abaikov/cnstra.git",
+        "directory": "packages/devtools-server"
+    },
     "keywords": [
         "cnstra",
         "devtools",
@@ -36,6 +41,7 @@
     "dependencies": {
         "@cnstra/devtools-dto": "^3.0.0",
         "@cnstra/devtools-server-repository-in-memory": "^3.0.0",
+        "@cnstra/persist-dto": "^0.2.4",
         "@cnstra/types": "^0.2.0",
         "ws": "^8.18.0"
     },

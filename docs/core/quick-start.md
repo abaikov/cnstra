@@ -29,12 +29,12 @@ npm i -D @cnstra/devtools @cnstra/devtools-server @cnstra/devtools-transport-ws
 ## Minimal Example
 
 ```ts
-import { CNS, collateral, neuron } from '@cnstra/core';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 
-const userCreated = collateral<{ id: string; name: string }>();
-const userRegistered = collateral<{ userId: string; status: string }>();
+const userCreated = cnsCollateral<{ id: string; name: string }>();
+const userRegistered = cnsCollateral<{ userId: string; status: string }>();
 
-const userService = neuron({ userRegistered }).dendrite({
+const userService = cnsNeuron({ userRegistered }).dendrite({
   collateral: userCreated,
   response: (payload, axon) => {
     console.log(`Processing user: ${payload.name}`);
@@ -46,6 +46,8 @@ const cns = new CNS([userService]);
 const stimulation = cns.stimulate(userCreated.createSignal({ id: '123', name: 'John Doe' }));
 await stimulation.waitUntilComplete();
 ```
+
+A neuron that needs a database, a store or a clock is written as a factory of it, and the CNS is built with `createCNS(neuronFactories, db)`; see [Dependencies](/docs/core/api#dependencies-a-store-a-database-a-clock).
 
 ## Next Steps
 

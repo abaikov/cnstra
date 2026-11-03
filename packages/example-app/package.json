@@ -30,9 +30,12 @@
     "@cnstra/devtools-transport-ws": "file:../devtools-transport-ws",
     "@cnstra/devtools-server": "file:../devtools-server",
     "@cnstra/devtools-server-repository-in-memory": "file:../devtools-server-repository-in-memory",
+    "@cnstra/jobs": "file:../jobs",
+    "@cnstra/jobs-adapter": "file:../jobs-adapter",
+    "@cnstra/persist-dto": "file:../persist-dto",
     "ws": "^8.18.0",
     "@cnstra/persist": "^0.2.0",
-    "@cnstra/persist-postgres": "^0.3.0"
+    "@cnstra/persist-postgres": "^0.5.0"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

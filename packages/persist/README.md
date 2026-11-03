@@ -21,6 +21,12 @@ and never persisted (code is its source of truth).
 - **`CNSInMemoryStimulationRepository`** / **`CNSInMemoryProgressRepository`** — in-memory
   reference stores. Bound the stimulation store (`maxStimulations` / `ttlMs` /
   `deleteOnComplete`) so `observe`-style use does not leak.
+- **`CNSFanOutStimulationWriter`** — one persistor, several sinks (a store, the DevTools
+  transport, a tracing exporter). One persistor in front of it keeps a single task
+  numbering and a single `inputIndex` space, which running one persistor per sink would
+  not. A sink that throws is logged and skipped, never failing the write for the others;
+  `getStimulation` asks each in turn and returns the first answer, so put the real store
+  first.
 - **`CNSPersistOptionsRegistry`** (+ `CNSPersistOptionsRegistryFactory`) — the name ⇄ object
   bridge every serialize/hydrate resolves through.
 

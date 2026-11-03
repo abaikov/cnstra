@@ -305,7 +305,7 @@ describe('theme-utils', () => {
                 'infection-yellow',
             ];
 
-            // This test ensures all color values compile correctly
+            // This test checks that every colour value compiles
             testColors.forEach(color => {
                 expect(getDecayColor(color)).toBe(`var(--${color})`);
             });

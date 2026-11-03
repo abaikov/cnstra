@@ -47,13 +47,22 @@ describe('CNSDevToolsServer', () => {
             const ws = makeWs();
             await server.handleMessage(ws as any, JSON.stringify(topology()));
 
-            const apps = await repo.listApps();
-            expect(apps).toHaveLength(1);
-            expect(apps[0].id).toBe('app');
+            expect(await server.getActiveApps()).toEqual([{ id: 'app', name: expect.any(String), version: expect.any(String) }]);
 
             const snapshots = await repo.getTopology('app:cns');
             expect(snapshots).toHaveLength(1);
             expect(snapshots[0].neurons).toHaveLength(1);
+        });
+
+        it('lists one app per appId with the name and version of its newest snapshot', async () => {
+            await repo.saveTopology({ cnsId: 'app:a', appId: 'app', appName: 'Old', version: '1.0.0', timestamp: 2, neurons: [], collaterals: [], dendrites: [] });
+            await repo.saveTopology({ cnsId: 'app:b', appId: 'app', appName: 'New', version: '2.0.0', timestamp: 3, neurons: [], collaterals: [], dendrites: [] });
+            await repo.saveTopology({ cnsId: 'other:a', appId: 'other', appName: 'Other', version: '1.0.0', timestamp: 1, neurons: [], collaterals: [], dendrites: [] });
+
+            expect(await server.getActiveApps()).toEqual([
+                { id: 'app', name: 'New', version: '2.0.0' },
+                { id: 'other', name: 'Other', version: '1.0.0' },
+            ]);
         });
 
         it('broadcasts app.connected to UI clients', async () => {
@@ -122,40 +131,6 @@ describe('CNSDevToolsServer', () => {
         });
     });
 
-    // ─── Replay ───────────────────────────────────────────────────────────────
-
-    describe('replay', () => {
-        it('accepts replay when app is connected', async () => {
-            const appWs = makeWs('app');
-            await server.handleMessage(appWs as any, JSON.stringify(topology()));
-
-            const uiWs = makeWs('ui');
-            await server.handleMessage(uiWs as any, JSON.stringify({
-                type: 'replay.start',
-                replayId: 'r1', stimulationId: 'exec1',
-                collateralId: 'app:cns:authNeuron:user-created', payload: {},
-                appId: 'app',
-            }));
-
-            expect(uiWs.messagesOfType('replay.accepted')).toHaveLength(1);
-            // App should receive the replay command
-            const appMessages = appWs.messagesOfType('replay.start');
-            expect(appMessages).toHaveLength(1);
-        });
-
-        it('rejects replay when app is not connected', async () => {
-            const uiWs = makeWs('ui');
-            await server.handleMessage(uiWs as any, JSON.stringify({
-                type: 'replay.start',
-                replayId: 'r1', stimulationId: 'exec1',
-                collateralId: 'app:cns:authNeuron:user-created',
-                payload: {}, appId: 'nonexistent',
-            }));
-
-            expect(uiWs.messagesOfType('replay.rejected')).toHaveLength(1);
-        });
-    });
-
     // ─── Resilience ───────────────────────────────────────────────────────────
 
     describe('resilience', () => {
@@ -217,18 +192,6 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
         repo = new CNSDevToolsServerRepositoryInMemory();
     });
 
-    it('upserts and lists apps', () => {
-        repo.upsertApp({ id: 'app1', name: 'App 1', version: '1.0', connectedAt: 1, lastSeenAt: 1 });
-        repo.upsertApp({ id: 'app2', name: 'App 2', version: '1.0', connectedAt: 2, lastSeenAt: 2 });
-        expect(repo.listApps()).toHaveLength(2);
-    });
-
-    it('overwrites app on re-upsert', () => {
-        repo.upsertApp({ id: 'app1', name: 'Old', version: '1.0', connectedAt: 1, lastSeenAt: 1 });
-        repo.upsertApp({ id: 'app1', name: 'New', version: '2.0', connectedAt: 1, lastSeenAt: 2 });
-        expect(repo.listApps()[0].name).toBe('New');
-    });
-
     it('saves and gets topology', () => {
         repo.saveTopology({ cnsId: 'app:cns', appId: 'app', appName: 'App', version: '1.0', timestamp: 1, neurons: [], collaterals: [], dendrites: [] });
         expect(repo.getTopology('app:cns')).toHaveLength(1);
@@ -236,18 +199,15 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
         expect(repo.getTopology('other')).toHaveLength(0);
     });
 
-    it('maps cns to app bidirectionally', () => {
-        repo.addCnsToApp('app1', 'app1:cns');
-        expect(repo.getCnsByApp('app1')).toContain('app1:cns');
+    it('finds the app of a cns from its topology', () => {
+        repo.saveTopology({ cnsId: 'app1:cns', appId: 'app1', appName: 'App', version: '1.0', timestamp: 1, neurons: [], collaterals: [], dendrites: [] });
         expect(repo.findAppByCns('app1:cns')).toBe('app1');
         expect(repo.findAppByCns('unknown')).toBeUndefined();
     });
 
     it('clears all data', () => {
-        repo.upsertApp({ id: 'a', name: 'A', version: '1', connectedAt: 1, lastSeenAt: 1 });
         repo.saveTopology({ cnsId: 'a:cns', appId: 'a', appName: 'A', version: '1', timestamp: 1, neurons: [], collaterals: [], dendrites: [] });
         repo.clear();
-        expect(repo.listApps()).toHaveLength(0);
         expect(repo.getTopology()).toHaveLength(0);
     });
 });

@@ -1,9 +1,9 @@
-import { CNS, collateral, neuron } from '@cnstra/core';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSInMemoryStimulationRepository,
 } from '@cnstra/persist';
-import { runStimulationJob, createDrainState } from '@cnstra/broker';
+import { runCNSStimulationJob, createCNSDrainState } from '@cnstra/broker';
 import { CNSDevToolsServer } from '../src/index';
 import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-repository-in-memory';
 
@@ -11,9 +11,9 @@ import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-rep
  * The bull / pg-boss → Explorer connection.
  *
  * Both `@cnstra/pg-boss` and `@cnstra/bullmq` run each job through the SAME
- * `runStimulationJob` core, writing the canonical name-based
+ * `runCNSStimulationJob` core, writing the canonical name-based
  * Stimulation → Attempt → Task history to their `observe: ICNSStimulationRepository`.
- * `startDevTools({ stimulationRepository })` hands that very instance to
+ * `startCNSDevTools({ stimulationRepository })` hands that very instance to
  * `CNSDevToolsServer`. So a single shared store means every job run a worker
  * processes is immediately queryable through the Explorer's list/facets/detail —
  * no extra wiring, no second copy of the data. This test drives real jobs through
@@ -34,16 +34,16 @@ function makeWs() {
 // Two "job types" (entry collaterals), like two of pg-boss's ~20 queues.
 // importDoc → parse; sendEmail → deliver (which fails when the payload says so).
 function buildFlow() {
-    const importDoc = collateral<{ docId: number }>();
-    const parsed = collateral<{ docId: number }>();
-    const sendEmail = collateral<{ to: string; boom?: boolean }>();
-    const delivered = collateral<{ to: string }>();
+    const importDoc = cnsCollateral<{ docId: number }>();
+    const parsed = cnsCollateral<{ docId: number }>();
+    const sendEmail = cnsCollateral<{ to: string; boom?: boolean }>();
+    const delivered = cnsCollateral<{ to: string }>();
 
-    const parser = neuron({ parsed }).dendrite({
+    const parser = cnsNeuron({ parsed }).dendrite({
         collateral: importDoc,
         response: (p, axon) => axon.parsed.createSignal({ docId: p!.docId }),
     });
-    const mailer = neuron({ delivered }).dendrite({
+    const mailer = cnsNeuron({ delivered }).dendrite({
         collateral: sendEmail,
         response: (p, axon) => {
             if (p!.boom) throw new Error('smtp down');
@@ -70,9 +70,9 @@ async function runJob(
     collateralName: string,
     payload: unknown
 ): Promise<void> {
-    const drain = createDrainState();
+    const drain = createCNSDrainState();
     try {
-        await runStimulationJob({
+        await runCNSStimulationJob({
             pkgName: '@cnstra/pg-boss',
             stopping: false,
             cns,
@@ -98,7 +98,7 @@ describe('bull/pg-boss worker → shared observe store → Explorer', () => {
         store = new CNSInMemoryStimulationRepository();
         server = new CNSDevToolsServer(
             new CNSDevToolsServerRepositoryInMemory(),
-            store // exactly what startDevTools({ stimulationRepository }) injects
+            store // exactly what startCNSDevTools({ stimulationRepository }) injects
         );
         const { cns, registry } = buildFlow();
         // 2× importDoc (ok), 1× sendEmail ok, 1× sendEmail that fails

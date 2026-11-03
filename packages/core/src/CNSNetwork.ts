@@ -1,7 +1,13 @@
-import type { ICNSCollateral } from '@cnstra/types';
+import type { ICNSCollateral, TCNSAfferentPath, TCNSModality } from '@cnstra/types';
 import { TCNSNeuron } from '@cnstra/types';
+import type { TCNSModalitySelection } from './types/TCNSModalitySelection';
+import { cnsResolveModalityHandler } from './utils/cnsResolveModalityHandler';
+import { cnsComposeModalityResponse } from './utils/cnsComposeModalityResponse';
 import { TCNSSubscriber } from '@cnstra/types';
 import { TCNSDendrite } from '@cnstra/types';
+
+/** The answer for a collateral with no subscribers. Never mutated. */
+const NO_SUBSCRIBERS: any[] = [];
 
 export class CNSNetwork<
     TNeuron extends TCNSNeuron<any>,
@@ -19,7 +25,7 @@ export class CNSNetwork<
     private sccBuilt = false;
 
     public get stronglyConnectedComponents(): Set<TNeuron>[] {
-        this.ensureSCC();
+        this.buildSccIndex();
         return this._stronglyConnectedComponents;
     }
 
@@ -42,10 +48,13 @@ export class CNSNetwork<
      * Fast lookup: collateral -> list of (neuron, dendrite) subscribers.
      * Built once at construction time.
      */
-    private subIndex = new Map<
-        ICNSCollateral<unknown>,
-        TCNSSubscriber<TNeuron, TDendrite>[]
-    >();
+    private subscribersByCollateralIndex: TCNSSubscriber<TNeuron, TDendrite>[][] = [];
+
+    private allSubscribersByCollateralIndex: TCNSSubscriber<TNeuron, TDendrite>[][] = [];
+
+    private modalityCollateralIndices: number[] = [];
+
+    private subscriberTablesByModalityIndex: TCNSSubscriber<TNeuron, TDendrite>[][][][] = [];
 
     private parentNeuronByCollateral = new Map<ICNSCollateral<unknown>, TNeuron>();
 
@@ -56,7 +65,7 @@ export class CNSNetwork<
     }
 
     /** Build the SCC analysis the first time anything needs it. */
-    private ensureSCC(): void {
+    private buildSccIndex(): void {
         if (this.sccBuilt) return;
         this.sccBuilt = true;
         this.buildSCC();
@@ -82,9 +91,9 @@ export class CNSNetwork<
                 const collateral = neuron.axon[axonKey];
 
                 // Find which neurons listen to this collateral
-                const subscribers = this.subIndex.get(
-                    collateral as ICNSCollateral<unknown>
-                );
+                const subscribers = this.allSubscribersByCollateralIndex[
+                    (collateral as ICNSCollateral<unknown>).index
+                ];
                 if (subscribers) {
                     for (const { neuron: targetNeuron } of subscribers) {
                         reachableNeurons.add(targetNeuron);
@@ -263,7 +272,7 @@ export class CNSNetwork<
      * or if it's in a single-member SCC that can reach itself.
      */
     public getSCCSetByNeuron(neuron: TNeuron) {
-        this.ensureSCC();
+        this.buildSccIndex();
         const sccIndex = this.neuronToSCC.get(neuron);
 
         if (sccIndex === undefined) return;
@@ -275,7 +284,7 @@ export class CNSNetwork<
      * Get the SCC index for a given neuron
      */
     public getSccIndexByNeuron(neuron: TNeuron): number | undefined {
-        this.ensureSCC();
+        this.buildSccIndex();
         return this.neuronToSCC.get(neuron);
     }
 
@@ -287,7 +296,7 @@ export class CNSNetwork<
         neuron: TNeuron,
         activeSccCounts: Map<number, number>
     ): boolean {
-        this.ensureSCC();
+        this.buildSccIndex();
         const sccIndex = this.neuronToSCC.get(neuron);
         if (sccIndex === undefined) return true; // Neuron not in graph
 
@@ -315,26 +324,92 @@ export class CNSNetwork<
         return true; // Neuron is guaranteed to be done
     }
 
+    private describeNeuron(neuron: TNeuron): string {
+        const axonKeys = Object.keys(neuron.axon);
+        return `neuron #${neuron.index} (${axonKeys.length === 0 ? 'no axon' : `axon: ${axonKeys.join(', ')}`})`;
+    }
+
+    private describeCollateral(neuron: TNeuron, collateral: ICNSCollateral<unknown>): string {
+        const axonKey = Object.keys(neuron.axon).find(key => neuron.axon[key] === collateral);
+        return `"${axonKey}" #${collateral.index}`;
+    }
+
     private buildIndexes() {
-        this.subIndex.clear();
+        this.allSubscribersByCollateralIndex = [];
+        this.modalityCollateralIndices = [];
+        this.subscriberTablesByModalityIndex = [];
         this.parentNeuronByCollateral.clear();
+        const listedNeurons = new Set<TNeuron>();
         for (const neuron of this.neurons) {
+            if (listedNeurons.has(neuron)) {
+                throw new Error(`${this.describeNeuron(neuron)} is listed twice; every dendrite of it would run twice`);
+            }
+            listedNeurons.add(neuron);
             for (const dendrite of neuron.dendrites) {
-                const key = dendrite.collateral as ICNSCollateral<unknown>;
-                const arr = this.subIndex.get(key) ?? [];
-                arr.push({ neuron, dendrite: dendrite as TDendrite });
-                this.subIndex.set(
-                    key,
-                    arr as TCNSSubscriber<TNeuron, TDendrite>[]
-                );
+                const index = (dendrite.collateral as ICNSCollateral<unknown>).index;
+                const subscribers = (this.allSubscribersByCollateralIndex[index] ??= []);
+                subscribers.push({ neuron, dendrite: dendrite as TDendrite } as TCNSSubscriber<TNeuron, TDendrite>);
+                if ((dendrite as { modalitySelection?: TCNSModalitySelection }).modalitySelection !== undefined
+                    && this.modalityCollateralIndices.indexOf(index) < 0) {
+                    this.modalityCollateralIndices.push(index);
+                }
             }
             Object.values(neuron.axon).forEach(collateral => {
+                const owner = this.parentNeuronByCollateral.get(collateral as ICNSCollateral<unknown>);
+                if (owner !== undefined && owner !== neuron) {
+                    throw new Error(
+                        `collateral ${this.describeCollateral(neuron, collateral as ICNSCollateral<unknown>)} is in the axons of ${this.describeNeuron(owner)} and ${this.describeNeuron(neuron)}; a collateral is owned by one neuron`
+                    );
+                }
                 this.parentNeuronByCollateral.set(
                     collateral as ICNSCollateral<unknown>,
                     neuron
                 );
             });
         }
+        this.subscribersByCollateralIndex = this.buildSubscriberTable(undefined, undefined);
+    }
+
+    public getSubscriberTable(
+        modality: TCNSModality | undefined,
+        afferentPath: TCNSAfferentPath | undefined
+    ): TCNSSubscriber<TNeuron, TDendrite>[][] {
+        if (modality === undefined) return this.subscribersByCollateralIndex;
+        const subscriberTablesByAfferentPathIndex = (this.subscriberTablesByModalityIndex[modality.index] ??= []);
+        const afferentPathSlot = afferentPath === undefined ? 0 : afferentPath.index + 1;
+        return (subscriberTablesByAfferentPathIndex[afferentPathSlot] ??= this.buildSubscriberTable(modality, afferentPath));
+    }
+
+    private buildSubscriberTable(
+        modality: TCNSModality | undefined,
+        afferentPath: TCNSAfferentPath | undefined
+    ): TCNSSubscriber<TNeuron, TDendrite>[][] {
+        const subscriberTable = this.allSubscribersByCollateralIndex.slice();
+        const modalityCollateralIndices = this.modalityCollateralIndices;
+        for (let i = 0; i < modalityCollateralIndices.length; i++) {
+            const index = modalityCollateralIndices[i];
+            const resolvedSubscribers: TCNSSubscriber<TNeuron, TDendrite>[] = [];
+            const subscribers = this.allSubscribersByCollateralIndex[index];
+            for (let j = 0; j < subscribers.length; j++) {
+                const subscriber = subscribers[j];
+                const modalitySelection = (subscriber.dendrite as { modalitySelection?: TCNSModalitySelection }).modalitySelection;
+                if (modalitySelection === undefined) {
+                    resolvedSubscribers.push(subscriber);
+                    continue;
+                }
+                const handler = cnsResolveModalityHandler(modalitySelection, modality, afferentPath);
+                if (handler === undefined) continue;
+                resolvedSubscribers.push({
+                    neuron: subscriber.neuron,
+                    dendrite: {
+                        collateral: subscriber.dendrite.collateral,
+                        response: cnsComposeModalityResponse(handler, modalitySelection.output),
+                    } as TDendrite,
+                } as TCNSSubscriber<TNeuron, TDendrite>);
+            }
+            subscriberTable[index] = resolvedSubscribers;
+        }
+        return subscriberTable;
     }
 
     public getParentNeuronByCollateral(collateral: ICNSCollateral<unknown>) {
@@ -369,6 +444,9 @@ export class CNSNetwork<
     public getSubscribers(
         collateral: ICNSCollateral<unknown>
     ): TCNSSubscriber<TNeuron, TDendrite>[] {
-        return this.subIndex.get(collateral) ?? [];
+        // Shared empty array rather than a new one: every leaf of every run asks
+        // about a collateral nobody subscribes to, and each answer was an
+        // allocation.
+        return this.subscribersByCollateralIndex[collateral.index] ?? NO_SUBSCRIBERS;
     }
 }

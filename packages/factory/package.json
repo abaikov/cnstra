@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/factory",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Composition helpers for CNStra that combine the engine and the persistence layer — e.g. createCNS() building a CNS plus its CNSPersistOptionsRegistry in one call.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/factory"
+  },
   "keywords": [
     "cnstra",
     "factory",

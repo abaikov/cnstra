@@ -6,6 +6,7 @@ import { TCNSSubscriber } from '@cnstra/types';
 import { CNSInstanceNeuronQueue } from './CNSInstanceNeuronQueue';
 import { TCNSSignal } from '@cnstra/types';
 import { TCNSNeuronActivationTask } from '@cnstra/types';
+import { TCNSContextStore } from '@cnstra/types';
 import { CNS } from './CNS';
 import { ICNS } from '@cnstra/types';
 import { TCNSNeuronActivationTaskFailure } from '@cnstra/types';
@@ -22,6 +23,8 @@ import { TCNSAxon } from '@cnstra/types';
  * back to the lookup. Symbol-keyed so it never shows up in JSON/spread/keys.
  */
 const TASK_DENDRITE = Symbol('cnstra.taskDendrite');
+const TASK_ACTIVE_POSITION = Symbol('cnstra.taskActivePosition');
+const TASK_PENDING_POSITION = Symbol('cnstra.taskPendingPosition');
 
 /**
  * Per-activation context handed to a dendrite's `response`. Implemented as a
@@ -32,7 +35,10 @@ class CNSDendriteContext {
     constructor(
         public readonly stimulation: any,
         public readonly abortSignal: AbortSignal | undefined,
-        public readonly cns: any
+        public readonly cns: any,
+        // The activation this handler is running as. Held so `activationContext`
+        // can be read off it; nothing else on the task is exposed.
+        private readonly task?: TCNSNeuronActivationTask<any>
     ) {}
     // Prototype getter, not a constructor field: you only pay a single `cns.global`
     // read on the dendrites that actually reach for it. Value getter, so
@@ -46,6 +52,12 @@ class CNSDendriteContext {
     // zero extra allocation, read only where a handler reaches for it.
     get stimulationContext(): unknown {
         return this.stimulation.options?.stimulationContext;
+    }
+    // This activation's own store - written by a response listener before the
+    // activation ran. Prototype getter like the two above: nothing is allocated
+    // for a handler that never reaches for it.
+    get activationContext(): TCNSContextStore | undefined {
+        return this.task?.activationContext;
     }
 }
 
@@ -68,9 +80,36 @@ class CNSStimulationResponseImpl {
         // The neuron that produced this response (present on both success and
         // throw paths). Lets name-based consumers resolve the task's neuron
         // reliably instead of guessing via the output collateral's owner.
-        public readonly neuron: TCNSNeuron<any> | undefined
+        public readonly neuron: TCNSNeuron<any> | undefined,
+        // When the dendrite response was invoked, and how long it took. Measured in
+        // runStarter, the single entry point into a body, so every path -
+        // sync, async, throw, rejection - reports the same way. Undefined for
+        // responses that are not an activation.
+        public readonly startedAt: number | undefined,
+        public readonly duration: number | undefined,
+        /**
+         * The activations this response is about to create - already built, not
+         * yet run. A listener can write into their `activationContext` here and
+         * the dendrite reads it back; the engine enqueues these very objects
+         * afterwards, on every path, and waits for an async listener first.
+         *
+         * Empty on a response that starts nothing (a sink, a failure, abort).
+         */
+        public readonly scheduledActivationTasks: readonly TCNSNeuronActivationTask<any>[] = EMPTY_TASKS,
+        /**
+         * The store of the activation that produced this response - what its own
+         * handler reads as `ctx.activationContext`. Undefined when nothing was
+         * attached, and on responses that are not an activation.
+         */
+        public readonly activationContext: TCNSContextStore | undefined = undefined
     ) {}
 }
+
+/** Shared empty array so a response that starts nothing allocates none. */
+const EMPTY_TASKS: readonly TCNSNeuronActivationTask<any>[] = [];
+
+/** The same, for a response whose signal has no output collateral. */
+const EMPTY_SUBSCRIBERS: any[] = [];
 
 export class CNSStimulation<
     TNeuron extends TCNSNeuron<any>,
@@ -89,7 +128,7 @@ export class CNSStimulation<
     private activeOperations = 0;
     // Lazily allocated: only populated while an async task is in flight; purely
     // synchronous stimulations never need it.
-    private activeTasks?: Set<TCNSNeuronActivationTask<TNeuron>>;
+    private activeTasks?: TCNSNeuronActivationTask<TNeuron>[];
     // Re-entrancy guard for the pump loop.
     private pumping = false;
     private needsPump = false;
@@ -97,7 +136,11 @@ export class CNSStimulation<
     // announces a drain - see beginTurn/endTurn.
     private turnDepth = 0;
 
-    private readonly neuronVisitMap?: Map<TNeuron, number>;
+    private readonly neuronVisitCounts?: number[];
+    private readonly subscribersByCollateralIndex: TCNSSubscriber<TNeuron, TDendrite>[][];
+    /** Read on every dequeue; both are fixed for the life of the stimulation. */
+    private readonly concurrencyLimit: number;
+    private readonly abortSignal?: AbortSignal;
     private readonly instanceNeuronQueue: CNSInstanceNeuronQueue<TNeuron>;
     private scheduledCount = 0;
     // Activations belonging to signals of an in-progress array fan-out that have
@@ -109,7 +152,7 @@ export class CNSStimulation<
     private reservedActivations = 0;
     // Lazily allocated: only needed while subscriber tasks wait for an async
     // onResponse to resolve before being enqueued.
-    private pendingTasks?: Set<TCNSNeuronActivationTask<TNeuron>>;
+    private pendingTasks?: TCNSNeuronActivationTask<TNeuron>[];
     // Lazily allocated: only allocated when a task actually fails.
     private failedTasks?: Array<TCNSNeuronActivationTaskFailure<TNeuron>>;
     // Completion is tracked eagerly via flags; the Promise is only materialized
@@ -150,9 +193,15 @@ export class CNSStimulation<
         this.onDrain = onDrain;
         this.instanceNeuronQueue = instanceNeuronQueue;
         this.onResponse = onResponse;
+        this.concurrencyLimit = this.options?.concurrency ?? Infinity;
+        this.abortSignal = this.options?.abortSignal;
+        this.subscribersByCollateralIndex = cns.network.getSubscriberTable(
+            this.options?.modality,
+            this.options?.afferentPath
+        );
 
         if (this.options?.maxNeuronHops) {
-            this.neuronVisitMap = new Map();
+            this.neuronVisitCounts = [];
         }
     }
 
@@ -176,10 +225,11 @@ export class CNSStimulation<
     // ----- Inlined activation queue / pump -----
 
     private get canStartOperation(): boolean {
-        const limit = this.options?.concurrency ?? Infinity;
+        // Both were read through an optional chain on every dequeue, and both are
+        // fixed at construction.
         return (
-            this.activeOperations < limit &&
-            !this.options?.abortSignal?.aborted
+            this.activeOperations < this.concurrencyLimit &&
+            !this.abortSignal?.aborted
         );
     }
 
@@ -246,61 +296,84 @@ export class CNSStimulation<
         }
         this.pumping = true;
 
-        while (this.canStartOperation && this.qSize > 0) {
-            const task = this.qDequeue()!;
-            this.activeOperations++;
+        try {
+            while (this.canStartOperation && this.qSize > 0) {
+                const task = this.qDequeue()!;
+                this.activeOperations++;
 
-            const ret = this.executeActivationTask(task);
+                const ret = this.executeActivationTask(task);
 
-            // Async branch
-            if (ret && typeof (ret as any).then === 'function') {
-                // Only track tasks that are actually in flight across a tick;
-                // synchronous tasks complete before anyone can observe them.
-                (this.activeTasks ??= new Set()).add(task);
-                (ret as Promise<void | (() => void)>).then(
-                    cb => {
-                        this.activeOperations--;
-                        this.activeTasks!.delete(task);
-                        // One turn spans the callback and the follow-up pump:
-                        // cb() itself enqueues and pumps, so without this the
-                        // drain would be announced twice for one batch.
-                        this.beginTurn();
-                        try {
-                            if (typeof cb === 'function') cb();
+                // Async branch
+                if (ret && typeof (ret as any).then === 'function') {
+                    // Only track tasks that are actually in flight across a
+                    // tick; synchronous tasks complete before anyone can
+                    // observe them.
+                    this.addPositionedTask((this.activeTasks ??= []), task, TASK_ACTIVE_POSITION);
+                    (ret as Promise<void | (() => void)>).then(
+                        cb => {
+                            this.activeOperations--;
+                            this.removeActiveTask(task);
+                            // One turn spans the callback and the follow-up
+                            // pump: cb() itself enqueues and pumps, so without
+                            // this the drain would be announced twice for one
+                            // batch.
+                            this.beginTurn();
+                            try {
+                                if (typeof cb === 'function') cb();
 
-                            if (this.qSize > 0 && this.canStartOperation) {
-                                if (this.pumping) this.needsPump = true;
-                                else this.pump();
+                                if (this.qSize > 0 && this.canStartOperation) {
+                                    if (this.pumping) this.needsPump = true;
+                                    else this.pump();
+                                }
+                            } catch (error) {
+                                // The same machinery throw pump() guards below,
+                                // but reached from a settled async activation.
+                                // Rethrowing here would only turn into an
+                                // unhandled rejection nobody can catch, so the
+                                // run's error channel is the completion promise.
+                                this.endRunWithError(error);
+                            } finally {
+                                this.endTurn();
                             }
-                        } finally {
-                            this.endTurn();
-                        }
-                    },
-                    err => {
-                        this.activeOperations--;
-                        this.activeTasks!.delete(task);
-                        this.beginTurn();
-                        try {
-                            if (this.qSize > 0 && this.canStartOperation) {
-                                if (this.pumping) this.needsPump = true;
-                                else this.pump();
+                        },
+                        err => {
+                            this.activeOperations--;
+                            this.removeActiveTask(task);
+                            this.beginTurn();
+                            try {
+                                if (this.qSize > 0 && this.canStartOperation) {
+                                    if (this.pumping) this.needsPump = true;
+                                    else this.pump();
+                                }
+                            } finally {
+                                this.endTurn();
                             }
-                        } finally {
-                            this.endTurn();
+                            throw err; // let it crash "honestly"
                         }
-                        throw err; // let it crash "honestly"
-                    }
-                );
-                // Do not break: if concurrency allows, start additional items
-                continue;
+                    );
+                    // Do not break: if concurrency allows, start additional items
+                    continue;
+                }
+
+                // Sync branch (task was never added to activeTasks)
+                this.activeOperations--;
+                if (typeof ret === 'function') (ret as () => void)();
             }
-
-            // Sync branch (task was never added to activeTasks)
-            this.activeOperations--;
-            if (typeof ret === 'function') (ret as () => void)();
+        } catch (error) {
+            // A throw out of the loop - today that is the hop-limit guard in
+            // createSubscriberQueueItem, firing while a settled activation
+            // dispatches its subscribers - used to unwind straight past the
+            // `pumping = false` that lived here, leaving the flag set forever:
+            // every later enqueue and async completion then took the "already
+            // pumping" branch, so tryResolveCompleted was never reached again
+            // and waitUntilComplete() never settled. Now the flag is reset in
+            // `finally`, the run ends with this error, and the error still
+            // propagates to whoever drove the pump.
+            this.endRunWithError(error);
+            throw error;
+        } finally {
+            this.pumping = false;
         }
-
-        this.pumping = false;
 
         // If async completions or enqueues requested another pass, do exactly
         // one more, non-recursively.
@@ -351,13 +424,30 @@ export class CNSStimulation<
     }
 
     /**
-     * Activations that exist (or are reserved) but whose dendrite body has not
-     * been invoked yet: sitting in the ring buffer, created and held in
+     * Activations that exist (or are reserved) but whose dendrite response has
+     * not been invoked yet: sitting in the ring buffer, created and held in
      * pendingTasks, or reserved by an array fan-out mid-dispatch. Subscribers
      * parked behind an async onResponse land here too - their body has not run.
      */
     private get pendingActivations(): number {
         return this.qSize + this.scheduledCount + this.reservedActivations;
+    }
+
+    /**
+     * End the run because the machinery itself threw. Dendrite bodies never get
+     * here - runStarter catches those and records them as failed tasks; what
+     * lands here is a throw from dispatch, today the hop-limit guard in
+     * createSubscriberQueueItem. Nothing settles the counters after such a
+     * throw, so completion has to be forced: without it the stimulation neither
+     * resolves nor rejects, and a worker holds a job that never finishes and
+     * never fails.
+     */
+    private endRunWithError(error: unknown): void {
+        if (this.isCompleted) return;
+        this.isCompleted = true;
+        this.finalizeReject(
+            error instanceof Error ? error : new Error(String(error))
+        );
     }
 
     private tryResolveCompleted(): void {
@@ -387,6 +477,14 @@ export class CNSStimulation<
                 }
 
                 this.isCompleted = true;
+                // Announce the ending ONLY when nothing else did. An abort that
+                // lands after the queue already drained still ends through a real
+                // activation, which emitted its own `queueLength === 0` response;
+                // adding a second one there would double-count the hop, race two
+                // terminal flushes against each other, and open a second root span
+                // for one run. It is the queued-work case — where no activation
+                // ever settles to zero — that would otherwise wait forever.
+                if (!noPending) this.emitAbortedResponse();
                 this.finalizeReject(new Error('Stimulation aborted'));
                 return;
             }
@@ -430,11 +528,46 @@ export class CNSStimulation<
      */
     public getAllActivationTasks(): TCNSNeuronActivationTask<TNeuron>[] {
         const queuedTasks = this.qGetQueuedTasks();
-        const activeTasks = (this.activeTasks ? Array.from(this.activeTasks) : []);
-        const pendingTasks = this.pendingTasks
-            ? Array.from(this.pendingTasks)
-            : [];
+        const activeTasks = this.activeTasks ?? EMPTY_TASKS;
+        const pendingTasks = this.pendingTasks ?? EMPTY_TASKS;
         return [...queuedTasks, ...activeTasks, ...pendingTasks];
+    }
+
+    private getSubscribers(collateral: ICNSCollateral<unknown>): TCNSSubscriber<TNeuron, TDendrite>[] {
+        return this.subscribersByCollateralIndex[collateral.index] ?? (EMPTY_SUBSCRIBERS as TCNSSubscriber<TNeuron, TDendrite>[]);
+    }
+
+    private addPositionedTask(
+        tasks: TCNSNeuronActivationTask<TNeuron>[],
+        task: TCNSNeuronActivationTask<TNeuron>,
+        positionKey: symbol
+    ): void {
+        (task as any)[positionKey] = tasks.length;
+        tasks.push(task);
+    }
+
+    private removePositionedTask(
+        tasks: TCNSNeuronActivationTask<TNeuron>[] | undefined,
+        task: TCNSNeuronActivationTask<TNeuron>,
+        positionKey: symbol
+    ): void {
+        if (tasks === undefined) return;
+        const position = (task as any)[positionKey] as number | undefined;
+        if (position === undefined || tasks[position] !== task) return;
+        const lastTask = tasks.pop()!;
+        if (lastTask !== task) {
+            tasks[position] = lastTask;
+            (lastTask as any)[positionKey] = position;
+        }
+        (task as any)[positionKey] = undefined;
+    }
+
+    private removeActiveTask(task: TCNSNeuronActivationTask<TNeuron>): void {
+        this.removePositionedTask(this.activeTasks, task, TASK_ACTIVE_POSITION);
+    }
+
+    private removePendingTask(task: TCNSNeuronActivationTask<TNeuron>): void {
+        this.removePositionedTask(this.pendingTasks, task, TASK_PENDING_POSITION);
     }
 
     /**
@@ -450,12 +583,25 @@ export class CNSStimulation<
      * failed/aborted tasks. This is the set to persist for resume: re-activating
      * it re-runs exactly the not-yet-done work. Safe to call at any point during
      * a run (for progress) or after it fails.
+     *
+     * Each task appears exactly once. The two sources overlap: aborting marks
+     * every still-queued task as failed without dequeuing it, so a task sits in
+     * the ring buffer AND in failedTasks. Concatenating them blindly handed the
+     * broker a checkpoint with the whole queued frontier listed twice, and the
+     * resumed run re-executed every one of those tasks a second time - duplicate
+     * charges, emails and POSTs on every graceful shutdown.
      */
     public getOutstandingTasks(): TCNSNeuronActivationTask<TNeuron>[] {
-        return [
-            ...this.getAllActivationTasks(),
-            ...this.getFailedTasks().map(f => f.task),
-        ];
+        const seen = new Set<TCNSNeuronActivationTask<TNeuron>>();
+        const outstanding: TCNSNeuronActivationTask<TNeuron>[] = [];
+        const add = (task: TCNSNeuronActivationTask<TNeuron>) => {
+            if (seen.has(task)) return;
+            seen.add(task);
+            outstanding.push(task);
+        };
+        for (const task of this.getAllActivationTasks()) add(task);
+        for (const failure of this.getFailedTasks()) add(failure.task);
+        return outstanding;
     }
 
     /**
@@ -486,20 +632,16 @@ export class CNSStimulation<
         subscriber: TCNSSubscriber<TNeuron, TDendrite>,
         inputSignal?: TCNSSignal<ICNSCollateral<unknown>>
     ) {
-        if (this.options?.maxNeuronHops) {
-            if (
-                (this.neuronVisitMap?.get(subscriber.neuron) ?? 0) >=
-                this.options?.maxNeuronHops
-            ) {
+        const neuronVisitCounts = this.neuronVisitCounts;
+        if (neuronVisitCounts !== undefined) {
+            const neuronIndex = subscriber.neuron.index;
+            const neuronVisitCount = neuronVisitCounts[neuronIndex] ?? 0;
+            if (neuronVisitCount >= this.options!.maxNeuronHops!) {
                 throw new Error(
                     `Max neuron hops reached when trying to enqueue subscriber`
                 );
-            } else {
-                this.neuronVisitMap?.set(
-                    subscriber.neuron,
-                    (this.neuronVisitMap?.get(subscriber.neuron) ?? 0) + 1
-                );
             }
+            neuronVisitCounts[neuronIndex] = neuronVisitCount + 1;
         }
 
         const neuronActivationTask: TCNSNeuronActivationTask<TNeuron> = {
@@ -510,6 +652,8 @@ export class CNSStimulation<
         // Cache the resolved subscriber so executeActivationTask can skip the
         // lookup (invisible to JSON/spread thanks to the Symbol key).
         (neuronActivationTask as any)[TASK_DENDRITE] = subscriber;
+        (neuronActivationTask as any)[TASK_ACTIVE_POSITION] = undefined;
+        (neuronActivationTask as any)[TASK_PENDING_POSITION] = undefined;
         return neuronActivationTask;
     }
 
@@ -522,7 +666,7 @@ export class CNSStimulation<
             | TCNSSubscriber<TNeuron, TDendrite>
             | undefined;
         if (!subscriber) {
-            const subscribers = this.cns.network.getSubscribers(
+            const subscribers = this.getSubscribers(
                 neuronActivationTask.dendriteCollateral
             );
             for (let i = 0; i < subscribers.length; i++) {
@@ -550,7 +694,9 @@ export class CNSStimulation<
                     undefined,
                     neuronActivationTask.input,
                     undefined,
-                    error
+                    error,
+                    undefined,
+                    neuronActivationTask.activationContext
                 );
             };
         }
@@ -589,6 +735,16 @@ export class CNSStimulation<
         neuronActivationTask: TCNSNeuronActivationTask<TNeuron>
     ): (() => void) | Promise<() => void> {
         let response: TCNSNeuronResponseReturn<TCNSAxon>;
+        // The single point where a dendrite response is entered — so one stamp here
+        // covers the sync, async, throw and rejection paths alike.
+        //
+        // Read only when something will look at it. Both this stamp and the
+        // `Date.now()` that turns it into a duration escape solely into the
+        // response object, which is built only when a listener exists: with none,
+        // `processResponse` returns at its fast path without touching either. A
+        // synchronous organism with no observer is the engine's headline case and
+        // should not pay two clock reads per hop for numbers nobody reads.
+        const startedAt = this.onResponse === undefined ? undefined : Date.now();
         try {
             response = dendrite.response(
                 inputSignal?.payload,
@@ -596,7 +752,8 @@ export class CNSStimulation<
                 new CNSDendriteContext(
                     this,
                     this.options?.abortSignal,
-                    this.cns
+                    this.cns,
+                    neuronActivationTask
                 ) as any
             );
         } catch (error) {
@@ -618,7 +775,9 @@ export class CNSStimulation<
                     neuron,
                     inputSignal as any,
                     undefined,
-                    error
+                    error,
+                    startedAt,
+                    neuronActivationTask.activationContext
                 );
             };
         }
@@ -675,7 +834,10 @@ export class CNSStimulation<
                             signal as
                                 | TCNSSignal<ICNSCollateral<unknown>>
                                 | TCNSSignal<ICNSCollateral<unknown>>[]
-                                | undefined
+                                | undefined,
+                            undefined,
+                            startedAt,
+                            neuronActivationTask.activationContext
                         );
                     };
                 },
@@ -696,7 +858,9 @@ export class CNSStimulation<
                             neuron,
                             inputSignal as any,
                             undefined,
-                            error
+                            error,
+                            startedAt,
+                            neuronActivationTask.activationContext
                         );
                     };
                 }
@@ -709,7 +873,10 @@ export class CNSStimulation<
                     response as
                         | TCNSSignal<ICNSCollateral<unknown>>
                         | TCNSSignal<ICNSCollateral<unknown>>[]
-                        | undefined
+                        | undefined,
+                    undefined,
+                    startedAt,
+                    neuronActivationTask.activationContext
                 );
             };
         }
@@ -721,13 +888,34 @@ export class CNSStimulation<
         outputSignalOrSignals?:
             | TCNSSignal<ICNSCollateral<unknown>>
             | TCNSSignal<ICNSCollateral<unknown>>[],
-        error?: any
+        error?: any,
+        startedAt?: number,
+        // The store of the activation that produced this response — the same
+        // object its own handler reads as `ctx.activationContext`. Carried so a
+        // recorder can put it in the task's history row without having to hold
+        // the task itself.
+        activationContext?: TCNSContextStore
     ): void {
+        // The activation settled HERE, once, whatever it returned. Measuring
+        // inside the per-signal loop below would charge each later signal for the
+        // synchronous subtree the earlier ones already drained — one activation
+        // reported as several, each longer than the last.
+        const duration =
+            startedAt === undefined ? undefined : Date.now() - startedAt;
+
         // Handle array of signals
         if (Array.isArray(outputSignalOrSignals)) {
             // If array is empty, still call processResponse once to trigger onResponse
             if (outputSignalOrSignals.length === 0) {
-                this.processResponse(emitter, inputSignal, undefined, error);
+                this.processResponse(
+                    emitter,
+                    inputSignal,
+                    undefined,
+                    error,
+                    startedAt,
+                    duration,
+                    activationContext
+                );
                 return;
             }
 
@@ -742,7 +930,7 @@ export class CNSStimulation<
                 for (let i = 0; i < outputSignalOrSignals.length; i++) {
                     const c = outputSignalOrSignals[i]?.collateral;
                     const n = c
-                        ? this.cns.network.getSubscribers(c).length
+                        ? this.getSubscribers(c).length
                         : 0;
                     perSignal[i] = n;
                     reserved += n;
@@ -751,32 +939,107 @@ export class CNSStimulation<
             }
             // The increment/decrement pair is balanced per level, so a nested
             // fan-out inside signal[0]'s subtree composes correctly.
-            for (let i = 0; i < outputSignalOrSignals.length; i++) {
-                if (perSignal) this.reservedActivations -= perSignal[i];
-                this.processResponse(
-                    emitter,
-                    inputSignal,
-                    outputSignalOrSignals[i],
-                    error
-                );
+            let dispatchIndex = 0;
+            try {
+                for (
+                    ;
+                    dispatchIndex < outputSignalOrSignals.length;
+                    dispatchIndex++
+                ) {
+                    if (perSignal)
+                        this.reservedActivations -= perSignal[dispatchIndex];
+                    this.processResponse(
+                        emitter,
+                        inputSignal,
+                        outputSignalOrSignals[dispatchIndex],
+                        error,
+                        startedAt,
+                        duration,
+                        activationContext
+                    );
+                }
+            } finally {
+                // A throw out of a dispatch (the hop-limit guard) skips the
+                // decrements for the signals we never reached. Leaving them
+                // reserved keeps pendingActivations permanently above zero, so
+                // every later count - the drain payload, the completion check -
+                // reports work that will never exist. Release the remainder on
+                // the way out; on the normal path dispatchIndex is past the
+                // end and this loop does nothing.
+                if (perSignal) {
+                    for (
+                        let j = dispatchIndex + 1;
+                        j < perSignal.length;
+                        j++
+                    ) {
+                        this.reservedActivations -= perSignal[j];
+                    }
+                }
             }
             return;
         }
 
         // Handle single signal
-        this.processResponse(emitter, inputSignal, outputSignalOrSignals, error);
+        this.processResponse(
+            emitter,
+            inputSignal,
+            outputSignalOrSignals,
+            error,
+            startedAt,
+            duration,
+            activationContext
+        );
+    }
+
+    /**
+     * The one response an aborted run emits: no neuron, no signals, an empty
+     * queue. It exists so `queueLength === 0` — the completion condition every
+     * listener uses — is reached on the abort path too. Listener errors are
+     * swallowed: the run is already over and rejecting, and there is nothing
+     * left to fail.
+     */
+    private emitAbortedResponse(): void {
+        const onResponse = this.onResponse;
+        if (!onResponse) return;
+
+        try {
+            void onResponse(
+                new CNSStimulationResponseImpl(
+                    this,
+                    undefined,
+                    undefined,
+                    0,
+                    0,
+                    0,
+                    undefined,
+                    new Error('Stimulation aborted'),
+                    undefined,
+                    undefined,
+                    undefined
+                ) as TCNSStimulationResponse
+            );
+        } catch (e) {
+            this.onResponseError =
+                e instanceof Error ? e : new Error(String(e));
+        }
     }
 
     protected processResponse(
         emitter: TNeuron | undefined,
         inputSignal?: TCNSSignal<ICNSCollateral<unknown>>,
         outputSignal?: TCNSSignal<ICNSCollateral<unknown>>,
-        error?: any
+        error?: any,
+        startedAt?: number,
+        duration?: number,
+        activationContext?: TCNSContextStore
     ): void {
         const collateral = outputSignal?.collateral;
+        // `getSubscribers` already answers with a shared empty array, and a
+        // response with no output collateral is every terminal and every failed
+        // one — so neither branch should allocate.
         const subscribers = collateral
-            ? this.cns.network.getSubscribers(collateral)
-            : [];
+            ? this.getSubscribers(collateral)
+            : EMPTY_SUBSCRIBERS;
         const onResponse = this.onResponse;
 
         // Fast path: with no response listener there is nothing to observe the
@@ -805,18 +1068,26 @@ export class CNSStimulation<
             return;
         }
 
-        const subscriberActivationTasks: TCNSNeuronActivationTask<TNeuron>[] =
-            [];
+        // Built only when there is something to put in it. A response that
+        // schedules nothing — a sink neuron, a failure, the terminal signal —
+        // hands the shared empty array to the response object instead.
+        let subscriberActivationTasks: TCNSNeuronActivationTask<TNeuron>[] =
+            EMPTY_TASKS as TCNSNeuronActivationTask<TNeuron>[];
 
-        if (collateral && !error) {
-            const pending = (this.pendingTasks ??= new Set());
+        if (collateral && !error && subscribers.length > 0) {
+            // Held in `pendingTasks` from the moment they exist, not only while
+            // an async listener parks them: `queueLength` counts them as pending
+            // activations immediately, and `getAllActivationTasks()` has to
+            // agree with that count — a synchronous listener can read both.
+            const pending = (this.pendingTasks ??= []);
+            subscriberActivationTasks = new Array(subscribers.length);
             for (let i = 0; i < subscribers.length; i++) {
                 const task = this.createSubscriberQueueItem(
                     subscribers[i],
                     outputSignal
                 );
-                subscriberActivationTasks.push(task);
-                pending.add(task);
+                subscriberActivationTasks[i] = task;
+                this.addPositionedTask(pending, task, TASK_PENDING_POSITION);
             }
         }
         this.scheduledCount += subscriberActivationTasks.length;
@@ -833,10 +1104,14 @@ export class CNSStimulation<
                     this.pendingActivations,
                     this.activeOperations,
                     this.options?.maxNeuronHops && emitter
-                        ? this.neuronVisitMap?.get(emitter) ?? 0
+                        ? this.neuronVisitCounts?.[emitter.index] ?? 0
                         : undefined,
                     error,
-                    emitter
+                    emitter,
+                    startedAt,
+                    duration,
+                    subscriberActivationTasks,
+                    activationContext
                 ) as TCNSStimulationResponse
             );
         } catch (e) {
@@ -846,7 +1121,7 @@ export class CNSStimulation<
             // Still enqueue subscribers and continue processing
             for (let i = 0; i < subscriberActivationTasks.length; i++) {
                 this.scheduledCount--;
-                this.pendingTasks?.delete(subscriberActivationTasks[i]);
+                this.removePendingTask(subscriberActivationTasks[i]);
                 this.qEnqueue(subscriberActivationTasks[i]);
             }
             this.tryResolveCompleted();
@@ -857,7 +1132,7 @@ export class CNSStimulation<
         if (maybePromise && typeof maybePromise.then === 'function') {
             // These tasks stay in scheduledCount until the listener settles, so
             // they keep reading as pending activations - correctly: they exist,
-            // and their dendrite body has not been invoked.
+            // and their dendrite response has not been invoked.
             (maybePromise as Promise<void>).then(
                 () => {
                     // Resuming from a settled listener starts a fresh turn, the
@@ -870,7 +1145,7 @@ export class CNSStimulation<
                             i++
                         ) {
                             this.scheduledCount--;
-                            this.pendingTasks?.delete(
+                            this.removePendingTask(
                                 subscriberActivationTasks[i]
                             );
                             this.qEnqueue(subscriberActivationTasks[i]);
@@ -895,7 +1170,7 @@ export class CNSStimulation<
                             i++
                         ) {
                             this.scheduledCount--;
-                            this.pendingTasks?.delete(
+                            this.removePendingTask(
                                 subscriberActivationTasks[i]
                             );
                             this.qEnqueue(subscriberActivationTasks[i]);
@@ -912,7 +1187,7 @@ export class CNSStimulation<
         // Sync path: enqueue subscribers immediately
         for (let i = 0; i < subscriberActivationTasks.length; i++) {
             this.scheduledCount--;
-            this.pendingTasks?.delete(subscriberActivationTasks[i]);
+            this.removePendingTask(subscriberActivationTasks[i]);
             this.qEnqueue(subscriberActivationTasks[i]);
         }
         this.tryResolveCompleted();

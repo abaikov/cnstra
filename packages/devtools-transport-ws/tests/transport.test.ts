@@ -1,9 +1,9 @@
-import { CNSDevToolsTransportWs, CNSDevToolsTransportWsOptions } from '../src/index';
+import { CNSDevToolsTransportWs, TCNSDevToolsTransportWsOptions } from '../src/index';
 import type { TCNSAppBatchMessageDTO } from '@cnstra/devtools-dto';
 
 const MockWebSocket = (global as any).MockWebSocket;
 
-const defaultOpts: CNSDevToolsTransportWsOptions = {
+const defaultOpts: TCNSDevToolsTransportWsOptions = {
     url: 'ws://localhost:8080',
     webSocketImpl: MockWebSocket,
 };
@@ -256,56 +256,6 @@ describe('CNSDevToolsTransportWs', () => {
     // ─── Message Handling ─────────────────────────────────────────────────────────
 
     describe('Message Handling', () => {
-        test('calls onReplayStart handler for replay.start messages', async () => {
-            transport = new CNSDevToolsTransportWs(defaultOpts);
-            await transport.sendBatch(topologyBatch());
-            await new Promise(r => setTimeout(r, 20));
-
-            let received: any;
-            transport.onReplayStart?.(cmd => { received = cmd; });
-
-            const ws = MockWebSocket.getLatestInstance();
-            ws.onmessage?.({ data: JSON.stringify({
-                type: 'replay.start',
-                replayId: 'r1',
-                stimulationId: 'exec1',
-                collateralId: 'app:cns:n:col',
-                payload: { x: 1 },
-            }) } as MessageEvent);
-
-            await new Promise(r => setTimeout(r, 10));
-            expect(received?.replayId).toBe('r1');
-            expect(received?.collateralId).toBe('app:cns:n:col');
-        });
-
-        test('ignores invalid replay.start messages', async () => {
-            transport = new CNSDevToolsTransportWs(defaultOpts);
-            await transport.sendBatch(topologyBatch());
-            await new Promise(r => setTimeout(r, 20));
-
-            let called = false;
-            transport.onReplayStart?.(()  => { called = true; });
-
-            const ws = MockWebSocket.getLatestInstance();
-            ws.onmessage?.({ data: JSON.stringify({ type: 'replay.start', bad: 'data' }) } as MessageEvent);
-            await new Promise(r => setTimeout(r, 10));
-            expect(called).toBe(false);
-        });
-
-        test('logs warn for invalid replay.start when consoleLogEnabled', async () => {
-            transport = new CNSDevToolsTransportWs({ ...defaultOpts, consoleLogEnabled: true });
-            await transport.sendBatch(topologyBatch());
-            await new Promise(r => setTimeout(r, 20));
-
-            const ws = MockWebSocket.getLatestInstance();
-            ws.onmessage?.({ data: JSON.stringify({ type: 'replay.start', bad: 'data' }) } as MessageEvent);
-            await new Promise(r => setTimeout(r, 10));
-            expect(console.warn).toHaveBeenCalledWith(
-                expect.stringContaining('[DevTools] Invalid replay.start message:'),
-                expect.any(String),
-            );
-        });
-
         test('handles non-string WebSocket message data', async () => {
             transport = new CNSDevToolsTransportWs(defaultOpts);
             await transport.sendBatch(topologyBatch());
@@ -328,9 +278,9 @@ describe('CNSDevToolsTransportWs', () => {
             expect(ws.sentMessages.length).toBe(sentBefore);
         });
 
-        test('returns early from flush when ws unavailable after ensureSocket', async () => {
+        test('returns early from flush when ws unavailable after openSocket', async () => {
             transport = new CNSDevToolsTransportWs(defaultOpts);
-            jest.spyOn(transport as any, 'ensureSocket').mockImplementation(async () => {
+            jest.spyOn(transport as any, 'openSocket').mockImplementation(async () => {
                 (transport as any).ws = undefined;
             });
             await expect(transport.sendBatch(topologyBatch())).resolves.toBeUndefined();
@@ -346,26 +296,6 @@ describe('CNSDevToolsTransportWs', () => {
                 ws.onmessage?.({ data: JSON.stringify({ type: 'unknown' }) } as MessageEvent);
                 ws.onmessage?.({ data: 'invalid-json' } as MessageEvent);
             }).not.toThrow();
-        });
-
-        test('unregisters onReplayStart handler', async () => {
-            transport = new CNSDevToolsTransportWs(defaultOpts);
-            await transport.sendBatch(topologyBatch());
-            await new Promise(r => setTimeout(r, 20));
-
-            let count = 0;
-            const unsub = transport.onReplayStart?.(() => count++) ?? (() => {});
-
-            const ws = MockWebSocket.getLatestInstance();
-            const replayMsg = { data: JSON.stringify({ type: 'replay.start', replayId: 'r1', stimulationId: 'e1', collateralId: 'app:cns:n:col', payload: {} }) };
-            ws.onmessage?.(replayMsg as MessageEvent);
-            await new Promise(r => setTimeout(r, 10));
-            expect(count).toBe(1);
-
-            unsub();
-            ws.onmessage?.(replayMsg as MessageEvent);
-            await new Promise(r => setTimeout(r, 10));
-            expect(count).toBe(1);
         });
     });
 

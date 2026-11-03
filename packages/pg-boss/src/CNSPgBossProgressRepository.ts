@@ -4,7 +4,7 @@
  * In pg-boss a run = stimulation = job (one entity), so the checkpoint is keyed by
  * `job.id`; there is no separate run store. pg-boss can't hold arbitrary per-hop
  * progress on its job row (its `Job` has data/output/signal but no mutable progress
- * field), so the frontier lives in its own table (`cns_pgboss_progress`, default) on
+ * field), so the frontier lives in its own table (`<tablePrefix>pgboss_progress`) on
  * the same Postgres. One upserted row per key; dropped when the job completes.
  *
  * OPTIONAL: this is an opt-in export (`@cnstra/pg-boss/postgres-progress`) — importing
@@ -15,24 +15,27 @@
 import { Pool } from 'pg';
 import type { ICNSProgressRepository } from '@cnstra/persist';
 import type { TCNSProgress } from '@cnstra/persist-dto';
-import { DEFAULT_TABLE, assertSafeTable, ensureSchema } from './migrate';
+import { CNSPgBossProgressSchema } from './schema/CNSPgBossProgressSchema';
 
-export interface TCNSPgBossProgressRepositoryOptions {
+export type TCNSPgBossProgressRepositoryOptions = {
     /** Connection string (a Pool is created and owned by the repo). */
     connectionString?: string;
     /** Or inject an existing pg Pool (not closed by `close()`). */
     pool?: Pool;
-    /** Table name (default `cns_pgboss_progress`). */
-    table?: string;
-    /** Lazily `ensureSchema` on first use (default true). Set false to manage migrations yourself. */
+    /** Table name prefix (default `cns_`); the table is `<tablePrefix>pgboss_progress`. */
+    tablePrefix?: string;
+    /** Create or upgrade the table on first use (default true). Set false to manage migrations yourself. */
     autoMigrate?: boolean;
-}
+    now?: () => number;
+};
 
 export class CNSPgBossProgressRepository implements ICNSProgressRepository {
     private readonly pool: Pool;
     private readonly ownsPool: boolean;
+    private readonly tablePrefix: string;
     private readonly table: string;
     private readonly autoMigrate: boolean;
+    private readonly now: () => number;
     private ready: Promise<void> | undefined;
 
     constructor(opts: TCNSPgBossProgressRepositoryOptions) {
@@ -47,37 +50,43 @@ export class CNSPgBossProgressRepository implements ICNSProgressRepository {
                 '[@cnstra/pg-boss] CNSPgBossProgressRepository needs `connectionString` or `pool`'
             );
         }
-        this.table = assertSafeTable(opts.table ?? DEFAULT_TABLE);
+        this.tablePrefix = CNSPgBossProgressSchema.assertTablePrefix(opts.tablePrefix ?? CNSPgBossProgressSchema.DEFAULT_TABLE_PREFIX);
+        this.table = CNSPgBossProgressSchema.table(this.tablePrefix);
         this.autoMigrate = opts.autoMigrate ?? true;
+        this.now = opts.now ?? Date.now;
     }
 
-    private ensure(): Promise<void> {
+    private schemaReady(): Promise<void> {
         if (!this.autoMigrate) return Promise.resolve();
-        return (this.ready ??= ensureSchema(this.pool, this.table));
+        this.ready ??= CNSPgBossProgressSchema.migrate(this.pool, this.tablePrefix).catch(error => {
+            this.ready = undefined;
+            throw error;
+        });
+        return this.ready;
     }
 
     async save(key: string, progress: TCNSProgress): Promise<void> {
-        await this.ensure();
+        await this.schemaReady();
         await this.pool.query(
-            `INSERT INTO ${this.table} (key, progress, updated_at)
-             VALUES ($1, $2::jsonb, now())
-             ON CONFLICT (key) DO UPDATE SET progress = EXCLUDED.progress, updated_at = now()`,
-            [key, JSON.stringify(progress)]
+            `INSERT INTO ${this.table} (job_id, progress, updated_at)
+             VALUES ($1, $2::jsonb, $3)
+             ON CONFLICT (job_id) DO UPDATE SET progress = EXCLUDED.progress, updated_at = EXCLUDED.updated_at`,
+            [key, JSON.stringify(progress), this.now()]
         );
     }
 
     async load(key: string): Promise<TCNSProgress | undefined> {
-        await this.ensure();
+        await this.schemaReady();
         const res = await this.pool.query<{ progress: TCNSProgress }>(
-            `SELECT progress FROM ${this.table} WHERE key = $1`,
+            `SELECT progress FROM ${this.table} WHERE job_id = $1`,
             [key]
         );
         return res.rows[0]?.progress;
     }
 
     async delete(key: string): Promise<void> {
-        await this.ensure();
-        await this.pool.query(`DELETE FROM ${this.table} WHERE key = $1`, [key]);
+        await this.schemaReady();
+        await this.pool.query(`DELETE FROM ${this.table} WHERE job_id = $1`, [key]);
     }
 
     /**
@@ -88,11 +97,11 @@ export class CNSPgBossProgressRepository implements ICNSProgressRepository {
      * retry backoff window and run this on a schedule. Returns the number of rows removed.
      */
     async deleteStale(olderThanMs: number): Promise<number> {
-        await this.ensure();
+        await this.schemaReady();
         const res = await this.pool.query(
             `DELETE FROM ${this.table}
-             WHERE updated_at < now() - ($1::bigint * interval '1 millisecond')`,
-            [Math.max(0, Math.floor(olderThanMs))]
+             WHERE updated_at < $1`,
+            [this.now() - Math.max(0, Math.floor(olderThanMs))]
         );
         return res.rowCount ?? 0;
     }

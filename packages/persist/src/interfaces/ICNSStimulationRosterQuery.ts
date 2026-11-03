@@ -10,7 +10,7 @@ import type {
  * instead of the caller loading every run and deriving it in memory.
  *
  * A store advertises it structurally (both methods present). Callers detect it
- * with {@link supportsRosterQuery} and fall back to an in-memory derivation over
+ * with {@link supportsCNSRosterQuery} and fall back to an in-memory derivation over
  * {@link ICNSStimulationReader} when it's absent — the results are identical, only
  * the work moves. The keyset `cursor` is the store's own opaque token (same store
  * must decode it); newest-first ordering (`startedAt DESC, stimulationId DESC`) is
@@ -33,7 +33,7 @@ export interface ICNSStimulationRosterQuery {
 }
 
 /** Structural check: does this store push the roster query down itself? */
-export function supportsRosterQuery(
+export function supportsCNSRosterQuery(
     store: unknown
 ): store is ICNSStimulationRosterQuery {
     return (

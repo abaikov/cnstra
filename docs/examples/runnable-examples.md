@@ -21,7 +21,7 @@ A run fails partway, then **resumes from the exact frontier** (not from scratch)
 a second attempt; the whole run/attempt/task history is kept in a repository.
 
 ```bash
-npm run demo:resumable
+npm run demo:resume
 ```
 
 No Postgres/Redis needed. Output: attempt #1 runs `importUser → enrichUser →
@@ -32,7 +32,7 @@ persistUser` where `persistUser` throws; "Retry" resumes **only** `persistUser`
 
 Boots a tiny server and serves the **CNStra retry admin** — Launch a task, watch it
 **FAIL**, then **Retry** (resume the failed frontier) or **Clone** (fresh run from the
-entry). Live, in the CNStra "Rotting Flesh" pixel theme.
+entry).
 
 ```bash
 npm run demo:admin            # in-process, no infra → http://localhost:4545
@@ -71,7 +71,7 @@ and the run *history* (domain #2) — each can be in-memory or persistent, chose
 
 ### Graceful shutdown & checkpoints
 
-`Ctrl+C` (SIGINT/SIGTERM) shuts the demo down **cleanly, in order** — no separate
+<kbd>Ctrl</kbd>+<kbd>C</kbd> (SIGINT/SIGTERM) shuts the demo down **cleanly, in order** — no separate
 stop command:
 
 1. **Abort in-flight.** The admin passes an `AbortSignal` into every
@@ -87,11 +87,10 @@ stop command:
    `docker compose down` on the container they started.
 
 Note two different stores here. The **admin's** run/attempt/task history (what the UI
-lists) is in-memory in this demo, so that view is per-process. The **resume
+lists) is in-memory in this demo, so that view is per-process; `demo:admin:pg-store` keeps it in Postgres. The **resume
 checkpoint** — the outstanding frontier a Retry needs — is a separate, resumable thing:
 the queue-worker demos below write it where the broker keeps it (BullMQ job progress /
-a pg-boss Postgres table), so it survives a worker restart. Backing the admin's history
-store the same way is the remaining step to make the whole UI survive a restart.
+a pg-boss Postgres table), so it survives a worker restart.
 
 ## Queue workers — the constructor matrix
 
@@ -120,5 +119,5 @@ broker**:
 All are the one `ICNSProgressRepository` seam (in-memory only for tests); the persistent
 options make the checkpoint survive a worker restart.
 
-See the [Message Brokers](/docs/integrations/bullmq) and
+See the [BullMQ](/docs/integrations/bullmq) and
 [pg-boss](/docs/integrations/pg-boss) guides for how the worker and resume wiring work.

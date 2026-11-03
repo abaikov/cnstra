@@ -31,7 +31,7 @@ const root = document.getElementById('root');
 if (root) {
     const router = createRouter(routes, { history: createHashHistory() });
     const socket = createDevtoolsSocket();
-    const selection = createAppSelection({ router, send: socket.send });
+    const selection = createAppSelection({ router });
 
     // The Explorer IS the whole tool and lives at the ROOT `/` — no landing page,
     // no redirect. A bare reload (empty hash → pathname '/') lands right here, and

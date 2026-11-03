@@ -83,7 +83,7 @@ async function main(): Promise<void> {
     log(`  🖥️  retry-admin (${admin.backend}) → http://localhost:${admin.port}`);
 
     // 2) the DevTools panel + WS server (example-app) on :8080. Its `start` script
-    //    builds the panel UI (ensure:ui) and compiles before running.
+    //    builds the panel UI (build:ui) and compiles before running.
     log(`  🧩 building + starting the DevTools panel on :${PANEL_PORT} …`);
     const panel: ChildProcess = spawn('npm', ['run', 'start'], {
         cwd: exampleAppDir,

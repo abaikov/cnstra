@@ -1,3 +1,4 @@
+import type { TCNSContextStore } from '@cnstra/types';
 import type { TCNSPlannedTaskJSON } from './TCNSPlannedTaskJSON';
 
 /**
@@ -11,4 +12,12 @@ import type { TCNSPlannedTaskJSON } from './TCNSPlannedTaskJSON';
 export type TCNSProgress = {
     /** The outstanding frontier (from `getOutstandingTasks()`), by name. */
     tasks: TCNSPlannedTaskJSON[];
+    /**
+     * The run's context store — the portable part. Feed it back through
+     * `stimulate`/`activate` on resume and the run continues carrying what the
+     * previous attempt attached to it (a traceparent, a request id).
+     */
+    stimulationContext?: TCNSContextStore;
+    modalityName?: string;
+    afferentPathName?: string;
 };

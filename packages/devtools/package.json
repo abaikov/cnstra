@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/devtools",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Developer tools for CNStra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/devtools"
+  },
   "keywords": [
     "devtools",
     "cnstra"

@@ -1,13 +1,11 @@
 name: Check Drift
 
 # A package can carry the same version as the one on npm and still ship different
-# code. That is invisible to every version-number comparison, so it went unnoticed
-# for months once. This compares the real publishable artifact — the `npm pack`
-# tarball — against the published one, on every change, not only at release time.
+# code, which no version comparison can see. This diffs the real publishable
+# artifact — the `npm pack` tarball — against the published one, on every change.
 #
-# Running on Linux while releases are cut on macOS makes this the cross-machine
-# reproducibility check too: a build that is not byte-identical everywhere would
-# show up here as drift on a package nobody touched.
+# It runs on Linux while releases are cut on macOS, so it doubles as the
+# cross-machine reproducibility check.
 
 on:
   push:
@@ -32,5 +30,7 @@ jobs:
           cache: 'npm'
       - name: Install
         run: npm ci
+      - name: Test the gate itself
+        run: npm run test:scripts
       - name: Compare every public package against its published tarball
         run: npm run check:drift

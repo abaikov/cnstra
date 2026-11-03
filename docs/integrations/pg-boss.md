@@ -23,16 +23,37 @@ The `@cnstra/pg-boss` package packages the pattern below; you can also wire it b
 npm install @cnstra/pg-boss @cnstra/core @cnstra/factory pg-boss
 ```
 
+```ts setup
+import { PgBoss } from 'pg-boss';
+import type { CNS } from '@cnstra/core';
+import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+import type { TCNSNeuron } from '@cnstra/types';
+import { createCNSWorker, enqueueCNSStimulation } from '@cnstra/pg-boss';
+import type { TCNSStimulationJobData, TCNSWorkerOptions } from '@cnstra/pg-boss';
+
+declare const DATABASE_URL: string;
+declare const boss: PgBoss;
+declare const cns: CNS<TCNSNeuron<any>>;
+declare const registry: CNSPersistOptionsRegistry;
+declare const job: TCNSStimulationJobData;
+declare const resume: TCNSWorkerOptions['resume'];
+```
+
 ## Basic integration
 
-```ts
-import PgBoss from 'pg-boss';
+```ts file=worker.ts
+import { PgBoss } from 'pg-boss';
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
 import { CNSFactory } from '@cnstra/factory';
-import { createCNSWorker, enqueueStimulation, stimulationJob } from '@cnstra/pg-boss';
+import { createCNSWorker, enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/pg-boss';
+
+const importUser = cnsCollateral<{ userId: string }>();
+const importUserNeuron = cnsNeuron({}).dendrite({ collateral: importUser, response: async () => {} });
 
 // Build the CNS and a registry from one map so names can't drift
 const { cns, registry } = CNSFactory.create({
-  importUser: importUserNeuron,
+  importUserNeuron,
+  importUser,
   // …other neurons
 });
 
@@ -44,15 +65,17 @@ await boss.createQueue('cns');
 await createCNSWorker({ boss, cns, registry, queue: 'cns' });
 
 // Producer: enqueue by (registered) collateral name
-const job = stimulationJob(registry, importUser, { userId: '42' });
-await enqueueStimulation(boss, 'cns', job);
+const job = cnsStimulationJob(registry, importUser, { userId: '42' });
+await enqueueCNSStimulation(boss, 'cns', job);
 ```
+
+A job can run on an afferent path: `cnsStimulationJob(registry, collateral, payload, { modality, afferentPath })`, or `{ from: ctx }` inside a neuron body to keep the path of the current run. Register the modality with `registry.registerModality(name, modality)`.
 
 Under the hood the worker does exactly what the BullMQ guide shows, just resolved by
 name:
 
 ```ts
-await boss.work('cns', async ([job]) => {
+await boss.work<TCNSStimulationJobData>('cns', async ([job]) => {
   const { collateralName, payload } = job.data;
   const collateral = registry.getCollateral(collateralName);
   if (!collateral) throw new Error(`Unknown collateral: ${collateralName}`);
@@ -76,7 +99,7 @@ letting the error propagate is exactly what you want: pg-boss then applies its r
 | dead-letter queue | Park terminally failed runs; store `getFailedTasks()` (by name) |
 
 ```ts
-await enqueueStimulation(boss, 'cns', job, {
+await enqueueCNSStimulation(boss, 'cns', job, {
   retryLimit: 5,
   retryBackoff: true,
   singletonKey: 'user:42',
@@ -119,17 +142,46 @@ terminal-failure hook — so prune those by staleness (a still-retrying job keep
 fresh, so pick a threshold above your longest retry window):
 
 ```ts
+import { CNSPgBossProgressRepository } from '@cnstra/pg-boss/postgres-progress';
+
 const store = new CNSPgBossProgressRepository({ connectionString: DATABASE_URL });
 await store.deleteStale(24 * 60 * 60 * 1000); // e.g. a daily cron
 ```
 
+## Batches
+
+pg-boss can hand a worker several jobs at once (`workOptions.batchSize`), and it settles that
+batch as one unit: a handler that throws fails **every** job id in it. So the worker runs each
+job in the batch on its own — one failure neither skips the jobs behind it nor re-runs the ones
+ahead of it. The jobs that finished are completed before the failure is reported, and only the
+failures go to retry.
+
+```ts
+await createCNSWorker({
+    boss, cns, registry, queue: 'cns',
+    workOptions: { batchSize: 20 },
+});
+```
+
+Jobs in a batch run one after another, not concurrently — the batch is how many the worker
+fetches per round trip, not how many stimulations run at once. Use pg-boss's own concurrency
+options for that.
+
 ## Graceful shutdown
 
 `createCNSWorker` resolves to `{ workId, shutdown }`. On `SIGTERM`/`SIGINT` call `shutdown()`:
-it stops taking new jobs, drains in-flight stimulations for up to `drainMs` (default 10s), then
-**aborts** the rest — their remaining tasks become the frontier, the resume checkpoint records
-it, and the job's retry resumes there. It does **not** stop your `boss` or close your stores —
-you own those, so stop the boss and close stores after it resolves (checkpoint lands first).
+it stops taking new jobs, lets in-flight stimulations finish, then **aborts** the rest — their
+remaining tasks become the frontier, the resume checkpoint records it, and the job's retry
+resumes there. It does **not** stop your `boss` or close your stores — you own those, so stop
+the boss and close stores after it resolves (checkpoint lands first).
+
+`drainMs` (default 10s) is the budget for the whole shutdown, and it is a real bound: half goes
+to finishing on their own, half to writing the checkpoints of whatever had to be aborted. It is
+split rather than extended because the deadline that matters is on the shutdown as a whole — a
+container's termination grace period — and a shutdown that overruns it is killed mid-write,
+losing the checkpoint the drain existed to produce. A stimulation whose neuron ignores the abort
+signal (an HTTP call with no signal wired through, say) therefore costs you the second half and
+nothing more; it cannot hold the process open.
 
 ```ts
 const { shutdown } = await createCNSWorker({ boss, cns, registry, queue: 'cns', resume });
@@ -160,7 +212,6 @@ retry = a new attempt. It's independent of `resume`: `observe` is the history yo
 is the frontier the retry continues from.
 
 ```ts
-import { createCNSWorker } from '@cnstra/pg-boss';
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 // keep it: import { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
 
@@ -185,17 +236,17 @@ no schema to write yourself.
 
 > **Shortcut — the DevTools Explorer as a persistent admin.** The CNStra DevTools already render this
 > exact model (🔎 Explorer · 💀 Stimulations · ⚡ Stimulations). Hand the same `observe` store to
-> `startDevTools` and every job the worker processes shows up live in the Explorer — filterable by job
+> `startCNSDevTools` and every job the worker processes shows up live in the Explorer — filterable by job
 > type (entry collateral) or neuron, with a per-run attempt/task waterfall — no bespoke UI:
 > ```ts
-> import { startDevTools } from '@cnstra/devtools-server';
+> import { startCNSDevTools } from '@cnstra/devtools-server';
 > import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 > // keep it across restarts: import { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
 >
 > const history = new CNSInMemoryStimulationRepository(); // or the Postgres store above
 >
 > // Serves the panel UI + live topology, and reads runs from the SAME store the worker writes to:
-> await startDevTools(cns, registry, { stimulationRepository: history });
+> await startCNSDevTools(cns, registry, { stimulationRepository: history });
 > await createCNSWorker({ boss, cns, registry, queue: 'cns', observe: history });
 > // → open the printed URL, hit the 🔎 Explorer tab: 20 job types = 20 entry-collateral facets.
 > ```

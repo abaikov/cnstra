@@ -31,7 +31,7 @@ export async function attachBullTransport(
 
     // Every admin action becomes a resumable job on Redis.
     manager.setDispatch(async (cmd: TStimulationCommand) => {
-        await queue.add('cmd', cmd as unknown as object, {
+        await queue.add('cmd', cmd, {
             removeOnComplete: true,
             removeOnFail: true,
         });

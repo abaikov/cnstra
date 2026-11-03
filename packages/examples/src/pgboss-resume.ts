@@ -13,30 +13,30 @@
  * The pure-engine version with no infra is resumable-inprocess.ts.
  */
 import { PgBoss } from 'pg-boss';
-import { CNS, collateral, neuron } from '@cnstra/core';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
-import { createCNSWorker, enqueueStimulation, stimulationJob } from '@cnstra/pg-boss';
+import { createCNSWorker, enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/pg-boss';
 import { CNSPgBossProgressRepository } from '@cnstra/pg-boss/postgres-progress';
 
 const DATABASE_URL =
     process.env.DATABASE_URL ?? 'postgres://cnstra:cnstra@localhost:5432/cnstra';
 
-const input = collateral<{ userId: string }>();
-const userFetched = collateral<{ id: string }>();
-const userSaved = collateral<{ id: string; ok: true }>();
+const input = cnsCollateral<{ userId: string }>();
+const userFetched = cnsCollateral<{ id: string }>();
+const userSaved = cnsCollateral<{ id: string; ok: true }>();
 
 // Fail the first pass; a module-level attempt counter clears the fault on the
 // pg-boss retry (same process), so the resumed attempt succeeds.
 let attempt = 0;
 
-const importUser = neuron({ userFetched }).dendrite({
+const importUser = cnsNeuron({ userFetched }).dendrite({
     collateral: input,
     response: (p, axon) => {
         console.log(`    ▸ importUser(${p!.userId})`);
         return axon.userFetched.createSignal({ id: p!.userId });
     },
 });
-const persistUser = neuron({ userSaved }).dendrite({
+const persistUser = cnsNeuron({ userSaved }).dendrite({
         collateral: userFetched,
         response: (p, axon) => {
             attempt++;
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
 
     // Resumable worker: one job → one stimulation, resuming across the job's retries.
     await createCNSWorker({
-        boss: boss as never,
+        boss,
         cns,
         registry,
         queue: 'cns',
@@ -78,8 +78,8 @@ async function main(): Promise<void> {
 
     // Producer: enqueue by (registered) collateral name, with retries enabled so
     // pg-boss auto-retries the failing job and the worker resumes it.
-    const job = stimulationJob(registry, input, { userId: '42' });
-    await enqueueStimulation(boss as never, 'cns', job, {
+    const job = cnsStimulationJob(registry, input, { userId: '42' });
+    await enqueueCNSStimulation(boss, 'cns', job, {
         retryLimit: 3,
         retryDelay: 1,
     });

@@ -43,9 +43,13 @@ export class CNS<
         (d: TCNSStimulationDrain) => void
     > = [];
 
+    private batchDepth = 0;
+
+    private batchedDrains: [announce: (drain: TCNSStimulationDrain) => void, drain: TCNSStimulationDrain][] = [];
+
     /**
      * Shared, app/organism-wide value handed to every dendrite as `ctx.global`.
-     * Stored untyped (the type is baked into neurons via `neuronFactory().withGlobal<T>()`);
+     * Stored untyped (the type is baked into neurons via `cnsNeuronFactory().withGlobal<T>()`);
      * CNS is just a passthrough carrier, so injecting it here never touches the hot path.
      */
     public readonly global?: unknown;
@@ -79,7 +83,7 @@ export class CNS<
 
     /**
      * Register a listener called once at the end of every synchronous turn of
-     * every stimulation - see {@link TCNSStimulationDrain}. This is how an
+     * every stimulation (inside `batch`, when the batch ends) - see {@link TCNSStimulationDrain}. This is how an
      * integration (a state manager, an in-memory database) installs a single
      * commit point for the whole organism instead of passing `onDrain` per call.
      *
@@ -89,6 +93,19 @@ export class CNS<
         listener: (drain: TCNSStimulationDrain) => void
     ): () => void {
         return this.addListener(this.globalDrainListeners, listener);
+    }
+
+    public batch<TResult>(run: () => TResult): TResult {
+        this.batchDepth++;
+        try {
+            return run();
+        } finally {
+            if (--this.batchDepth === 0) {
+                const batchedDrains = this.batchedDrains;
+                this.batchedDrains = [];
+                for (const [announce, drain] of batchedDrains) announce(drain);
+            }
+        }
     }
 
     /**
@@ -102,7 +119,7 @@ export class CNS<
         local?: (drain: TCNSStimulationDrain) => void
     ): ((drain: TCNSStimulationDrain) => void) | undefined {
         if (this.globalDrainListeners.length === 0 && !local) return undefined;
-        return (d: TCNSStimulationDrain) => {
+        const announce = (d: TCNSStimulationDrain) => {
             if (local) {
                 try {
                     local(d);
@@ -118,6 +135,10 @@ export class CNS<
                 }
             }
         };
+        return (d: TCNSStimulationDrain) => {
+            if (this.batchDepth > 0) this.batchedDrains.push([announce, d]);
+            else announce(d);
+        };
     }
 
     private wrapOnResponse<T>(
@@ -129,20 +150,20 @@ export class CNS<
             return undefined;
         }
         return (r: T) => {
-            let anyPromise = false;
-            const promises: Promise<void>[] = [];
+            // Allocated on first need, not on every response: all three of our
+            // own listeners (devtools, otel metrics, otel tracing) are
+            // synchronous, and this runs once per signal.
+            let promises: Promise<void>[] | undefined;
 
             if (local) {
                 try {
                     const res = local(r);
                     if (res && typeof (res as any).then === 'function') {
-                        anyPromise = true;
-                        promises.push(res as Promise<void>);
+                        (promises ??= []).push(res as Promise<void>);
                     }
                 } catch (error) {
                     // Sync error from local - wrap in rejected promise
-                    anyPromise = true;
-                    promises.push(Promise.reject(error));
+                    (promises ??= []).push(Promise.reject(error));
                 }
             }
 
@@ -150,17 +171,15 @@ export class CNS<
                 try {
                     const res = this.globalResponseListeners[i](r);
                     if (res && typeof (res as any).then === 'function') {
-                        anyPromise = true;
-                        promises.push(res as Promise<void>);
+                        (promises ??= []).push(res as Promise<void>);
                     }
                 } catch (error) {
                     // Sync error from global listener - wrap in rejected promise
-                    anyPromise = true;
-                    promises.push(Promise.reject(error));
+                    (promises ??= []).push(Promise.reject(error));
                 }
             }
 
-            if (anyPromise) {
+            if (promises) {
                 return Promise.allSettled(promises).then(results => {
                     const rejected = results.find(
                         r => r.status === 'rejected'

@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/devtools-server-repository-in-memory",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "In-memory repository for CNStra DevTools server",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/devtools-server-repository-in-memory"
+  },
   "keywords": [
     "cnstra",
     "devtools",

@@ -1,9 +1,9 @@
 import {
     CNS,
-    collateral,
-    neuron,
-    neuronFactory,
-    withGlobal,
+    cnsCollateral,
+    cnsNeuron,
+    cnsNeuronFactory,
+    withCNSGlobal,
 } from '../src/index';
 import type { TCNSSignal } from '@cnstra/types';
 
@@ -11,10 +11,10 @@ type TGlobal = { store: { seen: string[] }; now: () => number };
 
 describe('ctx.global (composable factory extension)', () => {
     it('injects the global at createCNS and surfaces it as ctx.global', async () => {
-        const ping = collateral<{ id: string }>();
-        const done = collateral<{ at: number }>();
+        const ping = cnsCollateral<{ id: string }>();
+        const done = cnsCollateral<{ at: number }>();
 
-        const { neuron: n } = neuronFactory().withGlobal<TGlobal>();
+        const { neuron: n } = cnsNeuronFactory().withGlobal<TGlobal>();
 
         const worker = n({ done }).bind(
             { ping },
@@ -46,8 +46,8 @@ describe('ctx.global (composable factory extension)', () => {
     });
 
     it('is swappable per instance — same neuron graph, different global', async () => {
-        const ping = collateral<{ id: string }>();
-        const { neuron: n } = neuronFactory().withGlobal<TGlobal>();
+        const ping = cnsCollateral<{ id: string }>();
+        const { neuron: n } = cnsNeuronFactory().withGlobal<TGlobal>();
 
         const worker = n({}).dendrite({
             collateral: ping,
@@ -78,11 +78,11 @@ describe('ctx.global (composable factory extension)', () => {
         expect(storeB.seen).toEqual(['y']);
     });
 
-    it('base neuron (no withGlobal) has undefined ctx.global at runtime', async () => {
-        const ping = collateral<{ id: string }>();
+    it('base cnsNeuron (no withGlobal) has undefined ctx.global at runtime', async () => {
+        const ping = cnsCollateral<{ id: string }>();
 
         // No global layer: ctx.global is not in the type; at runtime it reads undefined.
-        const worker = neuron({}).dendrite({
+        const worker = cnsNeuron({}).dendrite({
             collateral: ping,
             response: (_payload, _axon, ctx) => {
                 expect((ctx as { global?: unknown }).global).toBeUndefined();

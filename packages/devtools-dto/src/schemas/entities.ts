@@ -4,8 +4,6 @@ export const CNSAppDTOSchema = z.object({
     id: z.string(),
     name: z.string(),
     version: z.string(),
-    connectedAt: z.number(),
-    lastSeenAt: z.number(),
 });
 
 // Topology is identified by NAME within a cns (names are unique per cns). The wire

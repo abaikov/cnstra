@@ -3,10 +3,10 @@
  * `cnstra-pgboss-progress migrate` — create the pg-boss progress table.
  *
  *   DATABASE_URL=postgres://... cnstra-pgboss-progress migrate
- *   CNS_PGBOSS_PROGRESS_TABLE=my_table  (optional; default cns_pgboss_progress)
+ *   CNS_TABLE_PREFIX=my_  (optional; default cns_)
  */
 import { Pool } from 'pg';
-import { ensureSchema, DEFAULT_TABLE } from './migrate';
+import { CNSPgBossProgressSchema } from './schema/CNSPgBossProgressSchema';
 
 async function main(): Promise<void> {
     const cmd = process.argv[2];
@@ -19,12 +19,12 @@ async function main(): Promise<void> {
         console.error('DATABASE_URL is required'); // eslint-disable-line no-console
         process.exit(1);
     }
-    const table = process.env.CNS_PGBOSS_PROGRESS_TABLE ?? DEFAULT_TABLE;
+    const tablePrefix = process.env.CNS_TABLE_PREFIX ?? CNSPgBossProgressSchema.DEFAULT_TABLE_PREFIX;
     const pool = new Pool({ connectionString: url });
     try {
-        await ensureSchema(pool, table);
+        await CNSPgBossProgressSchema.migrate(pool, tablePrefix);
         // eslint-disable-next-line no-console
-        console.log(`✓ ensured progress table "${table}"`);
+        console.log(`✓ progress table is up to date "${CNSPgBossProgressSchema.table(tablePrefix)}"`);
     } finally {
         await pool.end();
     }

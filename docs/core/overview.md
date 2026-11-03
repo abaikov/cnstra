@@ -72,7 +72,7 @@ And when business later says:
 * "We need the same operation during onboarding"
 * "And during import"
 
-—you now have **multiple scattered controller copies** of the same flow. Nothing ensures they stay consistent.
+—you now have **multiple scattered controller copies** of the same flow. Nothing keeps them consistent.
 
 **MVC collapses the moment flows stop being trivial.**
 
@@ -152,6 +152,13 @@ And exactly like MVC:
 * controllers become an unstructured soup of async logic,
 * multi-step operations are just naked functions.
 
+```ts setup
+declare function createDeckAndCard(): void;
+declare function sendCreated(order: { id: string; amount: number }): void;
+declare function sendUpdated(order: { id: string; changes: Record<string, unknown> }): void;
+declare function sendCancelled(order: { id: string; reason?: string }): void;
+```
+
 ```ts
 createDeckAndCard();
 ```
@@ -184,33 +191,33 @@ while keeping everything explicit.
 > **New to the vocabulary?** In one breath: a **neuron** is an isolated handler, a **collateral** is a named typed signal, a neuron's **axon** is the collaterals it may emit, a **dendrite** binds a handler to an incoming collateral, and **`stimulate`** fires a signal into the graph. See the full nervous-system analogy in the [Introduction](/docs/concepts/intro).
 
 ```ts
-import { CNS, collateral, neuron, TCNSSignal } from '../src/index';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 
 const uiAxon = {
-    userEntersApp: collateral<{
+    userEntersApp: cnsCollateral<{
         userId: string;
         deckTitle: string;
         cardTitle: string;
     }>(),
-    createCardWithDeckButtonClicked: collateral<{
+    createCardWithDeckButtonClicked: cnsCollateral<{
         deckTitle: string;
         cardTitle: string;
     }>(),
 };
 
 const deckAxon = {
-    createdAtUserEntersApp: collateral<{
+    createdAtUserEntersApp: cnsCollateral<{
         deckId: string;
         cardTitle: string;
         userId: string;
     }>(),
-    createdAtCreateCardWithDeckButtonClicked: collateral<{
+    createdAtCreateCardWithDeckButtonClicked: cnsCollateral<{
         deckId: string;
         cardTitle: string;
     }>(),
 };
 
-const deck = neuron(deckAxon)
+const deck = cnsNeuron(deckAxon)
     .dendrite({
         collateral: uiAxon.userEntersApp,
         response: (payload, axon) => {
@@ -233,7 +240,7 @@ const deck = neuron(deckAxon)
         },
     });
 
-const card = neuron({})
+const card = cnsNeuron({})
     .dendrite({
         collateral: deckAxon.createdAtCreateCardWithDeckButtonClicked,
         response: payload => {
@@ -288,13 +295,15 @@ CNStra eliminates this entire class of bugs.
 ### `neuron.bind(axon, handlers)` enforces EXHAUSTIVENESS
 
 ```ts
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+
 const order = {
-  created:   collateral<...>(),
-  updated:   collateral<...>(),
-  cancelled: collateral<...>(),
+  created:   cnsCollateral<{ id: string; amount: number }>(),
+  updated:   cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
 };
 
-const orderMailer = neuron({})
+const orderMailer = cnsNeuron({})
   .bind(order, {
     created:   (p) => sendCreated(p),
     updated:   (p) => sendUpdated(p),
@@ -305,7 +314,14 @@ const orderMailer = neuron({})
 Then the domain evolves:
 
 ```ts
-order.refunded = collateral<...>();
+import { cnsCollateral } from '@cnstra/core';
+
+const order = {
+  created:   cnsCollateral<{ id: string; amount: number }>(),
+  updated:   cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
+  refunded:  cnsCollateral<{ id: string; amount: number }>(),
+};
 ```
 
 ### What happens?

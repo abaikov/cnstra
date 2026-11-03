@@ -20,14 +20,26 @@ You don't need a queue for this — your own table *is* the queue. Wire a
 `CNSStimulationPersistor` per item, with `stimulationId = your item id`, writing to a Postgres
 run store:
 
-```ts
-import { CNS } from '@cnstra/core';
-import { CNSStimulationPersistor } from '@cnstra/persist';
+```ts setup
+import type { Pool } from 'pg';
+import { CNS, cnsCollateral } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
-import { registry, input } from './neurons'; // your CNS registry + entry collateral
+import type { ICNSDevToolsServerRepository } from '@cnstra/devtools-server';
 
+declare const DATABASE_URL: string;
+declare const db: Pool;
+declare const appTopologyRepo: ICNSDevToolsServerRepository;
+declare const itemId: string;
+
+const input = cnsCollateral<{ file: string }>();
+const registry = new CNSPersistOptionsRegistry().registerCollateral('input', input);
 const cns = new CNS([/* your neurons */]);
 const runStore = new CNSPostgresStimulationRepository({ connectionString: DATABASE_URL });
+```
+
+```ts
+import { CNSStimulationPersistor } from '@cnstra/persist';
 
 // ── the cron tick ──
 async function tick(batchSize = 20) {

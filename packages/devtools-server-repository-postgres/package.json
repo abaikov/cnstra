@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/devtools-server-repository-postgres",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "PostgreSQL repository for CNStra DevTools server (resumable stimulations & hops)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/devtools-server-repository-postgres"
+  },
   "keywords": [
     "cnstra",
     "devtools",
@@ -42,10 +47,11 @@
     "@cnstra/devtools-server": "^3.0.0",
     "@types/jest": "^29.5.5",
     "jest": "^29.7.0",
-    "pg-mem": "^3.0.5",
     "ts-jest": "^29.1.1",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "@cnstra/postgres-schema": "0.1.0",
+    "pg": "^8.11.0"
   },
   "peerDependenciesMeta": {
     "pg": {

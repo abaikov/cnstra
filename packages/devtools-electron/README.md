@@ -3,7 +3,7 @@
 Desktop app bundling the DevTools WebSocket server and the DevTools Panel UI.
 
 - Starts a local HTTP+WS server on a chosen port (default 8080)
-- Loads the Panel UI (dev via webpack-dev-server, prod via built dist)
+- Loads the Panel UI (dev via the Vite dev server, prod via built dist)
 - Injects `window.__CNSTRA_DEVTOOLS_WS__ = "ws://localhost:<port>"`
 
 ## Dev

@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/broker",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Broker-agnostic core for CNStra queue integrations: run one job as one stimulation, with observability + resumable execution. Shared by @cnstra/bullmq and @cnstra/pg-boss.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/broker"
+  },
   "keywords": [
     "cnstra",
     "broker",
@@ -27,7 +32,7 @@
   "scripts": {
     "prepublishOnly": "node ../../scripts/check-drift.mjs --gate",
     "build": "tsup",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "test:types": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

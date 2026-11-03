@@ -1,0 +1,68 @@
+name: Test
+
+# Until this existed, no workflow ran the package suites. `check-drift.yml` runs
+# the release gate's own script tests and the tarball comparison, and nothing
+# else — so a change that broke six hundred tests would go green on every pull
+# request.
+#
+# One job, not one per check. Each job pays its own `npm ci`, and splitting types
+# and lint out bought nothing but two more installs: both are fast, both are
+# things you see locally the moment you run them. The suites are the part that
+# nothing runs unattended, and they need the build first because several packages
+# import a sibling's `dist` rather than its source.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cnstra_jobs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: 'npm'
+      - name: Install
+        run: npm ci
+      - name: Generate the Prisma client used by the jobs-postgres tests
+        run: npm exec --workspace @cnstra/jobs-postgres -- prisma generate --schema src/tests/prisma/schema.prisma
+      - name: Typecheck every workspace
+        run: npm run test:types
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Load every public package's dist in ESM and CJS
+        run: npm run check:dist
+      # The worker cap is not a courtesy: each jest worker compiles the project
+      # again, and the unbounded default is what wedges a machine with this many
+      # workspaces.
+      - name: Run every workspace suite
+        run: npm run test --workspaces --if-present -- --maxWorkers=2
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cnstra_jobs_test
+      - name: Run the release gate's own tests
+        run: npm run test:scripts

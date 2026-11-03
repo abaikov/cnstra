@@ -6,7 +6,7 @@ import type {
     TCNSStimulationTimeBucket,
 } from '@cnstra/devtools-dto';
 import { fmtAxis, fmtStamp } from '../utils/format';
-import { combine } from '../exo/oimdb-bind';
+import { exoCombine } from '@oimdb/exodra';
 import { C, livePill } from './parts';
 
 // The GRAPHS zone: a real, filter-scoped THROUGHPUT chart (a separate green
@@ -364,7 +364,7 @@ export function vitalsMonitor(
     const mode = bindable<TMode>('both');
 
     const modeBtn = (val: TMode, label: string, color: string): TExoSchema => {
-        const b = combine([mode], () => {
+        const b = exoCombine(() => {
             const active = mode.getValue() === val;
             return (
                 <button
@@ -381,11 +381,11 @@ export function vitalsMonitor(
                     {label}
                 </button>
             );
-        });
+        }, [mode]);
         return <div bindable={{ children: b }} />;
     };
     // time-axis markers (start · mid · end) over the filter-scoped byTime buckets
-    const axis = combine([facets], () => {
+    const axis = exoCombine(() => {
         const buckets = facets.getValue().byTime;
         if (!buckets.length)
             return <div static={{ style: 'display:flex;justify-content:space-between;font-size:8.5px;color:var(--text-muted)' }}><span>—</span></div>;
@@ -403,7 +403,7 @@ export function vitalsMonitor(
                 ))}
             </div>
         );
-    });
+    }, [facets]);
 
     return (
         <div

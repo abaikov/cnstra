@@ -7,10 +7,5 @@ export {
     CNSPgBossProgressRepository,
     type TCNSPgBossProgressRepositoryOptions,
 } from './CNSPgBossProgressRepository';
-export {
-    ensureSchema,
-    pgBossProgressSchemaSql,
-    assertSafeTable,
-    DEFAULT_TABLE,
-    type IPgQueryable,
-} from './migrate';
+export { CNSPgBossProgressSchema } from './schema/CNSPgBossProgressSchema';
+export type { TCNSPgBossProgressMigrateOptions } from './types/TCNSPgBossProgressMigrateOptions';

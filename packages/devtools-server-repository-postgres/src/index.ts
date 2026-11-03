@@ -1,21 +1,27 @@
+import { CNSPostgresSchemaMigrator, CNSPostgresSchemaPgDatabase } from '@cnstra/postgres-schema';
+import type { ICNSPostgresSchemaConnection } from '@cnstra/postgres-schema';
 import type {
     ICNSDevToolsServerRepository,
     TCNSTopologySnapshotDTO,
 } from '@cnstra/devtools-server';
-import type { TCNSAppDTO } from '@cnstra/devtools-dto';
 
 /**
- * Minimal structural view of a `pg` Pool/Client, so this package doesn't hard
- * depend on `pg` or its types. A real `pg.Pool` / `pg.Client` satisfies it.
+ * Minimal structural view of a `pg` Pool, so this package doesn't hard depend on
+ * `pg` or its types. A real `pg.Pool` satisfies it; `init()` takes one of its clients
+ * for the migration transaction.
  */
-export interface IPgQueryable {
+export interface ICNSDevToolsPgQueryable {
     query(
         text: string,
         params?: readonly unknown[]
     ): Promise<{ rows: any[] }>;
+    connect(): Promise<{
+        query(text: string, params?: readonly unknown[]): Promise<{ rows: any[] }>;
+        release(error?: Error | boolean): void;
+    }>;
 }
 
-export interface CNSDevToolsServerRepositoryPostgresOptions {
+export interface ICNSDevToolsServerRepositoryPostgresOptions {
     /** Table name prefix (default "cns_"). */
     tablePrefix?: string;
 }
@@ -23,24 +29,32 @@ export interface CNSDevToolsServerRepositoryPostgresOptions {
 /** JSON-encode a value for a `jsonb` parameter (null-safe). */
 const j = (v: unknown): string => JSON.stringify(v ?? null);
 
-function rowToApp(r: any): TCNSAppDTO {
-    return {
-        id: r.id,
-        name: r.name,
-        version: r.version,
-        connectedAt: Number(r.connected_at),
-        lastSeenAt: Number(r.last_seen_at),
-    };
-}
+const migrator = new CNSPostgresSchemaMigrator({
+    name: 'devtools',
+    tables: p => [`${p}topology`],
+    steps: [
+        {
+            step: 1,
+            kind: 'expand',
+            sql: p => `
+CREATE TABLE ${p}topology (
+    cns_id text PRIMARY KEY,
+    app_id text NOT NULL,
+    snapshot jsonb NOT NULL
+);
+`,
+        },
+    ],
+});
 
 /**
  * PostgreSQL-backed repository for the CNStra DevTools server. Resumable
  * counterpart of `@cnstra/devtools-server-repository-in-memory`: same
- * `ICNSDevToolsServerRepository` contract, but topology/app data survives
+ * `ICNSDevToolsServerRepository` contract, but topology data survives
  * restarts and can back an admin/history panel.
  *
- * Pass an existing `pg` Pool (or anything with `.query`); call `init()` once at
- * startup to create the tables.
+ * Pass an existing `pg` Pool; call `init()` once at startup to create
+ * or upgrade the tables, or `verify()` where another process owns migrations.
  */
 export class CNSDevToolsServerRepositoryPostgres
     implements ICNSDevToolsServerRepository
@@ -48,54 +62,18 @@ export class CNSDevToolsServerRepositoryPostgres
     private readonly p: string;
 
     constructor(
-        private readonly db: IPgQueryable,
-        options: CNSDevToolsServerRepositoryPostgresOptions = {}
+        private readonly db: ICNSDevToolsPgQueryable,
+        options: ICNSDevToolsServerRepositoryPostgresOptions = {}
     ) {
-        this.p = options.tablePrefix ?? 'cns_';
+        this.p = migrator.assertTablePrefix(options.tablePrefix ?? 'cns_', 'topology');
     }
 
-    /** Create tables and indexes if they don't exist. Idempotent. */
     async init(): Promise<void> {
-        const p = this.p;
-        await this.db.query(`
-            create table if not exists ${p}app (
-                id text primary key,
-                name text not null,
-                version text not null,
-                connected_at bigint not null,
-                last_seen_at bigint not null
-            );
-            create table if not exists ${p}topology (
-                cns_id text primary key,
-                app_id text not null,
-                snapshot jsonb not null
-            );
-            create table if not exists ${p}cns_app (
-                cns_id text primary key,
-                app_id text not null
-            );
-            create index if not exists ${p}cns_app_by_app on ${p}cns_app (app_id);
-        `);
+        await migrator.migrate(CNSPostgresSchemaPgDatabase.fromPool(this.db), this.p);
     }
 
-    // ─── Apps ───────────────────────────────────────────────────────────────
-
-    async upsertApp(app: TCNSAppDTO): Promise<void> {
-        await this.db.query(
-            `insert into ${this.p}app (id, name, version, connected_at, last_seen_at)
-             values ($1, $2, $3, $4, $5)
-             on conflict (id) do update set
-                name = excluded.name,
-                version = excluded.version,
-                connected_at = excluded.connected_at,
-                last_seen_at = excluded.last_seen_at`,
-            [app.id, app.name, app.version, app.connectedAt, app.lastSeenAt]
-        );
-    }
-
-    async listApps(): Promise<TCNSAppDTO[]> {
-        const { rows } = await this.db.query(`select * from ${this.p}app`);
-        return rows.map(rowToApp);
+    async verify(): Promise<void> {
+        await migrator.verify(this.db as unknown as ICNSPostgresSchemaConnection, this.p);
     }
 
     // ─── Topology ───────────────────────────────────────────────────────────
@@ -121,28 +99,9 @@ export class CNSDevToolsServerRepositoryPostgres
         return rows.map(r => r.snapshot as TCNSTopologySnapshotDTO);
     }
 
-    // ─── CNS ↔ App mapping ──────────────────────────────────────────────────
-
-    async addCnsToApp(appId: string, cnsId: string): Promise<void> {
-        await this.db.query(
-            `insert into ${this.p}cns_app (cns_id, app_id)
-             values ($1, $2)
-             on conflict (cns_id) do update set app_id = excluded.app_id`,
-            [cnsId, appId]
-        );
-    }
-
-    async getCnsByApp(appId: string): Promise<string[]> {
-        const { rows } = await this.db.query(
-            `select cns_id from ${this.p}cns_app where app_id = $1`,
-            [appId]
-        );
-        return rows.map(r => r.cns_id as string);
-    }
-
     async findAppByCns(cnsId: string): Promise<string | undefined> {
         const { rows } = await this.db.query(
-            `select app_id from ${this.p}cns_app where cns_id = $1`,
+            `select app_id from ${this.p}topology where cns_id = $1`,
             [cnsId]
         );
         return rows[0]?.app_id as string | undefined;

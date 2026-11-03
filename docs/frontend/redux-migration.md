@@ -49,90 +49,110 @@ Use OIMDB for complex relational data and Redux for simple UI state, with automa
 
 ## 📦 What's Included
 
-- **OIMDBReduxAdapter**: Main adapter class for creating Redux reducers and middleware from OIMDB collections
+- **OIMReduxAdapter**: Main adapter class for creating Redux reducers and middleware from OIMDB entity collections and bucket indexes
 
-- **Automatic Middleware**: Built-in middleware for automatic event queue flushing after Redux actions
+- **Automatic Middleware**: Built-in middleware that flushes the OIMDB channel after each Redux action
 
-- **Default Mappers**: RTK Entity Adapter-style mappers for collections and indexes
+- **Default Mappers**: RTK Entity Adapter-style mappers for collections and indexes (`mapOIMCollection`, `mapOIMKeyedIndex`, `mapOIMGlobalIndex`)
 
-- **Utility Functions**: `findUpdatedInRecord` and `findUpdatedInArray` for efficient change detection
+- **Utility Function**: `diffOIMEntityKeys` for efficient change detection between two entity records
 
 - **Type-Safe**: Full TypeScript support with comprehensive type definitions
 
 ## 🔧 Basic Usage
 
+The examples on this page share this setup: an `OIMDB`, a user collection created by its service, a bucket collection that groups users by team, and one adapter over the `db`.
+
+```ts setup
+import {
+    OIMDB,
+    OIMSetBucketContentService,
+    createOIMEntityContentService,
+    createOIMSlotCollectionService,
+    type TOIMEntitySlot,
+} from '@oimdb/core';
+import { OIMReduxAdapter, type TOIMReduxKeyedIndex } from '@oimdb/redux-adapter';
+import type { Reducer } from 'redux';
+
+type TUser = { id: string; name: string; teamId: string };
+type TUserSlot = TOIMEntitySlot<TUser>;
+type TPost = { id: string; title: string };
+
+const db = new OIMDB();
+
+const userService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<TUser>() });
+const users = userService.createStoreSlot(db);
+
+const postService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<TPost>() });
+const posts = postService.createStoreSlot(db);
+
+const byTeamService = createOIMSlotCollectionService({ slotContentService: new OIMSetBucketContentService<TUserSlot>() });
+const byTeam = byTeamService.createStoreSlot(db);
+const keyedIndex: TOIMReduxKeyedIndex<string, string, TUser> = {
+    bucketService: byTeamService, bucketStoreSlot: byTeam, entityService: userService, entityStoreSlot: users,
+};
+
+const adapter = new OIMReduxAdapter({ channelMap: db });
+
+declare const uiReducer: Reducer<{ theme: string }>;
+declare const authReducer: Reducer<{ token: string | null }>;
+```
+
+`channelMap` is the `db`: the adapter's effects, its once-per-frame `OIMDB_UPDATE` dispatch and its middleware's flush all run on the `db`'s default channel.
+
 ### Simple One-Way Sync (OIMDB → Redux)
 
 ```typescript
-import { OIMDBReduxAdapter } from '@oimdb/redux-adapter';
-import { OIMReactiveCollection, OIMEventQueue } from '@oimdb/core';
-import { createStore, combineReducers, applyMiddleware } from 'redux';
+import { applyMiddleware, combineReducers, createStore } from 'redux';
+import type { TOIMReduxDefaultCollectionState } from '@oimdb/redux-adapter';
 
-interface User {
-    id: string;
-    name: string;
-    email: string;
-}
+// Create Redux reducer from the OIMDB collection
+const usersReducer = adapter.createCollectionReducer<
+    TUser, string, TOIMReduxDefaultCollectionState<TUser, string>
+>(userService, users);
 
-// Create OIMDB collection
-const queue = new OIMEventQueue();
-const users = new OIMReactiveCollection<User, string>(queue, {
-    selectPk: (user) => user.id
-});
-
-// Create Redux adapter
-const adapter = new OIMDBReduxAdapter(queue);
-
-// Create Redux reducer from OIMDB collection
-const usersReducer = adapter.createCollectionReducer(users);
-
-// Create middleware for automatic flushing
-const middleware = adapter.createMiddleware();
-
-// Create Redux store with middleware
+// Create Redux store with the adapter's middleware
 const store = createStore(
     combineReducers({
         users: usersReducer,
     }),
-    applyMiddleware(middleware)
+    applyMiddleware(adapter.createMiddleware())
 );
 
 // Set store in adapter (can be done later)
 adapter.setStore(store);
 
 // OIMDB changes automatically sync to Redux
-users.upsertOne({ id: '1', name: 'John', email: 'john@example.com' });
-queue.flush(); // Triggers Redux update
+userService.writeSlotContentByKey(users, 'u1', { id: 'u1', name: 'John', teamId: 'eng' });
+db.flush(); // Triggers Redux update
 
 // Redux state is automatically updated
 const state = store.getState();
-console.log(state.users.entities['1']); // { id: '1', name: 'John', email: 'john@example.com' }
+console.log(state.users?.entities['u1']); // { id: 'u1', name: 'John', teamId: 'eng' }
 ```
 
 ### Two-Way Sync (OIMDB ↔ Redux)
 
-Enable bidirectional synchronization by providing a child reducer. The middleware automatically flushes the queue after each action, so manual `queue.flush()` is not needed:
+Enable bidirectional synchronization by providing a child reducer. The middleware automatically flushes the channel after each action, so a manual `db.flush()` is not needed:
 
 ```typescript
-import { 
-    OIMDBReduxAdapter,
-    TOIMDBReduxDefaultCollectionState,
-    TOIMDBReduxCollectionReducerChildOptions 
+import { applyMiddleware, createStore, type Action } from 'redux';
+import type {
+    TOIMReduxCollectionReducerChildOptions,
+    TOIMReduxDefaultCollectionState,
 } from '@oimdb/redux-adapter';
-import { Action } from 'redux';
-import { createStore, applyMiddleware } from 'redux';
+
+type TUsersState = TOIMReduxDefaultCollectionState<TUser, string>;
+type TUpdateUserName = Action<'UPDATE_USER_NAME'> & { payload: { id: string; name: string } };
 
 // Child reducer handles custom Redux actions
-const childReducer = (
-    state: TOIMDBReduxDefaultCollectionState<User, string> | undefined,
-    action: Action
-): TOIMDBReduxDefaultCollectionState<User, string> => {
+const childReducer = (state: TUsersState | undefined, action: Action): TUsersState => {
     if (state === undefined) {
         return { entities: {}, ids: [] };
     }
-    
+
     if (action.type === 'UPDATE_USER_NAME') {
-        const { id, name } = action.payload;
+        const { id, name } = (action as TUpdateUserName).payload;
         return {
             ...state,
             entities: {
@@ -141,19 +161,17 @@ const childReducer = (
             }
         };
     }
-    
+
     return state;
 };
 
-const childOptions: TOIMDBReduxCollectionReducerChildOptions<User, string, TOIMDBReduxDefaultCollectionState<User, string>> = {
+const childOptions: TOIMReduxCollectionReducerChildOptions<TUser, string, TUsersState> = {
     reducer: childReducer,
-    getPk: (user) => user.id,
-    // extractEntities is optional - default implementation handles TOIMDBReduxDefaultCollectionState
-    // linkedIndexes is optional - automatically updates indexes when entity fields change
+    selectKey: (user) => user.id,
 };
 
 // Create reducer with child
-const usersReducer = adapter.createCollectionReducer(users, childOptions);
+const usersReducer = adapter.createCollectionReducer<TUser, string, TUsersState>(userService, users, childOptions);
 
 // Create store with middleware
 const store = createStore(
@@ -164,168 +182,49 @@ const store = createStore(
 adapter.setStore(store);
 
 // Redux actions automatically sync back to OIMDB
-// Middleware automatically flushes queue after dispatch
+// Middleware automatically flushes the channel after dispatch
 store.dispatch({
     type: 'UPDATE_USER_NAME',
-    payload: { id: '1', name: 'John Updated' }
+    payload: { id: 'u1', name: 'John Updated' }
 });
 
-// No manual queue.flush() needed - middleware handles it!
 // OIMDB collection is automatically updated
-const user = users.getOneByPk('1');
+const user = userService.peekSlotByKey(users, 'u1')?.entity;
 console.log(user?.name); // 'John Updated'
 ```
 
+`selectKey` tells the adapter how to read an entity's key back out of Redux state (it defaults to `.id`). A child reducer can also take `extractEntities(prevState, nextState, entityService, entityStoreSlot, selectKey)` when its state is not the default `entities` + `ids` shape.
+
 ### Linked Indexes
 
-Automatically update indexes when entity array fields change in **both directions**:
+The child options also accept `linkedIndexes` (`TOIMReduxLinkedIndex`: `bucketService`, `bucketStoreSlot`, `linkedEntityService`, `linkedEntityStoreSlot`, `fieldName`), which keep a bucket in step with an array field of the entity.
 
-- **Redux → OIMDB**: When Redux state changes via child reducer, linked indexes are updated
-
-- **OIMDB → Redux**: When OIMDB collection changes directly, linked indexes are updated automatically
-
-The entity's PK (obtained via `getPk`) becomes the index key, and the array field values become the index values. Index updates are triggered when the array field changes **by reference** (`===` comparison). No need to create separate index reducers:
-
-```typescript
-import { 
-    OIMDBReduxAdapter,
-    TOIMDBReduxDefaultCollectionState,
-    TOIMDBReduxCollectionReducerChildOptions 
-} from '@oimdb/redux-adapter';
-import { OIMReactiveIndexManualArrayBased } from '@oimdb/core';
-
-interface Deck {
-    id: string;
-    cardIds: string[]; // Array of card IDs
-    name: string;
-}
-
-const decksCollection = new OIMReactiveCollection<Deck, string>(queue, {
-    selectPk: (deck) => deck.id
-});
-
-// Use ArrayBased index for full array replacements (recommended for redux-adapter)
-// The adapter optimizes ArrayBased indexes by skipping diff computation
-const cardsByDeckIndex = new OIMReactiveIndexManualArrayBased<string, string>(queue);
-
-const childReducer = (
-    state: TOIMDBReduxDefaultCollectionState<Deck, string> | undefined,
-    action: Action
-): TOIMDBReduxDefaultCollectionState<Deck, string> => {
-    if (state === undefined) {
-        return { entities: {}, ids: [] };
-    }
-    
-    if (action.type === 'UPDATE_DECK_CARDS') {
-        const { deckId, cardIds } = action.payload;
-        const deck = state.entities[deckId];
-        if (deck) {
-            return {
-                ...state,
-                entities: {
-                    ...state.entities,
-                    [deckId]: { ...deck, cardIds } // Update cardIds array
-                }
-            };
-        }
-    }
-    
-    return state;
-};
-
-const childOptions: TOIMDBReduxCollectionReducerChildOptions<
-    Deck,
-    string,
-    TOIMDBReduxDefaultCollectionState<Deck, string>
-> = {
-    reducer: childReducer,
-    getPk: (deck) => deck.id,
-    linkedIndexes: [
-        {
-            index: cardsByDeckIndex,
-            fieldName: 'cardIds', // Array field containing PKs
-        },
-    ],
-};
-
-const decksReducer = adapter.createCollectionReducer(
-    decksCollection,
-    childOptions
-);
-
-// When deck.cardIds changes (by reference), the index is automatically updated:
-// - index[deck.id] = deck.cardIds
-// - Old values removed, new values added automatically
-// - Works in both directions: Redux → OIMDB and OIMDB → Redux
-// No need to create a separate index reducer!
-
-// Example: Update via Redux
-store.dispatch({
-    type: 'UPDATE_DECK_CARDS',
-    payload: { deckId: 'deck1', cardIds: ['card1', 'card2', 'card3'] }
-});
-
-// Index automatically updated: cardsByDeckIndex['deck1'] = ['card1', 'card2', 'card3']
-
-// Example: Update via OIMDB
-decksCollection.upsertOne({
-    id: 'deck1',
-    cardIds: ['card4', 'card5'], // New array reference
-    name: 'Deck 1'
-});
-
-queue.flush(); // Triggers OIMDB_UPDATE action
-
-// Index automatically updated: cardsByDeckIndex['deck1'] = ['card4', 'card5']
-```
+Do **not** combine `linkedIndexes` with this adapter's middleware. The linked-index write happens while the adapter handles `OIMDB_UPDATE`, which is dispatched inside the channel's flush, and OIMDB refuses every write for the whole of a flush. The refusal goes to the channel's error policy and the index change is lost, not delayed. Keep such a bucket in step from your own write path instead, as in [Index Reducers](#index-reducers).
 
 ### Custom State Structure
 
 Use custom mappers for any Redux state structure:
 
 ```typescript
+import type { TOIMReduxCollectionMapper } from '@oimdb/redux-adapter';
+
 // Array-based state
-type ArrayBasedState = {
-    users: User[];
+type TArrayBasedState = {
+    users: TUser[];
 };
 
-const arrayMapper = (collection: OIMReactiveCollection<User, string>) => {
-    return {
-        users: collection.getAll()
-    };
+const arrayMapper: TOIMReduxCollectionMapper<TUser, string, TArrayBasedState> = (entityService, entityStoreSlot) => {
+    const list: TUser[] = [];
+    for (const slot of entityService.getSlots(entityStoreSlot)) {
+        if (slot.entity !== undefined) list.push(slot.entity);
+    }
+    return { users: list };
 };
 
-const arrayReducer = adapter.createCollectionReducer(users, undefined, arrayMapper);
-
-// Custom extractor for array-based state
-const childOptions: TOIMDBReduxCollectionReducerChildOptions<User, string, ArrayBasedState> = {
-    reducer: (state, action) => {
-        // Your custom reducer logic
-        return state;
-    },
-    extractEntities: (prevState, nextState, collection, getPk) => {
-        const prevIds = (prevState?.users ?? []).map(u => getPk(u));
-        const nextIds = nextState.users.map(u => getPk(u));
-        
-        // Use utility function for efficient diffing
-        const { findUpdatedInArray } = require('@oimdb/redux-adapter');
-        const diff = findUpdatedInArray(prevIds, nextIds);
-        
-        // Sync changes to OIMDB
-        if (diff.added.length > 0 || diff.updated.length > 0) {
-            const toUpsert = nextState.users.filter(u => 
-                diff.added.includes(getPk(u)) || diff.updated.includes(getPk(u))
-            );
-            collection.upsertMany(toUpsert);
-        }
-        
-        if (diff.removed.length > 0) {
-            collection.removeManyByPks(diff.removed);
-        }
-    },
-    getPk: (user) => user.id
-};
+const arrayReducer = adapter.createCollectionReducer(userService, users, undefined, arrayMapper);
 ```
+
+A collection mapper is `(entityService, entityStoreSlot, updatedKeys, currentState)`.
 
 ## 🔄 Migration Strategy
 
@@ -334,20 +233,20 @@ const childOptions: TOIMDBReduxCollectionReducerChildOptions<User, string, Array
 Start by adding OIMDB for new features while keeping existing Redux code unchanged:
 
 ```typescript
-const adapter = new OIMDBReduxAdapter(queue);
-const middleware = adapter.createMiddleware();
+import { applyMiddleware, combineReducers, createStore } from 'redux';
+import type { TOIMReduxDefaultCollectionState } from '@oimdb/redux-adapter';
 
 const store = createStore(
     combineReducers({
         // Existing Redux reducers
         ui: uiReducer,
         auth: authReducer,
-        
+
         // New OIMDB-backed reducers
-        users: adapter.createCollectionReducer(usersCollection),
-        posts: adapter.createCollectionReducer(postsCollection),
+        users: adapter.createCollectionReducer<TUser, string, TOIMReduxDefaultCollectionState<TUser, string>>(userService, users),
+        posts: adapter.createCollectionReducer<TPost, string, TOIMReduxDefaultCollectionState<TPost, string>>(postService, posts),
     }),
-    applyMiddleware(middleware)
+    applyMiddleware(adapter.createMiddleware())
 );
 
 adapter.setStore(store);
@@ -358,18 +257,24 @@ adapter.setStore(store);
 Gradually replace Redux reducers with OIMDB collections, using child reducers to maintain compatibility:
 
 ```typescript
+import { applyMiddleware, createStore, type Action } from 'redux';
+import type { TOIMReduxDefaultCollectionState } from '@oimdb/redux-adapter';
+
+type TUsersState = TOIMReduxDefaultCollectionState<TUser, string>;
+
 // Old Redux reducer
-const oldUsersReducer = (state, action) => {
+const oldUsersReducer = (state: TUsersState = { entities: {}, ids: [] }, action: Action): TUsersState => {
     // ... existing logic
+    return state;
 };
 
 // New OIMDB-backed reducer with compatibility layer
-const adapter = new OIMDBReduxAdapter(queue);
-const newUsersReducer = adapter.createCollectionReducer(
-    usersCollection,
+const newUsersReducer = adapter.createCollectionReducer<TUser, string, TUsersState>(
+    userService,
+    users,
     {
         reducer: oldUsersReducer, // Reuse existing reducer logic
-        getPk: (user) => user.id
+        selectKey: (user) => user.id
     }
 );
 
@@ -390,25 +295,30 @@ Once all collections are migrated, you can remove Redux entirely and use OIMDB d
 ### Custom Mappers
 
 ```typescript
-const customMapper: TOIMDBReduxCollectionMapper<User, string, CustomState> = (
-    collection,
+import type { TOIMReduxCollectionMapper } from '@oimdb/redux-adapter';
+
+type TCustomState = { entities: Record<string, TUser>; ids: string[] };
+
+const customMapper: TOIMReduxCollectionMapper<TUser, string, TCustomState> = (
+    entityService,
+    entityStoreSlot,
     updatedKeys,
     currentState
 ) => {
     // Your custom mapping logic
     // Only process entities in updatedKeys for performance
-    const entities: Record<string, User> = {};
+    const entities: Record<string, TUser> = {};
     const ids: string[] = [];
-    
+
     if (currentState) {
         // Reuse existing state
         Object.assign(entities, currentState.entities);
         ids.push(...currentState.ids);
     }
-    
+
     // Update only changed entities
     for (const id of updatedKeys) {
-        const entity = collection.getOneByPk(id);
+        const entity = entityService.getSlotByKey(entityStoreSlot, id).entity;
         if (entity) {
             entities[id] = entity;
             if (!ids.includes(id)) {
@@ -422,61 +332,70 @@ const customMapper: TOIMDBReduxCollectionMapper<User, string, CustomState> = (
             }
         }
     }
-    
+
     return { entities, ids };
 };
 ```
 
 ### Index Reducers
 
+An index is registered as a small object rather than a bare index, because the adapter needs the entity collection the bucket members belong to. The setup above builds `keyedIndex`: users bucketed by team. `createKeyedIndexReducer` mirrors an index addressed by a key; `createGlobalIndexReducer` does the same for one bucket over the whole population (`TOIMReduxGlobalIndex`).
+
 #### Simple One-Way Sync (OIMDB → Redux)
 
 ```typescript
-import { OIMReactiveIndexManualArrayBased } from '@oimdb/core';
-
-// Create index (ArrayBased recommended for redux-adapter - optimized performance)
-const userRolesIndex = new OIMReactiveIndexManualArrayBased<string, string>(queue);
+import { applyMiddleware, combineReducers, createStore } from 'redux';
+import type { TOIMReduxDefaultCollectionState, TOIMReduxDefaultIndexState } from '@oimdb/redux-adapter';
 
 // Create reducer for index
-const adapter = new OIMDBReduxAdapter(queue);
-const rolesReducer = adapter.createIndexReducer(userRolesIndex);
+const usersByTeamReducer = adapter.createKeyedIndexReducer<
+    string, string, TOIMReduxDefaultIndexState<string, string>, TUser
+>(keyedIndex);
 
 // Use in Redux store with middleware
 const store = createStore(
     combineReducers({
-        users: usersReducer,
-        userRoles: rolesReducer,
+        users: adapter.createCollectionReducer<TUser, string, TOIMReduxDefaultCollectionState<TUser, string>>(userService, users),
+        usersByTeam: usersByTeamReducer,
     }),
     applyMiddleware(adapter.createMiddleware())
 );
 
 adapter.setStore(store);
+
+userService.writeSlotContentByKey(users, 'u1', { id: 'u1', name: 'Alice', teamId: 'eng' });
+const alice = userService.holdSlotByKey(users, 'u1');
+const eng = byTeamService.holdSlotByKey(byTeam, 'eng');
+byTeamService.slotContentService.writeSlotContent(eng, [alice]);
+eng.owner.unholdSlot(eng);
+alice.owner.unholdSlot(alice);
+db.flush();
 ```
+
+A write to a user files it in no bucket: whoever writes the entity also writes the bucket it belongs to.
 
 #### Two-Way Sync (OIMDB ↔ Redux) for Indexes
 
 Enable bidirectional synchronization for indexes by providing a child reducer:
 
 ```typescript
-import { 
-    OIMDBReduxAdapter,
-    TOIMDBReduxDefaultIndexState,
-    TOIMDBReduxIndexReducerChildOptions 
+import { applyMiddleware, createStore, type Action } from 'redux';
+import type {
+    TOIMReduxDefaultIndexState,
+    TOIMReduxIndexReducerChildOptions,
 } from '@oimdb/redux-adapter';
-import { Action } from 'redux';
-import { createStore, applyMiddleware } from 'redux';
+
+type TByTeamState = TOIMReduxDefaultIndexState<string, string>;
+type TUpdateIndexKey = Action<'UPDATE_INDEX_KEY'> & { payload: { key: string; ids: string[] } };
 
 // Child reducer handles custom Redux actions
-const childReducer = (
-    state: TOIMDBReduxDefaultIndexState<string, string> | undefined,
-    action: Action
-): TOIMDBReduxDefaultIndexState<string, string> => {
+const childReducer = (state: TByTeamState | undefined, action: Action): TByTeamState => {
     if (state === undefined) {
         return { entities: {} };
     }
-    
+
     if (action.type === 'UPDATE_INDEX_KEY') {
-        const { key, ids } = action.payload;
+        const { key, ids } = (action as TUpdateIndexKey).payload;
         return {
             ...state,
             entities: {
@@ -485,21 +404,16 @@ const childReducer = (
             }
         };
     }
-    
+
     return state;
 };
 
-const childOptions: TOIMDBReduxIndexReducerChildOptions<
-    string,
-    string,
-    TOIMDBReduxDefaultIndexState<string, string>
-> = {
+const childOptions: TOIMReduxIndexReducerChildOptions<string, string, TByTeamState, TUser> = {
     reducer: childReducer,
-    // extractIndexState is optional - default implementation handles TOIMDBReduxDefaultIndexState
 };
 
 // Create reducer with child
-const indexReducer = adapter.createIndexReducer(userRolesIndex, childOptions);
+const indexReducer = adapter.createKeyedIndexReducer<string, string, TByTeamState, TUser>(keyedIndex, childOptions);
 
 // Create store with middleware
 const store = createStore(
@@ -510,90 +424,66 @@ const store = createStore(
 adapter.setStore(store);
 
 // Redux actions automatically sync back to OIMDB
-// Middleware automatically flushes queue after dispatch
+// Middleware automatically flushes the channel after dispatch
 store.dispatch({
     type: 'UPDATE_INDEX_KEY',
-    payload: { key: 'role1', ids: ['user1', 'user2', 'user3'] }
+    payload: { key: 'eng', ids: ['u1', 'u2', 'u3'] }
 });
 
-// No manual queue.flush() needed - middleware handles it!
-// OIMDB index is automatically updated
-const pks = userRolesIndex.index.getPksByKey('role1'); // Returns TPk[] for ArrayBased
-console.log(pks); // ['user1', 'user2', 'user3']
+// OIMDB bucket is automatically updated
+const engBucket = byTeamService.peekSlotByKey(byTeam, 'eng');
+if (engBucket !== undefined) {
+    console.log(Array.from(byTeamService.slotContentService.getBucketMemberSlots(engBucket), slot => slot.key)); // ['u1', 'u2', 'u3']
+}
 ```
+
+A child reducer whose state is not the default shape can take `extractIndexState(prevState, nextState, keyedIndex)`.
 
 ## 📊 Performance
 
 The adapter is optimized for large datasets:
 
-- **Efficient Diffing**: Uses optimized algorithms to detect changes
+- **Watches identities, not the store**: Each entity and bucket reports its own change; an entity that never moves is never touched
 
-- **Batched Updates**: Changes are coalesced and applied in batches
+- **Batched Updates**: Changes are coalesced and dispatched once per frame
 
 - **Selective Updates**: Only changed entities are processed
 
 - **Memory Efficient**: Reuses state objects when possible
 
-### Index Performance Optimization
+### Bucket Content Services
 
-The adapter intelligently handles different index types for optimal performance:
+How a bucket holds its members is decided by the bucket collection's `slotContentService`, which you choose when you create it with `createOIMSlotCollectionService`:
 
-- **ArrayBased Indexes** (using `setPks`): When linked indexes use ArrayBased indexes, the adapter directly sets the new array without computing diffs. This eliminates unnecessary array comparisons and `getPksByKey` calls, providing significant performance improvements, especially with many linked indexes.
+- `OIMSetBucketContentService` keeps members in a set (insertion order, no duplicates).
 
-- **SetBased Indexes** (using `addPks`/`removePks`): For SetBased indexes, the adapter computes diffs to apply incremental updates, which is more efficient than full replacements for Set-based data structures.
+- `OIMPositionalArrayBucketContentService` (the default) keeps them at positions the caller places.
 
-**Recommendation**: For redux-adapter, prefer **ArrayBased indexes** for linked indexes, as they provide the best performance when replacing entire arrays (which is the common pattern when syncing from Redux state).
+- `OIMSortedArrayBucketContentService` keeps them in a sorter's order.
 
-**Example:**
-
-```typescript
-// ArrayBased index - direct assignment (fast, recommended for redux-adapter)
-const cardsByDeckIndex = new OIMReactiveIndexManualArrayBased<string, string>(queue);
-
-// When deck.cardIds changes, adapter simply does:
-// index.setPks(deckId, newCardIds) - no diff computation needed!
-
-// SetBased index - incremental updates (efficient for Sets)
-const tagsByUserIndex = new OIMReactiveIndexManualSetBased<string, string>(queue);
-
-// When user.tags changes, adapter computes diff and uses:
-// index.addPks(userId, toAdd) and index.removePks(userId, toRemove)
-```
+Whichever you pick, a bucket is written the same way, with `bucketService.slotContentService.writeSlotContent(bucketSlot, slots)`, so the adapter treats every bucket collection alike.
 
 ## 🔍 Utility Functions
 
-### `findUpdatedInRecord`
+### `diffOIMEntityKeys`
 
-Efficiently find differences between two entity records (dictionaries):
+Efficiently find differences between two entity records (dictionaries). Keys are compared as strings, and an entry counts as updated when its value changed by reference:
 
 ```typescript
-import { findUpdatedInRecord } from '@oimdb/redux-adapter';
+import { diffOIMEntityKeys } from '@oimdb/redux-adapter';
 
-const oldEntities = { '1': user1, '2': user2 };
-const newEntities = { '1': user1Updated, '3': user3 };
+const ann: TUser = { id: '1', name: 'Ann', teamId: 'eng' };
+const bob: TUser = { id: '2', name: 'Bob', teamId: 'eng' };
+const cid: TUser = { id: '3', name: 'Cid', teamId: 'design' };
 
-const diff = findUpdatedInRecord(oldEntities, newEntities);
+const oldEntities = { '1': ann, '2': bob };
+const newEntities = { '1': { ...ann, name: 'Ann B.' }, '3': cid };
+
+const diff = diffOIMEntityKeys(oldEntities, newEntities);
 // diff.added = Set(['3'])
 // diff.updated = Set(['1'])
 // diff.removed = Set(['2'])
-// diff.all = Set(['1', '2', '3'])
-```
-
-### `findUpdatedInArray`
-
-Efficiently find differences between two arrays of primary keys:
-
-```typescript
-import { findUpdatedInArray } from '@oimdb/redux-adapter';
-
-const oldIds = ['1', '2', '3'];
-const newIds = ['1', '3', '4'];
-
-const diff = findUpdatedInArray(oldIds, newIds);
-// diff.added = ['4']
-// diff.updated = ['1', '3']
-// diff.removed = ['2']
-// diff.all = ['1', '2', '3', '4']
+// diff.all = Set(['3', '1', '2'])
 ```
 
 ## 🎨 TypeScript Support
@@ -602,48 +492,53 @@ Full type safety with comprehensive TypeScript definitions:
 
 ```typescript
 import type {
-    TOIMDBReduxCollectionMapper,
-    TOIMDBReduxIndexMapper,
-    TOIMDBReduxDefaultCollectionState,
-    TOIMDBReduxDefaultIndexState,
-    TOIMDBReduxCollectionReducerChildOptions,
-    TOIMDBReduxLinkedIndex,
-    TOIMDBReduxIndexReducerChildOptions,
-    TOIMDBReduxUpdatedEntitiesResult,
-    TOIMDBReduxUpdatedArrayResult,
+    TOIMReduxAdapterOptions,
+    TOIMReduxCollectionMapper,
+    TOIMReduxIndexMapper,
+    TOIMReduxGlobalIndexMapper,
+    TOIMReduxDefaultCollectionState,
+    TOIMReduxDefaultIndexState,
+    TOIMReduxDefaultGlobalIndexState,
+    TOIMReduxCollectionReducerChildOptions,
+    TOIMReduxIndexReducerChildOptions,
+    TOIMReduxGlobalIndexReducerChildOptions,
+    TOIMReduxGlobalIndex,
+    TOIMReduxLinkedIndex,
+    TOIMReduxEntityKeysDiff,
+    TOIMReduxUpdateAction,
 } from '@oimdb/redux-adapter';
 ```
 
 ## 📚 API Reference
 
-### `OIMDBReduxAdapter`
+### `OIMReduxAdapter`
 
-Main adapter class for integrating OIMDB with Redux. Creates Redux reducers from OIMDB collections and provides middleware for automatic event queue flushing.
+Main adapter class for integrating OIMDB with Redux. Creates Redux reducers from OIMDB entity collections and bucket indexes and provides middleware that flushes the OIMDB channel after each action.
 
 #### Methods
 
-- `createCollectionReducer<TEntity, TPk, TState>(collection, child?, mapper?)`: Create reducer for a collection
+- `createCollectionReducer<TEntity, TPk, TState>(entityService, entityStoreSlot, child?, mapper?)`: Create reducer for an entity collection
 
-- `createIndexReducer<TIndexKey, TPk, TState>(index, child?, mapper?)`: Create reducer for an index (supports both SetBased and ArrayBased indexes)
+- `createKeyedIndexReducer<TIndexKey, TPk, TState, TEntity>(keyedIndex, child?, mapper?)`: Create reducer for an index addressed by a key
 
-- `createMiddleware()`: Create Redux middleware that automatically flushes the event queue after each action
+- `createGlobalIndexReducer<TPk, TState, TEntity>(globalIndex, child?, mapper?)`: Create reducer for one bucket over the whole population
 
-- `setStore(store)`: Set Redux store (can be called later)
+- `createMiddleware()`: Create Redux middleware that flushes the channel after each action
 
-- `flushSilently()`: Flush the event queue without triggering OIMDB_UPDATE dispatch (used internally by middleware)
+- `setStore(store)`: Set Redux store (can be called later); dispatches at once if anything moved before the store existed
+
+- `dispose()`: Drop every subscription the adapter holds
 
 #### Constructor Options
 
-- `defaultCollectionMapper`: Default mapper for all collections
-
-- `defaultIndexMapper`: Default mapper for all indexes
+- `channelMap`: the `OIMDB` (or any `IOIMChannelMap`) whose default channel the adapter runs on
 
 #### Automatic Flushing
 
-The middleware created by `createMiddleware()` automatically calls `flushSilently()` after every Redux action. This ensures that:
+The middleware created by `createMiddleware()` flushes the channel (the same thing `db.flush()` does) after every Redux action. The effect:
 
-- Events triggered by child reducers are processed synchronously
+- Writes made by child reducers are processed synchronously, and projections re-run
 
-- No manual `queue.flush()` is needed when updating OIMDB from Redux
+- No manual `db.flush()` is needed when updating OIMDB from Redux
 
-- OIMDB_UPDATE dispatch is not triggered unnecessarily (preventing loops)
+- The flush drains the whole pending frame, so an action that wrote back costs one extra `OIMDB_UPDATE` dispatch

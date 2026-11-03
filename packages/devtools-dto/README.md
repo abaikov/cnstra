@@ -2,56 +2,59 @@
 
 Data Transfer Objects (DTOs) for the CNStra DevTools protocol.
 
-📚 **[Full Documentation](https://cnstra.org/)** | [DevTools Guide](https://cnstra.org/docs/examples/devtools)
+📚 **[Full Documentation](https://cnstra.org/)** | [DevTools Guide](https://cnstra.org/docs/devtools/overview)
 
 ## Data Model Overview
 
 The CNStra DevTools uses a normalized data model where neural network relationships are represented through separate entities rather than embedded relationships.
 
 > Note: `@cnstra/core` runtime routing is identity-based (signals carry a collateral *object reference*, neurons/collaterals do not have built-in names/ids).  
-> DevTools DTOs are the **persistence/debug layer** and therefore use stable string ids/names such as `collateralName`, `neuronId`, and `stimulationId`.
+> DevTools DTOs are the **persistence/debug layer** and therefore use stable string names and ids such as `neuronName`, `collateralName`, and `stimulationId`. Names are unique within one CNS instance (`cnsId`).
 
-### Core Entities
+### Topology entities
 
-#### `Neuron`
+#### `TCNSNeuronDTO`
 - Represents a processing unit in the neural network
-- Contains: `id`, `appId`, `name`, `axonCollaterals?`
-- **Important**: `axonCollaterals` is provided for compatibility but use `Collateral` entities for authoritative relationships
+- Contains: `name`, `cnsId`, `appId`
 
-#### `Collateral`
+#### `TCNSCollateralDTO`
 - Represents an output channel (axon collateral) that neurons use to send signals
-- Contains: `collateralName`, `neuronId`, `appId`, `type`
-- **Key relationship**: `neuronId` indicates which neuron OWNS this collateral (signal source)
+- Contains: `name`, `ownerNeuronName?`, `cnsId`, `appId`
+- **Key relationship**: `ownerNeuronName` names the neuron that OWNS this collateral (signal source); absent means an entry collateral that no axon owns
 
-#### `Dendrite`
+#### `TCNSDendriteDTO`
 - Represents an input channel that neurons use to receive signals
-- Contains: `dendriteId`, `neuronId`, `appId`, `collateralName`, `type`, `collateralNames`
+- Contains: `neuronName`, `collateralName`, `cnsId`, `appId`
 - **Key relationships**:
-  - `neuronId` indicates which neuron OWNS this dendrite (signal destination)
-  - `collateralName` indicates which collateral this dendrite listens to
+  - `neuronName` names the neuron that OWNS this dendrite (signal destination)
+  - `collateralName` names the collateral this dendrite listens to
 
 ### Building Neural Network Connections
 
 To create connections between neurons in the DevTools visualization:
 
-1. **Find signal sources**: Use `Collateral.neuronId` to map collateral names → owning neurons
-2. **Find signal destinations**: Use `Dendrite.collateralName` + `Dendrite.neuronId` to map collateral names → listening neurons
+1. **Find signal sources**: Use `ownerNeuronName` on each `TCNSCollateralDTO` to map collateral names → owning neurons
+2. **Find signal destinations**: Use `collateralName` + `neuronName` on each `TCNSDendriteDTO` to map collateral names → listening neurons
 3. **Create connections**: For each collateral, connect the owning neuron → all listening neurons
 
 ```typescript
-// Example connection building logic
-const ownerByCollateral = new Map<string, string>(); // collateralName -> owner neuronId
-collaterals.forEach(c => ownerByCollateral.set(c.collateralName, c.neuronId));
+import type { TCNSTopologyMessageDTO } from '@cnstra/devtools-dto';
 
-const listenersByCollateral = new Map<string, Set<string>>(); // collateralName -> listener neuronIds
-dendrites.forEach(d => {
-    const listeners = listenersByCollateral.get(d.collateralName) || new Set();
-    listeners.add(d.neuronId);
+declare const topology: TCNSTopologyMessageDTO;
+
+const ownerByCollateral = new Map<string, string>();
+topology.collaterals.forEach(c => {
+    if (c.ownerNeuronName) ownerByCollateral.set(c.name, c.ownerNeuronName);
+});
+
+const listenersByCollateral = new Map<string, Set<string>>();
+topology.dendrites.forEach(d => {
+    const listeners = listenersByCollateral.get(d.collateralName) || new Set<string>();
+    listeners.add(d.neuronName);
     listenersByCollateral.set(d.collateralName, listeners);
 });
 
-// Build connections: owner → listeners
-const connections = [];
+const connections: { from: string; to: string; via: string }[] = [];
 listenersByCollateral.forEach((listeners, collateralName) => {
     const owner = ownerByCollateral.get(collateralName);
     if (owner) {
@@ -64,45 +67,47 @@ listenersByCollateral.forEach((listeners, collateralName) => {
 });
 ```
 
-### Runtime Data vs Events
+### Runtime data
 
-#### `Stimulation`
-- Represents a signal event sent on a collateral
-- Contains: `stimulationId`, `neuronId`, `appId`, `collateralName`, `timestamp`, `payload`, `contexts`
-- Use for: Activity visualization, signal flow tracking
+The runtime records are the name-based resumable-execution model, re-exported from `@cnstra/persist-dto`.
 
-#### `StimulationResponse`
-- Represents a neuron's response to receiving a stimulation
-- Contains: `responseId`, `stimulationId`, `neuronId`, `appId`, `timestamp`, `error`, `duration`
-- Use for: Performance monitoring, error tracking
+#### `TCNSStimulationState`
+- One stimulation (a run), stable across retries
+- Contains: `stimulationId`, `entry`, `status`, `progress`, `scopeName?`
+
+#### `TCNSStimulationAttempt`
+- One execution of a stimulation; a retry starts a new attempt
+- Contains: `stimulationAttemptId`, `stimulationId`, `attemptNumber`, `status`, `startedAt`, `completedAt`, `hopCount`, `hasError`, `replayOf`, `entry`
+- Use for: retry history, attempt timelines
+
+#### `TCNSStimulationTask`
+- One neuron activation (hop) inside an attempt
+- Contains: `stimulationAttemptId`, `index`, `neuronName`, `dendriteCollateralName`, `inputIndex`, `output`, `status`, `error`, `startedAt`, `duration`, `activationContext?`
+- Use for: signal flow tracking, performance monitoring, error tracking
 
 ### Message Types
 
-#### `InitMessage`
-- Sent when DevTools connects to establish initial topology
-- Contains: `neurons[]`, `collaterals[]`, `dendrites[]`
-- Use for: Building static network structure
+#### `TCNSTopologyMessageDTO`
+- Sent by an app to describe its static network structure
+- Contains: `cnsId`, `appId`, `appName`, `version`, `timestamp`, `neurons[]`, `collaterals[]`, `dendrites[]`
 
-#### `StimulationMessage` / `StimulationBatchMessage`
-- Sent during runtime to report signal activity
-- Use for: Real-time activity visualization
+#### `TCNSAppBatchMessageDTO`
+- Sent by an app during runtime; `items` mixes topology messages with `cns.stimulation`, `cns.stimulation.attempt` and `cns.stimulation.task` records
+- Use for: real-time activity visualization
 
-#### `ResponseBatchMessage`
-- Sent during runtime to report neuron responses
-- Use for: Real-time performance monitoring
+#### `TCNSClientMessageDTO` / `TCNSServerMessageDTO`
+- The panel ↔ server protocol: queries, scheduled list, retry, clone, command and launch requests, and their results and broadcasts
 
 ## Common Pitfalls
 
-### ⚠️  Use `Collateral` entities for relationships
-While `Neuron.axonCollaterals` exists for backward compatibility, use separate `Collateral` entities for authoritative relationship data.
-
-### ❌ Don't confuse stimulations with responses
-- `Stimulation` = signal sent on a collateral
-- `StimulationResponse` = neuron's processing result
-- For activity counts, use stimulations (events) not responses (results)
+### ❌ Don't confuse a stimulation with its tasks
+- `TCNSStimulationState` = the run as a whole
+- `TCNSStimulationAttempt` = one execution of that run
+- `TCNSStimulationTask` = one neuron activation inside an attempt
+- For activity counts, count tasks
 
 ### ❌ Don't rely on embedded relationships
-All relationships are represented through separate entities and foreign keys, not embedded arrays.
+All relationships are represented through separate entities joined by name within a `cnsId`, not embedded arrays.
 
 ## Architecture Notes
 

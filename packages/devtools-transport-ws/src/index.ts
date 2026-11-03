@@ -1,11 +1,10 @@
 import type { ICNSDevToolsTransport } from '@cnstra/devtools';
 import {
-    CNSReplayStartMessageDTOSchema,
     CNSAppCommandDTOSchema,
     type TCNSAppBatchMessageDTO,
 } from '@cnstra/devtools-dto';
 
-export type CNSDevToolsTransportWsOptions = {
+export type TCNSDevToolsTransportWsOptions = {
     /** WebSocket URL, e.g. ws://localhost:3141 */
     url: string;
     protocols?: string | string[];
@@ -29,10 +28,9 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
 
     private readonly pendingBatches: TCNSAppBatchMessageDTO[] = [];
     private lastTopologyBatch?: TCNSAppBatchMessageDTO;
-    private onReplayHandler?: (cmd: any) => void;
     private onCommandHandler?: (cmd: any) => void;
 
-    constructor(private readonly opts: CNSDevToolsTransportWsOptions) {}
+    constructor(private readonly opts: TCNSDevToolsTransportWsOptions) {}
 
     // ─── ICNSDevToolsTransport ────────────────────────────────────────────────────
 
@@ -42,11 +40,6 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
         }
         this.pendingBatches.push(message);
         await this.flush();
-    }
-
-    onReplayStart(handler: (cmd: any) => void): () => void {
-        this.onReplayHandler = handler;
-        return () => { this.onReplayHandler = undefined; };
     }
 
     onStimulationCommand(handler: (cmd: any) => void): () => void {
@@ -63,7 +56,7 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
         return impl;
     }
 
-    private ensureSocket(): Promise<void> {
+    private openSocket(): Promise<void> {
         if (this.ws?.readyState === 1) return Promise.resolve();
         if (this.connecting) {
             return new Promise(resolve => {
@@ -95,7 +88,7 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
                     if (this.opts.consoleLogEnabled) {
                         console.log(`[DevTools] Disconnected, reconnecting (attempt ${this.reconnectAttempts})`);
                     }
-                    setTimeout(() => this.ensureSocket().catch(() => {}), this.opts.reconnectDelayMs ?? 1000);
+                    setTimeout(() => this.openSocket().catch(() => {}), this.opts.reconnectDelayMs ?? 1000);
                 } else if (this.reconnectAttempts >= (this.opts.maxReconnectAttempts ?? Infinity)) {
                     if (this.opts.consoleLogEnabled) console.log('[DevTools] Max reconnect attempts reached');
                 }
@@ -106,14 +99,7 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
             ws.onmessage = (ev: MessageEvent) => {
                 try {
                     const msg = JSON.parse(typeof ev.data === 'string' ? ev.data : String(ev.data));
-                    if (msg?.type === 'replay.start') {
-                        const result = CNSReplayStartMessageDTOSchema.safeParse(msg);
-                        if (result.success) {
-                            this.onReplayHandler?.(result.data);
-                        } else if (this.opts.consoleLogEnabled) {
-                            console.warn('[DevTools] Invalid replay.start message:', result.error.message);
-                        }
-                    } else if (
+                    if (
                         msg?.type === 'cns.stimulation.resume' ||
                         msg?.type === 'cns.stimulation.launch'
                     ) {
@@ -131,7 +117,7 @@ export class CNSDevToolsTransportWs implements ICNSDevToolsTransport {
 
     private async flush(): Promise<void> {
         if (this.pendingBatches.length === 0) return;
-        await this.ensureSocket();
+        await this.openSocket();
         if (this.ws?.readyState !== 1) return;
 
         const batches = this.pendingBatches.splice(0, this.pendingBatches.length);

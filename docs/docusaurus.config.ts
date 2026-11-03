@@ -1,3 +1,4 @@
+import path from 'path';
 import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import { themes as prismThemes } from 'prism-react-renderer';
@@ -67,6 +68,26 @@ const config: Config = {
         ],
     ],
 
+    plugins: [
+        () => ({
+            name: 'cnstra-engine-from-source',
+            configureWebpack: () => ({
+                resolve: {
+                    alias: {
+                        '@cnstra/core$': path.resolve(
+                            __dirname,
+                            '../packages/core/src/index.ts'
+                        ),
+                        '@cnstra/types$': path.resolve(
+                            __dirname,
+                            '../packages/types/src/index.ts'
+                        ),
+                    },
+                },
+            }),
+        }),
+    ],
+
     themeConfig: {
         image: 'img/logo.svg',
         metadata: [
@@ -108,7 +129,7 @@ const config: Config = {
                 content:
                     'Type-safe orchestration for React & Node.js. Zero dependencies. Deterministic state machines, saga patterns, SOLID/SRP. Alternative to Redux, XState, MobX.',
             },
-            { name: 'theme-color', content: '#0a0908' },
+            { name: 'theme-color', content: '#0c0c11' },
             { name: 'author', content: 'CNStra Team' },
             { name: 'robots', content: 'index, follow' },
             { name: 'googlebot', content: 'index, follow' },
@@ -197,7 +218,7 @@ const config: Config = {
         colorMode: {
             defaultMode: 'dark',
             disableSwitch: false,
-            respectPrefersColorScheme: true,
+            respectPrefersColorScheme: false,
         },
         prism: {
             theme: prismThemes.dracula,

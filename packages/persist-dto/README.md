@@ -11,9 +11,9 @@ is its source of truth).
 
 | role | type | id |
 |---|---|---|
-| the **stable logical unit** a human retries | **Stimulation** — `TCNSStimulation{Dto,Persisted}` | `stimulationId` (+ optional `scopeName`) |
-| **one attempt / execution** (a `cns.stimulate` / `cns.activate`) | **StimulationAttempt** — `TCNSStimulationAttempt{Dto,Persisted}` | `stimulationAttemptId` + `attemptNumber` |
-| **one settled hop** | **StimulationTask** — `TCNSStimulationTask{Dto,Persisted}` | ordinal `index` (belongs to an attempt) |
+| the **stable logical unit** a human retries | **Stimulation** — `TCNSStimulationState` | `stimulationId` (+ optional `scopeName`) |
+| **one attempt / execution** (a `cns.stimulate` / `cns.activate`) | **StimulationAttempt** — `TCNSStimulationAttempt` | `stimulationAttemptId` + `attemptNumber` |
+| **one settled hop** | **StimulationTask** — `TCNSStimulationTask` | ordinal `index` (belongs to an attempt) |
 
 `(stimulationId, attemptNumber)` is unique. Mnemonic ≈ Temporal: **Stimulation ≈ Workflow**
 (stable), **StimulationAttempt ≈ Run** (a specific execution). A Stimulation groups its attempts;
@@ -21,18 +21,18 @@ is its source of truth).
 
 ### `scopeName`
 
-`TCNSStimulation` carries an optional **`scopeName?: string`** — the identity of a CNS/graph.
+`TCNSStimulationState` carries an optional **`scopeName?: string`** — the identity of a CNS/graph.
 All attempts of a stimulation inherit it (a stimulation never spans scopes). **Unset → one default
 scope** (everything in one bucket); **set → routing + isolation:** neuron/collateral names are
 unique *within a scope*, and resume reads `stimulation.scopeName` to hydrate the frontier against
 the right CNS/registry — so auto-resume lands in the right CNS even when two graphs reuse a neuron
 name. Topology is stored/served under `scopeName` (a `scopeName` = one CNS's graph).
 
-## Emit vs stored
+## Task input
 
-Each entity has a `Dto` form (emitted, pre-id) and a `Persisted` form (stored, richer, defined
-independently). Task input is **inline** on the Dto (`input: TCNSSignalRef`) but **deduped** to
-an `inputIndex` slot on the Persisted form (input space = `[entry(0..k-1), tasks(k..)]`).
+A task does not carry its input: it stores an `inputIndex` slot into the input space
+`[entry(0..k-1), tasks(k..)]`, where `k` is the attempt's entry count. Below `k` the input is that
+entry signal, otherwise it is that task's `output`, so each payload is stored once.
 
 ## License
 

@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/react",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "React bindings for CNStra workflow/orchestration engine (provider + hooks).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/react"
+  },
   "keywords": [
     "react",
     "neural-network",

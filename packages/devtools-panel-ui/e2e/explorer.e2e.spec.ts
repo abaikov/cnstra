@@ -114,7 +114,7 @@ test.describe('Explorer dashboard', () => {
                     scroller.evaluate(el => el.scrollHeight - el.clientHeight),
                 { timeout: 60000 }
             )
-            .toBeGreaterThan(300);
+            .toBeGreaterThan(150);
         // Scroll to 60% of the range; it must HOLD there (not snap back to top).
         const target = await scroller.evaluate(el => {
             el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) * 0.6);

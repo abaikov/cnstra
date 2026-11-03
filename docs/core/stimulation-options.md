@@ -11,8 +11,17 @@ slug: /core/stimulation-options
 - `concurrency?: number` — per-run concurrency limit
 - `modality?: TCNSModality` — optional modality routing for `modalityDendrite`
 - `afferentPath?: TCNSAfferentPath` — optional afferent path selection for `modalityDendrite`
-- `stimulationContext?: object` — optional user-defined bag for listeners/handlers
+- `stimulationContext?: Record<string, unknown>` — data attached to the whole run, the same object on every hop; travels with the serialized frontier
 - `onDrain?: (drain) => void` — called once at the end of every synchronous turn; the batch boundary for state managers (see [API reference](./api.md#batch-boundaries-ondrain))
+
+```ts setup
+import type { CNS } from '@cnstra/core';
+import type { ICNSCollateral, TCNSSignal } from '@cnstra/types';
+
+declare const cns: CNS<any>;
+declare const signal: TCNSSignal<ICNSCollateral<unknown>>;
+declare const repo: { save(signal: TCNSSignal<ICNSCollateral<unknown>>): Promise<void> };
+```
 
 ```ts
 const controller = new AbortController();

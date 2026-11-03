@@ -1,25 +1,28 @@
 import type { CNSCollateral } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry, TCNSSignalJSON } from '@cnstra/persist';
 import { CNSStimulationPersistor, CNSProgressSerializer } from '@cnstra/persist';
-import type { ICNS, TCNSNeuron } from '@cnstra/types';
+import type { ICNS, ICNSStimulation, TCNSNeuron } from '@cnstra/types';
 import type { ICNSDevToolsTransport } from './interfaces/ICNSDevToolsTransport';
 import { CNSWireStimulationRepository } from './CNSWireStimulationRepository';
-import { buildAttemptId } from '@cnstra/devtools-dto';
+import { buildCNSAttemptId } from '@cnstra/devtools-dto';
 import type {
     TCNSAppBatchItemDTO,
     TCNSCollateralDTO,
     TCNSDendriteDTO,
     TCNSNeuronDTO,
-    TCNSReplayStartMessageDTO,
     TCNSAppCommandDTO,
 } from '@cnstra/devtools-dto';
 
 /**
- * A server-forwarded resume/launch command pre-assigns the resumable identity for
- * the very next stimulation this instance runs. It is consumed by the global
- * response listener on that stimulation's first response — since `cns.activate`/
- * `cns.stimulate` pump the first response synchronously (single-threaded), the
- * override cannot be claimed by any interleaved stimulation.
+ * The resumable identity a server-forwarded resume/launch command pre-assigns to
+ * the run it forwards. It is bound to that ONE stimulation object (see
+ * {@link CNSDevTools.runWithAssignedIdentity}) and read by the global response
+ * listener when that stimulation first reports.
+ *
+ * It is deliberately NOT "the identity of the next run this process reports":
+ * `cns.activate` over a frontier whose first neuron is async returns having
+ * emitted nothing, and any run started by anyone else in that window — an HTTP
+ * handler, a queue worker — would report first and be recorded as the retry.
  */
 type TStimulationOverride = {
     stimulationId: string;
@@ -27,14 +30,16 @@ type TStimulationOverride = {
     attemptNumber: number;
     entry: TCNSSignalJSON[];
     scopeName?: string;
+    /** The attempt this run was forked from (Clone provenance). */
+    replayOf?: string;
 };
 
 export type { ICNSDevToolsTransport } from './interfaces/ICNSDevToolsTransport';
 export { CNSWireStimulationRepository } from './CNSWireStimulationRepository';
 export { dumpCNSGraph, CNSHistoryLogger } from './inspect';
-export type { CNSHistoryLoggerOptions } from './inspect';
+export type { TCNSHistoryLoggerOptions } from './inspect';
 
-export type CNSDevToolsOptions = {
+export type TCNSDevToolsOptions = {
     /** Explicit CNS ID. If omitted, derived as `${appId}:cns`. */
     cnsId?: string;
     /** Human-readable app name shown in DevTools UI. */
@@ -63,32 +68,46 @@ const newStimulationId = (appId: string) => `${appId}:stim:${++stimulationCounte
 
 export class CNSDevTools {
     private readonly buffer: TCNSAppBatchItemDTO[] = [];
-    private unregisterReplay?: () => void;
     private unregisterCommand?: () => void;
-    /** Set just before a server-driven activate/stimulate; consumed on first response. */
-    private pendingStimulationOverride?: TStimulationOverride;
+    private unregisterResponses?: () => void;
+    /**
+     * Identity assigned by a server-driven activate/stimulate, keyed by the exact
+     * stimulation it was assigned FOR. Nothing is ever armed process-wide, so a
+     * concurrently started run cannot claim it. Weak, so a run that never reports
+     * (e.g. an aborted one) drops its entry with the stimulation itself.
+     */
+    private readonly assignedIdentities = new WeakMap<object, TStimulationOverride>();
     /** One-shot guard so a missing-registration warning isn't logged per response. */
     private resumeWarned = false;
 
     constructor(
         private readonly appId: string,
         private readonly transport: ICNSDevToolsTransport,
-        private readonly options: CNSDevToolsOptions = {}
+        private readonly options: TCNSDevToolsOptions = {}
     ) {}
 
+    /**
+     * Stimulation tracking is opt-OUT: only an explicit `false` disables it. Read
+     * through this getter EVERYWHERE the option is consulted — a second reading of
+     * the raw option is how the resume/clone command handler silently stopped being
+     * registered for every app that relies on the documented default.
+     */
+    private get tracksStimulations(): boolean {
+        return this.options.trackStimulations !== false;
+    }
+
     registerCNS(cns: ICNS<AnyNeuron>, registry: CNSPersistOptionsRegistry): void {
+        // Re-registering must not stack a second set of listeners on the same CNS:
+        // two live response listeners emit every task row twice, under two
+        // independent task numberings.
+        this.unregisterAll();
+
         const cnsId = this.options.cnsId ?? `${this.appId}:cns`;
 
         this.sendTopology(cns, registry, cnsId);
-        this.listenToStimulations(cns, registry, cnsId);
+        this.unregisterResponses = this.listenToStimulations(cns, registry, cnsId);
 
-        if (this.transport.onReplayStart) {
-            this.unregisterReplay = this.transport.onReplayStart(
-                cmd => this.handleReplay(cns, registry, cnsId, cmd)
-            );
-        }
-
-        if (this.options.trackStimulations && this.transport.onStimulationCommand) {
+        if (this.tracksStimulations && this.transport.onStimulationCommand) {
             this.unregisterCommand = this.transport.onStimulationCommand(
                 cmd => this.handleStimulationCommand(cns, registry, cnsId, cmd)
             );
@@ -161,11 +180,12 @@ export class CNSDevTools {
 
     // ─── Stimulation tracking ─────────────────────────────────────────────────────
 
+    /** Returns the unsubscribe for the global response listener it installs. */
     private listenToStimulations(
         cns: ICNS<AnyNeuron>,
         registry: CNSPersistOptionsRegistry,
         cnsId: string
-    ): void {
+    ): (() => void) | undefined {
         // Name-based resumable model — the SOLE stimulation/hop emit path. A
         // per-stimulation {@link CNSStimulationPersistor}, keyed by the live core
         // stimulation object, streams Stimulation → Attempt → Task (all by name) to
@@ -173,23 +193,27 @@ export class CNSDevTools {
         const persistors = new WeakMap<object, CNSStimulationPersistor>();
         const seen = new WeakSet<object>();
         // An app can opt out of all stimulation observability with `false`.
-        const emit = this.options.trackStimulations !== false;
-        if (!emit) return;
+        if (!this.tracksStimulations) return undefined;
 
-        cns.addResponseListener((resp: any) => {
+        // The same serialization the persistor performs on flush, run here so its
+        // failure is ours to handle — see the crash-safety note below.
+        const frontierSerializer = new CNSProgressSerializer(registry);
+
+        return cns.addResponseListener((resp: any) => {
             const stimulation = resp.stimulation;
             if (!stimulation) return;
 
             if (!seen.has(stimulation)) {
                 seen.add(stimulation);
 
-                // A server-forwarded retry/clone pre-assigns this stimulation's
+                // A server-forwarded retry/clone pre-assigns THIS stimulation's
                 // resumable identity (stable stimulationId + attempt number + the
-                // origin entry). Absent an override this is a fresh, app-initiated
-                // stimulation → mint attempt #1 and derive the entry from the first
-                // response.
-                const override = this.pendingStimulationOverride;
-                this.pendingStimulationOverride = undefined;
+                // origin entry) — looked up by the stimulation object, so only the
+                // run the identity was assigned for can wear it. Absent one this is
+                // a fresh, app-initiated stimulation → mint attempt #1 and derive
+                // the entry from the first response.
+                const override = this.assignedIdentities.get(stimulation);
+                this.assignedIdentities.delete(stimulation);
 
                 const triggerCol = resp.outputSignal?.collateral as AnyCollateral | undefined;
                 const entryName = triggerCol
@@ -212,11 +236,12 @@ export class CNSDevTools {
                     registry,
                     stimulationId: stimId,
                     stimulationAttemptId:
-                        override?.stimulationAttemptId ?? buildAttemptId(stimId, 1),
+                        override?.stimulationAttemptId ?? buildCNSAttemptId(stimId, 1),
                     attemptNumber: override?.attemptNumber ?? 1,
                     entry,
                     volume: 'full',
                     scopeName: override?.scopeName ?? cnsId,
+                    ...(override?.replayOf ? { replayOf: override.replayOf } : {}),
                 });
                 persistors.set(stimulation, persistor);
 
@@ -225,12 +250,29 @@ export class CNSDevTools {
                     .catch(() => persistor.dispose());
             }
 
+            const persistor = persistors.get(stimulation);
+            if (!persistor) return;
+
             // Crash-safety: the serializer THROWS if a frontier neuron/collateral is
-            // not registered (see CNSPersistOptionsRegistry). For observability that
-            // must not take down the host app — log once per instance and skip.
+            // not registered (see CNSPersistOptionsRegistry). Wrapping `onResponse`
+            // in a try/catch does NOT catch that: `onResponse` only schedules
+            // `void this.flush(...)`, and the throw happens inside that async flush,
+            // after an await — i.e. as a rejected promise nobody observes, which
+            // terminates the host process. So serialize the SAME frontier here,
+            // synchronously, before the persistor can schedule a flush over it. On
+            // failure: warn once, drop this stimulation's persistor and dispose it
+            // (cancelling any debounced flush still pending, which would otherwise
+            // reject over the same bad frontier). Observability degrades for this
+            // run; the app stays up.
+            //
+            // This listener must also never throw: a global response listener that
+            // throws is recorded by the core and REJECTS the app's own stimulation.
             try {
-                persistors.get(stimulation)?.onResponse(resp);
+                frontierSerializer.serialize(stimulation);
+                persistor.onResponse(resp);
             } catch (e) {
+                persistors.delete(stimulation);
+                persistor.dispose();
                 if (!this.resumeWarned) {
                     this.resumeWarned = true;
                     // eslint-disable-next-line no-console
@@ -245,80 +287,16 @@ export class CNSDevTools {
         });
     }
 
-    // ─── Replay ───────────────────────────────────────────────────────────────────
-
-    private handleReplay(
-        cns: ICNS<AnyNeuron>,
-        registry: CNSPersistOptionsRegistry,
-        cnsId: string,
-        cmd: TCNSReplayStartMessageDTO
-    ): void {
-        const colIdParts = cmd.collateralId.split(':');
-        const colName = colIdParts[colIdParts.length - 1];
-
-        let targetCollateral: AnyCollateral | undefined;
-        for (const [, neuron] of registry.getNamedNeurons()) {
-            for (const [, col] of Object.entries(neuron.axon)) {
-                const name = registry.getCollateralName(col as AnyCollateral);
-                if (name === colName) {
-                    targetCollateral = col as AnyCollateral;
-                    break;
-                }
-            }
-            if (targetCollateral) break;
-        }
-        // Also check standalone collaterals
-        if (!targetCollateral) {
-            const col = registry.getCollateral(colName);
-            if (col) targetCollateral = col;
-        }
-
-        if (!targetCollateral) {
-            if (this.options.consoleLogEnabled) {
-                console.warn(`[DevTools] Replay: collateral not found: ${cmd.collateralId}`);
-            }
-            return;
-        }
-
-        const signal = targetCollateral.createSignal(cmd.payload);
-        const stimulation = cns.stimulate(signal, {
-            ...(cmd.options?.maxHops ? { maxNeuronHops: cmd.options.maxHops } : {}),
-            ...(cmd.options?.timeoutMs ? (() => {
-                const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
-                if (ac) setTimeout(() => ac.abort(), cmd.options!.timeoutMs);
-                return ac ? { abortSignal: ac.signal } : {};
-            })() : {}),
-        });
-
-        // The stimulation.started for this run is emitted by listenToStimulations;
-        // the replay is correlated separately via replayId.
-        const replayId = cmd.replayId;
-        if (this.options.consoleLogEnabled) {
-            console.log(`[DevTools] Replay started: replayId=${replayId}`);
-        }
-
-        void stimulation.waitUntilComplete()
-            .then(() => {
-                if (this.options.consoleLogEnabled) {
-                    console.log(`[DevTools] Replay completed: replayId=${replayId}`);
-                }
-            })
-            .catch((e) => {
-                if (this.options.consoleLogEnabled) {
-                    console.warn(`[DevTools] Replay failed: replayId=${replayId}`, e);
-                }
-            });
-    }
-
     // ─── Resumable actions (retry / clone), Phase 2b-2 ──────────────────────────────
 
     /**
      * Execute a server-forwarded resumable action. The server has already assigned
      * the resumable identity (stimulationId + attempt number) and enriched the
      * command from the store; here we hydrate against THIS app's registry and run
-     * it. The new attempt streams back through the normal name-based path — we set
-     * {@link pendingStimulationOverride} so the global response listener stamps it with
-     * the given identity instead of minting a fresh one.
+     * it. The new attempt streams back through the normal name-based path — we bind
+     * the assigned identity to the stimulation via {@link runWithAssignedIdentity} so
+     * the global response listener stamps THAT run with it instead of minting a
+     * fresh one.
      */
     private handleStimulationCommand(
         cns: ICNS<AnyNeuron>,
@@ -335,45 +313,103 @@ export class CNSDevTools {
                     console.warn(`[DevTools] Resume: empty frontier for ${cmd.stimulationId}`);
                 return;
             }
-            this.pendingStimulationOverride = {
-                stimulationId: cmd.stimulationId,
-                stimulationAttemptId: cmd.stimulationAttemptId,
-                attemptNumber: cmd.attemptNumber,
-                entry: [cmd.entry],
-                scopeName: cmd.scopeName ?? cnsId,
-            };
-            const stimulation = cns.activate(tasks, {
-                stimulationContext: {
+            // The attempt's `entry` is the input SET it was activated with — for a
+            // resume that is the frontier, not the signal the run first started
+            // from. Recording one signal makes `k = 1`, and then every task of
+            // this attempt whose producer has not appeared yet falls back to
+            // input slot 0: the history claims they all consumed the original
+            // entry, which is not what they ran on. The frontier's own inputs are
+            // right here, so use them.
+            const resumeEntry = cmd.progress.tasks
+                .map(task => task.input)
+                .filter((input): input is TCNSSignalJSON => !!input);
+
+            this.runWithAssignedIdentity(
+                {
                     stimulationId: cmd.stimulationId,
+                    stimulationAttemptId: cmd.stimulationAttemptId,
                     attemptNumber: cmd.attemptNumber,
+                    entry: resumeEntry.length ? resumeEntry : [cmd.entry],
+                    scopeName: cmd.scopeName ?? cnsId,
+                    replayOf: cmd.replayOf,
                 },
-                ...this.actionOptions(cmd.options),
-            });
-            void stimulation.waitUntilComplete().catch(() => {});
+                onResponse =>
+                    cns.activate(tasks, {
+                        stimulationContext: {
+                            stimulationId: cmd.stimulationId,
+                            attemptNumber: cmd.attemptNumber,
+                        },
+                        onResponse,
+                        ...this.actionOptions(cmd.options),
+                    })
+            );
             return;
         }
 
         // clone: a fresh stimulation (new id, attempt 1) re-fired from the entry.
-        const col = this.resolveCollateralByName(registry, cmd.entry.collateralName);
+        const col = registry.getCollateral(cmd.entry.collateralName) as AnyCollateral | undefined;
         if (!col) {
             if (this.options.consoleLogEnabled)
                 console.warn(`[DevTools] Clone: entry collateral not found: ${cmd.entry.collateralName}`);
             return;
         }
-        this.pendingStimulationOverride = {
-            stimulationId: cmd.stimulationId,
-            stimulationAttemptId: cmd.stimulationAttemptId,
-            attemptNumber: 1,
-            entry: [cmd.entry],
-            scopeName: cmd.scopeName ?? cnsId,
-        };
-        const stimulation = cns.stimulate(col.createSignal(cmd.entry.payload), {
-            stimulationContext: {
+        this.runWithAssignedIdentity(
+            {
                 stimulationId: cmd.stimulationId,
+                stimulationAttemptId: cmd.stimulationAttemptId,
                 attemptNumber: 1,
+                entry: [cmd.entry],
+                scopeName: cmd.scopeName ?? cnsId,
+                replayOf: cmd.replayOf,
             },
-            ...this.actionOptions(cmd.options),
-        });
+            onResponse =>
+                cns.stimulate(col.createSignal(cmd.entry.payload), {
+                    stimulationContext: {
+                        stimulationId: cmd.stimulationId,
+                        attemptNumber: 1,
+                    },
+                    onResponse,
+                    ...this.actionOptions(cmd.options),
+                })
+        );
+    }
+
+    /**
+     * Start a server-forwarded run under a pre-assigned resumable identity, bound
+     * to the stimulation that run IS — never to "whatever reports next".
+     *
+     * The binding happens at the first of two moments, whichever comes first:
+     *
+     *  - from the run's own `onResponse`, which the engine calls before the global
+     *    response listeners for that same response (`CNS.wrapOnResponse`). This
+     *    covers a run that emits its entry response synchronously, i.e. before
+     *    `stimulate` has returned anything to bind (the clone path);
+     *  - from the returned stimulation. This covers a run that emits nothing
+     *    before returning — `activate` over a hydrated frontier whose first neuron
+     *    is async (the resume path).
+     *
+     * Because nothing is armed process-wide, a run started by anyone else in that
+     * window (an HTTP handler, a queue worker) cannot be recorded under this
+     * identity, and a throw out of `start` leaves no identity behind for the next
+     * run to pick up.
+     */
+    private runWithAssignedIdentity(
+        override: TStimulationOverride,
+        start: (
+            onResponse: (response: { stimulation?: object }) => void
+        ) => ICNSStimulation<AnyNeuron>
+    ): void {
+        let bound = false;
+        const bind = (target: object | undefined): void => {
+            if (bound || !target) return;
+            bound = true;
+            this.assignedIdentities.set(target, override);
+        };
+
+        // Returns void, never a promise: a promise here would be taken as a
+        // barrier and park the run's subscribers on it.
+        const stimulation = start(response => bind(response?.stimulation));
+        bind(stimulation);
         void stimulation.waitUntilComplete().catch(() => {});
     }
 
@@ -389,22 +425,6 @@ export class CNSDevTools {
             out.abortSignal = ac.signal;
         }
         return out;
-    }
-
-    /** Look a collateral up by its registered name (axon or standalone entry). */
-    private resolveCollateralByName(
-        registry: CNSPersistOptionsRegistry,
-        name: string
-    ): AnyCollateral | undefined {
-        const standalone = registry.getCollateral(name);
-        if (standalone) return standalone as AnyCollateral;
-        for (const [, neuron] of registry.getNamedNeurons()) {
-            for (const [, col] of Object.entries(neuron.axon)) {
-                if (registry.getCollateralName(col as AnyCollateral) === name)
-                    return col as AnyCollateral;
-            }
-        }
-        return undefined;
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -453,9 +473,20 @@ export class CNSDevTools {
         return value;
     }
 
-    destroy(): void {
-        this.unregisterReplay?.();
+    /**
+     * Release every subscription this instance holds. The global response listener
+     * is included: `addResponseListener` returns an unsubscribe, and dropping it
+     * leaves the listener attached to the app's CNS forever.
+     */
+    private unregisterAll(): void {
+        this.unregisterResponses?.();
+        this.unregisterResponses = undefined;
         this.unregisterCommand?.();
+        this.unregisterCommand = undefined;
+    }
+
+    destroy(): void {
+        this.unregisterAll();
         this.buffer.length = 0;
     }
 }

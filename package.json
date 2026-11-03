@@ -8,10 +8,10 @@
     "docs"
   ],
   "scripts": {
-    "build": "npm run build:core && npm run build --workspace=@cnstra/pg-boss && npm run build --workspace=@cnstra/mcp && npm run build:devtools && npm run build:devtools-server && npm run build --workspace=@cnstra/react && npm run build --workspace=cnstra-docs",
+    "build": "npm run build --workspace=@cnstra/postgres-schema && npm run build --workspace=@cnstra/types && npm run build --workspace=@cnstra/persist-dto && npm run build:core && npm run build --workspace=@cnstra/persist && npm run build --workspace=@cnstra/persist-otel && npm run build --workspace=@cnstra/persist-postgres && npm run build --workspace=@cnstra/progress-redis && npm run build --workspace=@cnstra/factory && npm run build --workspace=@cnstra/sync && npm run build --workspace=@cnstra/oimdb && npm run build --workspace=@cnstra/mobx && npm run build --workspace=@cnstra/jobs && npm run build --workspace=@cnstra/jobs-postgres && npm run build --workspace=@cnstra/broker && npm run build --workspace=@cnstra/jobs-adapter && npm run build --workspace=@cnstra/pg-boss && npm run build --workspace=@cnstra/bullmq && npm run build --workspace=@cnstra/mcp && npm run build:devtools && npm run build:devtools-server && npm run build --workspace=@cnstra/react && npm run build --workspace=@cnstra/exodra && npm run build --workspace=cnstra-docs",
     "build:core": "npm run build --workspace=@cnstra/core",
     "build:pg-boss": "npm run build --workspace=@cnstra/pg-boss",
-    "build:devtools": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools && npm run build --workspace=@cnstra/devtools-transport-ws && npm run build --workspace=@cnstra/devtools-panel-ui",
+    "build:devtools": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools && npm run build --workspace=@cnstra/devtools-transport-ws && npm run build --workspace=@cnstra/devtools-transport-http && npm run build --workspace=@cnstra/devtools-panel-ui",
     "build:devtools-server": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-server && npm run build --workspace=@cnstra/devtools-server-repository-in-memory && npm run build --workspace=@cnstra/devtools-server-repository-postgres && npm run build --workspace=@cnstra/devtools-server-repository-redis",
     "build:devtools-panel-ui": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-panel-ui",
     "build:example": "npm run build --workspace=@cnstra/example-app",
@@ -23,8 +23,12 @@
     "dev:example": "npm run dev --workspace=@cnstra/example-app",
     "lint": "node node_modules/eslint/bin/eslint.js .",
     "lint:fix": "node node_modules/eslint/bin/eslint.js . --fix",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:scripts",
+    "test:scripts": "node --test \"scripts/*.test.mjs\"",
     "test:types": "npm run test:types --workspaces --if-present",
+    "bench": "npm run bench --workspace=@cnstra/bench --",
+    "bench:baseline": "npm run bench:baseline --workspace=@cnstra/bench --",
+    "bench:compare": "npm run bench:compare --workspace=@cnstra/bench --",
     "clean": "npm run clean --workspaces && rm -rf node_modules",
     "demo": "npm run build:example && npm run start:all --workspace=@cnstra/example-app",
     "dev:electron": "npm run dev --workspace=@cnstra/devtools-panel-ui & npm run dev --workspace=@cnstra/devtools-electron",
@@ -33,6 +37,10 @@
     "example:start:attach-electron": "npm run start:attach-electron --workspace=@cnstra/example-app",
     "release:electron": "./scripts/release-devtools-electron.sh",
     "check:drift": "node scripts/check-drift.mjs",
+    "check:bumps": "node scripts/check-version-bumps.mjs",
+    "check:docs": "node scripts/check-docs-examples.mjs",
+    "check:dist": "node scripts/check-dist-imports.mjs",
+    "prepare": "git config core.hooksPath .githooks || true",
     "publish:all": "node scripts/publish-workspaces.mjs",
     "publish:bumped": "node scripts/publish-workspaces.mjs --bumped",
     "publish:core": "node scripts/publish-workspaces.mjs --workspace=@cnstra/core",
@@ -54,7 +62,8 @@
     "demo:pgboss:redis": "npm run demo:pgboss:redis --workspace=@cnstra/examples",
     "demo:bull:redis": "npm run demo:bull:redis --workspace=@cnstra/examples",
     "demo:pgboss:noprogress": "npm run demo:pgboss:noprogress --workspace=@cnstra/examples",
-    "demo:admin:pg-store": "npm run demo:admin:pg-store --workspace=@cnstra/examples"
+    "demo:admin:pg-store": "npm run demo:admin:pg-store --workspace=@cnstra/examples",
+    "demo:bull:otel": "npm run demo:bull:otel --workspace=@cnstra/examples"
   },
   "repository": {
     "type": "git",

@@ -1,12 +1,7 @@
-import type { ICNSStimulation } from '@cnstra/types';
 import type { ICNSCollateral } from '@cnstra/types';
 import { TCNSAxon } from '@cnstra/types';
 import { TCNSNeuron } from '@cnstra/types';
-import {
-    TCNSCollateralPersistOptions,
-    TCNSNeuronPersistOptions,
-    TCNSStimulationPersistOptions,
-} from '@cnstra/types';
+import type { TCNSAfferentPath, TCNSModality } from '@cnstra/types';
 import type { TCNSCollateralNameMap } from './types/TCNSCollateralNameMap';
 
 export class CNSPersistOptionsRegistry {
@@ -14,18 +9,42 @@ export class CNSPersistOptionsRegistry {
     private neuronNames = new WeakMap<TCNSNeuron<TCNSAxon>, string>();
 
     private collaterals = new Map<string, ICNSCollateral<unknown>>();
+    /**
+     * Name lookup by identity, matching `neuronNames` above. Not a scan over
+     * `collaterals`: this is called several times per hop — by the persistor, the
+     * devtools logger, the tracer, the serializer — to recover a string that was
+     * known at registration.
+     */
+    private collateralNames = new WeakMap<ICNSCollateral<unknown>, string>();
 
-    private stimulations = new Map<
-        string,
-        ICNSStimulation<TCNSNeuron<TCNSAxon>>
-    >();
+    private modalities = new Map<string, TCNSModality>();
+    private modalityNames = new WeakMap<TCNSModality, string>();
 
-    addNeuron(
-        neuron: TCNSNeuron<TCNSAxon>,
-        options: TCNSNeuronPersistOptions<TCNSNeuron<TCNSAxon>>
+    private checkName<TValue extends object>(
+        kind: string,
+        name: string,
+        value: TValue,
+        values: Map<string, TValue>,
+        names: WeakMap<TValue, string>
     ): void {
-        this.neurons.set(options.name, neuron);
-        this.neuronNames.set(neuron, options.name);
+        const named = values.get(name);
+        if (named !== undefined && named !== value)
+            throw new Error(`cannot register a ${kind} as "${name}": another ${kind} has this name`);
+        const knownName = names.get(value);
+        if (knownName !== undefined && knownName !== name)
+            throw new Error(`cannot register a ${kind} as "${name}": it is already registered as "${knownName}"`);
+    }
+
+    private bindName<TValue extends object>(
+        kind: string,
+        name: string,
+        value: TValue,
+        values: Map<string, TValue>,
+        names: WeakMap<TValue, string>
+    ): void {
+        this.checkName(kind, name, value, values, names);
+        values.set(name, value);
+        names.set(value, name);
     }
 
     getNeuron(name: string): TCNSNeuron<TCNSAxon> | undefined {
@@ -41,48 +60,11 @@ export class CNSPersistOptionsRegistry {
     }
 
     getCollateralName(collateral: ICNSCollateral<unknown>): string | undefined {
-        for (const [name, col] of this.collaterals) {
-            if (col === collateral) return name;
-        }
-        return undefined;
-    }
-
-    removeNeuron(name: string): void {
-        const neuron = this.neurons.get(name);
-        if (neuron) this.neuronNames.delete(neuron);
-        this.neurons.delete(name);
-    }
-
-    addCollateral(
-        collateral: ICNSCollateral<unknown>,
-        options: TCNSCollateralPersistOptions
-    ): void {
-        this.collaterals.set(options.name, collateral);
+        return this.collateralNames.get(collateral);
     }
 
     getCollateral(name: string): ICNSCollateral<unknown> | undefined {
         return this.collaterals.get(name);
-    }
-
-    removeCollateral(name: string): void {
-        this.collaterals.delete(name);
-    }
-
-    addStimulation(
-        stimulation: ICNSStimulation<TCNSNeuron<TCNSAxon>>,
-        options: TCNSStimulationPersistOptions
-    ): void {
-        this.stimulations.set(options.stimulationId, stimulation);
-    }
-
-    getStimulation(
-        stimulationId: string
-    ): ICNSStimulation<TCNSNeuron<TCNSAxon>> | undefined {
-        return this.stimulations.get(stimulationId);
-    }
-
-    removeStimulation(stimulationId: string): void {
-        this.stimulations.delete(stimulationId);
     }
 
     register<TAxon extends TCNSAxon>(
@@ -90,18 +72,54 @@ export class CNSPersistOptionsRegistry {
         neuron: TCNSNeuron<TAxon>,
         collateralNames?: TCNSCollateralNameMap<TAxon>
     ): this {
-        this.addNeuron(neuron as unknown as TCNSNeuron<TCNSAxon>, { name, neuron: neuron as unknown as TCNSNeuron<TCNSAxon> });
-        for (const [key, col] of Object.entries(neuron.axon)) {
-            this.addCollateral(col as ICNSCollateral<unknown>, {
-                name: (collateralNames as Record<string, string> | undefined)?.[key] ?? key,
-                collateral: col as ICNSCollateral<unknown>,
-            });
+        const explicitNames = (collateralNames ?? {}) as Record<string, string | undefined>;
+        for (const key of Object.keys(explicitNames))
+            if (!(key in neuron.axon))
+                throw new Error(`cannot name collateral "${key}" of neuron "${name}": its axon has no such key`);
+        const axonNames = Object.entries(neuron.axon).map(
+            ([key, collateral]) => [explicitNames[key] ?? `${name}.${key}`, collateral as ICNSCollateral<unknown>] as const
+        );
+        this.checkName('neuron', name, neuron as unknown as TCNSNeuron<TCNSAxon>, this.neurons, this.neuronNames);
+        const seenNames = new Set<string>();
+        const seenCollaterals = new Set<ICNSCollateral<unknown>>();
+        for (const [collateralName, collateral] of axonNames) {
+            if (seenNames.has(collateralName) || seenCollaterals.has(collateral))
+                throw new Error(`cannot register neuron "${name}": two of its collaterals share "${collateralName}" or one collateral has two names`);
+            seenNames.add(collateralName);
+            seenCollaterals.add(collateral);
+            this.checkName('collateral', collateralName, collateral, this.collaterals, this.collateralNames);
         }
+        this.bindName('neuron', name, neuron as unknown as TCNSNeuron<TCNSAxon>, this.neurons, this.neuronNames);
+        for (const [collateralName, collateral] of axonNames) this.registerCollateral(collateralName, collateral);
         return this;
     }
 
     registerCollateral(name: string, collateral: ICNSCollateral<unknown>): this {
-        this.addCollateral(collateral, { name, collateral });
+        this.bindName('collateral', name, collateral, this.collaterals, this.collateralNames);
         return this;
+    }
+
+    registerModality(name: string, modality: TCNSModality): this {
+        this.bindName('modality', name, modality, this.modalities, this.modalityNames);
+        return this;
+    }
+
+    getModality(name: string): TCNSModality | undefined {
+        return this.modalities.get(name);
+    }
+
+    getModalityName(modality: TCNSModality): string | undefined {
+        return this.modalityNames.get(modality);
+    }
+
+    getAfferentPathName(modality: TCNSModality, afferentPath: TCNSAfferentPath): string | undefined {
+        for (const afferentPathName in modality.afferentPaths) {
+            if (modality.afferentPaths[afferentPathName] === afferentPath) return afferentPathName;
+        }
+        return undefined;
+    }
+
+    getAfferentPath(modality: TCNSModality, afferentPathName: string): TCNSAfferentPath | undefined {
+        return modality.afferentPaths[afferentPathName];
     }
 }

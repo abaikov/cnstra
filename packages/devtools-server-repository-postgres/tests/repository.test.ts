@@ -1,16 +1,6 @@
-import { newDb } from 'pg-mem';
+import { Pool } from 'pg';
 import { CNSDevToolsServerRepositoryPostgres } from '../src/index';
-import type { TCNSAppDTO } from '@cnstra/devtools-dto';
 import type { TCNSTopologySnapshotDTO } from '@cnstra/devtools-server';
-
-const makeApp = (id: string, o: Partial<TCNSAppDTO> = {}): TCNSAppDTO => ({
-    id,
-    name: `App ${id}`,
-    version: '1.0.0',
-    connectedAt: 1000,
-    lastSeenAt: 1000,
-    ...o,
-});
 
 const makeTopology = (
     cnsId: string,
@@ -26,28 +16,24 @@ const makeTopology = (
     dendrites: [],
 });
 
-function makePool() {
-    const db = newDb();
-    const { Pool } = db.adapters.createPg();
-    return new Pool();
-}
+const URL = process.env.DATABASE_URL;
+const prefix = 'cnstest_devtools_';
 
-describe('CNSDevToolsServerRepositoryPostgres', () => {
+(URL ? describe : describe.skip)('CNSDevToolsServerRepositoryPostgres', () => {
+    const pool = new Pool({ connectionString: URL });
     let repo: CNSDevToolsServerRepositoryPostgres;
 
+    const drop = () => pool.query(`DROP TABLE IF EXISTS ${prefix}topology, ${prefix}devtools_migration`);
+
     beforeEach(async () => {
-        repo = new CNSDevToolsServerRepositoryPostgres(makePool());
+        await drop();
+        repo = new CNSDevToolsServerRepositoryPostgres(pool, { tablePrefix: prefix });
         await repo.init();
     });
 
-    it('upserts and lists apps', async () => {
-        await repo.upsertApp(makeApp('a'));
-        await repo.upsertApp(makeApp('b'));
-        await repo.upsertApp(makeApp('a', { name: 'Renamed' }));
-
-        const apps = await repo.listApps();
-        expect(apps).toHaveLength(2);
-        expect(apps.find(a => a.id === 'a')?.name).toBe('Renamed');
+    afterAll(async () => {
+        await drop();
+        await pool.end();
     });
 
     it('saves and reads topology by cnsId and all', async () => {
@@ -62,18 +48,20 @@ describe('CNSDevToolsServerRepositoryPostgres', () => {
         expect(await repo.getTopology()).toHaveLength(2);
     });
 
-    it('maps cns ↔ app', async () => {
-        await repo.addCnsToApp('a', 'c1');
-        await repo.addCnsToApp('a', 'c2');
-        await repo.addCnsToApp('b', 'c3');
+    it('finds the app of a cns from its topology', async () => {
+        await repo.saveTopology(makeTopology('c3', 'b'));
 
-        expect((await repo.getCnsByApp('a')).sort()).toEqual(['c1', 'c2']);
         expect(await repo.findAppByCns('c3')).toBe('b');
         expect(await repo.findAppByCns('missing')).toBeUndefined();
     });
 
-    it('returns empty for unknown app / empty store', async () => {
-        expect(await repo.getCnsByApp('nope')).toEqual([]);
+    it('returns empty for an empty store', async () => {
         expect(await repo.getTopology()).toEqual([]);
+    });
+
+    it('installs once and passes verify', async () => {
+        await repo.init();
+
+        await expect(repo.verify()).resolves.toBeUndefined();
     });
 });

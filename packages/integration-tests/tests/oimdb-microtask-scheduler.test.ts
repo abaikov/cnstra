@@ -1,5 +1,5 @@
 import { OIMEventQueue, OIMReactiveCollection } from '@oimdb/core';
-import { CNS, collateral, neuron } from '@cnstra/core';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 
 /**
  * onDrain is synchronous by default - the flush lands before stimulate()
@@ -16,11 +16,11 @@ describe('OIMDB: choosing the flush cadence at the adapter', () => {
         const rows = new OIMReactiveCollection<Row, string>(queue, {
             selectPk: r => r.id,
         });
-        const tick = collateral<number>();
+        const tick = cnsCollateral<number>();
         // Sync graph: three neurons -> three turns is NOT what happens; a single
         // synchronous cascade is one turn. We drive three SEPARATE stimulations
         // to get three turns in one microtask window.
-        const bump = neuron({}).dendrite({
+        const bump = cnsNeuron({}).dendrite({
             collateral: tick,
             response: p => {
                 rows.upsertOneByPk('r1', { id: 'r1', n: p as number });

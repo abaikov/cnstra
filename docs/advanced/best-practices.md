@@ -9,6 +9,37 @@ keywords: [best practices, idempotency, collaterals, domain neuron, neuron owner
 
 This guide covers best practices for building robust, maintainable CNStra applications.
 
+```ts setup
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+
+type Plan = { id: string; name: string };
+
+const userSignupSubmitted = cnsCollateral<{ id: string; email: string }>();
+const userRegistered = cnsCollateral<{ userId: string }>();
+const paymentRequest = cnsCollateral<{ idempotencyKey: string; amount: number }>();
+const paymentProcessed = cnsCollateral<{ paymentId: string; status: string }>();
+const uiAxon = { createDeckButtonClicked: cnsCollateral<{ userId: string; title: string }>() };
+const onboardingAxon = { userOnboarded: cnsCollateral<{ userId: string }>() };
+const importAxon = { deckRowParsed: cnsCollateral<{ title: string; importId: string }>() };
+
+declare function createUser(input: { id: string; email: string }): Promise<{ id: string }>;
+declare function chargeCard(request: { idempotencyKey: string; amount: number }): Promise<{ id: string; status: string }>;
+declare function toDeckEntity(row: { title: string; importId: string }): { title: string };
+declare const api: {
+  getUser(userId: string): Promise<{ preferredDeckTitle?: string }>;
+  getPlan(userId: string): Promise<Plan>;
+};
+declare const db: {
+  payments: {
+    findOne(query: { idempotencyKey: string }): Promise<{ id: string; status: string } | null>;
+    create(row: { id: string; idempotencyKey: string; status: string }): Promise<void>;
+  };
+  decks: { create(row: { title: string; userId?: string; planId?: string }): Promise<string> };
+  cards: { create(row: { deckId: string }): Promise<string> };
+  users: { update(userId: string, changes: { onboarded: boolean }): Promise<void> };
+};
+```
+
 ## One Collateral Per Response Type
 
 **Create separate collaterals for each distinct response type.** This improves type safety, makes the graph more readable, and prevents confusion about what each signal represents.
@@ -16,14 +47,14 @@ This guide covers best practices for building robust, maintainable CNStra applic
 **✅ Good**: Separate collaterals for different outcomes
 
 ```ts
-const userCreated = collateral<{ userId: string }>();
-const userUpdated = collateral<{ userId: string; changes: Record<string, unknown> }>('user:updated');
-const userDeleted = collateral<{ userId: string }>();
-const userError = collateral<{ userId: string; error: string }>();
+const userCreated = cnsCollateral<{ userId: string }>();
+const userUpdated = cnsCollateral<{ userId: string; changes: Record<string, unknown> }>();
+const userDeleted = cnsCollateral<{ userId: string }>();
+const userError = cnsCollateral<{ userId: string; error: string }>();
 
-const userHandler = neuron({ userCreated, userUpdated, userDeleted, userError })
+const userHandler = cnsNeuron({ userCreated, userUpdated, userDeleted, userError })
   .dendrite({
-    collateral: createUser,
+    collateral: userSignupSubmitted,
     response: async (payload, axon) => {
       try {
         const user = await createUser(payload);
@@ -38,12 +69,13 @@ const userHandler = neuron({ userCreated, userUpdated, userDeleted, userError })
 **❌ Bad**: Reusing collaterals for different purposes
 
 ```ts
-const userEvent = collateral<{ type: 'created' | 'updated' | 'deleted'; userId: string }>();
+const userEvent = cnsCollateral<{ type: 'created' | 'updated' | 'deleted'; userId: string }>();
 
-const userHandler = neuron({ userEvent })
+const userHandler = cnsNeuron({ userEvent })
   .dendrite({
-    collateral: createUser,
+    collateral: userSignupSubmitted,
     response: async (payload, axon) => {
+      const user = await createUser(payload);
       // ❌ Using same collateral for different event types
       return axon.userEvent.createSignal({ type: 'created', userId: user.id });
     },
@@ -58,7 +90,7 @@ const userHandler = neuron({ userEvent })
 
 ## Idempotency for Retries
 
-**Ensure neurons are idempotent when using retries.** Idempotency means that calling the same operation multiple times produces the same result as calling it once.
+**Make neurons idempotent when using retries.** Idempotency means that calling the same operation multiple times produces the same result as calling it once.
 
 **Why?** When retries occur (via BullMQ, SQS, or manual retries), the same signal may be processed multiple times. Without idempotency, you risk:
 - Duplicate operations (e.g., charging a user twice)
@@ -68,7 +100,7 @@ const userHandler = neuron({ userEvent })
 **✅ Good**: Idempotent operations
 
 ```ts
-const processPayment = neuron({ paymentProcessed })
+const processPayment = cnsNeuron({ paymentProcessed })
   .dendrite({
     collateral: paymentRequest,
     response: async (payload, axon) => {
@@ -104,13 +136,13 @@ const processPayment = neuron({ paymentProcessed })
 **❌ Bad**: Non-idempotent operations
 
 ```ts
-const processPayment = neuron({ paymentProcessed })
+const processPayment = cnsNeuron({ paymentProcessed })
   .dendrite({
     collateral: paymentRequest,
     response: async (payload, axon) => {
       // ❌ No idempotency check - will charge multiple times on retry
       const payment = await chargeCard(payload);
-      return axon.paymentProcessed.createSignal({ paymentId: payment.id });
+      return axon.paymentProcessed.createSignal({ paymentId: payment.id, status: payment.status });
     },
   });
 ```
@@ -137,33 +169,33 @@ const processPayment = neuron({ paymentProcessed })
 
 ```ts
 // User interaction signal
-const createDeckWithCardButtonClick = collateral<{ userId: string; deckName: string }>();
+const createDeckWithCardButtonClick = cnsCollateral<{ userId: string; deckName: string }>();
 
 // Deck neuron response
-const createDeckWithCardButtonClickDeckCreated = collateral<{ deckId: string; userId: string }>();
+const createDeckWithCardButtonClickDeckCreated = cnsCollateral<{ deckId: string; userId: string }>();
 
 // Card neuron response
-const createDeckWithCardButtonClickCardCreated = collateral<{ cardId: string; deckId: string }>();
+const createDeckWithCardButtonClickCardCreated = cnsCollateral<{ cardId: string; deckId: string }>();
 
-const deckNeuron = neuron({ createDeckWithCardButtonClickDeckCreated })
+const deckNeuron = cnsNeuron({ createDeckWithCardButtonClickDeckCreated })
   .dendrite({
     collateral: createDeckWithCardButtonClick,
     response: async (payload, axon) => {
-      const deck = await createDeck(payload);
+      const deckId = await db.decks.create({ title: payload.deckName, userId: payload.userId });
       return axon.createDeckWithCardButtonClickDeckCreated.createSignal({
-        deckId: deck.id,
+        deckId,
         userId: payload.userId,
       });
     },
   });
 
-const cardNeuron = neuron({ createDeckWithCardButtonClickCardCreated })
+const cardNeuron = cnsNeuron({ createDeckWithCardButtonClickCardCreated })
   .dendrite({
     collateral: createDeckWithCardButtonClickDeckCreated,
     response: async (payload, axon) => {
-      const card = await createCard({ deckId: payload.deckId });
+      const cardId = await db.cards.create({ deckId: payload.deckId });
       return axon.createDeckWithCardButtonClickCardCreated.createSignal({
-        cardId: card.id,
+        cardId,
         deckId: payload.deckId,
       });
     },
@@ -179,11 +211,11 @@ const cardNeuron = neuron({ createDeckWithCardButtonClickCardCreated })
 
 ```ts
 // ❌ Generic signal reused for multiple interactions
-const buttonClick = collateral<{ action: string; userId: string }>();
-const entityCreated = collateral<{ type: string; id: string }>();
+const buttonClick = cnsCollateral<{ action: string; userId: string }>();
+const entityCreated = cnsCollateral<{ type: string; id: string }>();
 
 // Hard to trace which button click caused which creation
-const handler = neuron({ entityCreated })
+const handler = cnsNeuron({ entityCreated })
   .dendrite({
     collateral: buttonClick,
     response: async (payload, axon) => {
@@ -211,13 +243,13 @@ const handler = neuron({ entityCreated })
 
 ```ts
 const deckAxon = {
-  createdAtOnboarding: collateral<{ deckId: string; userId: string }>(),
-  createdAtButtonClick: collateral<{ deckId: string }>(),
-  renamed: collateral<{ deckId: string; title: string }>(),
-  archived: collateral<{ deckId: string }>(),
+  createdAtOnboarding: cnsCollateral<{ deckId: string; userId: string }>(),
+  createdAtButtonClick: cnsCollateral<{ deckId: string }>(),
+  renamed: cnsCollateral<{ deckId: string; title: string }>(),
+  archived: cnsCollateral<{ deckId: string }>(),
 };
 
-const deckNeuron = neuron(deckAxon)
+const deckNeuron = cnsNeuron(deckAxon)
   .dendrite({
     collateral: uiAxon.createDeckButtonClicked,
     response: async (payload, axon) => {
@@ -238,7 +270,7 @@ const deckNeuron = neuron(deckAxon)
 
 ```ts
 // ❌ onboardingNeuron mutates decks — that's deckNeuron's responsibility
-const onboardingNeuron = neuron({ userOnboarded }).dendrite({
+const onboardingNeuron = cnsNeuron(onboardingAxon).dendrite({
   collateral: userRegistered,
   response: async (payload, axon) => {
     await db.decks.create({ title: 'My first deck', userId: payload.userId }); // ❌
@@ -254,13 +286,13 @@ const onboardingNeuron = neuron({ userOnboarded }).dendrite({
 
 ```ts
 // ✅ Past events
-const deckCreated = collateral<{ deckId: string }>();
-const paymentFailed = collateral<{ orderId: string; reason: string }>();
-const userOnboarded = collateral<{ userId: string }>();
+const deckCreated = cnsCollateral<{ deckId: string }>();
+const paymentFailed = cnsCollateral<{ orderId: string; reason: string }>();
+const userOnboarded = cnsCollateral<{ userId: string }>();
 
 // ❌ Commands / instructions
-const createDeck = collateral<{ title: string }>();      // sounds like a request
-const failPayment = collateral<{ orderId: string }>();   // sounds like an order
+const createDeck = cnsCollateral<{ title: string }>();      // sounds like a request
+const failPayment = cnsCollateral<{ orderId: string }>();   // sounds like an order
 ```
 
 This matters for readability and for correctly understanding the graph: a subscriber reacts to what *happened*, not to what it's being asked to do.
@@ -271,7 +303,7 @@ Sometimes the same logical operation is triggered from many places (button click
 
 ```ts
 // Intent collateral — groups all "create deck" triggers into one
-const createDeckIntentActivated = collateral<{ title: string; source: string }>();
+const createDeckIntentActivated = cnsCollateral<{ title: string; source: string }>();
 ```
 
 This works, but comes with a significant trade-off: **you lose afferent path traceability**. When `createDeckIntentActivated` fires, there is no way to see in the graph *where* it came from and *why* — all sources collapse into one anonymous signal.
@@ -281,9 +313,9 @@ This works, but comes with a significant trade-off: **you lose afferent path tra
 ```ts
 // ✅ Each source has its own collateral — origin is always visible
 const deckAxon = {
-  createdAtButtonClick: collateral<{ deckId: string }>(),
-  createdAtOnboarding: collateral<{ deckId: string; userId: string }>(),
-  createdAtImport: collateral<{ deckId: string; importId: string }>(),
+  createdAtButtonClick: cnsCollateral<{ deckId: string }>(),
+  createdAtOnboarding: cnsCollateral<{ deckId: string; userId: string }>(),
+  createdAtImport: cnsCollateral<{ deckId: string; importId: string }>(),
 };
 ```
 
@@ -299,9 +331,11 @@ Move non-mutation logic out:
 
 ```ts
 // ✅ Mapping lives outside the neuron
-import { toDeckEntity } from './deck.mapper';
+const deckAxon = {
+  createdAtImport: cnsCollateral<{ deckId: string; importId: string }>(),
+};
 
-const deckNeuron = neuron(deckAxon).dendrite({
+const deckNeuron = cnsNeuron(deckAxon).dendrite({
   collateral: importAxon.deckRowParsed,
   response: async (payload, axon) => {
     const entity = toDeckEntity(payload); // mapping extracted
@@ -317,13 +351,13 @@ When a domain neuron needs to make multiple external calls (fetch user, fetch pl
 
 ```ts
 // Auxiliary neuron: fetches everything needed, emits one ready signal
-const deckCreateDataFetched = collateral<{
+const deckCreateDataFetched = cnsCollateral<{
   userId: string;
   plan: Plan;
   defaultTitle: string;
 }>();
 
-const deckCreateFetcherNeuron = neuron({ deckCreateDataFetched }).dendrite({
+const deckCreateFetcherNeuron = cnsNeuron({ deckCreateDataFetched }).dendrite({
   collateral: uiAxon.createDeckButtonClicked,
   response: async (payload, axon) => {
     const [user, plan] = await Promise.all([
@@ -339,7 +373,11 @@ const deckCreateFetcherNeuron = neuron({ deckCreateDataFetched }).dendrite({
 });
 
 // Domain neuron: only mutates
-const deckNeuron = neuron(deckAxon).dendrite({
+const deckAxon = {
+  createdAtButtonClick: cnsCollateral<{ deckId: string }>(),
+};
+
+const deckNeuron = cnsNeuron(deckAxon).dendrite({
   collateral: deckCreateDataFetched,
   response: async (payload, axon) => {
     const deckId = await db.decks.create({
@@ -356,9 +394,9 @@ This separation keeps domain neurons readable, testable, and focused — and mak
 
 ## Summary
 
-1. **Data flow**: All per-run data (including retry counters) flows through signal payloads; use `ctx.global` for app-wide dependencies
+1. **Data flow**: All per-run data (including retry counters) flows through signal payloads; pass dependencies through a [factory function](../core/api.md#dependencies-a-store-a-database-a-clock)
 2. **Collaterals**: Create separate collaterals for each response type
-3. **Idempotency**: Ensure neurons are idempotent when using retries
+3. **Idempotency**: make neurons idempotent when using retries
 4. **User interactions**: Each user interaction should be a unique signal with unique responses for better traceability and system visibility
 5. **Domain ownership**: Each domain model has one owning neuron — all mutations live there, nowhere else
 6. **Event naming**: Collaterals describe past events, not commands; keep afferent paths separate instead of merging them into intent collaterals

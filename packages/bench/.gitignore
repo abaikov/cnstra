@@ -1,0 +1,9 @@
+# Recorded baselines are machine-specific: absolute timings from one laptop are
+# false regressions on every other machine, and a committed baseline.json would
+# hand everyone else a permanently red comparison.
+#
+# A baseline that is genuinely worth sharing — one recorded on a dedicated,
+# quiet machine — can be committed deliberately with `git add -f` and pointed at
+# with `--baseline <path>`. The comparator skips absolute timings across
+# machines by itself and still judges the portable metrics.
+baselines/

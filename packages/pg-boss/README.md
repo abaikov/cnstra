@@ -7,7 +7,7 @@
 retry/backoff/scheduling/singleton, and stream **per-hop progress** into any store for a
 live admin/history view.
 
-It follows the same pattern as the [Message Brokers guide](https://cnstra.org/docs/integrations/message-brokers):
+It follows the same pattern as the [BullMQ guide](https://cnstra.org/docs/integrations/bullmq):
 **one job = one stimulation**, reconstructed across processes by **name** via a
 `CNSPersistOptionsRegistry` (neuron/collateral object references are not portable).
 
@@ -19,14 +19,18 @@ npm install @cnstra/pg-boss @cnstra/core pg-boss
 
 ## Worker
 
-```ts
-import PgBoss from 'pg-boss';
-import { createCNS } from '@cnstra/core';
+```ts file=worker.ts
+import { PgBoss } from 'pg-boss';
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNSFactory } from '@cnstra/factory';
 import { createCNSWorker } from '@cnstra/pg-boss';
 
-const { cns, registry } = createCNS({ importUserNeuron, /* … */ });
+export const importUser = cnsCollateral<{ userId: string }>();
+const importUserNeuron = cnsNeuron({}).dendrite({ collateral: importUser, response: async () => {} });
 
-const boss = new PgBoss(process.env.DATABASE_URL!);
+export const { cns, registry } = CNSFactory.create({ importUserNeuron, /* … */ });
+
+export const boss = new PgBoss(process.env.DATABASE_URL!);
 await boss.start();
 await boss.createQueue('cns');
 
@@ -48,13 +52,14 @@ error propagates so **pg-boss applies its retry/backoff policy**.
 
 ## Producer
 
-```ts
-import { enqueueStimulation, stimulationJob } from '@cnstra/pg-boss';
+```ts file=producer.ts
+import { enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/pg-boss';
+import { boss, importUser, registry } from './worker';
 
 // Type-safe: throws if the collateral isn't registered
-const job = stimulationJob(registry, importUser, { userId: '42' });
+const job = cnsStimulationJob(registry, importUser, { userId: '42' });
 
-await enqueueStimulation(boss, 'cns', job, {
+await enqueueCNSStimulation(boss, 'cns', job, {
   retryLimit: 5,
   retryBackoff: true,
   singletonKey: 'user:42', // one in-flight stimulation per entity
@@ -69,8 +74,15 @@ its context. In pg-boss a run = stimulation = job, so the checkpoint is keyed by
 
 The checkpoint store is **pluggable** — three ways:
 
+```ts setup
+import type { RedisOptions } from 'ioredis';
+
+declare const DATABASE_URL: string;
+declare const connection: RedisOptions;
+```
+
 ```ts
-// 1) In-package Postgres table (cns_pgboss_progress) — opt-in subpath, pulls in `pg`
+// 1) In-package Postgres table (cns_pgboss_progress by default) — opt-in subpath, pulls in `pg`
 import { CNSPgBossProgressRepository } from '@cnstra/pg-boss/postgres-progress';
 resume: { repository: new CNSPgBossProgressRepository({ connectionString: DATABASE_URL }) }
 
@@ -85,8 +97,8 @@ resume: { repository: new CNSRedisProgressRepository({ connection }) }
 pg-boss's `Job` has no mutable native progress field (unlike BullMQ), so a checkpoint needs a store.
 
 **Migrations:** the Postgres table is owned by this package. Auto-created on first use, or manage it
-yourself: `DATABASE_URL=… npx cnstra-pgboss-progress migrate` (or call `ensureSchema(pool)` from
-`@cnstra/pg-boss/postgres-progress`).
+yourself: `DATABASE_URL=… npx cnstra-pgboss-progress migrate` (or call `CNSPgBossProgressSchema.migrate(pool, tablePrefix)`
+from `@cnstra/pg-boss/postgres-progress`). The table is `<tablePrefix>pgboss_progress(job_id PK, progress jsonb, updated_at)` (`tablePrefix` option, default `cns_`); it holds only jobs in flight, so `deleteStale` scans it without an index.
 
 **Row lifecycle / cleanup:** one upserted row per `job.id`. The worker **deletes it when the job
 succeeds**. A job that fails *permanently* (retries exhausted) keeps its row — pg-boss has no
@@ -94,6 +106,8 @@ terminal-failure hook to key off — so prune those periodically by staleness (a
 keeps `updated_at` fresh, so pick a threshold well above your longest retry window):
 
 ```ts
+import { CNSPgBossProgressRepository } from '@cnstra/pg-boss/postgres-progress';
+
 const store = new CNSPgBossProgressRepository({ connectionString: DATABASE_URL });
 // e.g. in a daily cron: drop checkpoints untouched for over a day
 await store.deleteStale(24 * 60 * 60 * 1000);

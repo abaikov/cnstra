@@ -30,7 +30,7 @@ If you’re searching for a “workflow engine / orchestrator”, you’ve proba
 
 ## Where CNStra fits best
 
-- **Backend jobs**: workers, fan-out/fan-in, concurrency gates
+- **Backend jobs**: workers, fan-out and joins, concurrency gates
 - **Sync / integrations**: webhooks, external APIs, multi-step validation + side-effects
 - **ETL / pipelines**: step-by-step transforms with retries/backoff
 - **Sagas**: explicit compensation steps for partial failures

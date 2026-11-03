@@ -15,6 +15,29 @@ This guide covers common issues you might encounter when using CNStra and how to
 
 ### Understanding Instance-Level Concurrency
 
+```ts setup
+import { Inject, Module } from '@nestjs/common';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import type { TCNSNeuron } from '@cnstra/types';
+
+type TTask = { id: string };
+
+const task = cnsCollateral<TTask>();
+const request = cnsCollateral<{ url: string }>();
+const output = cnsCollateral<unknown>();
+const workerNeuron = cnsNeuron({}).dendrite({ collateral: task, response: () => {} });
+const apiWorker = cnsNeuron({}).dendrite({ collateral: request, response: () => {} });
+const otherNeuron = cnsNeuron({
+  signal1: cnsCollateral<{ id: string }>(),
+  signal2: cnsCollateral<{ count: number }>(),
+});
+const signal = task.createSignal({ id: '1' });
+
+declare const cns: CNS<TCNSNeuron>;
+declare function processTask(task: TTask): Promise<unknown>;
+declare function callExternalAPI(request: { url: string }): Promise<unknown>;
+```
+
 When you set a concurrency limit on a neuron using `neuron.setConcurrency(n)`, that limit applies **only within a single CNS instance**. If you create multiple CNS instances, each will have its own separate concurrency control.
 
 ```ts
@@ -88,7 +111,7 @@ export class CNSModule {}
   imports: [CNSModule]
 })
 export class OtherModule {
-  constructor(@Inject('CNS') private cns: CNS) {}
+  constructor(@Inject('CNS') private readonly cns: CNS<TCNSNeuron>) {}
 }
 ```
 
@@ -105,7 +128,7 @@ const sharedLimiter = new RateLimiter({
   interval: 'second'
 });
 
-const workerNeuron = neuron({})
+const rateLimitedWorker = cnsNeuron({ output })
   .dendrite({
     collateral: task,
     response: async (payload, axon) => {
@@ -123,12 +146,15 @@ For production systems, use external queue systems (BullMQ, RabbitMQ, AWS SQS) t
 ```ts
 import { Queue, Worker } from 'bullmq';
 
+const connection = { host: 'localhost', port: 6379 };
+
 // Single queue with process-wide concurrency control
-const queue = new Queue('jobs');
+const queue = new Queue('jobs', { connection });
 const worker = new Worker('jobs', async (job) => {
   const stimulation = cns.stimulate(task.createSignal(job.data));
   await stimulation.waitUntilComplete();
 }, {
+  connection,
   concurrency: 5  // This applies across all workers in the process
 });
 ```
@@ -145,11 +171,14 @@ If your signal payloads are large and queues grow, memory usage can spike. See [
 
 ### Passing State Between Neurons
 
-CNStra has no mutable per-neuron store — all per-run state flows through signal payloads (and `ctx.global` for app-wide dependencies). If you need a value downstream, put it on the outgoing signal:
+CNStra has no mutable per-neuron store — all per-run state flows through signal payloads (dependencies such as a store come from a [factory function](../core/api.md#dependencies-a-store-a-database-a-clock)). If you need a value downstream, put it on the outgoing signal:
 
 ```ts
-.dendrite({
-  collateral: process,
+const step = cnsCollateral<{ data: string; attempt?: number }>();
+const next = cnsCollateral<{ result: string; attempt: number }>();
+
+const stepNeuron = cnsNeuron({ next }).dendrite({
+  collateral: step,
   response: async (payload, axon) => {
     // All per-run data (including counters/correlation ids) rides on the payload.
     return axon.next.createSignal({ result: payload.data, attempt: (payload.attempt ?? 0) + 1 });
@@ -193,10 +222,10 @@ await cns.stimulate(signal).waitUntilComplete();
 
 If you forget to bind a collateral, TypeScript will catch it at compile time (with exhaustive binding).
 
-**Solution**: Use exhaustive binding to ensure all collaterals are handled:
+**Solution**: Use exhaustive binding so that all collaterals are handled:
 
 ```ts
-neuron.bind(otherNeuron, {
+const listener = cnsNeuron({}).bind(otherNeuron.axon, {
   signal1: (p) => { /* ... */ },
   signal2: (p) => { /* ... */ },
   // TypeScript will error if signal3 is missing
@@ -218,7 +247,7 @@ If external APIs are slow and you have high concurrency, you might exhaust conne
 **Solution**: Set appropriate per-neuron concurrency limits:
 
 ```ts
-const apiNeuron = neuron({})
+const apiNeuron = cnsNeuron({ output })
   .setConcurrency(10)  // Limit concurrent API calls
   .dendrite({
     collateral: request,

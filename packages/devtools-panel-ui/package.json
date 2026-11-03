@@ -1,8 +1,12 @@
 {
   "name": "@cnstra/devtools-panel-ui",
-  "version": "3.0.0",
+  "version": "3.5.0",
   "description": "CNStra DevTools UI — browser panel for debugging neuron graphs",
-  "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/devtools-panel-ui"
+  },
   "files": [
     "dist"
   ],
@@ -32,8 +36,8 @@
     "@exodra/jsx": "^0.2.0",
     "@exodra/reactivity": "^0.2.0",
     "@exodra/router": "^0.2.0",
-    "@oimdb/core": "^3.11.0",
-    "@oimdb/exodra": "^0.5.0",
+    "@oimdb/core": "^4.7.0",
+    "@oimdb/exodra": "^1.1.1",
     "cytoscape": "3.33.1",
     "cytoscape-cose-bilkent": "4.1.0",
     "cytoscape-dagre": "2.5.0"

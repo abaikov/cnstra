@@ -7,22 +7,28 @@ slug: /recipes/retry-stimulation
 
 When a stimulation fails or is interrupted, you can wait for active tasks to complete and then retry from the same point using `cns.activate()` with failed tasks.
 
-This pattern ensures that:
+What the pattern gives you:
 - Active tasks finish executing before saving state
 - Only failed tasks are retried
 - State can be passed through signal payloads if needed
 
+```ts setup
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import type { TCNSNeuronActivationTask } from '@cnstra/types';
+
+declare function processStep1(payload: { id: number }): Promise<void>;
+declare function processStep2(payload: { id: number }): Promise<void>;
+```
+
 ## Basic Pattern
 
 ```ts
-import { CNS, collateral, neuron } from '@cnstra/core';
+const input = cnsCollateral<{ id: number }>();
+const step1Out = cnsCollateral<{ id: number }>();
+const step2Out = cnsCollateral<{ id: number }>();
+const output = cnsCollateral<{ result: string }>();
 
-const input = collateral<{ id: number }>();
-const step1Out = collateral<{ id: number }>();
-const step2Out = collateral<{ id: number }>();
-const output = collateral<{ result: string }>();
-
-const step1 = neuron({ step1Out }).dendrite({
+const step1 = cnsNeuron({ step1Out }).dendrite({
   collateral: input,
   response: async (payload, axon) => {
     await processStep1(payload);
@@ -30,7 +36,7 @@ const step1 = neuron({ step1Out }).dendrite({
   },
 });
 
-const step2 = neuron({ step2Out }).dendrite({
+const step2 = cnsNeuron({ step2Out }).dendrite({
   collateral: step1Out,
   response: async (payload, axon) => {
     await processStep2(payload);
@@ -38,7 +44,7 @@ const step2 = neuron({ step2Out }).dendrite({
   },
 });
 
-const step3 = neuron({ output }).dendrite({
+const step3 = cnsNeuron({ output }).dendrite({
   collateral: step2Out,
   response: async (payload, axon) => {
     return axon.output.createSignal({ result: `Final: ${payload.id}` });
@@ -48,10 +54,7 @@ const step3 = neuron({ output }).dendrite({
 const cns = new CNS([step1, step2, step3]);
 
 // First attempt
-let savedFailedTasks: Array<{
-  neuron: object;
-  dendriteCollateral: object;
-}> | undefined;
+let savedFailedTasks: TCNSNeuronActivationTask<typeof step1 | typeof step2 | typeof step3>[] | undefined;
 
 const stimulation = cns.stimulate(input.createSignal({ id: 100 }));
 
@@ -78,9 +81,10 @@ If you need to preserve state across retries, pass it through signal payloads:
 
 ```ts
 // Include state in payload
-const input = collateral<{ id: number; executed?: string[] }>();
+const input = cnsCollateral<{ id: number; executed?: string[] }>();
+const step1Out = cnsCollateral<{ id: number; executed: string[] }>();
 
-const step1 = neuron({ step1Out }).dendrite({
+const step1 = cnsNeuron({ step1Out }).dendrite({
   collateral: input,
   response: async (payload, axon) => {
     const executed = payload.executed || [];

@@ -9,9 +9,10 @@ export type TCNSExplorerTab =
     | 'stimulations'
     | 'neurons'
     | 'tasks'
-    | 'collaterals';
+    | 'collaterals'
+    | 'scheduled';
 
-export interface TCNSExplorerQuery {
+export type TCNSExplorerQuery = {
     /** cns scope (a graph within an app). */
     scopeName?: string;
     // ── filters (FILTERS zone) ──
@@ -46,7 +47,7 @@ export interface TCNSExplorerQuery {
      * chart (e.g. `pages`). Aggregation directive passed to the facets request.
      */
     metricPath?: string;
-}
+};
 
 export const DEFAULT_QUERY: TCNSExplorerQuery = {
     tab: 'stimulations',
@@ -57,6 +58,7 @@ const TABS: readonly TCNSExplorerTab[] = [
     'neurons',
     'tasks',
     'collaterals',
+    'scheduled',
 ];
 
 /** Just the filter subset the server's `filter` field understands. */

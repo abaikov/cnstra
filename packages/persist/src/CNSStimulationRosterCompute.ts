@@ -15,13 +15,13 @@ import type { ICNSStimulationReader } from './interfaces/ICNSStimulationReposito
  */
 
 /** One enriched run: its roster row + the neuron names it activated. */
-export interface TCNSRosterEntry {
+export type TCNSRosterEntry = {
     row: TCNSStimulationRosterRow;
     neurons: string[];
-}
+};
 
 /** Resolve a dot-path (`a.b.c`) into a payload; undefined on any miss. */
-export function resolvePayloadPath(obj: unknown, path: string): unknown {
+export function resolveCNSPayloadPath(obj: unknown, path: string): unknown {
     let cur: unknown = obj;
     for (const key of path.split('.')) {
         if (cur == null || typeof cur !== 'object') return undefined;
@@ -30,26 +30,38 @@ export function resolvePayloadPath(obj: unknown, path: string): unknown {
     return cur;
 }
 
-const HISTOGRAM_BUCKETS = 40;
+/**
+ * Buckets in the Chart histogram. Exported because a store that pushes the
+ * histogram into SQL has to derive the SAME bucket width, and two copies of this
+ * number would silently disagree about where a run belongs.
+ */
+export const CNS_HISTOGRAM_BUCKETS = 40;
 
 /**
  * Load every run for `filter.scopeName`, derive its roster row + activated
  * neurons from its attempts/tasks, apply the in-memory filter, and sort
  * newest-first (`startedAt DESC, stimulationId DESC`).
  */
-export async function loadRosterEntries(
+export async function loadCNSRosterEntries(
     reader: ICNSStimulationReader,
     filter: TCNSStimulationRosterFilter
 ): Promise<TCNSRosterEntry[]> {
-    const stims = await reader.listStimulations(
-        filter.scopeName ? { scopeName: filter.scopeName } : undefined
-    );
+    // The window goes to the store so it can prune BEFORE the enrichment below,
+    // which reads every attempt and every task of every run it is handed. A store
+    // that ignores `since` is still correct — `matchesRosterFilter` applies it
+    // again at the end — it just does more work to get there.
+    const stims = await reader.listStimulations({
+        ...(filter.scopeName ? { scopeName: filter.scopeName } : {}),
+        ...(filter.since != null ? { since: filter.since } : {}),
+    });
     const enriched: TCNSRosterEntry[] = [];
     for (const s of stims) {
         const attempts = await reader.getAttempts(s.stimulationId);
-        const startedAt = attempts.length
-            ? Math.min(...attempts.map(a => a.startedAt))
-            : 0;
+        // Fold rather than spread — same argument-limit hazard as the histogram.
+        const startedAt = attempts.reduce(
+            (m, a) => (a.startedAt < m ? a.startedAt : m),
+            attempts.length ? attempts[0]!.startedAt : 0
+        );
         const last = attempts[attempts.length - 1];
         const completedAt =
             s.status === 'running' ? null : last?.completedAt ?? null;
@@ -74,7 +86,7 @@ export async function loadRosterEntries(
         });
     }
     const matched = enriched.filter(({ row: r, neurons }) =>
-        matchesRosterFilter(r, neurons, filter)
+        matchesCNSRosterFilter(r, neurons, filter)
     );
     matched.sort(
         (a, b) =>
@@ -85,7 +97,7 @@ export async function loadRosterEntries(
 }
 
 /** Does a row (with its activated neurons) satisfy every set filter field? */
-export function matchesRosterFilter(
+export function matchesCNSRosterFilter(
     r: TCNSStimulationRosterRow,
     neurons: string[],
     f: TCNSStimulationRosterFilter
@@ -103,38 +115,76 @@ export function matchesRosterFilter(
 }
 
 /** Keyset cursor = base64(`${startedAt}|${stimulationId}`). */
-export function encodeRosterCursor(r: TCNSStimulationRosterRow): string {
+export function encodeCNSRosterCursor(r: TCNSStimulationRosterRow): string {
     return Buffer.from(
         `${r.startedAt}|${r.stimulationId}`,
         'utf8'
     ).toString('base64');
 }
 
+/**
+ * Decode a keyset cursor back into the `(startedAt, stimulationId)` ORDER BY key
+ * it carries. `undefined` for anything unreadable — a caller that cannot tell
+ * where the cursor points must start from the top, not from a garbage key.
+ */
+function decodeRosterCursor(
+    cursor: string
+): { startedAt: number; stimulationId: string } | undefined {
+    const decoded = Buffer.from(cursor, 'base64').toString('utf8');
+    // Split on the FIRST separator: the id is the remainder, so an id that
+    // happens to contain `|` still round-trips.
+    const sep = decoded.indexOf('|');
+    if (sep < 0) return undefined;
+    const startedAt = Number(decoded.slice(0, sep));
+    if (!Number.isFinite(startedAt)) return undefined;
+    return { startedAt, stimulationId: decoded.slice(sep + 1) };
+}
+
 /** Slice one keyset page out of the already-sorted rows. */
-export function keysetPage(
+export function cnsKeysetPage(
     rows: TCNSStimulationRosterRow[],
     opts: { cursor?: string; limit: number }
 ): TCNSStimulationRosterPage {
     let start = 0;
-    if (opts.cursor) {
-        const decoded = Buffer.from(opts.cursor, 'base64').toString('utf8');
-        const idx = rows.findIndex(
-            r => `${r.startedAt}|${r.stimulationId}` === decoded
-        );
-        if (idx >= 0) start = idx + 1;
+    const key = opts.cursor ? decodeRosterCursor(opts.cursor) : undefined;
+    if (key) {
+        // Page by the cursor's KEY, never by locating the cursor's row. The row
+        // goes missing routinely — under `status: 'running'` the run the user just
+        // paged past leaves the filtered set the moment it completes, and a
+        // bounded store evicts old runs outright. Looking it up and falling back
+        // to index 0 on a miss handed the panel page 1 again, with a fresh
+        // `nextCursor`: the same rows appended forever.
+        //
+        // The rows are sorted `(startedAt DESC, stimulationId DESC)` and the key
+        // names a position in exactly that order, so the page is the rows strictly
+        // AFTER it — defined whether or not the row itself survived. This is the
+        // `(started_at, stimulation_id) < ($8, $9)` the Postgres store already
+        // applies; the two are contractually identical.
+        start = rows.length;
+        for (let i = 0; i < rows.length; i++) {
+            const r = rows[i]!;
+            if (
+                r.startedAt < key.startedAt ||
+                (r.startedAt === key.startedAt &&
+                    r.stimulationId < key.stimulationId)
+            ) {
+                start = i;
+                break;
+            }
+        }
     }
     const page = rows.slice(start, start + opts.limit);
     const hasMore = start + opts.limit < rows.length;
     const lastRow = page[page.length - 1];
     return {
         rows: page,
-        nextCursor: hasMore && lastRow ? encodeRosterCursor(lastRow) : null,
+        nextCursor: hasMore && lastRow ? encodeCNSRosterCursor(lastRow) : null,
         total: rows.length,
     };
 }
 
 /** GROUP BY over the full filtered set → the facet rail + Chart histogram. */
-export function computeRosterFacets(
+export function computeCNSRosterFacets(
     entries: TCNSRosterEntry[],
     opts?: { metricPath?: string }
 ): TCNSStimulationRosterFacets {
@@ -144,7 +194,7 @@ export function computeRosterFacets(
         for (const v of values) m.set(v, (m.get(v) ?? 0) + 1);
         return [...m.entries()]
             .map(([key, count]) => ({ key, count }))
-            .sort((a, b) => b.count - a.count);
+            .sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : 1));
     };
     return {
         byEntryCollateral: tally(rows.map(r => r.entry.collateralName)).map(
@@ -158,20 +208,27 @@ export function computeRosterFacets(
             name: x.key,
             count: x.count,
         })),
-        byTime: buildTimeHistogram(rows, opts?.metricPath),
+        byTime: buildCNSTimeHistogram(rows, opts?.metricPath),
     };
 }
 
 /** Bucket rows over time into a fixed number of buckets; optional metric sum. */
-export function buildTimeHistogram(
+export function buildCNSTimeHistogram(
     rows: TCNSStimulationRosterRow[],
     metricPath?: string
 ): TCNSStimulationRosterTimeBucket[] {
+    rows = rows.filter(r => r.startedAt > 0);
     if (rows.length === 0) return [];
-    const times = rows.map(r => r.startedAt);
-    const min = Math.min(...times);
-    const max = Math.max(...times);
-    const size = Math.max(1, Math.ceil((max - min) / HISTOGRAM_BUCKETS) || 1);
+    // Fold, never spread: `Math.min(...times)` passes one argument per row and blows
+    // the engine's argument limit (~125k) on a large result set — a RangeError instead
+    // of a histogram.
+    let min = Infinity;
+    let max = -Infinity;
+    for (const r of rows) {
+        if (r.startedAt < min) min = r.startedAt;
+        if (r.startedAt > max) max = r.startedAt;
+    }
+    const size = Math.max(1, Math.ceil((max - min) / CNS_HISTOGRAM_BUCKETS) || 1);
     const byBucket = new Map<number, TCNSStimulationRosterTimeBucket>();
     for (const r of rows) {
         const tsBucket = min + Math.floor((r.startedAt - min) / size) * size;
@@ -184,7 +241,7 @@ export function buildTimeHistogram(
         else if (r.status === 'failed') b.failed++;
         else b.running++;
         if (metricPath) {
-            const v = resolvePayloadPath(r.entry.payload, metricPath);
+            const v = resolveCNSPayloadPath(r.entry.payload, metricPath);
             if (typeof v === 'number' && Number.isFinite(v))
                 b.metric = (b.metric ?? 0) + v;
         }

@@ -1,4 +1,4 @@
-import { CNS, collateral, neuron } from '../src/index';
+import { CNS, cnsCollateral, cnsNeuron } from '../src/index';
 
 /**
  * Semantics under test:
@@ -30,13 +30,13 @@ const expectInvariant = (trace: Trace[]) => {
 
 describe('response counters', () => {
     it('holds the invariant and reports zero exactly once, on the last response', async () => {
-        const a = collateral<number>();
-        const b = collateral<number>();
-        const n1 = neuron({ b }).dendrite({
+        const a = cnsCollateral<number>();
+        const b = cnsCollateral<number>();
+        const n1 = cnsNeuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => axon.b.createSignal(1),
         });
-        const n2 = neuron({}).dendrite({
+        const n2 = cnsNeuron({}).dendrite({
             collateral: b,
             response: () => undefined,
         });
@@ -54,20 +54,20 @@ describe('response counters', () => {
     });
 
     it('splits an in-flight async body into activeActivations', async () => {
-        const start = collateral<string>();
-        const late = collateral<string>();
-        const slow = neuron({ late }).dendrite({
+        const start = cnsCollateral<string>();
+        const late = cnsCollateral<string>();
+        const slow = cnsNeuron({ late }).dendrite({
             collateral: start,
             response: async (_p, axon) => {
                 await new Promise(r => setTimeout(r, 5));
                 return axon.late.createSignal('L');
             },
         });
-        const fast = neuron({}).dendrite({
+        const fast = cnsNeuron({}).dendrite({
             collateral: start,
             response: () => undefined,
         });
-        const afterLate = neuron({}).dendrite({
+        const afterLate = cnsNeuron({}).dendrite({
             collateral: late,
             response: () => undefined,
         });
@@ -85,11 +85,11 @@ describe('response counters', () => {
     });
 
     it('does not report zero while sibling signals are undispatched', async () => {
-        const a = collateral<number>();
-        const b = collateral<number>();
+        const a = cnsCollateral<number>();
+        const b = cnsCollateral<number>();
         // `a` has no subscriber at all: before the fix this reported zero here,
         // before `b` had even been looked at.
-        const onlyB = neuron({}).dendrite({
+        const onlyB = cnsNeuron({}).dendrite({
             collateral: b,
             response: () => undefined,
         });
@@ -108,18 +108,18 @@ describe('response counters', () => {
     });
 
     it('does not report zero while a sibling subtree is still to come', async () => {
-        const a = collateral<number>();
-        const b = collateral<number>();
-        const c = collateral<number>();
-        const leafA = neuron({}).dendrite({
+        const a = cnsCollateral<number>();
+        const b = cnsCollateral<number>();
+        const c = cnsCollateral<number>();
+        const leafA = cnsNeuron({}).dendrite({
             collateral: a,
             response: () => undefined,
         });
-        const bToC = neuron({ c }).dendrite({
+        const bToC = cnsNeuron({ c }).dendrite({
             collateral: b,
             response: (_p, axon) => axon.c.createSignal(3),
         });
-        const leafC = neuron({}).dendrite({
+        const leafC = cnsNeuron({}).dendrite({
             collateral: c,
             response: () => undefined,
         });
@@ -146,11 +146,11 @@ describe('response counters', () => {
     });
 
     it('does not complete before every signal of an array has been dispatched', async () => {
-        const a = collateral<number>();
-        const b = collateral<number>();
+        const a = cnsCollateral<number>();
+        const b = cnsCollateral<number>();
         const seen: number[] = [];
         const mk = (c: any) =>
-            neuron({}).dendrite({
+            cnsNeuron({}).dendrite({
                 collateral: c,
                 response: (p: any) => {
                     seen.push(p as number);
@@ -165,13 +165,13 @@ describe('response counters', () => {
     });
 
     it('counts subscribers parked behind an async onResponse as pending, not active', async () => {
-        const a = collateral<number>();
-        const b = collateral<number>();
-        const n1 = neuron({ b }).dendrite({
+        const a = cnsCollateral<number>();
+        const b = cnsCollateral<number>();
+        const n1 = cnsNeuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => axon.b.createSignal(1),
         });
-        const n2 = neuron({}).dendrite({
+        const n2 = cnsNeuron({}).dendrite({
             collateral: b,
             response: () => undefined,
         });
@@ -195,9 +195,9 @@ describe('response counters', () => {
     });
 
     it('emits a terminal response when the tail task has no subscriber', async () => {
-        const a = collateral<number>();
-        const orphan = collateral<number>();
-        const n1 = neuron({}).dendrite({
+        const a = cnsCollateral<number>();
+        const orphan = cnsCollateral<number>();
+        const n1 = cnsNeuron({}).dendrite({
             collateral: a,
             response: () => undefined,
         });
@@ -217,8 +217,8 @@ describe('response counters', () => {
     });
 
     it('does not inflate activeActivations on a synchronously thrown error', async () => {
-        const a = collateral<number>();
-        const boom = neuron({}).dendrite({
+        const a = cnsCollateral<number>();
+        const boom = cnsNeuron({}).dendrite({
             collateral: a,
             response: () => {
                 throw new Error('boom');

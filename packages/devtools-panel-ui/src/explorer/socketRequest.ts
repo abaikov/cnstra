@@ -1,9 +1,11 @@
 import type { DevtoolsSocket } from '../app/controllers/socket';
 
 /**
- * Send one message over the devtools socket and resolve when a reply carrying the
- * same `requestId` arrives (or reject on timeout / send failure). Shared by every
- * request/reply client so the correlation + cleanup plumbing lives in one place.
+ * Send one message over the devtools connection and resolve when a reply carrying
+ * the same `requestId` arrives (or reject on timeout / send failure). Shared by
+ * every request/reply client so the correlation + cleanup plumbing lives in one
+ * place — and, since it only ever sees frames as strings, it correlates the same
+ * way whether the frames came over the socket or over HTTP polling.
  */
 export function socketRequest<T>(
     socket: DevtoolsSocket,
@@ -16,12 +18,10 @@ export function socketRequest<T>(
     timeoutMs = 5000
 ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-        const ws = socket.getSocket();
-        if (!ws) return reject(new Error('devtools socket is not open'));
-
         let settled = false;
+        let unsubscribe: (() => void) | null = null;
         const cleanup = () => {
-            ws.removeEventListener('message', onMsg);
+            unsubscribe?.();
             clearTimeout(timer);
         };
         const done = (fn: () => void) => {
@@ -30,12 +30,10 @@ export function socketRequest<T>(
             cleanup();
             fn();
         };
-        const onMsg = (ev: MessageEvent) => {
+        const onFrame = (data: string) => {
             let m: any;
             try {
-                m = JSON.parse(
-                    typeof ev.data === 'string' ? ev.data : String(ev.data)
-                );
+                m = JSON.parse(data);
             } catch {
                 return;
             }
@@ -51,7 +49,7 @@ export function socketRequest<T>(
             timeoutMs
         );
 
-        ws.addEventListener('message', onMsg);
+        unsubscribe = socket.subscribe(onFrame);
         if (!socket.send(message as never)) {
             done(() => reject(new Error('devtools socket send failed')));
         }

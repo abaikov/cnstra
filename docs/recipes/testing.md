@@ -26,17 +26,43 @@ This means:
 
 ### Example: Testing Business Logic with a DB Mock
 
-```ts
-import { CNS, collateral, neuron } from '@cnstra/core';
+```ts setup
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import type { TCNSNeuron, TCNSStimulationResponse } from '@cnstra/types';
+import { beforeEach, describe, expect, it } from '@jest/globals';
+
+const user = {
+  fetchRequest: cnsCollateral<{ userId: string }>(),
+  fetched: cnsCollateral<{ userId: string; name: string }>(),
+};
+declare const userProcessor: TCNSNeuron;
+declare const mockDbUserNeuron: TCNSNeuron;
+declare const handleNotFoundNeuron: TCNSNeuron;
+declare const database: { findById(id: string): Promise<unknown> };
+declare function transformData(data: unknown): unknown;
+declare function createTestDatabase(): {
+  users: {
+    findById(id: string): Promise<{ id: string; name: string }>;
+    insert(row: { id: string; name: string }): Promise<void>;
+  };
+};
+```
+
+```ts file=user-processor.test.ts
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import type { TCNSStimulationResponse } from '@cnstra/types';
+import { describe, expect, it } from '@jest/globals';
+
+declare const db: { users: { findById(id: string): Promise<{ id: string; name: string }> } };
 
 // Shared collaterals (contracts)
 const user = {
-  fetchRequest: collateral<{ userId: string }>(),
-  fetched: collateral<{ userId: string; name: string }>(),
+  fetchRequest: cnsCollateral<{ userId: string }>(),
+  fetched: cnsCollateral<{ userId: string; name: string }>(),
 };
 
-// Real DB neuron (in production)
-export const dbUserNeuron = neuron({ fetched: user.fetched })
+// Real DB cnsNeuron (in production)
+export const dbUserNeuron = cnsNeuron({ fetched: user.fetched })
   .dendrite({
     collateral: user.fetchRequest,
     response: async (payload) => {
@@ -49,7 +75,7 @@ export const dbUserNeuron = neuron({ fetched: user.fetched })
   });
 
 // Mock neuron for tests
-export const mockDbUserNeuron = neuron({ fetched: user.fetched })
+export const mockDbUserNeuron = cnsNeuron({ fetched: user.fetched })
   .dendrite({
     collateral: user.fetchRequest,
     response: async (payload) => {
@@ -62,8 +88,8 @@ export const mockDbUserNeuron = neuron({ fetched: user.fetched })
   });
 
 // Business logic we're testing
-export const userProcessor = neuron({
-  processed: collateral<{ userId: string; greeting: string }>(),
+export const userProcessor = cnsNeuron({
+  processed: cnsCollateral<{ userId: string; greeting: string }>(),
 })
   .dendrite({
     collateral: user.fetched,
@@ -81,7 +107,7 @@ describe('User Processor', () => {
     // Create CNS with mock neuron instead of real one
     const cns = new CNS([mockDbUserNeuron, userProcessor]);
     
-    const responses: unknown[] = [];
+    const responses: TCNSStimulationResponse[] = [];
     const stimulation = cns.stimulate(
       user.fetchRequest.createSignal({ userId: '123' }),
       {
@@ -94,7 +120,7 @@ describe('User Processor', () => {
     await stimulation.waitUntilComplete();
     
     // Verify processor received data and processed it
-    const processed = responses.find(r => r.outputSignal?.collateral === user.processed);
+    const processed = responses.find(r => r.outputSignal?.collateral === userProcessor.axon.processed);
     expect(processed?.outputSignal?.payload).toEqual({
       userId: '123',
       greeting: 'Hello, Mock User 123!',
@@ -112,10 +138,10 @@ Mocks can be made flexible to test different scenarios:
 function createMockDbUserNeuron(
   behavior: 'success' | 'not-found' | 'error'
 ) {
-  return neuron({
+  return cnsNeuron({
     fetched: user.fetched,
-    notFound: collateral<{ userId: string }>(),
-    error: collateral<{ userId: string; error: string }>(),
+    notFound: cnsCollateral<{ userId: string }>(),
+    error: cnsCollateral<{ userId: string; error: string }>(),
   })
     .dendrite({
       collateral: user.fetchRequest,
@@ -176,14 +202,16 @@ describe('Testing downstream neurons in isolation', () => {
       name: 'Test User',
     });
     
-    const responses: unknown[] = [];
+    const responses: TCNSStimulationResponse[] = [];
     await cns.stimulate(fetchedSignal, {
-      onResponse: (r) => responses.push(r),
-    });
+      onResponse: (r) => {
+        responses.push(r);
+      },
+    }).waitUntilComplete();
     
     // Verify processing result
-    const processed = responses.find(r => r.outputSignal?.collateral === user.processed);
-    expect(processed?.outputSignal?.payload.greeting).toBe('Hello, Test User!');
+    const processed = responses.find(r => r.outputSignal?.collateral === userProcessor.axon.processed);
+    expect(processed?.outputSignal?.payload).toMatchObject({ greeting: 'Hello, Test User!' });
   });
 });
 ```
@@ -194,8 +222,8 @@ You can replace only some neurons, leaving others real:
 
 ```ts
 // Real business logic
-const orderProcessor = neuron({
-  orderCreated: collateral<{ orderId: string }>(),
+const orderProcessor = cnsNeuron({
+  orderCreated: cnsCollateral<{ orderId: string }>(),
 })
   .dendrite({
     collateral: user.fetched,
@@ -218,7 +246,7 @@ describe('Order flow with mocked DB', () => {
     
     await cns.stimulate(
       user.fetchRequest.createSignal({ userId: '123' })
-    );
+    ).waitUntilComplete();
     
     // Verify entire graph worked correctly
     // with mock data from DB
@@ -231,12 +259,18 @@ describe('Order flow with mocked DB', () => {
 **Best practice**: if data access is implemented through neuron-signals, testing becomes trivial:
 
 ```ts
+// Shared collaterals (contracts)
+const item = {
+  readRequest: cnsCollateral<{ id: string }>(),
+  dataFetched: cnsCollateral<{ id: string; data: unknown }>(),
+};
+
 // In production: neuron reads from DB
-export const dbReadNeuron = neuron({
-  dataFetched: collateral<{ id: string; data: unknown }>(),
+export const dbReadNeuron = cnsNeuron({
+  dataFetched: item.dataFetched,
 })
   .dendrite({
-    collateral: collateral<{ id: string }>(),
+    collateral: item.readRequest,
     response: async (payload, axon) => {
       const data = await database.findById(payload.id);
       return axon.dataFetched.createSignal({ id: payload.id, data });
@@ -244,14 +278,14 @@ export const dbReadNeuron = neuron({
   });
 
 // In tests: mock neuron returns test data
-export const mockDbReadNeuron = neuron({
-  dataFetched: collateral<{ id: string; data: unknown }>(),
+export const mockDbReadNeuron = cnsNeuron({
+  dataFetched: item.dataFetched,
 })
   .dendrite({
-    collateral: collateral<{ id: string }>(),
+    collateral: item.readRequest,
     response: async (payload, axon) => {
       // Return predefined test data
-      const testData = {
+      const testData: Record<string, { name: string }> = {
         '123': { name: 'Test Item 1' },
         '456': { name: 'Test Item 2' },
       };
@@ -263,11 +297,11 @@ export const mockDbReadNeuron = neuron({
   });
 
 // Business logic works the same with real and mock neurons
-const businessLogic = neuron({
-  result: collateral<{ processed: unknown }>(),
+const businessLogic = cnsNeuron({
+  result: cnsCollateral<{ processed: unknown }>(),
 })
   .dendrite({
-    collateral: collateral<{ id: string; data: unknown }>(),
+    collateral: item.dataFetched,
     response: (payload, axon) => {
       // Processes data regardless of source
       return axon.result.createSignal({
@@ -284,15 +318,17 @@ const prodCns = new CNS([dbReadNeuron, businessLogic]);
 
 ## Testing data that flows on payloads
 
-All per-run data flows through signal payloads, so tests just assert on the input/output signals — there is no per-neuron context to mock:
+Application data flows through signal payloads, so tests just assert on the input/output signals — nothing per-neuron needs mocking (the context stores carry metadata such as a traceparent, not the run's data):
 
-```ts
-import { neuron, collateral, CNS } from '@cnstra/core';
+```ts file=session-neuron.test.ts
+import { cnsNeuron, cnsCollateral, CNS } from '@cnstra/core';
+import type { TCNSStimulationResponse } from '@cnstra/types';
+import { describe, expect, it } from '@jest/globals';
 
-const action = collateral<{ action: string; sessionId?: string }>();
-const output = collateral<{ result: string }>();
+const action = cnsCollateral<{ action: string; sessionId?: string }>();
+const output = cnsCollateral<{ result: string }>();
 
-const sessionNeuron = neuron({ output }).dendrite({
+const sessionNeuron = cnsNeuron({ output }).dendrite({
   collateral: action,
   response: (payload, axon) => {
     // Session id rides on the payload (or defaults) — no ctx needed.
@@ -307,16 +343,19 @@ describe('session neuron', () => {
   it('uses the payload session id', async () => {
     const cns = new CNS([sessionNeuron]);
 
-    const responses: unknown[] = [];
+    const responses: TCNSStimulationResponse[] = [];
     await cns
       .stimulate(action.createSignal({ action: 'test', sessionId: 'test-session-123' }), {
-        onResponse: (r) => responses.push(r),
+        onResponse: (r) => {
+          responses.push(r);
+        },
       })
       .waitUntilComplete();
 
-    expect(responses[0]?.outputSignal?.payload.result).toBe(
-      'test (session: test-session-123)'
-    );
+    const produced = responses.find(r => r.outputSignal?.collateral === output);
+    expect(produced?.outputSignal?.payload).toEqual({
+      result: 'test (session: test-session-123)',
+    });
   });
 });
 ```
@@ -329,7 +368,7 @@ For integration tests, you can use real neurons but with a test DB:
 // Real neuron, but with test DB
 const testDb = createTestDatabase(); // in-memory or test DB
 
-const testDbNeuron = neuron({
+const testDbNeuron = cnsNeuron({
   fetched: user.fetched,
 })
   .dendrite({
@@ -377,18 +416,20 @@ describe('Integration test', () => {
 
 ## Example: Complete Test Suite
 
-```ts
-import { CNS, collateral, neuron } from '@cnstra/core';
+```ts file=full-suite.test.ts
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import type { TCNSStimulationResponse } from '@cnstra/types';
+import { describe, expect, it } from '@jest/globals';
 
 // Contracts
 const user = {
-  fetchRequest: collateral<{ userId: string }>(),
-  fetched: collateral<{ userId: string; name: string }>(),
+  fetchRequest: cnsCollateral<{ userId: string }>(),
+  fetched: cnsCollateral<{ userId: string; name: string }>(),
 };
 
 // Mock DB neuron
 const createMockDb = (users: Record<string, { name: string }>) =>
-  neuron({ fetched: user.fetched })
+  cnsNeuron({ fetched: user.fetched })
     .dendrite({
       collateral: user.fetchRequest,
       response: async (payload, axon) => {
@@ -404,8 +445,8 @@ const createMockDb = (users: Record<string, { name: string }>) =>
     });
 
 // Business logic
-const processor = neuron({
-  processed: collateral<{ greeting: string }>(),
+const processor = cnsNeuron({
+  processed: cnsCollateral<{ greeting: string }>(),
 })
   .dendrite({
     collateral: user.fetched,
@@ -422,23 +463,28 @@ describe('Full test suite', () => {
     });
     const cns = new CNS([mockDb, processor]);
     
-    const results: unknown[] = [];
+    const results: TCNSStimulationResponse[] = [];
     await cns.stimulate(
       user.fetchRequest.createSignal({ userId: '123' }),
-      { onResponse: (r) => results.push(r) }
-    );
+      {
+        onResponse: (r) => {
+          results.push(r);
+        },
+      }
+    ).waitUntilComplete();
     
-    const processed = results.find(r => r.outputSignal?.collateral === processorAxon.processed);
-    expect(processed?.outputSignal?.payload.greeting).toBe('Hello, Alice!');
+    const processed = results.find(r => r.outputSignal?.collateral === processor.axon.processed);
+    expect(processed?.outputSignal?.payload).toEqual({ greeting: 'Hello, Alice!' });
   });
 
   it('handles missing user', async () => {
     const mockDb = createMockDb({});
     const cns = new CNS([mockDb, processor]);
     
-    await expect(
-      cns.stimulate(user.fetchRequest.createSignal({ userId: '999' }))
-    ).rejects.toThrow('User 999 not found');
+    const stimulation = cns.stimulate(user.fetchRequest.createSignal({ userId: '999' }));
+    
+    await expect(stimulation.waitUntilComplete()).rejects.toThrow();
+    expect(stimulation.getFailedTasks()[0]?.error.message).toBe('User 999 not found');
   });
 });
 ```

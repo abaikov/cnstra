@@ -304,6 +304,15 @@ h1, h2, h3, h4,
 .exp-filters.tab-collaterals .fg-toggles,
 .exp-filters.tab-collaterals .fg-search,
 .exp-filters.tab-collaterals .fg-neuron { display: none !important; }
+.exp-filters.tab-scheduled .fg-toggles,
+.exp-filters.tab-scheduled .fg-inputs,
+.exp-time.tab-scheduled,
+.exp-chips.tab-scheduled { display: none !important; }
+@media (max-width: 1200px) {
+    .exp-commands { display: none !important; }
+    .exp-row:hover .exp-commands,
+    .exp-act-row:hover .exp-commands { display: flex !important; }
+}
 
 /* ── A drop of cyberpunk ────────────────────────────────────────────────────
    The panel root gets a darkened base + a faint neon grid + soft corner blooms

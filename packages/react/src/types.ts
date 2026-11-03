@@ -1,10 +1,10 @@
 import { CNS } from '@cnstra/core';
 
-export interface CNSContextValue {
+export interface ICNSContextValue {
     cns: CNS<any, any>;
 }
 
-export interface CNSProviderProps {
+export interface ICNSProviderProps {
     cns: CNS<any, any>;
     children: React.ReactNode;
 }

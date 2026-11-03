@@ -1,23 +1,17 @@
-import { neuron } from '@cnstra/core';
+import { cnsNeuron } from '@cnstra/core';
 import { appModelAxon } from '../../controller-layer/AppModelAxon';
-import { db, dbEventQueue } from '../../../model';
+import { db } from '../../../model/db';
 
-/** Persists apps. Indexes are derived, so this is a plain upsert / remove. */
-export const appsNeuron = neuron({})
+export const appsNeuron = cnsNeuron({})
     .dendrite({
         collateral: appModelAxon.appUpserted,
         response: app => {
-            db.apps.upsertOne(app);
-            dbEventQueue.flush();
+            db.apps.upsertEntityByKey(app.id, app);
         },
     })
     .dendrite({
         collateral: appModelAxon.appDisconnected,
         response: ({ appId }) => {
-            const app = db.apps.getOneByPk(appId);
-            if (app) {
-                db.apps.removeOne(app);
-                dbEventQueue.flush();
-            }
+            db.apps.deleteEntityByKey(appId);
         },
     });

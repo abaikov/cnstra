@@ -9,7 +9,7 @@
  * No Postgres/Redis needed — this is the resumable-execution ENGINE in-process. The
  * pg-boss variant (queue + Postgres) is in pgboss-resumable.ts.
  */
-import { CNS, collateral, neuron } from '@cnstra/core';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSProgressSerializer,
@@ -18,29 +18,29 @@ import {
 } from '@cnstra/persist';
 
 // ── a small "import user" flow: importUser → enrichUser → persistUser ──
-const input = collateral<{ userId: string }>();
-const userFetched = collateral<{ id: string; name: string }>();
-const userEnriched = collateral<{ id: string; name: string; plan: string }>();
-const userSaved = collateral<{ id: string; ok: true }>();
+const input = cnsCollateral<{ userId: string }>();
+const userFetched = cnsCollateral<{ id: string; name: string }>();
+const userEnriched = cnsCollateral<{ id: string; name: string; plan: string }>();
+const userSaved = cnsCollateral<{ id: string; ok: true }>();
 
 // A fault we can toggle: persistUser throws on the first attempt.
 const control = { failPersist: true };
 
-const importUser = neuron({ userFetched }).dendrite({
+const importUser = cnsNeuron({ userFetched }).dendrite({
     collateral: input,
     response: (p, axon) => {
         console.log(`    ▸ importUser(${p!.userId})`);
         return axon.userFetched.createSignal({ id: p!.userId, name: 'Neo Anderson' });
     },
 });
-const enrichUser = neuron({ userEnriched }).dendrite({
+const enrichUser = cnsNeuron({ userEnriched }).dendrite({
     collateral: userFetched,
     response: (p, axon) => {
         console.log(`    ▸ enrichUser(${p!.id})`);
         return axon.userEnriched.createSignal({ ...p!, plan: 'pro' });
     },
 });
-const persistUser = neuron({ userSaved }).dendrite({
+const persistUser = cnsNeuron({ userSaved }).dendrite({
     collateral: userEnriched,
     response: (p, axon) => {
         console.log(`    ▸ persistUser(${p!.id})`);

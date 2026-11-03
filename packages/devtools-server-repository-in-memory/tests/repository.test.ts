@@ -1,15 +1,5 @@
 import { CNSDevToolsServerRepositoryInMemory } from '../src/index';
-import type { TCNSAppDTO } from '@cnstra/devtools-dto';
 import type { TCNSTopologySnapshotDTO } from '@cnstra/devtools-server';
-
-const makeApp = (id: string, overrides: Partial<TCNSAppDTO> = {}): TCNSAppDTO => ({
-    id,
-    name: `App ${id}`,
-    version: '1.0.0',
-    connectedAt: Date.now(),
-    lastSeenAt: Date.now(),
-    ...overrides,
-});
 
 const makeTopology = (cnsId: string, appId: string): TCNSTopologySnapshotDTO => ({
     cnsId,
@@ -27,33 +17,6 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
 
     beforeEach(() => {
         repo = new CNSDevToolsServerRepositoryInMemory();
-    });
-
-    describe('Apps', () => {
-        test('upserts and lists apps', () => {
-            repo.upsertApp(makeApp('app-1'));
-            expect(repo.listApps()).toHaveLength(1);
-            expect(repo.listApps()[0].id).toBe('app-1');
-        });
-
-        test('overwrites app on re-upsert', () => {
-            repo.upsertApp(makeApp('app-1', { name: 'Old' }));
-            repo.upsertApp(makeApp('app-1', { name: 'New' }));
-            const apps = repo.listApps();
-            expect(apps).toHaveLength(1);
-            expect(apps[0].name).toBe('New');
-        });
-
-        test('stores multiple apps independently', () => {
-            repo.upsertApp(makeApp('app-1'));
-            repo.upsertApp(makeApp('app-2'));
-            const ids = repo.listApps().map(a => a.id).sort();
-            expect(ids).toEqual(['app-1', 'app-2']);
-        });
-
-        test('listApps returns empty array initially', () => {
-            expect(repo.listApps()).toEqual([]);
-        });
     });
 
     describe('Topology', () => {
@@ -85,44 +48,24 @@ describe('CNSDevToolsServerRepositoryInMemory', () => {
     });
 
     describe('CNS mapping', () => {
-        test('maps cns to app bidirectionally', () => {
-            repo.addCnsToApp('app-1', 'app-1:cns');
+        test('finds the app of a cns from its topology', () => {
+            repo.saveTopology(makeTopology('app-1:cns', 'app-1'));
             expect(repo.findAppByCns('app-1:cns')).toBe('app-1');
-            expect(repo.getCnsByApp('app-1')).toContain('app-1:cns');
-        });
-
-        test('supports multiple cns per app', () => {
-            repo.addCnsToApp('app-1', 'app-1:cns-a');
-            repo.addCnsToApp('app-1', 'app-1:cns-b');
-            expect(repo.getCnsByApp('app-1')).toHaveLength(2);
         });
 
         test('findAppByCns returns undefined for unknown cnsId', () => {
             expect(repo.findAppByCns('unknown')).toBeUndefined();
         });
-
-        test('getCnsByApp returns empty array for unknown appId', () => {
-            expect(repo.getCnsByApp('unknown')).toEqual([]);
-        });
-
-        test('addCnsToApp is idempotent', () => {
-            repo.addCnsToApp('app-1', 'app-1:cns');
-            repo.addCnsToApp('app-1', 'app-1:cns');
-            expect(repo.getCnsByApp('app-1')).toHaveLength(1);
-        });
     });
 
     describe('Clear', () => {
         test('clears all data', () => {
-            repo.upsertApp(makeApp('app-1'));
             repo.saveTopology(makeTopology('app-1:cns', 'app-1'));
-            repo.addCnsToApp('app-1', 'app-1:cns');
 
             repo.clear();
 
-            expect(repo.listApps()).toEqual([]);
             expect(repo.getTopology()).toEqual([]);
-            expect(repo.getCnsByApp('app-1')).toEqual([]);
+            expect(repo.findAppByCns('app-1:cns')).toBeUndefined();
             expect(repo.findAppByCns('app-1:cns')).toBeUndefined();
         });
 

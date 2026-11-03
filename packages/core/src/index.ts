@@ -1,6 +1,5 @@
 export { CNS } from './CNS';
-// CNSPersistOptionsRegistry + createPersistRegistry moved to @cnstra/persist;
-// createCNS moved to @cnstra/factory (keeps core a pure, dependency-light engine).
+export { createCNS } from './createCNS';
 export { CNSCollateral } from './CNSCollateral';
 export { CNSStimulationGate } from './utils/CNSStimulationGate';
 
@@ -11,11 +10,11 @@ export type { TCNSStimulationGateOptions } from './utils/CNSStimulationGate';
 
 // Factory
 export {
-    collateral,
-    neuron,
-    neuronFactory,
-    withGlobal,
-    afferentPath,
-    modality,
+    cnsCollateral,
+    cnsNeuron,
+    cnsNeuronFactory,
+    withCNSGlobal,
+    cnsAfferentPath,
+    cnsModality,
 } from './factory/index';
-export type { TNeuronFactory } from './factory/index';
+export type { TCNSNeuronFactory } from './factory/index';

@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/types",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Shared TypeScript contract for CNStra: signals, tasks, axons, neuron/collateral/stimulation/network interfaces. Zero runtime — the base package core and integrations build on.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/types"
+  },
   "keywords": ["cnstra", "types", "contract", "interfaces"],
   "main": "dist/index.js",
   "module": "dist/index.mjs",

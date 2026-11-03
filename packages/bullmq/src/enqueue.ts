@@ -1,14 +1,15 @@
 import type { CNSCollateral } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
-import { stimulationJob as brokerStimulationJob } from '@cnstra/broker';
+import { cnsStimulationJob as brokerStimulationJob } from '@cnstra/broker';
+import type { TCNSStimulationJobOptions } from '@cnstra/broker';
 import type {
-    IBullJob,
-    IBullQueueLike,
+    ICNSBullJob,
+    ICNSBullQueueLike,
     TCNSStimulationJobData,
 } from './types';
 
 /** Commonly used BullMQ `add` options (a superset is passed through). */
-export interface TCNSSendOptions {
+export type TCNSSendOptions = {
     /** Total attempts incl. the first — BullMQ retries the SAME job id. */
     attempts?: number;
     backoff?: number | { type: string; delay?: number };
@@ -19,7 +20,7 @@ export interface TCNSSendOptions {
     removeOnComplete?: boolean | number | { age?: number; count?: number };
     removeOnFail?: boolean | number | { age?: number; count?: number };
     [key: string]: unknown;
-}
+};
 
 /** The BullMQ job name stimulations are enqueued under. */
 export const CNS_JOB_NAME = 'cns-stimulation';
@@ -28,20 +29,20 @@ export const CNS_JOB_NAME = 'cns-stimulation';
  * Build a queue job from a **registered** collateral. Throws if the collateral
  * is not in the registry, so a typo can't reach the queue.
  */
-export function stimulationJob(
+export function cnsStimulationJob(
     registry: CNSPersistOptionsRegistry,
     collateral: CNSCollateral<unknown>,
     payload: unknown,
-    extra?: Pick<TCNSStimulationJobData, 'maxNeuronHops'>
+    stimulationJobOptions?: TCNSStimulationJobOptions
 ): TCNSStimulationJobData {
-    return brokerStimulationJob(registry, collateral, payload, extra, '@cnstra/bullmq');
+    return brokerStimulationJob(registry, collateral, payload, stimulationJobOptions, '@cnstra/bullmq');
 }
 
 /** Add a stimulation job to a BullMQ queue. Returns the created job. */
-export function enqueueStimulation(
-    queue: IBullQueueLike,
+export function enqueueCNSStimulation(
+    queue: ICNSBullQueueLike,
     job: TCNSStimulationJobData,
     options?: TCNSSendOptions
-): Promise<IBullJob> {
-    return queue.add(CNS_JOB_NAME, job as unknown as object, options);
+): Promise<ICNSBullJob> {
+    return queue.add(CNS_JOB_NAME, job, options);
 }

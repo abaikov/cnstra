@@ -13,6 +13,10 @@ a retried job **continues the outstanding frontier** instead of re-running from 
 
 One job = one stimulation. `stimulationId` = the BullMQ job id; each retry = a new attempt.
 
+Pass an explicit `jobId` to make that id a business key you can grep for —
+see [Choosing the stimulation id](./opentelemetry.md#choosing-the-stimulation-id).
+For traces and metrics over the same setup, see [OpenTelemetry](./opentelemetry.md).
+
 ## Install
 
 ```bash
@@ -21,7 +25,13 @@ npm install @cnstra/bullmq @cnstra/core bullmq
 
 ## Worker
 
-```ts
+```ts file=neurons/registry.ts
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
+
+export const registry = new CNSPersistOptionsRegistry();
+```
+
+```ts file=worker.ts
 import { Worker } from 'bullmq';
 import { createCNSWorker } from '@cnstra/bullmq';
 import { CNS } from '@cnstra/core';
@@ -35,7 +45,7 @@ const worker = createCNSWorker({
   cns,
   registry,          // name ⇄ object, to reconstruct the entry signal by name
   queue: 'cns',
-  connection,
+  workerOptions: { connection },
   resume: {},        // ← frontier resume via BullMQ's OWN job progress (Redis); see below
 });
 ```
@@ -44,18 +54,48 @@ The worker reconstructs the entry signal from the job's `collateralName`, stimul
 awaits completion. If the stimulation fails, the processor rejects and the error propagates
 so **BullMQ applies its retry/backoff** — and, with `resume`, the retry picks up the frontier.
 
+```ts setup
+import { Worker } from 'bullmq';
+import { createCNSWorker } from '@cnstra/bullmq';
+import { CNS, cnsAfferentPath, cnsCollateral, cnsModality } from '@cnstra/core';
+import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
+import type { TCNSHandlerContext, TCNSNeuron } from '@cnstra/types';
+
+declare const registry: CNSPersistOptionsRegistry;
+declare const cns: CNS<TCNSNeuron>;
+declare const ctx: TCNSHandlerContext;
+
+const connection = { host: '127.0.0.1', port: 6379 };
+const importUser = cnsCollateral<{ userId: string }>();
+const createDeck = cnsCollateral<{ title: string }>();
+const payload = { title: 'Welcome deck' };
+const onboarding = cnsAfferentPath();
+const flow = cnsModality({ onboarding });
+```
+
 ## Producer
 
 ```ts
 import { Queue } from 'bullmq';
-import { enqueueStimulation, stimulationJob } from '@cnstra/bullmq';
+import { enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/bullmq';
 
 const queue = new Queue('cns', { connection });
 
-// stimulationJob resolves the entry collateral to its registered NAME (portable on the queue)
-const job = stimulationJob(registry, importUser, { userId: '42' });
-await enqueueStimulation(queue, job, { attempts: 3, backoff: { type: 'exponential', delay: 1000 } });
+// cnsStimulationJob resolves the entry collateral to its registered NAME (portable on the queue)
+const job = cnsStimulationJob(registry, importUser, { userId: '42' });
+await enqueueCNSStimulation(queue, job, { attempts: 3, backoff: { type: 'exponential', delay: 1000 } });
 ```
+
+A job can run on an afferent path. Register the modality (`registry.registerModality('flow', flow)`) and pass it, or enqueue from a neuron body with `from: ctx` to keep the path of the run that enqueues it:
+
+```ts
+import { cnsStimulationJob } from '@cnstra/bullmq';
+
+cnsStimulationJob(registry, createDeck, payload, { modality: flow, afferentPath: onboarding });
+cnsStimulationJob(registry, createDeck, payload, { from: ctx });
+```
+
+The job carries the names (`modalityName`, `afferentPathName`); the worker starts the stimulation on that path, and a retry resumes on it.
 
 ## Retries & resume
 
@@ -72,7 +112,11 @@ it. Three levels:
 
   ```ts
   import { CNSRedisProgressRepository } from '@cnstra/progress-redis';
-  resume: { repository: new CNSRedisProgressRepository({ connection }) }
+
+  createCNSWorker({
+    Worker, cns, registry, queue: 'cns', workerOptions: { connection },
+    resume: { repository: new CNSRedisProgressRepository({ connection }) },
+  });
   ```
 
 Only the unfinished branch re-runs (`cns.activate(...)`), with its context. See
@@ -95,7 +139,7 @@ import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 
 const history = new CNSInMemoryStimulationRepository({ maxStimulations: 1000 }); // bound it!
 
-createCNSWorker({ Worker, cns, registry, queue: 'cns', connection, observe: history });
+createCNSWorker({ Worker, cns, registry, queue: 'cns', workerOptions: { connection }, observe: history });
 
 const runs = await history.listStimulations(); // roster for an admin screen
 ```
@@ -106,15 +150,18 @@ const runs = await history.listStimulations(); // roster for an admin screen
 > history across restarts, use `CNSPostgresStimulationRepository`. The DevTools panel renders
 > this model directly — see [Stimulations](/docs/devtools/stimulations).
 
-**See it live in the Explorer.** Hand that same `history` store to `startDevTools` and every job the
+**See it live in the Explorer.** Hand that same `history` store to `startCNSDevTools` and every job the
 worker processes shows up in the 🔎 Explorer — filterable by job type (entry collateral) or neuron,
 each run drilling into its attempt/task waterfall. One shared store, no bespoke UI:
 
 ```ts
-import { startDevTools } from '@cnstra/devtools-server';
+import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
+import { startCNSDevTools } from '@cnstra/devtools-server';
 
-await startDevTools(cns, registry, { stimulationRepository: history });
-createCNSWorker({ Worker, cns, registry, queue: 'cns', connection, observe: history });
+const history = new CNSInMemoryStimulationRepository({ maxStimulations: 1000 });
+
+await startCNSDevTools(cns, registry, { stimulationRepository: history });
+createCNSWorker({ Worker, cns, registry, queue: 'cns', workerOptions: { connection }, observe: history });
 // → open the printed URL → 🔎 Explorer. Separate process? Point both at one Postgres store instead.
 ```
 
@@ -133,13 +180,21 @@ every log line inside a flow carries the run id with zero wiring — see
 ## Graceful shutdown
 
 `createCNSWorker` returns `{ worker, shutdown }`. On `SIGTERM`/`SIGINT` call `shutdown()`: it
-stops taking new jobs, lets in-flight stimulations finish for up to `drainMs` (default 10s),
-then **aborts** any still running — their remaining tasks become the frontier, the resume
-checkpoint records it, and the job's retry resumes exactly there — and closes the worker. It
-does **not** close your `observe`/`resume` stores (you own those).
+stops taking new jobs, lets in-flight stimulations finish, then **aborts** any still running —
+their remaining tasks become the frontier, the resume checkpoint records it, and the job's retry
+resumes exactly there — and closes the worker. It does **not** close your `observe`/`resume`
+stores (you own those).
+
+`drainMs` (default 10s) is the budget for the whole shutdown, and it is a real bound: half goes
+to finishing on their own, half to writing the checkpoints of whatever had to be aborted. It is
+split rather than extended because the deadline that matters is on the shutdown as a whole — a
+container's termination grace period — and a shutdown that overruns it is killed mid-write,
+losing the checkpoint the drain existed to produce. A stimulation whose neuron ignores the abort
+signal (an HTTP call with no signal wired through, say) therefore costs you the second half and
+nothing more; it cannot hold the process open.
 
 ```ts
-const { worker, shutdown } = createCNSWorker({ Worker, cns, registry, queue: 'cns', connection, resume: {} });
+const { worker, shutdown } = createCNSWorker({ Worker, cns, registry, queue: 'cns', workerOptions: { connection }, resume: {} });
 worker.on('failed', () => {/* raw BullMQ worker, for events */});
 
 for (const sig of ['SIGTERM', 'SIGINT'] as const) {

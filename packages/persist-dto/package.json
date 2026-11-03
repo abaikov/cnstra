@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/persist-dto",
-  "version": "0.2.0",
+  "version": "0.2.4",
   "description": "Canonical, name-based data model for CNStra resumable execution: run/stimulation/task DTOs (emit) and persisted entities, plus the frontier progress DTO. Zero-runtime types shared by @cnstra/persist and the devtools.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/persist-dto"
+  },
   "keywords": ["cnstra", "persist", "dto", "resumable", "stimulation", "run"],
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -9,8 +14,8 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.mjs", "require": "./dist/index.js" } },
   "sideEffects": false,
   "files": ["dist"],
-  "scripts": { "prepublishOnly": "node ../../scripts/check-drift.mjs --gate", "build": "tsup", "test:types": "tsc --noEmit", "clean": "rm -rf dist" },
-  "devDependencies": { "tsup": "8.5.1", "typescript": "5.7.2" },
+  "scripts": { "prepublishOnly": "node ../../scripts/check-drift.mjs --gate", "build": "tsup", "test:types": "tsc --noEmit", "clean": "rm -rf dist", "test": "jest" },
+  "devDependencies": { "@types/jest": "29.5.12", "jest": "29.7.0", "ts-jest": "29.1.2", "tsup": "8.5.1", "typescript": "5.7.2" },
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "license": "MIT",
   "publishConfig": { "access": "public" }

@@ -44,6 +44,15 @@ export function createShell({
         }
     );
 
+    // The server pushes its switches on connect, which is after this controller
+    // exists — so follow the socket's copy rather than reading it once.
+    socket.uiConfig.subscribe(config => {
+        explorerCtrl.allowedActions.setValue(config.actions ?? {});
+        // Only when the user has not already chosen a range: the config is the
+        // OPENING view, not a cage.
+        explorerCtrl.applyDefaultWindow(config.defaultWindowMs);
+    });
+
     // Connected-app name for the top-bar identity block (the health indicator the
     // old sidebar owned). Tracks the effective selection over the connected set.
     const appName = bindable('');
@@ -58,6 +67,7 @@ export function createShell({
 
     const explorerPane = explorerPage(explorerCtrl, {
         connectionStatus: socket.connectionStatus,
+        transport: socket.transport,
         appName,
     });
 

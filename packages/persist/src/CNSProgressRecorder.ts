@@ -4,24 +4,12 @@ import type { ICNSProgressRecordingStrategy } from './interfaces/ICNSProgressRec
 import type { TCNSProgressRecorderOptions } from './types/TCNSProgressRecorderOptions';
 
 /**
- * Records a stimulation's progress into a repository, on a cadence decided by a
- * {@link ICNSProgressRecordingStrategy}. Wire its `onResponse` into the run:
+ * Records just the outstanding frontier, into a KV {@link ICNSProgressRepository}
+ * — the only shape a store like BullMQ's native job progress can hold.
  *
- * ```ts
- * const recorder = new CNSProgressRecorder({ serializer, repository, key: jobId });
- * cns.stimulate(signal, { onResponse: recorder.onResponse });
- * // ...on teardown: recorder.dispose();
- * ```
- *
- * It never deletes the record — the record's lifecycle (cleanup on success,
- * retention for an admin UI) is the integration's concern (e.g. tied to the
- * pg-boss job row).
- *
- * The FRONTIER-only, KV-shaped sibling of {@link CNSStimulationPersistor}: same
- * serializer + strategy machinery, but it saves one {@link TCNSProgress} blob to a
- * minimal {@link ICNSProgressRepository} (the only shape some checkpoints — e.g.
- * BullMQ's native job-progress — can hold). Reach for the persistor instead when the
- * store can hold the full relational run/attempt/task model.
+ * {@link CNSStimulationPersistor} is the sibling that writes the full
+ * run/attempt/task model instead. Both share the serializer and the cadence
+ * strategy; they differ in what the store can keep.
  */
 export class CNSProgressRecorder {
     private readonly strategy: ICNSProgressRecordingStrategy;

@@ -28,12 +28,17 @@ Create one guard per workflow/source and call `drain()` freely. If a run is alre
 
 ## Basic Shape
 
+```ts setup
+declare const cns: import('@cnstra/core').CNS<any>;
+declare const processPendingUsers: import('@cnstra/core').CNSCollateral<void>;
+```
+
 ```ts
 import { CNSStimulationGate } from '@cnstra/core';
 
 const guard = new CNSStimulationGate({
   cns,
-  signal: jobsAxon.processPendingUsers.createSignal(),
+  signal: processPendingUsers.createSignal(),
   options: {
     concurrency: 4,
   },
@@ -55,8 +60,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   CNS,
   CNSStimulationGate,
-  collateral,
-  neuron,
+  cnsCollateral,
+  cnsNeuron,
 } from '@cnstra/core';
 
 type PendingUser = {
@@ -65,14 +70,14 @@ type PendingUser = {
 };
 
 const jobsAxon = {
-  processPendingUsers: collateral<void>(),
+  processPendingUsers: cnsCollateral<void>(),
 };
 
 @Injectable()
 export class PendingUsersWorkflow {
   private readonly logger = new Logger(PendingUsersWorkflow.name);
 
-  private readonly processPendingUsers = neuron(jobsAxon).dendrite({
+  private readonly processPendingUsers = cnsNeuron(jobsAxon).dendrite({
     collateral: jobsAxon.processPendingUsers,
     response: async (_payload, axon, ctx) => {
       const users = await this.claimPendingUsers(100);
@@ -155,7 +160,7 @@ export class PendingUsersWorkflow {
 
 The first signal starts the workflow. Each successful batch returns the same signal again:
 
-```ts
+```ts signature
 return axon.processPendingUsers.createSignal();
 ```
 

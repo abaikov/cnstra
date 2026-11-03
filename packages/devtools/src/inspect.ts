@@ -76,7 +76,7 @@ type StimulationRecord = {
     hops: Array<{ from: string; to: string | null; error?: string }>;
 };
 
-export type CNSHistoryLoggerOptions = {
+export type TCNSHistoryLoggerOptions = {
     /** How many stimulations to keep in the ring buffer. Default: 100 */
     maxRecords?: number;
 };
@@ -106,7 +106,7 @@ export class CNSHistoryLogger {
     constructor(
         cns: ICNS<AnyNeuron>,
         registry: CNSPersistOptionsRegistry,
-        options: CNSHistoryLoggerOptions = {}
+        options: TCNSHistoryLoggerOptions = {}
     ) {
         this.maxRecords = options.maxRecords ?? 100;
         this.registry = registry;

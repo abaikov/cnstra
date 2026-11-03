@@ -34,15 +34,14 @@ error), then:
   intact) and the run turns green;
 - **Clone (fresh run from entry)** — a brand-new run from the same input.
 
-Live updates stream over SSE. Styled in the CNStra "Rotting Flesh" pixel theme
-with the original font. With `ADMIN_QUEUE=bull`, every action flows through a real
+Live updates stream over SSE. With `ADMIN_QUEUE=bull`, every action flows through a real
 Redis queue (`npm run redis:up` first) while the rich run/attempt/task store the
 UI renders stays in the admin — the CNStra admin *operating* a real broker.
 
 Endpoints (all curl-able): `GET /api/runs`, `GET /api/info`, `POST /api/launch {fail}`,
 `POST /api/retry {runId}`, `POST /api/clone {runId}`, `GET /api/events` (SSE).
 
-## 1. Resumable execution & resume — no infra (`npm run demo:resumable`)
+## 1. Resumable execution & resume — no infra (`npm run demo:resume`)
 
 The resumable-execution **engine** in-process: a run fails partway, then **resumes
 from the exact frontier** (not from scratch) on a second attempt. The whole
@@ -51,7 +50,7 @@ run/attempt/task history is kept in a repository — the same data the DevTools
 
 ```bash
 cd packages/examples
-npm run demo:resumable
+npm run demo:resume
 ```
 
 No Postgres/Redis needed. Shows: attempt #1 runs `importUser → enrichUser →
@@ -89,20 +88,6 @@ npm run redis:down        # tear down
 Connection defaults to `REDIS_HOST=127.0.0.1` / `REDIS_PORT=6379`. Output shows
 `importUser` runs once, `persistUser` throws on attempt #1, then the retry resumes
 **only** `persistUser` (context `tries` 1 → 2) and the run completes.
-
-## Where the admin panel fits (honest status)
-
-- The **resumable-execution engine + queue integrations** (pg-boss, BullMQ) are done
-  and runnable.
-- The **retry admin** (roster → attempt timeline → task waterfall → **Launch /
-  Retry / Clone**) is built and runnable here as `demo:admin`, over **two backends**:
-  in-process and a real **BullMQ/Redis** queue (`ADMIN_QUEUE=bull`). Verified
-  end-to-end on both (launch → fail → retry resumes the frontier; clone; launch-ok).
-- What's **still separate**: this admin is served from `@cnstra/examples`, not yet
-  folded into the main `@cnstra/devtools-panel-ui` (topology + live stimulations
-  observability panel, served by `packages/example-app`). Merging the two — one panel
-  that does both observability and run/attempt/retry — is its own track: the panel-side
-  UI on the now-native Exodra canvas plus a bridge onto this resumable store.
 
 ## The constructor matrix — broker × progress store
 

@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/core",
-  "version": "3.0.0",
+  "version": "3.2.1",
   "description": "Embeddable workflow/orchestration engine for TypeScript: deterministic runs over a typed neuron graph (in-memory, zero dependencies).",
   "keywords": [
     "neural-network",
@@ -34,7 +34,8 @@
   "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/abaikov/cnstra.git"
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/core"
   },
   "bugs": {
     "url": "https://github.com/abaikov/cnstra/issues"

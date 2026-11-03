@@ -1,7 +1,7 @@
 /**
  * Performance and memory limits for CNStra DevTools
  *
- * These limits prevent memory issues and ensure good performance
+ * These limits prevent memory issues and keep performance predictable
  * even with high-traffic applications.
  */
 

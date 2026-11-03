@@ -1,0 +1,24 @@
+{
+  "name": "@cnstra/bench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Performance benchmarks for CNStra: the engine's per-signal path, the cost of observation, the resume checkpoint round trip, and the in-memory roster derivation.",
+  "scripts": {
+    "bench": "tsx src/main.ts run",
+    "bench:baseline": "tsx src/main.ts baseline",
+    "bench:compare": "tsx src/main.ts compare",
+    "test": "jest",
+    "test:types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@types/jest": "29.5.12",
+    "@types/node": "^24.12.2",
+    "jest": "29.7.0",
+    "ts-jest": "29.1.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3"
+  },
+  "author": "Andrei Baikov <abaikov23@gmail.com>",
+  "license": "MIT"
+}

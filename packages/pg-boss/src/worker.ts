@@ -3,19 +3,19 @@ import type {
     CNSPersistOptionsRegistry,
     ICNSProgressRepository,
     ICNSProgressRecordingStrategy,
-    ICNSStimulationRepository,
+    ICNSStimulationWriter,
 } from '@cnstra/persist';
 import type { ICNS } from '@cnstra/types';
-import { runStimulationJob, createDrainState } from '@cnstra/broker';
+import { runCNSStimulationJob, createCNSDrainState } from '@cnstra/broker';
 import type {
-    IPgBossLike,
-    IPgBossJob,
+    ICNSPgBossLike,
+    ICNSPgBossJob,
     TCNSStimulationJobData,
 } from './types';
 
-export interface TCNSWorkerOptions {
+export type TCNSWorkerOptions = {
     /** Your pg-boss instance (already started). */
-    boss: IPgBossLike;
+    boss: ICNSPgBossLike;
     /** The CNS the jobs run against. */
     cns: ICNS<any, any>;
     /** Name ↔ object registry used to reconstruct signals from job data. */
@@ -31,7 +31,7 @@ export interface TCNSWorkerOptions {
      * that is `resume` below. One job = one stimulation (`stimulationId` = job id),
      * each pg-boss retry = a new attempt.
      */
-    observe?: ICNSStimulationRepository;
+    observe?: ICNSStimulationWriter;
     /**
      * Optional resumable **resume**. When set, the worker records the run's
      * outstanding frontier (by name) into `repository` as it advances, and a
@@ -51,7 +51,7 @@ export interface TCNSWorkerOptions {
     };
     /** pg-boss `work` options (batchSize, pollingIntervalSeconds, …). */
     workOptions?: Record<string, unknown>;
-}
+};
 
 /**
  * Register a pg-boss worker that turns each job into a CNStra stimulation.
@@ -63,7 +63,7 @@ export interface TCNSWorkerOptions {
  * own retry/backoff policy.
  */
 /** A registered worker + a graceful `shutdown` (see {@link createCNSWorker}). */
-export interface TCNSPgBossWorkerHandle {
+export type TCNSPgBossWorkerHandle = {
     /** The pg-boss `work()` registration id. */
     workId: string;
     /**
@@ -75,7 +75,7 @@ export interface TCNSPgBossWorkerHandle {
      * `boss.stop(...)` and close your stores after this resolves.
      */
     shutdown(opts?: { drainMs?: number }): Promise<void>;
-}
+};
 
 export async function createCNSWorker(
     options: TCNSWorkerOptions
@@ -85,12 +85,12 @@ export async function createCNSWorker(
 
     // One serializer per worker; the per-job pipeline lives in @cnstra/broker.
     const serializer = resume ? new CNSProgressSerializer(registry) : undefined;
-    const drain = createDrainState();
+    const drain = createCNSDrainState();
 
     const runJob = async (
-        job: IPgBossJob<TCNSStimulationJobData>
+        job: ICNSPgBossJob<TCNSStimulationJobData>
     ): Promise<void> => {
-        await runStimulationJob({
+        await runCNSStimulationJob({
             pkgName: '@cnstra/pg-boss',
             stopping: drain.isStopping(),
             cns,
@@ -99,6 +99,8 @@ export async function createCNSWorker(
             collateralName: job.data.collateralName,
             payload: job.data.payload,
             maxNeuronHops: job.data.maxNeuronHops,
+            modalityName: job.data.modalityName,
+            afferentPathName: job.data.afferentPathName,
             // Each pg-boss retry is a new attempt (retryCount is 0-based).
             attemptNumber: (job.retryCount ?? 0) + 1,
             observe,
@@ -110,12 +112,48 @@ export async function createCNSWorker(
         });
     };
 
+    /**
+     * pg-boss can hand a worker a whole batch (`workOptions.batchSize`), and it
+     * settles that batch as ONE unit: a handler that throws fails every job id in
+     * it. A plain `for … await` over the batch therefore turned one bad job into
+     * two separate faults — the jobs after it never ran at all, and the jobs
+     * before it, already finished, were re-queued and ran a second time.
+     *
+     * So: every job in the batch runs, whatever its neighbours did, and the ones
+     * that finished are completed HERE, before the failure is reported. pg-boss's
+     * own fail-by-id only touches rows with `state < 'completed'`, so those keep
+     * their result while the failures go to retry on their own.
+     */
     const handler = async (
-        jobs: IPgBossJob<TCNSStimulationJobData>[]
+        jobs: ICNSPgBossJob<TCNSStimulationJobData>[]
     ): Promise<void> => {
+        const completed: string[] = [];
+        const failures: unknown[] = [];
+
         for (const job of jobs) {
-            await runJob(job);
+            try {
+                await runJob(job);
+                completed.push(job.id);
+            } catch (error) {
+                failures.push(error);
+            }
         }
+
+        if (failures.length === 0) return;
+        // Only when something failed: with no failure pg-boss completes the batch
+        // itself, and completing it twice is a wasted round trip.
+        if (completed.length && boss.complete)
+            await boss.complete(queue, completed);
+
+        if (failures.length === 1) throw failures[0];
+        // Every failure stays reachable on `.errors` — pg-boss stores what is
+        // thrown as the job's output, and "3 of 20 failed" with no detail is not
+        // something anyone can act on.
+        const error = new Error(
+            `${failures.length} of ${jobs.length} jobs failed`
+        ) as Error & { errors: unknown[] };
+        error.errors = failures;
+        throw error;
     };
 
     const workId = await (workOptions

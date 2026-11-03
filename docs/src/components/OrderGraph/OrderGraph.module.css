@@ -1,0 +1,63 @@
+.graph {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.graph text {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.edge_idle,
+.edge_running,
+.edge_done,
+.edge_failed {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.edge_idle { stroke: var(--border-accent); }
+
+.edge_running {
+  stroke: var(--neon-violet-strong);
+  stroke-dasharray: 4 3;
+  animation: flow 0.8s linear infinite;
+}
+
+.edge_done { stroke: rgba(179, 224, 83, 0.55); }
+.edge_failed { stroke: var(--neon-red); }
+
+@keyframes flow {
+  to { stroke-dashoffset: -14; }
+}
+
+.node_idle rect { fill: var(--bg-card); stroke: var(--border-accent); }
+.node_idle text { fill: var(--text-muted); }
+
+.node_running rect {
+  fill: rgba(245, 195, 68, 0.1);
+  stroke: var(--neon-yellow);
+  filter: drop-shadow(0 0 6px rgba(245, 195, 68, 0.45));
+}
+.node_running text { fill: var(--neon-yellow); }
+
+.node_done rect { fill: rgba(179, 224, 83, 0.08); stroke: var(--neon-green); }
+.node_done text { fill: var(--neon-green); }
+
+.node_failed rect {
+  fill: rgba(207, 111, 99, 0.12);
+  stroke: var(--neon-red);
+  filter: drop-shadow(0 0 6px rgba(207, 111, 99, 0.45));
+}
+.node_failed text { fill: var(--neon-red); }
+
+@media (prefers-reduced-motion: reduce) {
+  .edge_running { animation: none; }
+}
+
+.graph .badge {
+  fill: var(--neon-violet);
+  font-size: 10px;
+}

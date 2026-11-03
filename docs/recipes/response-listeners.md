@@ -11,7 +11,20 @@ CNStra lets you observe traversal without polluting domain neurons. There are tw
 - Per‑run: `onResponse` option of `cns.stimulate(...)`
 - Global: `cns.addResponseListener(...)`
 
-Both receive the same response object with `inputSignal`, `outputSignal`, `error`, `ctx`, `queueLength`, `pendingActivations` and `activeActivations`.
+Both receive the same response object with `inputSignal`, `outputSignal`, `error`, `stimulation`, `queueLength`, `pendingActivations` and `activeActivations`.
+
+```ts setup
+import { CNS, cnsCollateral } from '@cnstra/core';
+import type { ICNSCollateral, ICNSStimulation, TCNSNeuron } from '@cnstra/types';
+
+declare const cns: CNS<TCNSNeuron>;
+const start = cnsCollateral<{ id: string }>();
+declare const input: { id: string };
+declare const metrics: { increment(name: string): void };
+declare const tracer: { add(event: string, collateral: ICNSCollateral<unknown>): void };
+declare const db: { checkpoints: { save(checkpoint: string): Promise<void> } };
+declare function serialize(stimulation: ICNSStimulation<TCNSNeuron>): string;
+```
 
 ## Per‑run `onResponse`
 Use for ad‑hoc debugging or request‑scoped tracing.
@@ -30,7 +43,7 @@ await cns.stimulate(start.createSignal({ id: '123' }), {
       console.log('OUT', r.outputSignal.collateral);
     }
   },
-});
+}).waitUntilComplete();
 ```
 
 ## Global `addResponseListener`
@@ -56,7 +69,7 @@ off();
 - `outputSignal`: when a dendrite returns a continuation
 - `error`: when a dendrite throws
 - `queueLength`: every activation the stimulation still owns — `pendingActivations + activeActivations`. Good for backpressure metrics. `queueLength === 0` marks the terminal response, i.e. the stimulation is finished.
-- `pendingActivations`: activations whose dendrite body has not been invoked yet (queued, held, or reserved by an in-progress fan-out). Subscribers parked behind an async listener count here.
+- `pendingActivations`: activations whose dendrite response has not been invoked yet (queued, held, or reserved by an in-progress fan-out). Subscribers parked behind an async listener count here.
 - `activeActivations`: activations whose body was invoked and returned a promise that has not settled.
 
 :::note Looking for a batch boundary?
@@ -73,7 +86,7 @@ A listener may be synchronous or `async`. The return value changes the semantics
 - **Return nothing (or a non-promise)** → purely observational. Traversal continues immediately; the listener does not affect flow.
 - **Return a promise (or use `async`/`await`)** → the listener becomes a **barrier**: the subscribers of the current response (the *next* hops) are **not enqueued until your promise resolves**.
 
-This blocking is intentional and is what makes **per-hop checkpointing** correct: in `onResponse` you can durably persist progress *before* the next hop runs, so a crash between the checkpoint and the next hop resumes exactly the not-yet-done work — no double execution, no lost work. Any neuron's response can act as a checkpoint point this way.
+This blocking is intentional and is what makes **per-hop checkpointing** correct: in `onResponse` you can persist progress *before* the next hop runs, so a crash between the checkpoint and the next hop resumes exactly the not-yet-done work — no double execution, no lost work. Any neuron's response can act as a checkpoint point this way.
 
 ```ts
 await cns.stimulate(start.createSignal(input), {
@@ -81,7 +94,7 @@ await cns.stimulate(start.createSignal(input), {
     // Subscribers of r.outputSignal wait until this write lands.
     await db.checkpoints.save(serialize(r.stimulation));
   },
-});
+}).waitUntilComplete();
 ```
 
 > ⚠️ **Footgun**: because the same hook is used for observation *and* gating, a "passive" listener that happens to `await` something (a slow logger, a metrics flush) will **throttle the entire graph** — every hop now waits on it. For pure observation, do not return/await anything; buffer and flush out of band instead.

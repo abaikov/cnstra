@@ -1,0 +1,30 @@
+import type { ECNSJobKeyMode } from './ECNSJobKeyMode';
+import type { TCNSJobDebounce } from './TCNSJobDebounce';
+import type { TCNSJobRate } from './TCNSJobRate';
+import type { TCNSJobRetentionPolicy } from './TCNSJobRetentionPolicy';
+import type { TCNSJobRetry } from './TCNSJobRetry';
+import type { TCNSJobSchedule } from './TCNSJobSchedule';
+
+export type TCNSJobTypeDefinition<TPayload = unknown> = {
+    jobType: string;
+    jobKey?(payload: TPayload): string;
+    keyMode?: ECNSJobKeyMode;
+    jobGroup?(payload: TPayload): string;
+    priority?: number;
+    retry?: TCNSJobRetry;
+    timeoutMs?: number;
+    startDeadlineMs?: number;
+    uniqueWindowMs?: number;
+    idempotencyWindowMs?: number;
+    debounce?: TCNSJobDebounce;
+    concurrency?: number;
+    maxRunning?: number;
+    maxRunningPerGroup?: number;
+    rate?: TCNSJobRate;
+    groupRate?: TCNSJobRate;
+    fairness?: boolean;
+    schedules?: TCNSJobSchedule[];
+    retention?: TCNSJobRetentionPolicy;
+    payloadSchema?: unknown;
+    description?: string;
+};

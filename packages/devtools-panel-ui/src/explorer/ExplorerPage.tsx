@@ -1,7 +1,7 @@
 import type { TExoSchema } from '@exodra/core';
 import { bindable } from '@exodra/reactivity';
 import type { TExoWritableBindable } from '@exodra/reactivity';
-import { combine } from '../exo/oimdb-bind';
+import { exoCombine } from '@oimdb/exodra';
 import type { TCNSExplorerController } from './explorerController';
 import type { TCNSExplorerTab } from './queryState';
 import type { ConnectionStatus } from '../app/controllers/socket';
@@ -11,7 +11,7 @@ import {
     C,
     eyebrow,
     proportionBar,
-    type TProportionSeg,
+    type TCNSProportionSegment,
 } from './parts';
 
 // The DevTools panel — a 4-zone dashboard. A full-width STATS strip; a top band of
@@ -21,10 +21,12 @@ import {
 // selecting a row fills the details panel in place — no full-screen navigation.
 
 /** Connection identity + health, folded into the top bar. */
-export interface TCNSExplorerConnection {
+export type TCNSExplorerConnection = {
     connectionStatus: TExoWritableBindable<ConnectionStatus, ConnectionStatus>;
+    /** Which transport carries this connection — shown beside the status dot. */
+    transport?: TExoWritableBindable<'socket' | 'polling', 'socket' | 'polling'>;
     appName: TExoWritableBindable<string, string>;
-}
+};
 
 const CLEAR_SEL = {
     selected: undefined,
@@ -38,6 +40,7 @@ const TABS: { id: TCNSExplorerTab; label: string }[] = [
     { id: 'neurons', label: 'Neurons' },
     { id: 'tasks', label: 'Activation tasks' },
     { id: 'collaterals', label: 'Collaterals' },
+    { id: 'scheduled', label: 'Scheduled' },
 ];
 
 export function explorerPage(
@@ -47,15 +50,19 @@ export function explorerPage(
     // ── identity + health ──
     const dotColor = (s: ConnectionStatus): string =>
         s === 'connected' ? C.green : s === 'connecting' ? C.yellow : C.red;
-    const connBlock = combine([conn.connectionStatus, conn.appName], () => {
+    const connBlock = exoCombine(() => {
         const s = conn.connectionStatus.getValue();
         const name = conn.appName.getValue();
+        // Say which transport when it is NOT the default socket: on polling the
+        // panel can be a poll behind, and "connected" alone would not explain it.
+        const via =
+            conn.transport?.getValue() === 'polling' ? ' · polling' : '';
         const label =
             s === 'connected'
-                ? name || 'Server Connected'
+                ? `${name || 'Server Connected'}${via}`
                 : s === 'connecting'
-                  ? 'Connecting…'
-                  : 'Disconnected';
+                  ? `Connecting…${via}`
+                  : `Disconnected${via}`;
         return (
             <div static={{ style: 'display:flex;align-items:center;gap:8px;flex:none' }}>
                 <span static={{ class: 'brand', style: `font-size:13px;color:${C.text};white-space:nowrap` }}>🧠 CNStra</span>
@@ -63,7 +70,7 @@ export function explorerPage(
                 <span static={{ style: `font-size:10px;color:${C.muted};white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis` }}>{label}</span>
             </div>
         );
-    });
+    }, [conn.connectionStatus, conn.appName]);
 
     // ── stats — a COMPACT VERTICAL column that sits beside the chart (saves the
     // full-width row the pill-cards used to eat). One `label … number` line each,
@@ -74,7 +81,7 @@ export function explorerPage(
             <span static={{ style: `font-size:16px;font-weight:700;line-height:1;color:${color};font-family:var(--font-body);font-variant-numeric:tabular-nums` }}>{String(value)}</span>
         </div>
     );
-    const statsColumn = combine([ctrl.total, ctrl.facets, ctrl.topology, ctrl.snapshot], () => {
+    const statsColumn = exoCombine(() => {
         const f = ctrl.facets.getValue();
         const countOf = (s: string): number =>
             f.byStatus.find(x => x.status === s)?.count ?? 0;
@@ -92,30 +99,30 @@ export function explorerPage(
                 {statMini(snap.tasks.length, 'tasks loaded', C.green)}
             </div>
         );
-    });
+    }, [ctrl.total, ctrl.facets, ctrl.topology, ctrl.snapshot]);
 
     // ── status distribution (proportion bar) ──
-    const distribution = combine([ctrl.facets], () => {
+    const distribution = exoCombine(() => {
         const f = ctrl.facets.getValue();
         const countOf = (s: string): number =>
             f.byStatus.find(x => x.status === s)?.count ?? 0;
-        const segs: TProportionSeg[] = [
+        const segs: TCNSProportionSegment[] = [
             { label: 'completed', value: countOf('completed'), color: C.green },
             { label: 'failed', value: countOf('failed'), color: C.red },
             { label: 'running', value: countOf('running'), color: C.yellow },
         ];
         return proportionBar(segs);
-    });
+    }, [ctrl.facets]);
 
     // ── tabs ──
     const setTab = (tab: TCNSExplorerTab): void => {
         ctrl.setQuery({ tab, ...CLEAR_SEL });
         ctrl.clearNav(); // switching tabs resets the details breadcrumb trail
     };
-    const tabs = combine([ctrl.query], () => {
+    const tabs = exoCombine(() => {
         const active = ctrl.query.getValue().tab;
         return (
-            <div static={{ style: 'display:flex;gap:4px;flex-wrap:wrap' }}>
+            <div static={{ style: 'display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:4px' }}>
                 {TABS.map(t => {
                     const on = active === t.id;
                     return (
@@ -136,7 +143,7 @@ export function explorerPage(
                 })}
             </div>
         );
-    });
+    }, [ctrl.query]);
 
     // ── status filter pills ──
     const statusPillBtn = (
@@ -164,7 +171,7 @@ export function explorerPage(
             <span static={{ style: 'font-variant-numeric:tabular-nums;min-width:42px;text-align:right' }}>{String(count)}</span>
         </button>
     );
-    const statusFilter = combine([ctrl.facets, ctrl.query], () => {
+    const statusFilter = exoCombine(() => {
         const f = ctrl.facets.getValue();
         const q = ctrl.query.getValue();
         const countOf = (s: string): number =>
@@ -180,7 +187,7 @@ export function explorerPage(
                 ]}
             </div>
         );
-    });
+    }, [ctrl.facets, ctrl.query]);
 
     // ── secondary filters: entry-only toggle · neuron select · search · time range ──
     let debounce: ReturnType<typeof setTimeout> | null = null;
@@ -204,7 +211,7 @@ export function explorerPage(
             }}
         />
     );
-    const entryToggle = combine([ctrl.query], () => {
+    const entryToggle = exoCombine(() => {
         const on = !!ctrl.query.getValue().entryOnly;
         // Active filter selection reads PINK (consistent selection colour).
         return (
@@ -222,7 +229,7 @@ export function explorerPage(
                 entry collaterals only
             </button>
         );
-    });
+    }, [ctrl.query]);
     // Typeahead filter — scales to HUNDREDS of names (a <select> would not). The
     // input element is STABLE (created once per open/chip toggle) so typing never
     // yanks focus; only the suggestion dropdown re-renders per keystroke.
@@ -237,7 +244,7 @@ export function explorerPage(
     }): TExoSchema => {
         const text = bindable('');
         const open = bindable(false);
-        const dropdown = combine([text, open, cfg.source], () => {
+        const dropdown = exoCombine(() => {
             if (!open.getValue()) return <div static={{ style: 'display:none' }} />;
             const q = text.getValue().trim().toLowerCase();
             const all = cfg.getNames();
@@ -273,7 +280,7 @@ export function explorerPage(
                     ))}
                 </div>
             );
-        });
+        }, [text, open, cfg.source]);
         const inputBlock = (
             <div static={{ style: 'position:relative;flex:1;min-width:150px' }}>
                 <input
@@ -342,7 +349,7 @@ export function explorerPage(
         return bestD <= best * 0.5 ? best : null;
     };
     const rangeBtn = (label: string, ms: number): TExoSchema => {
-        const b = combine([ctrl.query], () => {
+        const b = exoCombine(() => {
             const active = activeRangeMs() === ms;
             return (
                 <button
@@ -363,7 +370,7 @@ export function explorerPage(
                     {label}
                 </button>
             );
-        });
+        }, [ctrl.query]);
         return <div bindable={{ children: b }} />;
     };
     // A custom absolute From/To picker alongside the quick presets. `datetime-local`
@@ -407,7 +414,7 @@ export function explorerPage(
             />
         </label>
     );
-    const clearRange = combine([ctrl.query], () => {
+    const clearRange = exoCombine(() => {
         const { since, until } = ctrl.query.getValue();
         if (since == null && until == null) return <div static={{ style: 'display:none' }} />;
         return (
@@ -421,7 +428,7 @@ export function explorerPage(
                 ✕ clear
             </button>
         );
-    });
+    }, [ctrl.query]);
     // Obvious TIME RANGE block — it scopes EVERYTHING (chart + list + the stats
     // below), so the stat numbers are always "over this range".
     // Quick presets — sit inline with the "Time range" heading (space-saving).
@@ -457,7 +464,7 @@ export function explorerPage(
             {label} ✕
         </button>
     );
-    const filterChips = combine([ctrl.query], () => {
+    const filterChips = exoCombine(() => {
         const q = ctrl.query.getValue();
         const active: TExoSchema[] = [];
         if (q.status) active.push(chip(`status: ${q.status}`, () => ctrl.setQuery({ status: undefined })));
@@ -474,7 +481,7 @@ export function explorerPage(
                 {active}
             </div>
         );
-    });
+    }, [ctrl.query]);
 
     // ── zone frame helper ──
     // An empty label renders NO eyebrow — the filters zone uses its 🧠 CNStra
@@ -490,19 +497,20 @@ export function explorerPage(
     // common, below). Every control stays mounted in ONE position; the container's
     // class is toggled to `exp-filters tab-<active>` imperatively (no re-render, so
     // typing never loses focus) and pure CSS hides the irrelevant ones per tab.
+    const followTab = (baseClass: string) => (n: { element: unknown }): void => {
+        const el = n.element as HTMLElement;
+        const sync = (): void => {
+            el.className = `${baseClass} tab-${ctrl.query.getValue().tab}`;
+        };
+        sync();
+        ctrl.query.subscribe(sync);
+    };
     const tabFilters = (
         <div
             static={{
                 class: 'exp-filters',
                 style: 'display:flex;flex-direction:column;gap:12px',
-                onExoMount: (n: { element: unknown }) => {
-                    const el = n.element as HTMLElement;
-                    const sync = (): void => {
-                        el.className = `exp-filters tab-${ctrl.query.getValue().tab}`;
-                    };
-                    sync();
-                    ctrl.query.subscribe(sync);
-                },
+                onExoMount: followTab('exp-filters'),
             }}
         >
             {/* status pills (their own row when shown) */}
@@ -528,13 +536,13 @@ export function explorerPage(
             {/* header: brand on the left, the VIEW tabs pushed to the right edge */}
             <div static={{ style: 'display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap' }}>
                 <div static={{ style: 'flex:none' }} bindable={{ children: connBlock }} />
-                <div static={{ style: 'flex:none' }} bindable={{ children: tabs }} />
+                <div static={{ style: 'flex:1 1 100%;min-width:0' }} bindable={{ children: tabs }} />
             </div>
             {/* only the filters relevant to the active tab */}
             {tabFilters}
             {/* time range (COMMON to every tab): heading + quick presets share one
                 line; the custom picker gets the next line — saves vertical space */}
-            <div static={{ style: 'display:flex;flex-direction:column;gap:8px' }}>
+            <div static={{ class: 'exp-time', style: 'display:flex;flex-direction:column;gap:8px', onExoMount: followTab('exp-time') }}>
                 <div static={{ style: 'display:flex;gap:12px;align-items:center;flex-wrap:wrap' }}>
                     {eyebrow('Time range', C.pink)}
                     {timePresets}
@@ -543,7 +551,7 @@ export function explorerPage(
             </div>
             {/* active-filter tags — a RESERVED-height strip so tags appearing /
                 disappearing never reflow the layout above */}
-            <div static={{ style: 'min-height:24px;display:flex;align-items:center' }} bindable={{ children: filterChips }} />
+            <div static={{ class: 'exp-chips', style: 'min-height:24px;display:flex;align-items:center', onExoMount: followTab('exp-chips') }} bindable={{ children: filterChips }} />
         </div>
     );
 
@@ -561,7 +569,7 @@ export function explorerPage(
             </div>
         </div>
     );
-    const graphsToggle = combine([graphsCollapsed], () => {
+    const graphsToggle = exoCombine(() => {
         const off = graphsCollapsed.getValue();
         return (
             <button
@@ -576,7 +584,7 @@ export function explorerPage(
                 {off ? '▸ show chart' : '▾ hide chart'}
             </button>
         );
-    });
+    }, [graphsCollapsed]);
     const graphsZone = (
         <div static={{ style: 'flex:none;display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--border-primary);border-radius:8px;background:var(--bg-panel)' }}>
             <div static={{ style: 'display:flex;align-items:center;gap:8px' }}>
@@ -584,7 +592,7 @@ export function explorerPage(
                 <div static={{ style: 'flex:1' }} />
                 <div bindable={{ children: graphsToggle }} />
             </div>
-            <div bindable={{ children: combine([graphsCollapsed], () => (graphsCollapsed.getValue() ? <span static={{ style: 'display:none' }} /> : graphsBody)) }} />
+            <div bindable={{ children: exoCombine(() => (graphsCollapsed.getValue() ? <span static={{ style: 'display:none' }} /> : graphsBody), [graphsCollapsed]) }} />
         </div>
     );
 

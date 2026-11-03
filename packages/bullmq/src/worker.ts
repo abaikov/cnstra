@@ -3,29 +3,27 @@ import type {
     CNSPersistOptionsRegistry,
     ICNSProgressRepository,
     ICNSProgressRecordingStrategy,
-    ICNSStimulationRepository,
+    ICNSStimulationWriter,
     TCNSProgress,
 } from '@cnstra/persist';
 import type { ICNS } from '@cnstra/types';
-import { runStimulationJob, createDrainState } from '@cnstra/broker';
+import { runCNSStimulationJob, createCNSDrainState } from '@cnstra/broker';
 import type {
-    IBullJob,
-    IBullWorkerCtor,
-    IBullWorkerLike,
+    ICNSBullJob,
+    ICNSBullWorkerCtor,
+    ICNSBullWorkerLike,
     TCNSStimulationJobData,
 } from './types';
 
-export interface TCNSWorkerOptions {
+export type TCNSWorkerOptions<TWorkerClass extends ICNSBullWorkerCtor<never>> = {
     /** The BullMQ `Worker` class (pass `Worker` from 'bullmq'). */
-    Worker: IBullWorkerCtor;
+    Worker: TWorkerClass;
     /** The CNS the jobs run against. */
     cns: ICNS<any, any>;
     /** Name ↔ object registry used to reconstruct signals from job data. */
     registry: CNSPersistOptionsRegistry;
     /** Queue name to consume. */
     queue: string;
-    /** BullMQ connection (ioredis instance or `{ host, port }`); passed through. */
-    connection?: unknown;
     /**
      * Optional **observability** store: the canonical name-based
      * Stimulation → Attempt → Task history (the SAME model the devtools use),
@@ -35,7 +33,7 @@ export interface TCNSWorkerOptions {
      * that is `resume` below. One job = one stimulation (`stimulationId` = job id),
      * each BullMQ retry = a new attempt.
      */
-    observe?: ICNSStimulationRepository;
+    observe?: ICNSStimulationWriter;
     /**
      * Optional resumable **resume**. When set, the worker records the run's
      * outstanding frontier (by name) as it advances, and a retried job (BullMQ
@@ -58,9 +56,9 @@ export interface TCNSWorkerOptions {
         /** When to persist during the run. Defaults to debounce + max-staleness. */
         strategy?: ICNSProgressRecordingStrategy;
     };
-    /** Extra BullMQ `Worker` options (concurrency, limiter, …); merged with `connection`. */
-    workerOptions?: Record<string, unknown>;
-}
+    /** The `Worker` class's own options, typed by it: `connection`, `concurrency`, `limiter`, … */
+    workerOptions: NonNullable<ConstructorParameters<TWorkerClass>[2]>;
+};
 
 /**
  * Construct a BullMQ worker that turns each job into a CNStra stimulation.
@@ -80,11 +78,11 @@ export interface TCNSWorkerOptions {
  * `delete` is a no-op (the progress is discarded together with the job).
  */
 function jobProgressRepository(
-    job: IBullJob<TCNSStimulationJobData>
+    job: ICNSBullJob<TCNSStimulationJobData>
 ): ICNSProgressRepository {
     return {
         save: async (_key: string, progress: TCNSProgress) => {
-            await job.updateProgress?.(progress as unknown as object);
+            await job.updateProgress?.(progress);
         },
         load: async () => {
             const p = job.progress;
@@ -101,9 +99,9 @@ function jobProgressRepository(
 }
 
 /** A running worker + a graceful `shutdown` (see {@link createCNSWorker}). */
-export interface TCNSBullWorkerHandle {
+export type TCNSBullWorkerHandle<TWorker extends ICNSBullWorkerLike = ICNSBullWorkerLike> = {
     /** The constructed BullMQ worker (for power users / event listeners). */
-    worker: IBullWorkerLike;
+    worker: TWorker;
     /**
      * Graceful shutdown: stop taking new jobs, let in-flight stimulations finish for
      * up to `drainMs` (default 10s), then **abort** whatever is still running — an
@@ -113,25 +111,27 @@ export interface TCNSBullWorkerHandle {
      * after this resolves).
      */
     shutdown(opts?: { drainMs?: number }): Promise<void>;
-}
+};
 
-export function createCNSWorker(options: TCNSWorkerOptions): TCNSBullWorkerHandle {
-    const { Worker, cns, registry, queue, connection, observe, resume, workerOptions } =
+export function createCNSWorker<TWorkerClass extends ICNSBullWorkerCtor<never>>(
+    options: TCNSWorkerOptions<TWorkerClass>
+): TCNSBullWorkerHandle<InstanceType<TWorkerClass>> {
+    const { Worker, cns, registry, queue, observe, resume, workerOptions } =
         options;
 
     // One serializer per worker; the per-job pipeline lives in @cnstra/broker.
     const serializer = resume ? new CNSProgressSerializer(registry) : undefined;
-    const drain = createDrainState();
+    const drain = createCNSDrainState();
 
     const runJob = async (
-        job: IBullJob<TCNSStimulationJobData>
+        job: ICNSBullJob<TCNSStimulationJobData>
     ): Promise<void> => {
         // Resume store: an external repository if given, else BullMQ's own per-job
         // progress (job.updateProgress / job.progress) — no separate store.
         const resumeRepo: ICNSProgressRepository | undefined = resume
             ? resume.repository ?? jobProgressRepository(job)
             : undefined;
-        await runStimulationJob({
+        await runCNSStimulationJob({
             pkgName: '@cnstra/bullmq',
             stopping: drain.isStopping(),
             cns,
@@ -140,6 +140,8 @@ export function createCNSWorker(options: TCNSWorkerOptions): TCNSBullWorkerHandl
             collateralName: job.data.collateralName,
             payload: job.data.payload,
             maxNeuronHops: job.data.maxNeuronHops,
+            modalityName: job.data.modalityName,
+            afferentPathName: job.data.afferentPathName,
             // Each BullMQ retry is a new attempt (attemptsMade is 0-based).
             attemptNumber: (job.attemptsMade ?? 0) + 1,
             observe,
@@ -151,10 +153,8 @@ export function createCNSWorker(options: TCNSWorkerOptions): TCNSBullWorkerHandl
         });
     };
 
-    const worker = new Worker<TCNSStimulationJobData>(queue, runJob, {
-        ...(connection !== undefined ? { connection } : {}),
-        ...workerOptions,
-    });
+    const WorkerOfTheseOptions = Worker as unknown as ICNSBullWorkerCtor<typeof workerOptions>;
+    const worker = new WorkerOfTheseOptions<TCNSStimulationJobData>(queue, runJob, workerOptions) as InstanceType<TWorkerClass>;
 
     const shutdown = async (opts?: { drainMs?: number }): Promise<void> => {
         await drain.drainAndAbort(opts?.drainMs ?? 10_000);

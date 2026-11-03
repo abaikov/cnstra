@@ -30,10 +30,12 @@ export interface ICNS<
 
     /**
      * Add a global batch-boundary listener applied to all stimulations, called
-     * once at the end of every synchronous turn.
+     * once at the end of every synchronous turn (inside `batch`, when the batch ends).
      * Returns an unsubscribe function.
      */
     addDrainListener(listener: (drain: TCNSStimulationDrain) => void): () => void;
+
+    batch<TResult>(run: () => TResult): TResult;
 
     stimulate(
         signalOrSignals:

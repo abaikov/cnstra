@@ -12,8 +12,7 @@ Desktop application for debugging and monitoring CNStra applications.
 ## Features
 
 - **Server Manager**: Start/stop DevTools servers on custom ports
-- **Live Monitoring**: Real-time view of stimulations, responses, and neural network topology
-- **Multi-Instance**: Connect to multiple applications simultaneously
+- **Live Monitoring**: Real-time view of runs, their tasks, and per-neuron throughput and errors
 - **Cross-Platform**: Available for macOS, Windows, and Linux
 
 ## Installation

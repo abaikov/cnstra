@@ -9,7 +9,7 @@ import type { TCNSSignalJSON } from './TCNSSignalJSON';
  */
 
 /** Filter over the roster (all fields ANDed; omitted = no constraint). */
-export interface TCNSStimulationRosterFilter {
+export type TCNSStimulationRosterFilter = {
     scopeName?: string;
     status?: string;
     /** Entry (job-type) collateral name. */
@@ -21,14 +21,14 @@ export interface TCNSStimulationRosterFilter {
     /** startedAt window (ms). */
     since?: number;
     until?: number;
-}
+};
 
 /**
  * One roster row = the run's identity + the envelope summaries derived from its
  * attempts (`startedAt` = MIN, `completedAt` = last, `hopCount` = SUM,
  * `hasError`). The resume `progress` the roster never needs is omitted.
  */
-export interface TCNSStimulationRosterRow {
+export type TCNSStimulationRosterRow = {
     stimulationId: string;
     scopeName?: string;
     entry: TCNSSignalJSON;
@@ -37,34 +37,34 @@ export interface TCNSStimulationRosterRow {
     completedAt: number | null;
     hopCount: number;
     hasError: boolean;
-}
+};
 
 /** One keyset page of roster rows. `nextCursor` is opaque; null = last page. */
-export interface TCNSStimulationRosterPage {
+export type TCNSStimulationRosterPage = {
     rows: TCNSStimulationRosterRow[];
     nextCursor: string | null;
     total: number;
-}
+};
 
-export interface TCNSStimulationRosterCountBucket {
+export type TCNSStimulationRosterCountBucket = {
     name: string;
     count: number;
-}
+};
 
 /** A throughput time-bucket: run counts by lifecycle state + optional metric sum. */
-export interface TCNSStimulationRosterTimeBucket {
+export type TCNSStimulationRosterTimeBucket = {
     tsBucket: number;
     completed: number;
     failed: number;
     running: number;
     /** Sum of the requested entry-payload metric over the bucket's runs. */
     metric?: number;
-}
+};
 
 /** Aggregate counts over the filtered roster (the facet rail + Chart). */
-export interface TCNSStimulationRosterFacets {
+export type TCNSStimulationRosterFacets = {
     byEntryCollateral: TCNSStimulationRosterCountBucket[];
     byStatus: { status: string; count: number }[];
     byNeuron: TCNSStimulationRosterCountBucket[];
     byTime: TCNSStimulationRosterTimeBucket[];
-}
+};

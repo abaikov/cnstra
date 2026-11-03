@@ -2,6 +2,9 @@ import { z } from 'zod';
 import type {
     TCNSStimulationRetryRequest,
     TCNSStimulationCloneRequest,
+    TCNSStimulationCommand,
+    TCNSStimulationCommandRequest,
+    TCNSStimulationLaunchRequest,
 } from '@cnstra/persist-dto';
 import {
     CNSStimulationsListRequestSchema,
@@ -9,6 +12,7 @@ import {
     CNSStimulationDetailRequestSchema,
     CNSStimulationsSnapshotRequestSchema,
 } from './stimulations-query';
+import { CNSScheduledStimulationsListRequestSchema } from './scheduled-stimulations-query';
 
 /** Compile-time guard: a validated message must satisfy the canonical persist-dto type. */
 type Extends<A, _B extends A> = true;
@@ -27,23 +31,6 @@ export const CNSTopologyQueryDTOSchema = z.object({
     requestId: z.string(),
     cnsId: z.string().optional(),
     appId: z.string().optional(),
-});
-
-export const CNSReplayOptionsDTOSchema = z.object({
-    maxHops: z.number().int().positive().optional(),
-    timeoutMs: z.number().int().positive().optional(),
-    allowedNeuronIds: z.array(z.string()).optional(),
-});
-
-export const CNSReplayStartMessageDTOSchema = z.object({
-    type: z.literal('replay.start'),
-    replayId: z.string(),
-    stimulationId: z.string(),
-    collateralId: z.string(),
-    payload: z.unknown(),
-    appId: z.string().optional(),
-    cnsId: z.string().optional(),
-    options: CNSReplayOptionsDTOSchema.optional(),
 });
 
 // ─── Resumable-run actions (panel → server); canonical types in @cnstra/persist-dto ──
@@ -70,9 +57,34 @@ export const CNSStimulationCloneMessageDTOSchema = z.object({
     options: CNSStimulationActionOptionsDTOSchema.optional(),
 });
 
+const CNSStimulationCommandShapeSchema = z.discriminatedUnion('name', [
+    z.object({ name: z.literal('cancel') }),
+    z.object({ name: z.literal('runNow') }),
+    z.object({ name: z.literal('prioritize'), priority: z.number().int() }),
+]);
+
+export const CNSStimulationCommandDTOSchema: z.ZodType<TCNSStimulationCommand> = CNSStimulationCommandShapeSchema;
+
+export const CNSStimulationCommandMessageDTOSchema = z.object({
+    type: z.literal('stimulation.command'),
+    requestId: z.string(),
+    stimulationId: z.string(),
+    command: CNSStimulationCommandDTOSchema,
+});
+
+export const CNSStimulationLaunchMessageDTOSchema = z.object({
+    type: z.literal('stimulation.launch'),
+    requestId: z.string(),
+    entry: z.object({ collateralName: z.string().min(1), payload: z.unknown() }),
+});
+
 // drift guards — these validators must match the canonical persist-dto messages
 type _RetryOk = Extends<TCNSStimulationRetryRequest, z.infer<typeof CNSStimulationRetryMessageDTOSchema>>;
 type _CloneOk = Extends<TCNSStimulationCloneRequest, z.infer<typeof CNSStimulationCloneMessageDTOSchema>>;
+type _CommandOk = Extends<TCNSStimulationCommandRequest, z.infer<typeof CNSStimulationCommandMessageDTOSchema>>;
+type _CommandShapeOk = Extends<TCNSStimulationCommand, z.infer<typeof CNSStimulationCommandShapeSchema>>;
+type _CommandShapeBack = Extends<z.infer<typeof CNSStimulationCommandShapeSchema>, TCNSStimulationCommand>;
+type _LaunchOk = Extends<TCNSStimulationLaunchRequest, z.infer<typeof CNSStimulationLaunchMessageDTOSchema>>;
 
 export const CNSClientMessageDTOSchema = z.discriminatedUnion('type', [
     CNSClientConnectMessageDTOSchema,
@@ -82,17 +94,11 @@ export const CNSClientMessageDTOSchema = z.discriminatedUnion('type', [
     CNSStimulationsFacetsRequestSchema,
     CNSStimulationDetailRequestSchema,
     CNSStimulationsSnapshotRequestSchema,
-    CNSReplayStartMessageDTOSchema,
+    CNSScheduledStimulationsListRequestSchema,
     CNSStimulationRetryMessageDTOSchema,
     CNSStimulationCloneMessageDTOSchema,
+    CNSStimulationCommandMessageDTOSchema,
+    CNSStimulationLaunchMessageDTOSchema,
 ]);
 
-export type TCNSClientConnectMessageDTO = z.infer<typeof CNSClientConnectMessageDTOSchema>;
-export type TCNSAppsQueryDTO = z.infer<typeof CNSAppsQueryDTOSchema>;
-export type TCNSTopologyQueryDTO = z.infer<typeof CNSTopologyQueryDTOSchema>;
-export type TCNSReplayOptionsDTO = z.infer<typeof CNSReplayOptionsDTOSchema>;
-export type TCNSReplayStartMessageDTO = z.infer<typeof CNSReplayStartMessageDTOSchema>;
-export type TCNSStimulationActionOptionsDTO = z.infer<typeof CNSStimulationActionOptionsDTOSchema>;
-export type TCNSStimulationRetryMessageDTO = z.infer<typeof CNSStimulationRetryMessageDTOSchema>;
-export type TCNSStimulationCloneMessageDTO = z.infer<typeof CNSStimulationCloneMessageDTOSchema>;
 export type TCNSClientMessageDTO = z.infer<typeof CNSClientMessageDTOSchema>;

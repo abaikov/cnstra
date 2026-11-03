@@ -58,8 +58,5 @@ export const CNSAppBatchMessageDTOSchema = z.object({
 });
 
 export type TCNSTopologyMessageDTO = z.infer<typeof CNSTopologyMessageDTOSchema>;
-export type TCNSStimulationItemDTO = z.infer<typeof CNSStimulationItemDTOSchema>;
-export type TCNSStimulationAttemptItemDTO = z.infer<typeof CNSStimulationAttemptItemDTOSchema>;
-export type TCNSStimulationTaskItemDTO = z.infer<typeof CNSStimulationTaskItemDTOSchema>;
 export type TCNSAppBatchItemDTO = z.infer<typeof CNSAppBatchItemDTOSchema>;
 export type TCNSAppBatchMessageDTO = z.infer<typeof CNSAppBatchMessageDTOSchema>;

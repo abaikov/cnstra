@@ -83,9 +83,6 @@ export const CNSStimulationsListRequestSchema = z.object({
     cursor: z.string().optional(),
     limit: z.number().optional(),
 });
-export type TCNSStimulationsListRequest = z.infer<
-    typeof CNSStimulationsListRequestSchema
->;
 
 export const CNSStimulationsListResultSchema = z.object({
     type: z.literal('cns.stimulations.list.result'),
@@ -94,9 +91,6 @@ export const CNSStimulationsListResultSchema = z.object({
     nextCursor: z.string().nullable().optional(),
     total: z.number().optional(),
 });
-export type TCNSStimulationsListResult = z.infer<
-    typeof CNSStimulationsListResultSchema
->;
 
 // ─── facets request/result ────────────────────────────────────────────────────
 export const CNSStimulationsFacetsRequestSchema = z.object({
@@ -112,9 +106,6 @@ export const CNSStimulationsFacetsRequestSchema = z.object({
      */
     metricPath: z.string().optional(),
 });
-export type TCNSStimulationsFacetsRequest = z.infer<
-    typeof CNSStimulationsFacetsRequestSchema
->;
 
 // One time-bucket of the throughput histogram: run counts by lifecycle state,
 // plus the optional payload metric sum (present only when `metricPath` is set).
@@ -148,9 +139,6 @@ export const CNSStimulationsFacetsResultSchema = z.object({
     requestId: z.string(),
     facets: CNSStimulationFacetsDTOSchema,
 });
-export type TCNSStimulationsFacetsResult = z.infer<
-    typeof CNSStimulationsFacetsResultSchema
->;
 
 // ─── snapshot request/result (the whole bounded set → flat buckets) ───────────
 // Replaces the retired nested `cns.stimulations.query` (TCNSStimulationViewDTO
@@ -163,10 +151,23 @@ export const CNSStimulationsSnapshotRequestSchema = z.object({
     filter: CNSStimulationFilterSchema.optional(),
     /** Cap the number of (newest) runs pulled — bounds the payload. */
     limit: z.number().optional(),
+    /**
+     * Runs whose attempts and tasks the caller already holds, and whose roster
+     * row it last saw unchanged. The result omits their attempts and tasks; the
+     * caller keeps what it has.
+     *
+     * Rows are always sent in full — there are at most `limit` of them and they
+     * are what says a run moved. Tasks are the bulk: under `'full'` volume a run
+     * contributes one per hop, so a page of two hundred fifty-hop runs is ten
+     * thousand rows, re-sent every poll and almost all byte-identical to the
+     * last one, because a finished run never changes again.
+     *
+     * Self-correcting rather than trusting: a retry gives the run a new attempt
+     * and moves its row, the caller sees the row move and drops the id from this
+     * set, and the next poll brings the details back.
+     */
+    skipDetailFor: z.array(z.string()).optional(),
 });
-export type TCNSStimulationsSnapshotRequest = z.infer<
-    typeof CNSStimulationsSnapshotRequestSchema
->;
 
 export const CNSStimulationsSnapshotResultSchema = z.object({
     type: z.literal('cns.stimulations.snapshot.result'),
@@ -175,9 +176,6 @@ export const CNSStimulationsSnapshotResultSchema = z.object({
     attempts: z.array(CNSStimulationAttemptDTOSchema),
     tasks: z.array(CNSStimulationTaskDTOSchema),
 });
-export type TCNSStimulationsSnapshotResult = z.infer<
-    typeof CNSStimulationsSnapshotResultSchema
->;
 
 // ─── detail request/result (one run → attempts + tasks buckets) ───────────────
 export const CNSStimulationDetailRequestSchema = z.object({
@@ -185,9 +183,6 @@ export const CNSStimulationDetailRequestSchema = z.object({
     requestId: z.string(),
     stimulationId: z.string(),
 });
-export type TCNSStimulationDetailRequest = z.infer<
-    typeof CNSStimulationDetailRequestSchema
->;
 
 export const CNSStimulationDetailResultSchema = z.object({
     type: z.literal('cns.stimulation.detail.result'),
@@ -195,9 +190,6 @@ export const CNSStimulationDetailResultSchema = z.object({
     attempts: z.array(CNSStimulationAttemptDTOSchema),
     tasks: z.array(CNSStimulationTaskDTOSchema),
 });
-export type TCNSStimulationDetailResult = z.infer<
-    typeof CNSStimulationDetailResultSchema
->;
 
 /** Re-export the reused canonical entities so the panel imports buckets from one place. */
 export type {

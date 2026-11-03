@@ -1,11 +1,11 @@
 import React, { createContext, useContext } from 'react';
 import { CNS } from '@cnstra/core';
-import { CNSContextValue, CNSProviderProps } from './types';
+import { ICNSContextValue, ICNSProviderProps } from './types';
 
-const CNSContext = createContext<CNSContextValue | null>(null);
+const CNSContext = createContext<ICNSContextValue | null>(null);
 
-export function CNSProvider({ cns, children }: CNSProviderProps) {
-    const value: CNSContextValue = { cns };
+export function CNSProvider({ cns, children }: ICNSProviderProps) {
+    const value: ICNSContextValue = { cns };
 
     return <CNSContext.Provider value={value}>{children}</CNSContext.Provider>;
 }

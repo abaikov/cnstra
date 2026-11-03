@@ -14,7 +14,7 @@ import type { TExoBindable } from '@exodra/reactivity';
 
 type Rendered = TExoSchema | { schema: TExoSchema; dispose?: () => void };
 
-export interface TExoKeyedList {
+export type TCNSExoKeyedList = {
     readonly children: TExoBindable<readonly TExoSchema[], unknown>;
     /** Recompute; a no-op unless the ordered set of keys actually changed. */
     refresh(): void;
@@ -24,7 +24,7 @@ export interface TExoKeyedList {
     mount(): void;
     /** Unsubscribe + dispose every cached row — wire into onExoUnmount. */
     unmount(): void;
-}
+};
 
 function isWrapped(r: Rendered): r is { schema: TExoSchema; dispose?: () => void } {
     return typeof r === 'object' && r !== null && 'schema' in r;
@@ -35,7 +35,7 @@ export function keyedList<TItem>(opts: {
     key: (item: TItem) => string;
     render: (item: TItem) => Rendered;
     subscribe?: (refresh: () => void) => ReadonlyArray<() => void>;
-}): TExoKeyedList {
+}): TCNSExoKeyedList {
     const cache = new Map<string, { schema: TExoSchema; dispose?: () => void }>();
     const children = bindable<readonly TExoSchema[]>([]);
     let prevKeys: readonly string[] = [];

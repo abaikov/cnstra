@@ -103,6 +103,46 @@ The in-memory queue is designed for **short fan-outs within a single business fl
 
 **The correct pattern** for large workloads: let the external queue control depth, and have each worker create exactly one CNStra stimulation per job:
 
+```ts setup
+import { Queue, Worker, type ConnectionOptions } from 'bullmq';
+import { CNS, cnsNeuron } from '@cnstra/core';
+import type { ICNSCollateral, TCNSNeuron, TCNSSignal } from '@cnstra/types';
+
+declare const cns: CNS<TCNSNeuron<any>>;
+declare const signal: TCNSSignal<ICNSCollateral<unknown>>;
+declare const connection: ConnectionOptions;
+declare const myCollateral: ICNSCollateral<{ userId: string }>;
+declare const axon: {
+  output: ICNSCollateral<unknown>;
+  process: ICNSCollateral<unknown>;
+  next: ICNSCollateral<unknown>;
+};
+declare const fullUserObject: unknown;
+declare const largeArray: unknown[];
+declare const hugeObject: unknown;
+declare const fullDocumentObject: unknown;
+declare const lotsOfData: unknown[];
+declare const largeData: unknown[];
+declare function splitIntoChunks<T>(items: T[], size: number): T[][];
+declare const batchInput: ICNSCollateral<{ batchId: string; nextBatchId: string; processedCount?: number }>;
+declare const next: ICNSCollateral<{ batchId: string; processedCount: number; results: unknown[] }>;
+declare function fetchBatch(batchId: string): Promise<unknown[]>;
+declare function processItems(items: unknown[]): Promise<unknown[]>;
+declare const db: {
+  fetchAll(limit: number): Promise<unknown[]>;
+  fetchBatch(offset: number, limit: number): Promise<unknown[]>;
+};
+declare const processBatch: ICNSCollateral<{ offset?: number }>;
+declare const batchesDone: ICNSCollateral<{ total: number }>;
+declare const input: ICNSCollateral<{ value: number }>;
+declare const output: ICNSCollateral<unknown>;
+declare const logger: { info(message: string): void; error(error: Error): void };
+declare const span: {
+  addEvent(name: string, attributes: Record<string, unknown>): void;
+  recordException(error: Error): void;
+};
+```
+
 ```ts
 // ✅ External queue controls how many items are in-flight at once
 new Worker('jobs', async (job) => {
@@ -136,10 +176,10 @@ Payload growth significantly impacts memory usage, because each queued task stor
 1. **Keep payloads small** - this is the most critical factor:
    ```ts
    // ✅ Good: small payload (~50 bytes)
-   return axon.output.createSignal({ userId: '123', action: 'created' });
+   axon.output.createSignal({ userId: '123', action: 'created' });
    
    // ❌ Bad: large payload (~50 KB+)
-   return axon.output.createSignal({ 
+   axon.output.createSignal({ 
      user: fullUserObject, 
      history: largeArray, 
      metadata: hugeObject 
@@ -149,19 +189,19 @@ Payload growth significantly impacts memory usage, because each queued task stor
 2. **Use references instead of full data** in signals:
    ```ts
    // ✅ Good: pass only ID, fetch data when needed
-   return axon.process.createSignal({ documentId: 'doc-123' });
+   axon.process.createSignal({ documentId: 'doc-123' });
    
    // ❌ Bad: pass entire document
-   return axon.process.createSignal({ document: fullDocumentObject });
+   axon.process.createSignal({ document: fullDocumentObject });
    ```
 
 3. **Keep signal payloads small** — pass identifiers and metadata, not large objects:
    ```ts
    // ✅ Good: pass only what downstream needs (~50 bytes)
-   return axon.process.createSignal({ userId: '123', attempt: 2 });
+   axon.process.createSignal({ userId: '123', attempt: 2 });
 
    // ❌ Bad: don't ship large objects on the signal
-   return axon.process.createSignal({ user: fullUserObject, history: lotsOfData });
+   axon.process.createSignal({ user: fullUserObject, history: lotsOfData });
    ```
 
 4. **Monitor and limit queue size** to prevent memory bloat. `queueLength`
@@ -169,18 +209,20 @@ Payload growth significantly impacts memory usage, because each queued task stor
    in flight — so it is the right backpressure signal; split it when you need
    to know *why* it is high:
    ```ts
-   onResponse: (r) => {
-     if (r.queueLength > 1000) {
-       // Queue is growing - consider:
-       // - Reducing concurrency
-       // - Adding backpressure
-       // - Investigating slow processing
-       console.warn(
-         `Queue ${r.queueLength} (${r.pendingActivations} waiting, ` +
-         `${r.activeActivations} in flight)`
-       );
+   cns.stimulate(signal, {
+     onResponse: (r) => {
+       if (r.queueLength > 1000) {
+         // Queue is growing - consider:
+         // - Reducing concurrency
+         // - Adding backpressure
+         // - Investigating slow processing
+         console.warn(
+           `Queue ${r.queueLength} (${r.pendingActivations} waiting, ` +
+           `${r.activeActivations} in flight)`
+         );
+       }
      }
-   }
+   });
    ```
    A high `pendingActivations` with a low `activeActivations` means the graph is
    producing work faster than the concurrency limit lets it start. The reverse
@@ -202,7 +244,7 @@ Payload growth significantly impacts memory usage, because each queued task stor
    ```ts
    // Instead of one large signal, split into smaller chunks
    const chunks = splitIntoChunks(largeData, 1000);
-   return chunks.map(chunk => axon.process.createSignal({ chunk, index }));
+   const signals = chunks.map((chunk, index) => axon.process.createSignal({ chunk, index }));
    ```
 
 9. **Use external queue systems to control memory load**:
@@ -211,11 +253,7 @@ Payload growth significantly impacts memory usage, because each queued task stor
    
    ```ts
    // ✅ Good: Use external queue to control load
-   import { Queue, Worker } from 'bullmq';
-   
-   const queue = new Queue('jobs', {
-     limiter: { max: 100, duration: 1000 } // Rate limit
-   });
+   const queue = new Queue('jobs', { connection });
    
    new Worker('jobs', async (job) => {
      // Process one job at a time, controlling memory
@@ -224,6 +262,9 @@ Payload growth significantly impacts memory usage, because each queued task stor
        { concurrency: 10 }
      );
      await stimulation.waitUntilComplete();
+   }, {
+     connection,
+     limiter: { max: 100, duration: 1000 } // Rate limit
    });
    
    // Enqueue work externally - doesn't consume memory until processed
@@ -243,15 +284,15 @@ Payload growth significantly impacts memory usage, because each queued task stor
     CNStra has no mutable per-neuron store — counters, timestamps, and correlation ids ride on the signal, so nothing is held for the whole run:
 
     ```ts
-    const processor = neuron({ next })
+    const processor = cnsNeuron({ next })
       .dendrite({
-        collateral: input,
+        collateral: batchInput,
         response: async (payload, axon) => {
           // Processing stats ride on the payload, not a per-neuron store.
           const processedCount = (payload.processedCount ?? 0) + 1;
 
           const batch = await fetchBatch(payload.batchId);
-          const results = await processBatch(batch);
+          const results = await processItems(batch);
 
           return axon.next.createSignal({
             batchId: payload.nextBatchId,
@@ -262,7 +303,7 @@ Payload growth significantly impacts memory usage, because each queued task stor
       });
     ```
 
-    **Best practice**: pass all per-run data through signal payloads; use `ctx.global` only for app-wide dependencies.
+    **Best practice**: pass all per-run data through signal payloads; pass dependencies through a [factory function](../core/api.md#dependencies-a-store-a-database-a-clock).
 
 11. **Use batch processing with recursive self-calls** (instead of fan-out):
     
@@ -270,7 +311,7 @@ Payload growth significantly impacts memory usage, because each queued task stor
     ```ts
     // This creates 10,000 tasks in queue, each with full payload
     const items = await db.fetchAll(10000);
-    return items.map(item => 
+    const signals = items.map(item => 
       axon.process.createSignal({ fullItem: item }) // 10KB each = 100MB in queue!
     );
     ```
@@ -279,7 +320,7 @@ Payload growth significantly impacts memory usage, because each queued task stor
     ```ts
     const BATCH_SIZE = 20;
     
-    const batchProcessor = neuron({ processBatch, nextBatch })
+    const batchProcessor = cnsNeuron({ processBatch, batchesDone })
       .dendrite({
         collateral: processBatch,
         response: async (payload, axon) => {
@@ -295,13 +336,13 @@ Payload growth significantly impacts memory usage, because each queued task stor
           // If more items exist, recursively call self with next offset in payload
           if (batch.length === BATCH_SIZE) {
             // Recursive self-call - pass offset through payload
-            return axon.nextBatch.createSignal({ 
+            return axon.processBatch.createSignal({ 
               offset: offset + BATCH_SIZE 
             });
           }
           
           // Done
-          return undefined;
+          return axon.batchesDone.createSignal({ total: offset + batch.length });
         }
       });
     
@@ -333,10 +374,10 @@ Put only essential data (IDs, counters, flags) on signal payloads. Avoid large o
 
 ```ts
 // ✅ Good: minimal payload
-return axon.next.createSignal({ userId: '123', attempt: 2 });
+axon.next.createSignal({ userId: '123', attempt: 2 });
 
 // ❌ Bad: bloated payload
-return axon.next.createSignal({ user: fullUserObject, history: lotsOfData });
+axon.next.createSignal({ user: fullUserObject, history: lotsOfData });
 ```
 
 ### Use synchronous responses when possible
@@ -345,13 +386,13 @@ If a neuron doesn't perform I/O, return the next signal synchronously:
 
 ```ts
 // ✅ Sync response (fast)
-.dendrite({
+const doubler = cnsNeuron({ output }).dendrite({
   collateral: input,
   response: (p, axon) => axon.output.createSignal({ value: p.value * 2 })
 });
 
 // ⚠️ Async response (schedules a microtask; use when doing I/O)
-.dendrite({
+const fetcher = cnsNeuron({ output }).dendrite({
   collateral: input,
   response: async (p, axon) => {
     const result = await fetch('/api');
@@ -406,6 +447,7 @@ use `onDrain` — it fires once per synchronous turn, so counting drains tells y
 how many times the stimulation had to yield to the event loop:
 
 ```ts
+const start = Date.now();
 let turns = 0;
 const stimulation = cns.stimulate(signal, {
   onDrain: (d) => {

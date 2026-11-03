@@ -3,11 +3,11 @@ id: exhaustive-binding
 title: Exhaustive Binding - Compile-Time Safety for Neuron Subscriptions
 sidebar_label: Exhaustive Binding
 slug: /recipes/exhaustive-binding
-description: Learn how to use neuron.bind() for exhaustive subscriptions with compile-time safety. Ensure you never miss handling new collaterals when a neuron's axon changes.
+description: Learn how to use neuron.bind() for exhaustive subscriptions with compile-time safety. Never miss handling new collaterals when a neuron's axon changes.
 keywords: [exhaustive binding, compile-time safety, type safety, exhaustive subscriptions, neuron bind, exhaustive check, TypeScript safety, exhaustive pattern, exhaustive switch, exhaustive map, type checking, compile-time guarantees]
 ---
 
-Use `neuron.bind(axon, map)` to subscribe to every collateral of another neuron's axon with compile-time exhaustiveness checking. This ensures that if a developer adds a new collateral to the axon you're binding to, TypeScript will immediately flag missing handlers, preventing you from forgetting to handle new cases.
+Use `neuron.bind(axon, map)` to subscribe to every collateral of another neuron's axon with compile-time exhaustiveness checking. So if a developer adds a new collateral to the axon you're binding to, TypeScript will immediately flag missing handlers, preventing you from forgetting to handle new cases.
 
 ## Why Exhaustive Binding?
 
@@ -15,18 +15,31 @@ When a neuron's axon evolves (new collaterals are added), any neurons that react
 
 ## Basic Example
 
-```ts
-import { collateral, neuron } from '@cnstra/core';
+```ts setup
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
 
+declare function sendEmail(message: string): void;
+declare function notifyUser(id: string): Promise<void>;
+declare function sendWelcomeEmail(email: string): Promise<void>;
+declare function sendVerificationConfirmation(userId: string): Promise<void>;
+declare function sendSuspensionNotice(userId: string, reason: string): Promise<void>;
+declare function sendDeletionConfirmation(userId: string): Promise<void>;
+declare function logAudit(event: string, payload: unknown): void;
+declare const metrics: { increment(name: string, tags: Record<string, unknown>): void };
+
+const notified = cnsCollateral<{ id: string }>();
+```
+
+```ts
 // Order domain model (axon)
 const order = {
-  created: collateral<{ id: string; amount: number }>(),
-  updated: collateral<{ id: string; changes: Record<string, unknown> }>('order:updated'),
-  cancelled: collateral<{ id: string; reason?: string }>(),
+  created: cnsCollateral<{ id: string; amount: number }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
 };
 
 // Mailer neuron must react to ALL order events
-const orderMailer = neuron({})
+const orderMailer = cnsNeuron({})
   .bind(order, {
     created: (payload) => {
       sendEmail(`Order created #${payload.id} for $${payload.amount}`);
@@ -47,18 +60,18 @@ If someone later adds a new collateral to the `order` axon:
 ```ts
 // New collateral added to order axon
 const order = {
-  created: collateral<{ id: string; amount: number }>(),
-  updated: collateral<{ id: string; changes: Record<string, unknown> }>('order:updated'),
-  cancelled: collateral<{ id: string; reason?: string }>(),
-  refunded: collateral<{ id: string; amount: number }>(), // NEW!
+  created: cnsCollateral<{ id: string; amount: number }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
+  refunded: cnsCollateral<{ id: string; amount: number }>(), // NEW!
 };
 ```
 
 TypeScript will immediately error on the `orderMailer` bind:
 
-```ts
+```ts signature
 // ❌ TypeScript Error: Property 'refunded' is missing in type '{ created: ...; updated: ...; cancelled: ...; }'
-const orderMailer = neuron({})
+const orderMailer = cnsNeuron({})
   .bind(order, {
     created: (payload) => { /* ... */ },
     updated: (payload) => { /* ... */ },
@@ -70,8 +83,15 @@ const orderMailer = neuron({})
 You must add the handler:
 
 ```ts
+const order = {
+  created: cnsCollateral<{ id: string; amount: number }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
+  refunded: cnsCollateral<{ id: string; amount: number }>(),
+};
+
 // ✅ Fixed: All collaterals handled
-const orderMailer = neuron({})
+const orderMailer = cnsNeuron({})
   .bind(order, {
     created: (payload) => { /* ... */ },
     updated: (payload) => { /* ... */ },
@@ -89,7 +109,13 @@ You can pass either a response function (shorthand) or a full dendrite object pe
 ### Shorthand (response function only)
 
 ```ts
-const notifier = neuron({})
+const order = {
+  created: cnsCollateral<{ id: string; amount: number }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
+};
+
+const notifier = cnsNeuron({})
   .bind(order, {
     created: (payload) => {
       // Just the response function
@@ -98,27 +124,40 @@ const notifier = neuron({})
     updated: (payload) => {
       notifyUser(payload.id);
     },
+    cancelled: (payload) => {
+      notifyUser(payload.id);
+    },
   });
 ```
 
 ### Full dendrite objects
 
 ```ts
-const notifier = neuron({})
+const order = {
+  created: cnsCollateral<{ id: string; amount: number }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
+};
+
+const notifier = cnsNeuron({ notified })
   .bind(order, {
     created: {
-      collateral: order.created, // Explicit (though redundant)
+      collateral: order.created,
       response: async (payload, axon, ctx) => {
         if (ctx.abortSignal?.aborted) return;
         await notifyUser(payload.id);
         // Can emit signals from this neuron's axon
-        return axon.someOutput?.createSignal({ ... });
+        return axon.notified.createSignal({ id: payload.id });
       },
     },
     updated: {
+      collateral: order.updated,
       response: (payload) => {
         notifyUser(payload.id);
       },
+    },
+    cancelled: (payload) => {
+      notifyUser(payload.id);
     },
   });
 ```
@@ -129,12 +168,12 @@ Payload types are automatically inferred from the axon you're binding to:
 
 ```ts
 const order = {
-  created: collateral<{ id: string; amount: number }>(),
-  updated: collateral<{ id: string; changes: Record<string, unknown> }>('order:updated'),
+  created: cnsCollateral<{ id: string; amount: number }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
 };
 
 // payload types are inferred - no need to annotate!
-const handler = neuron({})
+const handler = cnsNeuron({})
   .bind(order, {
     created: (payload) => {
       // payload is { id: string; amount: number }
@@ -151,17 +190,17 @@ const handler = neuron({})
 
 ### Domain Event Notifiers
 
-Ensure notifications are sent for every domain event:
+Send notifications for every domain event:
 
 ```ts
 const user = {
-  registered: collateral<{ userId: string; email: string }>(),
-  verified: collateral<{ userId: string }>(),
-  suspended: collateral<{ userId: string; reason: string }>(),
-  deleted: collateral<{ userId: string }>(),
+  registered: cnsCollateral<{ userId: string; email: string }>(),
+  verified: cnsCollateral<{ userId: string }>(),
+  suspended: cnsCollateral<{ userId: string; reason: string }>(),
+  deleted: cnsCollateral<{ userId: string }>(),
 };
 
-const userNotifier = neuron({})
+const userNotifier = cnsNeuron({})
   .bind(user, {
     registered: (payload) => sendWelcomeEmail(payload.email),
     verified: (payload) => sendVerificationConfirmation(payload.userId),
@@ -172,17 +211,17 @@ const userNotifier = neuron({})
 
 ### Audit Logging
 
-Ensure all state changes are logged:
+Log every state change:
 
 ```ts
 const product = {
-  created: collateral<{ id: string; name: string }>(),
-  updated: collateral<{ id: string; changes: Record<string, unknown> }>('product:updated'),
-  priceChanged: collateral<{ id: string; oldPrice: number; newPrice: number }>(),
-  deleted: collateral<{ id: string }>(),
+  created: cnsCollateral<{ id: string; name: string }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  priceChanged: cnsCollateral<{ id: string; oldPrice: number; newPrice: number }>(),
+  deleted: cnsCollateral<{ id: string }>(),
 };
 
-const auditLogger = neuron({})
+const auditLogger = cnsNeuron({})
   .bind(product, {
     created: (payload) => logAudit('product_created', payload),
     updated: (payload) => logAudit('product_updated', payload),
@@ -197,13 +236,13 @@ Track metrics for all events:
 
 ```ts
 const payment = {
-  initiated: collateral<{ id: string; amount: number }>(),
-  processed: collateral<{ id: string; amount: number }>(),
-  failed: collateral<{ id: string; reason: string }>(),
-  refunded: collateral<{ id: string; amount: number }>(),
+  initiated: cnsCollateral<{ id: string; amount: number }>(),
+  processed: cnsCollateral<{ id: string; amount: number }>(),
+  failed: cnsCollateral<{ id: string; reason: string }>(),
+  refunded: cnsCollateral<{ id: string; amount: number }>(),
 };
 
-const metricsCollector = neuron({})
+const metricsCollector = cnsNeuron({})
   .bind(payment, {
     initiated: (payload) => metrics.increment('payment.initiated', { amount: payload.amount }),
     processed: (payload) => metrics.increment('payment.processed', { amount: payload.amount }),
@@ -222,7 +261,7 @@ const metricsCollector = neuron({})
 
 4. **Leverage type inference**: Don't manually annotate payload types; let TypeScript infer them from the axon.
 
-5. **Data flows through payloads**: All per-run data (including retry counters and correlation IDs) flows through signal payloads; reach app-wide dependencies via `ctx.global`.
+5. **Data flows through payloads**: All per-run data (including retry counters and correlation IDs) flows through signal payloads; pass dependencies through a [factory function](../core/api.md#dependencies-a-store-a-database-a-clock).
 
 ![Eye Wired](/img/skull_wired.png)
 
@@ -231,8 +270,14 @@ const metricsCollector = neuron({})
 Without exhaustive binding, you'd need to manually add each dendrite:
 
 ```ts
+const order = {
+  created: cnsCollateral<{ id: string; amount: number }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
+};
+
 // ❌ Manual approach - easy to miss new collaterals
-const orderMailer = neuron({})
+const orderMailer = cnsNeuron({})
   .dendrite({ collateral: order.created, response: (p) => { /* ... */ } })
   .dendrite({ collateral: order.updated, response: (p) => { /* ... */ } })
   .dendrite({ collateral: order.cancelled, response: (p) => { /* ... */ } });
@@ -242,8 +287,14 @@ const orderMailer = neuron({})
 With exhaustive binding:
 
 ```ts
+const order = {
+  created: cnsCollateral<{ id: string; amount: number }>(),
+  updated: cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
+};
+
 // ✅ Exhaustive approach - compiler enforces completeness
-const orderMailer = neuron({})
+const orderMailer = cnsNeuron({})
   .bind(order, {
     created: (p) => { /* ... */ },
     updated: (p) => { /* ... */ },

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "baseUrl": ".",
+    "strict": true,
+    "types": ["jest", "node"],
+    "paths": {
+      "@cnstra/jobs": ["../jobs/src/index.ts"],
+      "@cnstra/jobs/testing": ["../jobs/src/testing/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"]
+}

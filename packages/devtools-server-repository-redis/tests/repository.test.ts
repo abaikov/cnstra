@@ -1,16 +1,6 @@
 import RedisMock from 'ioredis-mock';
 import { CNSDevToolsServerRepositoryRedis } from '../src/index';
-import type { TCNSAppDTO } from '@cnstra/devtools-dto';
 import type { TCNSTopologySnapshotDTO } from '@cnstra/devtools-server';
-
-const makeApp = (id: string, o: Partial<TCNSAppDTO> = {}): TCNSAppDTO => ({
-    id,
-    name: `App ${id}`,
-    version: '1.0.0',
-    connectedAt: 1000,
-    lastSeenAt: 1000,
-    ...o,
-});
 
 const makeTopology = (
     cnsId: string,
@@ -37,16 +27,6 @@ describe('CNSDevToolsServerRepositoryRedis', () => {
         repo = new CNSDevToolsServerRepositoryRedis(redis as any);
     });
 
-    it('upserts and lists apps', async () => {
-        await repo.upsertApp(makeApp('a'));
-        await repo.upsertApp(makeApp('b'));
-        await repo.upsertApp(makeApp('a', { name: 'Renamed' }));
-
-        const apps = await repo.listApps();
-        expect(apps).toHaveLength(2);
-        expect(apps.find(a => a.id === 'a')?.name).toBe('Renamed');
-    });
-
     it('saves and reads topology by cnsId and all', async () => {
         await repo.saveTopology(makeTopology('c1', 'a'));
         await repo.saveTopology(makeTopology('c2', 'a'));
@@ -57,18 +37,14 @@ describe('CNSDevToolsServerRepositoryRedis', () => {
         expect(await repo.getTopology()).toHaveLength(2);
     });
 
-    it('maps cns ↔ app', async () => {
-        await repo.addCnsToApp('a', 'c1');
-        await repo.addCnsToApp('a', 'c2');
-        await repo.addCnsToApp('b', 'c3');
+    it('finds the app of a cns from its topology', async () => {
+        await repo.saveTopology(makeTopology('c3', 'b'));
 
-        expect((await repo.getCnsByApp('a')).sort()).toEqual(['c1', 'c2']);
         expect(await repo.findAppByCns('c3')).toBe('b');
         expect(await repo.findAppByCns('missing')).toBeUndefined();
     });
 
-    it('returns empty for unknown app / empty store', async () => {
-        expect(await repo.getCnsByApp('nope')).toEqual([]);
+    it('returns empty for an empty store', async () => {
         expect(await repo.getTopology()).toEqual([]);
     });
 });

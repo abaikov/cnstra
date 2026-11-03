@@ -7,48 +7,96 @@ description: Complete CNStra API reference. Learn neuron, collateral, signal, de
 keywords: [API reference, API documentation, neuron API, signal API, collateral API, dendrite API, axon API, context API, stimulation API, TypeScript API, type-safe API, function reference, method reference, interface reference]
 ---
 
-### `collateral<T>()`
+```ts setup
+import { CNS, cnsCollateral, cnsNeuron, cnsNeuronFactory, createCNS } from '@cnstra/core';
+import type {
+  ICNSCollateral,
+  TCNSAfferentPath,
+  TCNSModality,
+  TCNSNeuron,
+  TCNSNeuronActivationTask,
+  TCNSSignal,
+  TCNSStimulationResponse,
+} from '@cnstra/types';
+
+declare const cns: CNS<TCNSNeuron<any>>;
+declare const myCollateral: ICNSCollateral<{ id: string }>;
+declare const inputCollateral: ICNSCollateral<{ id: string }>;
+declare const otherAxon: { some: ICNSCollateral<{ id: string }> };
+declare const requestA: ICNSCollateral<{ id: string }>;
+declare const doneA: ICNSCollateral<{ id: string }>;
+declare const order: {
+  created: ICNSCollateral<{ orderId: string }>;
+  updated: ICNSCollateral<{ orderId: string }>;
+  cancelled: ICNSCollateral<{ orderId: string }>;
+};
+declare const out: ICNSCollateral<{ id: string }>;
+declare const task: ICNSCollateral<{ id: string }>;
+declare const worker: TCNSNeuron;
+declare const signal: TCNSSignal<ICNSCollateral<{ id: string }>>;
+declare const userCreated: ICNSCollateral<{ id: string; name: string }>;
+declare const abortSignal: AbortSignal;
+declare const modality: TCNSModality;
+declare const afferentPath: TCNSAfferentPath;
+declare const r: TCNSStimulationResponse;
+declare const metrics: { count(name: string, value: number): void };
+declare const trace: { log(direction: string, collateral: ICNSCollateral<unknown>): void };
+declare const store: { flush(): void };
+declare function done(): void;
+type TApp = { id: string; name: string };
+type TDb = { apps: { upsertEntityByKey(key: string, app: TApp): unknown } };
+declare const dbA: TDb;
+declare const dbB: TDb;
+```
+
+### `cnsCollateral<T>()`
 Create a typed output channel.
 
 ```ts
-const userEvent = collateral<{ userId: string }>();
-const simpleEvent = collateral();
+const userEvent = cnsCollateral<{ userId: string }>();
+const simpleEvent = cnsCollateral();
 ```
 
 ### `collateral.createSignal(payload?)`
 Create a signal from a collateral. Payload is optional for collaterals without payload type.
 
 ```ts
-const signal = userEvent.createSignal({ userId: '123' });
+const userEvent = cnsCollateral<{ userId: string }>();
+const simpleEvent = cnsCollateral();
+
+const userSignal = userEvent.createSignal({ userId: '123' });
 const emptySignal = simpleEvent.createSignal(); // no payload
 ```
 
-### `neuron(axon: Axon)`
+### `cnsNeuron(axon)`
 Create a neuron with the given axon (neuron identity is the object itself).
 
 ```ts
-const myNeuron = neuron({ output: myCollateral });
+const myNeuron = cnsNeuron({ output: myCollateral });
 ```
 
 ### Signal ownership
 
 ::::warning Signal ownership
-Recommended: a neuron should emit only collaterals declared in its own axon. Cross-neuron orchestration is typically done by having a controller own request collaterals and letting each domain neuron emit its own responses.
+A collateral belongs to exactly one neuron's axon: `new CNS` throws when two neurons hold the same collateral, so every collateral has one owner. A listener that joins several sources declares one dendrite per source. Emitting a collateral from another neuron's axon is not checked at runtime, so keep to your own: cross-neuron orchestration is done by having a controller own request collaterals and letting each domain neuron emit its own responses.
 ::::
 
 Incorrect (emits someone else's collateral):
 
 ```ts
 // DON'T: myNeuron emits otherAxon.some
-return otherAxon.some.createSignal(result);
+const myNeuron = cnsNeuron({ output: myCollateral }).dendrite({
+  collateral: inputCollateral,
+  response: (payload) => otherAxon.some.createSignal(payload),
+});
 ```
 
 Correct (controller-owned request, domain emits its own):
 
 ```ts
-const controller = neuron({ requestA });
-const serviceA = neuron({ doneA })
-  .dendrite({ collateral: requestA, response: (_, axon) => axon.doneA.createSignal(...) });
+const controller = cnsNeuron({ requestA });
+const serviceA = cnsNeuron({ doneA })
+  .dendrite({ collateral: requestA, response: (payload, axon) => axon.doneA.createSignal(payload) });
 // controller emits requestA; serviceA emits doneA
 ```
 
@@ -56,13 +104,13 @@ const serviceA = neuron({ doneA })
 Add a dendrite bound to a collateral.
 
 ```ts
-myNeuron.dendrite({
+const myNeuron = cnsNeuron({ output: myCollateral }).dendrite({
   collateral: inputCollateral,
   response: async (payload, axon, ctx) => {
-    // ctx: { abortSignal, cns, stimulation, stimulationContext, global }
+    // ctx: { abortSignal, cns, stimulation, stimulationContext, activationContext }
     if (ctx.abortSignal?.aborted) return;
-    // Business/run data flows through payloads (and ctx.global for app-wide deps)
-    return axon.output.createSignal(result);
+    // Business/run data flows through payloads; dependencies come from a factory function (see Dependencies)
+    return axon.output.createSignal(payload);
   }
 });
 ```
@@ -71,8 +119,8 @@ myNeuron.dendrite({
 Exhaustive bind to every collateral of another neuron's axon (compile-time safety).
 
 ```ts
-// Data flows through signal payloads; app-wide dependencies via ctx.global.
-neuron({})
+// Data flows through signal payloads; dependencies come from a factory function (see Dependencies).
+cnsNeuron({})
   .bind(order, {
     created: (payload, axon) => { /* ... */ },
     updated: (payload) => { /* ... */ },
@@ -84,7 +132,7 @@ neuron({})
 Set per-neuron global concurrency limit (shared across all parallel stimulations).
 
 ```ts
-const worker = neuron({ out })
+const limitedWorker = cnsNeuron({ out })
   .setConcurrency(2) // max 2 parallel executions across all runs
   .dendrite({ collateral: task, response: async (p, axon) => { /* ... */ } });
 ```
@@ -95,13 +143,60 @@ This limits how many concurrent executions of this neuron's dendrites can run at
 Set maximum execution duration for this neuron's dendrites. If exceeded, the dendrite execution will be aborted.
 
 ```ts
-const worker = neuron({ out })
+const timedWorker = cnsNeuron({ out })
   .setMaxDuration(5000) // 5 seconds max
   .dendrite({ collateral: task, response: async (p, axon) => { /* ... */ } });
 ```
 
+### Dependencies: a store, a database, a clock
+
+Per-run data travels in signal payloads. Dependencies the handlers use, such as a store, a database client or a clock, reach a neuron in one of two ways.
+
+**Recommended: a factory function.** The neuron closes over its dependencies, so the handler signature stays `(payload, axon)` and TypeScript checks what you pass. Each CNS gets its own instances, for example one database per CNS:
+
+```ts
+const appUpserted = cnsCollateral<TApp>();
+
+export const createAppsNeuron = (db: TDb) =>
+  cnsNeuron({}).dendrite({
+    collateral: appUpserted,
+    response: app => {
+      db.apps.upsertEntityByKey(app.id, app);
+    },
+  });
+
+const appNeuronFactories = [createAppsNeuron];
+
+const cnsA = createCNS(appNeuronFactories, dbA);
+const cnsB = createCNS(appNeuronFactories, dbB);
+```
+
+`createCNS(neuronFactories, dependencies, options?)` calls every factory with the same dependencies and builds the CNS from the neurons they return. Each neuron can live in its own file as a factory; the app lists the factories once. TypeScript checks `dependencies` against the parameter of every factory, so a factory that needs something else does not compile. `new CNS([createAppsNeuron(dbA)])` builds the same CNS by hand.
+
+Keep the collaterals at module level, outside the factory. They are how other code reaches the neuron, and every CNS built from the factory has to share them. Call each factory once per CNS: `createCNS` throws when one is listed twice. With `new CNS`, two neurons from one factory both own its collaterals and the constructor throws, and without collaterals every dendrite runs twice. `createCNS` passes no `global`; neurons declared with `withGlobal<T>()` go through `new CNS(neurons, options, global)`.
+
+**`ctx.global`: for neurons already declared as module values.** If your neurons are module-level constants and you do not want to rewrite them as factories, declare them through `cnsNeuronFactory().withGlobal<T>()` and pass the value as the third argument of `new CNS` (or as `global` in `CNSFactory.create({ appsNeuron }, { global })`). It arrives in every handler as `ctx.global`:
+
+```ts
+const { neuron } = cnsNeuronFactory().withGlobal<{ db: TDb }>();
+
+const appUpserted = cnsCollateral<TApp>();
+
+export const appsNeuron = neuron({}).dendrite({
+  collateral: appUpserted,
+  response: (app, _axon, { global }) => {
+    global.db.apps.upsertEntityByKey(app.id, app);
+  },
+});
+
+const cnsA = new CNS([appsNeuron], undefined, { db: dbA });
+const cnsB = new CNS([appsNeuron], undefined, { db: dbB });
+```
+
+TypeScript does not check the value given to `new CNS` or `CNSFactory.create` against the type declared with `withGlobal<T>()`. A missing or wrong value shows up only when a handler runs.
+
 ### `CNS`
-Main orchestrator. `new CNS(neurons, options?)`
+Main orchestrator. `new CNS(neurons, options?, global?)`. `global` is the value handlers read as `ctx.global` (see [Dependencies](#dependencies-a-store-a-database-a-clock)).
 
 **Constructor options:** see `TCNSOptions`.
 
@@ -124,7 +219,7 @@ await stimulation.waitUntilComplete();
 Start a stimulation with activation tasks directly. Useful for advanced scenarios where you need fine-grained control over task execution.
 
 ```ts
-const tasks: TCNSNeuronActivationTask[] = [
+const tasks: TCNSNeuronActivationTask<TCNSNeuron>[] = [
   { neuron: worker, dendriteCollateral: task, input: signal }
 ];
 const stimulation = cns.activate(tasks, { concurrency: 4 });
@@ -150,7 +245,7 @@ await stimulation.waitUntilComplete();
 #### Response shape (for listeners)
 Both `onResponse` and global listeners receive the same object:
 
-```ts
+```ts signature
 {
   inputSignal?: TCNSSignal;    // when a signal is ingested
   outputSignal?: TCNSSignal;   // when a dendrite returns a continuation
@@ -168,7 +263,7 @@ Both `onResponse` and global listeners receive the same object:
 The unit is an **activation** — one `(neuron, dendrite, signal)` triple. A signal
 produces one activation per subscriber of its collateral.
 
-An activation is *pending* until its dendrite body is invoked, then *active*
+An activation is *pending* until its dendrite response is invoked, then *active*
 until the promise that body returned settles. A synchronous body passes through
 `active` within a single scheduler iteration and is decremented before its
 response is emitted, so only genuinely asynchronous work is ever observed there.
@@ -233,6 +328,15 @@ Or once for the whole organism, which is how integrations install themselves:
 const off = cns.addDrainListener(() => store.flush());
 ```
 
+Several stimulations started from one place — the answers of one request batch, the timers due in one tick — commit once inside `cns.batch(run)`: the drains of the stimulations started in it are announced, in their order, when the outermost `batch` ends (also when `run` throws). The first flush commits every write; the ones after it find nothing to do. `batch` covers what `run` does synchronously: a turn that comes after an `await` inside `run`, or after `batch` returned, is announced on its own. It is the `batch` of Redux and of React DOM, and `transaction` in MobX.
+
+```ts
+cns.batch(() => {
+  cns.stimulate(requestA.createSignal({ id: 'a' }));
+  cns.stimulate(myCollateral.createSignal({ id: 'b' }));
+}); // one commit for both
+```
+
 #### Why this cannot be a response
 
 A turn can end in six ways, and a response is emitted in only the first:
@@ -252,7 +356,7 @@ which is exactly how optimistic updates and loading states get lost.
 
 #### Payload
 
-```ts
+```ts signature
 {
   stimulation: CNSStimulation;
   queueLength: number;         // pending + active; zero means finished
@@ -286,6 +390,7 @@ limit or by an abort, never "about to run".
 Wait for the stimulation to complete. Returns a Promise that resolves when all tasks are done or rejects on error.
 
 ```ts
+const stimulation = cns.stimulate(signal);
 await stimulation.waitUntilComplete();
 ```
 
@@ -293,6 +398,7 @@ await stimulation.waitUntilComplete();
 Get the current outstanding frontier — not-yet-completed tasks (queued, active, pending) plus failed/aborted ones. This is the set to persist for resume: re-activating it via `cns.activate(tasks)` re-runs exactly the not-yet-done work. Each task carries its own input signal (with payload), so no extra state is needed.
 
 ```ts
+const stimulation = cns.stimulate(signal);
 const frontier = stimulation.getOutstandingTasks();
 ```
 
@@ -300,6 +406,7 @@ const frontier = stimulation.getOutstandingTasks();
 Get all tasks that failed or were aborted.
 
 ```ts
+const stimulation = cns.stimulate(signal);
 const failures = stimulation.getFailedTasks();
 failures.forEach(f => console.error(f.error));
 ```
@@ -310,7 +417,7 @@ Access network analysis utilities:
 
 ```ts
 // Get subscribers for a collateral
-const subscribers = cns.network.getSubscribers(userEvent);
+const subscribers = cns.network.getSubscribers(userCreated);
 
 // Get all collaterals
 const collaterals = cns.network.getCollaterals();

@@ -11,15 +11,15 @@ import type {
 } from './explorerClient';
 import type { TCNSStimulationFacetsDTO } from '@cnstra/devtools-dto';
 
-export interface TCNSConnStat {
+export type TCNSConnectionStatistic = {
     collateralName: string;
     /** How many tasks flowed across this connection (in the loaded snapshot). */
     count: number;
     /** How many of those errored. */
     error: number;
-}
+};
 
-export interface TCNSNeuronRow {
+export type TCNSNeuronRow = {
     name: string;
     /** Activation count (server facets.byNeuron; fallback = snapshot task count). */
     throughput: number;
@@ -29,19 +29,19 @@ export interface TCNSNeuronRow {
     dendrites: number;
     /** Number of output collaterals (axon). */
     axons: number;
-}
+};
 
-export interface TCNSNeuronDetail {
+export type TCNSNeuronDetail = {
     name: string;
     throughput: number;
     errors: number;
     /** Inputs — collaterals this neuron reacts to (fan-in). */
-    dendrites: TCNSConnStat[];
+    dendrites: TCNSConnectionStatistic[];
     /** Outputs — collaterals this neuron emits (fan-out / axon). */
-    axons: TCNSConnStat[];
-}
+    axons: TCNSConnectionStatistic[];
+};
 
-export interface TCNSCollateralRow {
+export type TCNSCollateralRow = {
     name: string;
     owner?: string;
     isEntry: boolean;
@@ -51,9 +51,9 @@ export interface TCNSCollateralRow {
     subscriberNames: string[];
     /** How many times it fired (emitted by a task output or as an entry signal). */
     fires: number;
-}
+};
 
-export interface TCNSCollateralDetail {
+export type TCNSCollateralDetail = {
     name: string;
     owner?: string;
     isEntry: boolean;
@@ -61,9 +61,9 @@ export interface TCNSCollateralDetail {
     subscribers: TCNSSubscriberStat[];
     /** Recent emissions of this collateral (its link to activation tasks). */
     dispatches: TCNSCollateralDispatch[];
-}
+};
 /** One emission of a collateral: which run, at which stage, by whom, with what payload. */
-export interface TCNSCollateralDispatch {
+export type TCNSCollateralDispatch = {
     stimulationId: string;
     /** Stage within the stimulation: the task index; -1 = ENTRY signal. */
     stage: number;
@@ -73,14 +73,14 @@ export interface TCNSCollateralDispatch {
     payload: unknown;
     error: string | null;
     startedAt: number;
-}
-export interface TCNSSubscriberStat {
+};
+export type TCNSSubscriberStat = {
     neuronName: string;
     count: number;
     error: number;
-}
+};
 
-export interface TCNSTaskRow {
+export type TCNSTaskRow = {
     key: string;
     stimulationId: string;
     attemptNumber: number;
@@ -91,7 +91,7 @@ export interface TCNSTaskRow {
     error: string | null;
     startedAt: number;
     duration: number | null;
-}
+};
 
 const attemptIndex = (
     snap: TCNSExplorerSnapshot
@@ -181,8 +181,8 @@ export function neuronDetail(
     const tp = throughputMap(facets);
     let errors = 0;
     let taskCount = 0;
-    const inCount = new Map<string, TCNSConnStat>();
-    const outCount = new Map<string, TCNSConnStat>();
+    const inCount = new Map<string, TCNSConnectionStatistic>();
+    const outCount = new Map<string, TCNSConnectionStatistic>();
     for (const t of snap.tasks) {
         if (t.neuronName !== name) continue;
         taskCount++;
@@ -209,7 +209,7 @@ export function neuronDetail(
         if (c.ownerNeuronName === name && !outCount.has(c.name))
             outCount.set(c.name, { collateralName: c.name, count: 0, error: 0 });
 
-    const byWeight = (a: TCNSConnStat, b: TCNSConnStat): number =>
+    const byWeight = (a: TCNSConnectionStatistic, b: TCNSConnectionStatistic): number =>
         b.count - a.count || a.collateralName.localeCompare(b.collateralName);
     return {
         name,

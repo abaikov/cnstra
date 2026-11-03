@@ -3,6 +3,7 @@ import { TCNSDendrite } from './TCNSDendrite';
 import { ICNSCollateral } from '../interfaces/ICNSCollateral';
 
 export type TCNSNeuron<TAxonType extends TCNSAxon = TCNSAxon> = {
+    readonly index: number;
     axon: TAxonType;
     /** Optional per-neuron concurrency limit. If undefined or <= 0, no limit is applied. */
     concurrency?: number;

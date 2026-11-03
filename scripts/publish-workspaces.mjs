@@ -74,7 +74,7 @@ const run = (command, commandArgs) => {
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const npmRun = script => run(npm, ['run', script, '--if-present']);
 
-run(npm, ['whoami']);
+if (!process.env.GITHUB_ACTIONS) run(npm, ['whoami']);
 
 // Drift gate. A package can sit at the SAME version as npm and still contain
 // different code — that is a change that landed without a bump, and it is
@@ -128,6 +128,28 @@ if (bumped) {
     }
 
     console.log(`Publishing bumped packages:\n${workspaces.map(w => `  ${w}`).join('\n')}\n`);
+}
+
+if (process.env.GITHUB_ACTIONS) {
+    const neverPublished = workspaces.filter(
+        name => !spawnSync('npm', ['view', name, 'name'], { encoding: 'utf8' }).stdout.trim()
+    );
+
+    if (neverPublished.length > 0) {
+        console.error(
+            '\n❌ CI publishes through a trusted publisher, which npm only lets a package have once it exists.\n' +
+                'Publish these once from a logged-in machine, then bind them to the workflow:\n\n' +
+                neverPublished
+                    .map(
+                        name =>
+                            `  npm publish --workspace=${name} --access public && ` +
+                            `npm trust github ${name} --file release.yml --repo abaikov/cnstra -y`
+                    )
+                    .join('\n') +
+                '\n'
+        );
+        process.exit(1);
+    }
 }
 
 // Pre-publish check: verify no package tries to overwrite an already-published version

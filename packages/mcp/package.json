@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/mcp",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "MCP server for CNStra — gives Claude and Cursor instant understanding of your neuron graph",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/mcp"
+  },
   "keywords": [
     "cnstra",
     "mcp",

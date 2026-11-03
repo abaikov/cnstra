@@ -1,7 +1,12 @@
 {
   "name": "@cnstra/persist",
-  "version": "0.2.0",
+  "version": "0.2.7",
   "description": "Persistence layer for CNStra: name<->object registry, resumable checkpoint (resume) serialization, and checkpoint repositories. Core-free (depends only on @cnstra/types).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abaikov/cnstra.git",
+    "directory": "packages/persist"
+  },
   "keywords": [
     "cnstra",
     "persist",

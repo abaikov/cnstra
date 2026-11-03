@@ -3,9 +3,12 @@ import type { TExoWritableBindable } from '@exodra/reactivity';
 import type {
     CNSExplorerWsClient,
     TCNSExplorerDetail,
+    TCNSExplorerScheduled,
     TCNSExplorerSnapshot,
     TCNSExplorerTopology,
 } from './explorerClient';
+import { CNSScheduledPager } from './CNSScheduledPager';
+import { CNSSnapshotCache } from './CNSSnapshotCache';
 import {
     DEFAULT_QUERY,
     encodeQuery,
@@ -17,22 +20,25 @@ import type {
     TCNSStimulationRowDTO,
     TCNSStimulationFacetsDTO,
 } from '@cnstra/devtools-dto';
+import type { TCNSStimulationCommand } from '@cnstra/persist-dto';
 
 /** An entity the DETAILS panel can show — one crumb in the navigation stack. */
 export type TCNSNavKind = 'stimulation' | 'neuron' | 'collateral' | 'task';
-export interface TCNSNavEntry {
+export type TCNSNavEntry = {
     kind: TCNSNavKind;
     /** The entity id/name (stimulationId, neuronName, collateralName, task key). */
     id: string;
     /** Human label for the breadcrumb crumb. */
     label: string;
-}
+};
 
 // The explorer's data-layer: owns the query-state (⇄ URL) and everything projected
 // from it (roster rows, facet counts, selected-run detail). The UI (slice 3) only
 // reads these bindables and dispatches patches — no fetching in the view.
 
-export interface TCNSExplorerControllerOptions {
+export type TCNSExplorerControllerOptions = {
+    /** Pre-set which actions are allowed; the socket pushes the real ones on connect. */
+    allowedActions?: { retry?: boolean; clone?: boolean };
     /** Read/write the URL query string (so the query round-trips + is shareable). */
     readSearch?: () => string;
     writeSearch?: (search: string) => void;
@@ -40,9 +46,9 @@ export interface TCNSExplorerControllerOptions {
     liveMs?: number;
     /** Page size. */
     limit?: number;
-}
+};
 
-export interface TCNSExplorerController {
+export type TCNSExplorerController = {
     query: TExoWritableBindable<TCNSExplorerQuery, TCNSExplorerQuery>;
     rows: TExoWritableBindable<TCNSStimulationRowDTO[], TCNSStimulationRowDTO[]>;
     facets: TExoWritableBindable<TCNSStimulationFacetsDTO, TCNSStimulationFacetsDTO>;
@@ -58,6 +64,13 @@ export interface TCNSExplorerController {
         TCNSExplorerSnapshot | null,
         TCNSExplorerSnapshot | null
     >;
+    scheduled: TExoWritableBindable<TCNSExplorerScheduled, TCNSExplorerScheduled>;
+    scopedScheduled: TExoWritableBindable<TCNSExplorerScheduled | null, TCNSExplorerScheduled | null>;
+    loadMoreScheduled: () => Promise<void>;
+    loadMoreScopedScheduled: () => Promise<void>;
+    commandScheduled: (stimulationId: string, command: TCNSStimulationCommand) => Promise<void>;
+    launchScheduled: (collateralName: string, payload: unknown) => Promise<void>;
+    now: TExoWritableBindable<number, number>;
     loading: TExoWritableBindable<boolean, boolean>;
     total: TExoWritableBindable<number, number>;
     hasMore: TExoWritableBindable<boolean, boolean>;
@@ -81,13 +94,45 @@ export interface TCNSExplorerController {
     retryRun: (stimulationId: string) => Promise<void>;
     /** Clone a run from its entry — then refresh the roster. */
     cloneRun: (stimulationId: string) => Promise<void>;
+    /**
+     * Open on the last `windowMs` unless the user already picked a range.
+     *
+     * Called once when the server's config arrives. It does NOT overwrite a
+     * `since` that came from the URL — a shared link must land where it says,
+     * and a window that reasserted itself would silently move someone off the
+     * run they were sent to look at.
+     */
+    applyDefaultWindow(windowMs: number | undefined): void;
+    /**
+     * Which run actions this server allows. An absent flag means allowed, so a
+     * server that says nothing leaves both buttons as they were.
+     *
+     * Retry and Clone are different operations, not two spellings of one: Retry
+     * continues the SAME run and updates its record in place; Clone starts a new
+     * run from the same entry and leaves the original untouched. A deployment
+     * that must never overwrite a record turns Retry off; one that must not
+     * multiply run ids turns Clone off.
+     */
+    allowedActions: TExoWritableBindable<
+        { retry?: boolean; clone?: boolean },
+        { retry?: boolean; clone?: boolean }
+    >;
+    /**
+     * The action in flight, if any — `'retry'` or `'clone'`.
+     *
+     * The button reads it and goes disabled while it is set. Without that the
+     * click gives no feedback, and a second click sends a second command: the
+     * server would mint the same attempt id twice and, on a runtime with no
+     * queue behind it, run the resumed frontier twice.
+     */
+    actionPending: TExoWritableBindable<string | null, string | null>;
     /** Last retry/clone error message (cleared on the next action), for the UI. */
     actionError: TExoWritableBindable<string | null, string | null>;
     /** Last retry/clone SUCCESS message (transient toast, auto-clears), for the UI. */
     actionNotice: TExoWritableBindable<string | null, string | null>;
     start: () => void;
     stop: () => void;
-}
+};
 
 export function createExplorerController(
     client: CNSExplorerWsClient,
@@ -116,6 +161,10 @@ export function createExplorerController(
         tasks: [],
     });
     const neuronScope = bindable<TCNSExplorerSnapshot | null>(null);
+    const emptyScheduled: TCNSExplorerScheduled = { available: false, rows: [], schedules: [], types: [], nextCursor: null };
+    const scheduled = bindable<TCNSExplorerScheduled>(emptyScheduled);
+    const scopedScheduled = bindable<TCNSExplorerScheduled | null>(null);
+    const now = bindable(Date.now());
     const loading = bindable(false);
     const total = bindable(0);
     const nextCursor = bindable<string | null>(null);
@@ -162,15 +211,43 @@ export function createExplorerController(
     };
     // Bounded run snapshot (flat buckets) — the Tasks list + per-neuron/collateral
     // error & fire aggregates derive from these tasks. Refreshed with the roster.
+    const snapshotCache = new CNSSnapshotCache();
     const loadSnapshot = async (): Promise<void> => {
         if (typeof client.snapshot !== 'function') return;
         const mine = epoch;
+        // Ask for the details of what has actually moved. The cache keeps the
+        // rest, which under `'full'` volume is nearly the entire payload.
+        const skip = snapshotCache.skipDetailFor();
         try {
-            const snap = await client.snapshot(query.getValue());
-            if (mine === epoch) snapshot.setValue(snap);
+            const snap = await client.snapshot(
+                query.getValue(),
+                undefined,
+                skip
+            );
+            if (mine === epoch) snapshot.setValue(snapshotCache.merge(snap, skip));
         } catch {
             /* snapshot is best-effort */
         }
+    };
+
+    const scheduledFilterOf = (q: TCNSExplorerQuery): { neuronName?: string; collateralName?: string } | undefined =>
+        q.selectedNeuron ? { neuronName: q.selectedNeuron } : q.selectedCollateral ? { collateralName: q.selectedCollateral } : undefined;
+    const readsScheduled = (): boolean => typeof client.scheduled === 'function';
+    const scheduledPager = new CNSScheduledPager(scheduled, cursor => client.scheduled({}, cursor, limit));
+    const scopedPager = new CNSScheduledPager(scopedScheduled, cursor =>
+        client.scheduled(scheduledFilterOf(query.getValue()) ?? {}, cursor, limit)
+    );
+    const loadScheduled = async (): Promise<void> => {
+        if (readsScheduled() && query.getValue().tab === 'scheduled') await scheduledPager.refresh();
+    };
+    const loadMoreScheduled = async (): Promise<void> => {
+        if (readsScheduled()) await scheduledPager.more();
+    };
+    const loadMoreScopedScheduled = async (): Promise<void> => {
+        if (readsScheduled()) await scopedPager.more();
+    };
+    const loadScopedScheduled = async (): Promise<void> => {
+        if (readsScheduled() && scheduledFilterOf(query.getValue())) await scopedPager.refresh();
     };
 
     // While TRUE (during a URL→state sync) we must NOT write back to the URL, or a
@@ -184,8 +261,14 @@ export function createExplorerController(
         const q = withPatch(query.getValue(), patch);
         query.setValue(q);
         writeUrl(q);
+        // A different filter is a different page, so nothing held describes it
+        // any more — and keeping it would let the next poll skip details for a
+        // run the new page has never shown.
+        snapshotCache.reset();
+        scheduledPager.reset();
         void refetchList();
         void loadSnapshot();
+        void loadScheduled();
     };
 
     const loadMore = async (): Promise<void> => {
@@ -225,6 +308,8 @@ export function createExplorerController(
         const navTrail = curTrail();
         // A neuron scope is only meaningful while a neuron is open.
         if (entry.kind !== 'neuron') neuronScope.setValue(null);
+        scopedPager.reset();
+        scopedScheduled.setValue(null);
         switch (entry.kind) {
             case 'stimulation':
                 setSelection({ ...CLEAR_SEL, selected: entry.id, navTrail });
@@ -235,6 +320,7 @@ export function createExplorerController(
                 break;
             case 'neuron': {
                 setSelection({ ...CLEAR_SEL, selectedNeuron: entry.id, navTrail });
+                void loadScopedScheduled();
                 // Full recent activation history: a snapshot filtered by THIS neuron
                 // (far more than the neuron's slice of the bounded global snapshot).
                 neuronScope.setValue(null);
@@ -263,6 +349,7 @@ export function createExplorerController(
             }
             case 'collateral':
                 setSelection({ ...CLEAR_SEL, selectedCollateral: entry.id, navTrail });
+                void loadScopedScheduled();
                 break;
             case 'task':
                 setSelection({ ...CLEAR_SEL, selectedTask: entry.id, navTrail });
@@ -283,6 +370,8 @@ export function createExplorerController(
             setSelection({ ...CLEAR_SEL, navTrail: undefined });
             detail.setValue(null);
             neuronScope.setValue(null);
+            scopedPager.reset();
+            scopedScheduled.setValue(null);
             return;
         }
         const ns = s.slice(0, -1);
@@ -301,6 +390,8 @@ export function createExplorerController(
         setSelection({ ...CLEAR_SEL, navTrail: undefined });
         detail.setValue(null);
         neuronScope.setValue(null);
+        scopedPager.reset();
+        scopedScheduled.setValue(null);
     };
     const selectRun = async (stimulationId: string): Promise<void> => {
         openEntity(
@@ -309,6 +400,17 @@ export function createExplorerController(
         );
     };
 
+    const applyDefaultWindow = (windowMs: number | undefined): void => {
+        if (!windowMs) return;
+        const current = query.getValue();
+        if (current.since != null || current.until != null) return;
+        setQuery({ ...current, since: Date.now() - windowMs });
+    };
+
+    const allowedActions = bindable<{ retry?: boolean; clone?: boolean }>(
+        opts.allowedActions ?? {}
+    );
+    const actionPending = bindable<string | null>(null);
     const actionError = bindable<string | null>(null);
     const actionNotice = bindable<string | null>(null);
     let noticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -326,7 +428,15 @@ export function createExplorerController(
     };
 
     const retryRun = async (stimulationId: string): Promise<void> => {
+        // Ignore a click while one is already in flight — a second command
+        // carries the same attempt id and, without a queue behind the runtime,
+        // runs the frontier twice.
+        if (actionPending.getValue()) return;
+        // The button is not drawn when the server disallows it; this is for
+        // anything that reaches the controller another way.
+        if (allowedActions.getValue().retry === false) return;
         clearAction();
+        actionPending.setValue('retry');
         try {
             await client.retry(stimulationId);
             notify('Retry accepted — resuming this run');
@@ -337,16 +447,63 @@ export function createExplorerController(
             }
         } catch (e) {
             actionError.setValue((e as Error).message);
+        } finally {
+            actionPending.setValue(null);
         }
     };
     const cloneRun = async (stimulationId: string): Promise<void> => {
+        if (actionPending.getValue()) return;
+        if (allowedActions.getValue().clone === false) return;
         clearAction();
+        actionPending.setValue('clone');
         try {
             const newId = await client.clone(stimulationId);
             notify(`Cloned → new run ${newId}`);
             await refetchList();
         } catch (e) {
             actionError.setValue((e as Error).message);
+        } finally {
+            actionPending.setValue(null);
+        }
+    };
+
+    const commandScheduled = async (stimulationId: string, command: TCNSStimulationCommand): Promise<void> => {
+        if (actionPending.getValue()) return;
+        clearAction();
+        actionPending.setValue(command.name);
+        try {
+            await client.command(stimulationId, command);
+            notify(
+                command.name === 'cancel'
+                    ? `Cancelled ${stimulationId}`
+                    : command.name === 'runNow'
+                      ? `${stimulationId} moved to now`
+                      : `${stimulationId} priority ${command.priority}`
+            );
+            scheduledPager.reset();
+            scopedPager.reset();
+            await Promise.all([loadScheduled(), loadScopedScheduled()]);
+        } catch (e) {
+            actionError.setValue((e as Error).message);
+        } finally {
+            actionPending.setValue(null);
+        }
+    };
+
+    const launchScheduled = async (collateralName: string, payload: unknown): Promise<void> => {
+        if (actionPending.getValue()) return;
+        clearAction();
+        actionPending.setValue('launch');
+        try {
+            const newStimulationId = await client.launch({ collateralName, payload });
+            notify(`Launched ${newStimulationId}`);
+            scheduledPager.reset();
+            scopedPager.reset();
+            await Promise.all([loadScheduled(), loadScopedScheduled()]);
+        } catch (e) {
+            actionError.setValue((e as Error).message);
+        } finally {
+            actionPending.setValue(null);
         }
     };
 
@@ -355,6 +512,9 @@ export function createExplorerController(
         const fac = await client.facets(q);
         facets.setValue(fac);
         void loadSnapshot(); // keep the Tasks list + aggregates fresh
+        now.setValue(Date.now());
+        void loadScheduled();
+        void loadScopedScheduled();
         // Topology arrives once the app connects (which may be after our first load) —
         // keep polling until it populates, then stop.
         if (!topology.getValue().neurons.length) void loadTopology();
@@ -415,8 +575,10 @@ export function createExplorerController(
         suppressUrlWrite = true;
         try {
             query.setValue(incoming);
+            scheduledPager.reset();
             void refetchList();
             void loadSnapshot();
+            void loadScheduled();
             hydrateNavFromQuery(incoming);
         } finally {
             suppressUrlWrite = false;
@@ -427,6 +589,7 @@ export function createExplorerController(
         void refetchList();
         void loadTopology();
         void loadSnapshot();
+        void loadScheduled();
         // Restore the DETAILS panel from the URL (trail → deep-link → nothing).
         hydrateNavFromQuery(query.getValue());
         if (typeof window !== 'undefined')
@@ -449,6 +612,13 @@ export function createExplorerController(
         topology,
         snapshot,
         neuronScope,
+        scheduled,
+        scopedScheduled,
+        loadMoreScheduled,
+        loadMoreScopedScheduled,
+        commandScheduled,
+        launchScheduled,
+        now,
         loading,
         total,
         hasMore,
@@ -460,6 +630,9 @@ export function createExplorerController(
         navBack,
         navTo,
         clearNav,
+        applyDefaultWindow,
+        allowedActions,
+        actionPending,
         retryRun,
         cloneRun,
         actionError,

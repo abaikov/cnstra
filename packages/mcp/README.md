@@ -16,7 +16,7 @@ npx @cnstra/mcp init
 
 Then wire up your CNS instance and registry in `cns-mcp.ts`:
 
-```ts
+```ts file=cns-mcp.ts
 import { startCNSMCPServer } from '@cnstra/mcp';
 import { cns } from './src/cns';
 import { registry } from './src/neurons/registry'; // CNSPersistOptionsRegistry
@@ -26,23 +26,49 @@ await startCNSMCPServer(cns, registry);
 
 The registry maps neurons and collaterals to stable names. Use per-file registration:
 
-```ts
+```ts file=src/neurons/registry.ts
 // src/neurons/registry.ts
-import { CNSPersistOptionsRegistry } from '@cnstra/core';
+import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 export const registry = new CNSPersistOptionsRegistry();
+```
 
+```ts file=src/neurons/deck.ts
 // src/neurons/deck.ts
+import { cnsCollateral, cnsNeuron } from '@cnstra/core';
 import { registry } from './registry';
+
+export const importStarted = cnsCollateral<{ deckId: string }>();
+export const deckCreated = cnsCollateral<{ deckId: string }>();
+export const deckNeuron = cnsNeuron({ deckCreated }).dendrite({
+    collateral: importStarted,
+    response: (payload, axon) => axon.deckCreated.createSignal(payload),
+});
+
 registry
     .register('deckNeuron', deckNeuron)
     .registerCollateral('importStarted', importStarted);
 ```
 
-Or `createPersistRegistry` for simple projects:
+```ts file=src/cns.ts
+// src/cns.ts
+import { CNS } from '@cnstra/core';
+import { deckNeuron } from './neurons/deck';
+
+export const cns = new CNS([deckNeuron]);
+```
+
+Or `CNSPersistOptionsRegistryFactory.create` for simple projects:
+
+```ts setup
+import type { TCNSNeuron } from '@cnstra/types';
+
+declare const deckNeuron: TCNSNeuron;
+declare const cardNeuron: TCNSNeuron;
+```
 
 ```ts
-import { createPersistRegistry } from '@cnstra/core';
-export const registry = createPersistRegistry({ deckNeuron, cardNeuron });
+import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
+export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron });
 ```
 
 Open the project in Claude Code or Cursor — the server starts automatically.

@@ -14,7 +14,20 @@ import type { TCNSStimulationResponse } from '@cnstra/types';
  */
 export interface ICNSStimulationPersistor {
     /** Feed each stimulation response through the recorder. */
-    readonly onResponse: (response: TCNSStimulationResponse) => void;
-    /** Flush/cancel any pending cadence timer. */
-    dispose(): void;
+    /**
+     * Feed each stimulation response through the recorder.
+     *
+     * Returning a promise is meaningful: the engine awaits it and holds this
+     * hop's subscribers until it settles. That is how `barrier` turns the
+     * recorder into a per-hop checkpoint gate.
+     */
+    readonly onResponse: (
+        response: TCNSStimulationResponse
+    ) => void | Promise<void>;
+    /**
+     * Cancel any pending cadence timer and resolve when the outstanding writes
+     * have landed. Await it before starting the next attempt of the same run;
+     * ignore it and nothing changes for you.
+     */
+    dispose(): Promise<void>;
 }

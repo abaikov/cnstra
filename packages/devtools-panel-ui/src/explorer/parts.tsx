@@ -28,7 +28,12 @@ export function statusColor(status: string): string {
     if (s === 'completed' || s === 'ok' || s === 'done' || s === 'success')
         return C.green;
     if (s === 'failed' || s === 'error') return C.red;
-    if (s === 'running' || s === 'pending' || s === 'active') return C.yellow;
+    if (s === 'running' || s === 'pending' || s === 'active' || s === 'ready') return C.yellow;
+    if (s === 'scheduled' || s === 'key') return C.violet;
+    // Aborted is not a failure: a deploy or a shutdown drain killed the run, and
+    // those are retried in bulk without reading a stack trace. Its own colour so
+    // the two are separable at a glance in a long list.
+    if (s === 'aborted' || s === 'cancelled') return C.cyan;
     return C.muted;
 }
 
@@ -54,6 +59,7 @@ export function statusGlowClass(status: string): string {
     if (s === 'failed' || s === 'error') return 'exp-glow-red';
     if (s === 'running' || s === 'pending' || s === 'active')
         return 'exp-glow-yellow';
+    // An aborted run is settled — it must not pulse like a live one.
     return '';
 }
 
@@ -170,14 +176,14 @@ export function factList(items: TExoSchema[]): TExoSchema {
     );
 }
 
-export interface TProportionSeg {
+export type TCNSProportionSegment = {
     label: string;
     value: number;
     color: string;
-}
+};
 
 /** Segmented multi-colour proportion bar + a wrapped legend. */
-export function proportionBar(segs: TProportionSeg[]): TExoSchema {
+export function proportionBar(segs: TCNSProportionSegment[]): TExoSchema {
     const total = segs.reduce((n, s) => n + s.value, 0) || 1;
     const bar = segs
         .filter(s => s.value > 0)
@@ -223,7 +229,7 @@ export function progressBar(
     );
 }
 
-export interface TScopeCardOpts {
+export type TCNSScopeCardOptions = {
     eyebrow: string;
     eyebrowColor?: string;
     title: string;
@@ -231,10 +237,10 @@ export interface TScopeCardOpts {
     pills?: TExoSchema[];
     diagram: TExoSchema;
     facts: TExoSchema;
-}
+};
 
 /** The 3-zone detail scope card: heading block · node-link diagram · fact bullets. */
-export function scopeCard(o: TScopeCardOpts): TExoSchema {
+export function scopeCard(o: TCNSScopeCardOptions): TExoSchema {
     const accent = o.eyebrowColor ?? C.violet;
     return (
         <div

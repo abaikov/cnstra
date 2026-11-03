@@ -14,12 +14,12 @@
  * over a browser is `npm run demo:admin`.
  */
 import { Queue, Worker } from 'bullmq';
-import { CNS, collateral, neuron } from '@cnstra/core';
+import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import {
     createCNSWorker,
-    enqueueStimulation,
-    stimulationJob,
+    enqueueCNSStimulation,
+    cnsStimulationJob,
 } from '@cnstra/bullmq';
 
 const connection = {
@@ -28,22 +28,22 @@ const connection = {
 };
 const QUEUE = 'cns';
 
-const input = collateral<{ userId: string }>();
-const userFetched = collateral<{ id: string }>();
-const userSaved = collateral<{ id: string; ok: true }>();
+const input = cnsCollateral<{ userId: string }>();
+const userFetched = cnsCollateral<{ id: string }>();
+const userSaved = cnsCollateral<{ id: string; ok: true }>();
 
 // Fail the first pass; a module-level attempt counter clears the fault on the
 // BullMQ retry (same process), so the resumed attempt succeeds.
 let attempt = 0;
 
-const importUser = neuron({ userFetched }).dendrite({
+const importUser = cnsNeuron({ userFetched }).dendrite({
     collateral: input,
     response: (p, axon) => {
         console.log(`    ▸ importUser(${p!.userId})`);
         return axon.userFetched.createSignal({ id: p!.userId });
     },
 });
-const persistUser = neuron({ userSaved }).dendrite({
+const persistUser = cnsNeuron({ userSaved }).dendrite({
         collateral: userFetched,
         response: (p, axon) => {
             attempt++;
@@ -67,29 +67,25 @@ async function main(): Promise<void> {
 
     // Resumable worker: one job → one stimulation, resuming across the job's retries.
     const { worker, shutdown } = createCNSWorker({
-        // BullMQ's Worker class is structurally wider than the package's minimal
-        // ctor type; pass it through (same as the pg-boss demo's `boss as never`).
-        Worker: Worker as never,
+        Worker,
+        workerOptions: { connection },
         cns,
         registry,
         queue: QUEUE,
-        connection,
         // No repository → the resume checkpoint lives in BullMQ's OWN per-job
         // progress (job.updateProgress / job.progress, in Redis). No side store.
         resume: {},
     });
-    (worker as unknown as { on: (e: string, cb: (job: unknown, err: unknown) => void) => void }).on('failed', (job: unknown, err: unknown) =>
+    worker.on('failed', (_job, err) =>
         console.log(
-            `    · job failed (BullMQ will retry): ${
-                err instanceof Error ? err.message : String(err)
-            }`
+            `    · job failed (BullMQ will retry): ${err.message}`
         )
     );
 
     // Producer: enqueue by (registered) collateral name, with retries enabled so
     // BullMQ auto-retries the failing job and the worker resumes it.
-    const job = stimulationJob(registry, input, { userId: '42' });
-    await enqueueStimulation(queue, job, {
+    const job = cnsStimulationJob(registry, input, { userId: '42' });
+    await enqueueCNSStimulation(queue, job, {
         attempts: 3,
         backoff: { type: 'fixed', delay: 500 },
     });

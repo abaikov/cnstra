@@ -1,0 +1,18 @@
+.reveal {
+  transition: opacity 0.9s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.revealHidden {
+  opacity: 0;
+  transform: translate3d(0, 36px, 0);
+}
+
+.revealHiddenLeft {
+  opacity: 0;
+  transform: translate3d(-80px, 0, 0);
+}
+
+.revealHiddenRight {
+  opacity: 0;
+  transform: translate3d(80px, 0, 0);
+}

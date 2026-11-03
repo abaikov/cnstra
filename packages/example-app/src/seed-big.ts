@@ -8,13 +8,13 @@
 // Roster/facets are served from a FAST repository that pre-derives the roster
 // entries ONCE (the reference in-memory store re-scans every task on every query —
 // O(N²) at this scale). Filter/facet semantics are the shared reference helpers
-// (`matchesRosterFilter` / `computeRosterFacets` / `keysetPage`), so what the panel
+// (`matchesCNSRosterFilter` / `computeCNSRosterFacets` / `cnsKeysetPage`), so what the panel
 // shows is exactly what those contracts define — the point of the correctness demo.
 
 import {
-    keysetPage,
-    computeRosterFacets,
-    matchesRosterFilter,
+    cnsKeysetPage,
+    computeCNSRosterFacets,
+    matchesCNSRosterFilter,
     type ICNSStimulationRepository,
     type TCNSRosterEntry,
     type TCNSStimulationState,
@@ -37,30 +37,30 @@ function mulberry32(seed: number): () => number {
     };
 }
 
-export interface TSeedTopologyNode {
+export type TCNSSeedTopologyNode = {
     name: string;
     cnsId: string;
     appId: string;
-}
-export interface TSeedCollateral extends TSeedTopologyNode {
+};
+export type TCNSSeedCollateral = TCNSSeedTopologyNode & {
     ownerNeuronName?: string;
-}
-export interface TSeedDendrite {
+};
+export type TCNSSeedDendrite = {
     neuronName: string;
     collateralName: string;
     cnsId: string;
     appId: string;
-}
-export interface TSeedTopology {
+};
+export type TCNSSeedTopology = {
     appId: string;
     cnsId: string;
     appName: string;
     version: string;
     timestamp: number;
-    neurons: TSeedTopologyNode[];
-    collaterals: TSeedCollateral[];
-    dendrites: TSeedDendrite[];
-}
+    neurons: TCNSSeedTopologyNode[];
+    collaterals: TCNSSeedCollateral[];
+    dendrites: TCNSSeedDendrite[];
+};
 
 const DOMAINS = [
     'auth', 'search', 'cart', 'order', 'payment', 'notify', 'inventory',
@@ -85,14 +85,14 @@ export function generateBigTopology(
     appId: string,
     cnsId: string,
     appName: string
-): TSeedTopology {
+): TCNSSeedTopology {
     const rnd = mulberry32(1337);
-    const neurons: TSeedTopologyNode[] = [];
+    const neurons: TCNSSeedTopologyNode[] = [];
     for (const d of DOMAINS)
         for (const op of OPS)
             neurons.push({ name: `${d}${op}Neuron`, cnsId, appId });
 
-    const collaterals: TSeedCollateral[] = [];
+    const collaterals: TCNSSeedCollateral[] = [];
     // Entry collaterals (job types) — owner-less; stimulations enter here.
     const entries: string[] = [];
     for (let i = 0; i < 24; i++) {
@@ -118,7 +118,7 @@ export function generateBigTopology(
 
     // Dendrites — each neuron subscribes to 2–5 input collaterals.
     const allCollNames = collaterals.map(c => c.name);
-    const dendrites: TSeedDendrite[] = [];
+    const dendrites: TCNSSeedDendrite[] = [];
     const dendritesByNeuron = new Map<string, string[]>();
     for (const n of neurons) {
         const k = 2 + Math.floor(rnd() * 4);
@@ -141,21 +141,21 @@ export function generateBigTopology(
     };
 }
 
-export interface TSeedBuckets {
+export type TCNSSeedBuckets = {
     stimulations: TCNSStimulationState[];
     attempts: TCNSStimulationAttempt[];
     tasks: TCNSStimulationTask[];
-}
+};
 
 const DAY = 24 * 60 * 60 * 1000;
 
 /** Generate ~`count` stimulations spread over the last `days` days, with tasks. */
 export function generateBigStimulations(
-    topo: TSeedTopology,
+    topo: TCNSSeedTopology,
     scopeName: string,
     count = 18000,
     days = 90
-): TSeedBuckets {
+): TCNSSeedBuckets {
     const rnd = mulberry32(4242);
     const now = Date.now();
     const entries = topo.collaterals.filter(c => !c.ownerNeuronName).map(c => c.name);
@@ -256,7 +256,7 @@ export class SeedBigStimulationRepository implements ICNSStimulationRepository {
     private readonly tasksByAttempt = new Map<string, TCNSStimulationTask[]>();
     private rosterEntries: TCNSRosterEntry[] = [];
 
-    constructor(buckets: TSeedBuckets) {
+    constructor(buckets: TCNSSeedBuckets) {
         for (const s of buckets.stimulations) this.stimById.set(s.stimulationId, s);
         for (const a of buckets.attempts) {
             const l = this.attemptsByStim.get(a.stimulationId) ?? [];
@@ -351,17 +351,17 @@ export class SeedBigStimulationRepository implements ICNSStimulationRepository {
         opts: { cursor?: string; limit: number }
     ): Promise<TCNSStimulationRosterPage> {
         const matched = this.rosterEntries.filter(e =>
-            matchesRosterFilter(e.row, e.neurons, filter)
+            matchesCNSRosterFilter(e.row, e.neurons, filter)
         );
-        return keysetPage(matched.map(e => e.row), opts);
+        return cnsKeysetPage(matched.map(e => e.row), opts);
     }
     async queryFacets(
         filter: TCNSStimulationRosterFilter,
         opts?: { metricPath?: string }
     ): Promise<TCNSStimulationRosterFacets> {
         const matched = this.rosterEntries.filter(e =>
-            matchesRosterFilter(e.row, e.neurons, filter)
+            matchesCNSRosterFilter(e.row, e.neurons, filter)
         );
-        return computeRosterFacets(matched, opts);
+        return computeCNSRosterFacets(matched, opts);
     }
 }

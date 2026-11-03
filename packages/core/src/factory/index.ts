@@ -10,8 +10,15 @@ import { TCNSNeuron } from '@cnstra/types';
 import { TCNSModality } from '@cnstra/types';
 import { TCNSAfferentPath } from '@cnstra/types';
 import { TCNSStimulationOptions } from '@cnstra/types';
+import type { TCNSModalitySelection } from '../types/TCNSModalitySelection';
+import { cnsResolveModalityHandler } from '../utils/cnsResolveModalityHandler';
+import { cnsComposeModalityResponse } from '../utils/cnsComposeModalityResponse';
 
-export const collateral = <TPayload = undefined>() =>
+let nextNeuronIndex = 0;
+let nextAfferentPathIndex = 0;
+let nextModalityIndex = 0;
+
+export const cnsCollateral = <TPayload = undefined>() =>
     new CNSCollateral<TPayload>();
 
 // Helper type to extract payload union from an array of collaterals
@@ -29,6 +36,7 @@ type InterNeuronAPI<
     TAxonType extends TCNSAxon = TCNSAxon,
     TGlobal = unknown
 > = {
+    readonly index: number;
     axon: TAxonType;
     concurrency?: number;
     maxDuration?: number;
@@ -171,7 +179,7 @@ type ExtractResultFromOutput<T> = T extends (
     : never;
 
 // Concrete builder
-export const neuron = <
+export const cnsNeuron = <
     TProvidedAxon extends Record<string, ICNSCollateral<unknown>>,
     TGlobal = unknown
 >(
@@ -215,6 +223,7 @@ export const neuron = <
             TCNSAxon<TProvidedAxon>,
             TGlobal
         >['bind'],
+        index: nextNeuronIndex++,
         axon: axon as unknown as TCNSAxon<TProvidedAxon>,
         concurrency: undefined,
         maxDuration: undefined,
@@ -281,94 +290,29 @@ export const neuron = <
                     | undefined;
 
                 const stimOptions = stimulation?.options;
-
-                const runGlobalDefault = () => {
-                    if (!defaultHandler) {
-                        throw new Error(
-                            `modalityDendrite: No handler found for modality and no default handler provided`
-                        );
-                    }
-
-                    const res = defaultHandler(payload, axon, ctx);
-                    if (res && typeof (res as any).then === 'function') {
-                        return (res as Promise<any>).then((result: any) =>
-                            output(result, axon, ctx)
-                        );
-                    }
-                    return output(res, axon, ctx);
-                };
-
-                if (!stimOptions || !stimOptions.modality) {
-                    return runGlobalDefault();
-                }
-
-                // Find matching modality config by object reference
-                const matchingConfig = modalityConfigs.find(
-                    config => config.modality === stimOptions.modality
+                const handler = cnsResolveModalityHandler(
+                    modalitySelection,
+                    stimOptions?.modality,
+                    stimOptions?.afferentPath
                 );
-
-                if (!matchingConfig) {
-                    return runGlobalDefault();
-                }
-
-                const stimAfferentPath = stimOptions.afferentPath;
-
-                // Find handler by afferent path object reference
-                const handler =
-                    stimAfferentPath && matchingConfig.afferentPaths
-                        ? matchingConfig.afferentPaths.get(stimAfferentPath)
-                        : undefined;
-
-                const effectiveHandler =
-                    handler ?? matchingConfig.default ?? defaultHandler;
-
-                if (!effectiveHandler) {
+                if (handler === undefined) {
                     throw new Error(
                         `modalityDendrite: No handler found for afferent path in modality and no default handler provided`
                     );
                 }
+                return cnsComposeModalityResponse(handler, output)(payload, axon, ctx);
+            };
 
-                const maybeResult = effectiveHandler(payload, axon, ctx);
-
-                if (
-                    maybeResult &&
-                    typeof (maybeResult as any).then === 'function'
-                ) {
-                    return (maybeResult as Promise<any>).then((result: any) =>
-                        output(result, axon, ctx)
-                    );
-                }
-
-                try {
-                    return output(maybeResult, axon, ctx);
-                } catch (error) {
-                    if (
-                        error instanceof Error &&
-                        error.message.includes(
-                            'Cannot read properties of undefined'
-                        )
-                    ) {
-                        const axonKeys =
-                            axon && typeof axon === 'object'
-                                ? Object.keys(axon)
-                                : 'not an object';
-                        throw new Error(
-                            `modalityDendrite: axon.output is undefined. Axon type: ${typeof axon}, Axon keys: ${
-                                Array.isArray(axonKeys)
-                                    ? axonKeys.join(', ')
-                                    : axonKeys
-                            }. Make sure the neuron was created with the correct axon structure. Original error: ${
-                                error.message
-                            }`
-                        );
-                    }
-                    throw error;
-                }
+            const modalitySelection: TCNSModalitySelection = {
+                modalityConfigs,
+                defaultHandler,
+                output,
             };
 
             dendrites.push({
                 collateral,
                 response,
+                modalitySelection,
             } as TCNSDendrite<ICNSCollateral<unknown>, TCNSAxon<TProvidedAxon>, TGlobal>);
 
             return api;
@@ -388,12 +332,12 @@ export const neuron = <
  * into it, so a base factory (`TExt = unknown`) hands neurons the plain ctx bag —
  * nothing is forced onto anyone who didn't ask for it. `withGlobal<T>()` is the
  * built-in layer; make `T` an object to carry as much as you want (store, clock,
- * logger, …) through the single runtime channel wired at `createCNS`/`new CNS`.
+ * logger, …) through the single runtime channel wired at `new CNS`/`CNSFactory.create`.
  *
  * @example
  * // src/neurons/factory.ts — ctx shape baked once
  * type TGlobal = { store: Store; now(): number; newId(): string };
- * export const { neuron } = neuronFactory().withGlobal<TGlobal>();
+ * export const { neuron } = cnsNeuronFactory().withGlobal<TGlobal>();
  *
  * // any neuron file — plain value, reaches deps via ctx.global
  * export const taskNeuron = neuron({ taskCreated }).bind({ createTask }, {
@@ -401,42 +345,44 @@ export const neuron = <
  *     axon.taskCreated.createSignal({ id: global.newId(), title, at: global.now() }),
  * });
  */
-export type TNeuronFactory<TExt = unknown> = {
-    /** Add `{ global: T }` to ctx; the value is injected once at `createCNS`/`new CNS`. */
-    withGlobal: <T>() => TNeuronFactory<TExt & { global: T }>;
+export type TCNSNeuronFactory<TExt = unknown> = {
+    /** Add `{ global: T }` to ctx; the value is injected once at `new CNS`/`CNSFactory.create`. */
+    withGlobal: <T>() => TCNSNeuronFactory<TExt & { global: T }>;
     neuron: <TProvidedAxon extends Record<string, ICNSCollateral<unknown>>>(
         axon: TProvidedAxon
     ) => InterNeuronAPI<TCNSAxon<TProvidedAxon>, TExt>;
 };
 
-export const neuronFactory = <TExt = unknown>(): TNeuronFactory<TExt> => {
+export const cnsNeuronFactory = <TExt = unknown>(): TCNSNeuronFactory<TExt> => {
     // Single stateless object reused across every layer call: `.withX()` only
     // re-types it, so there is nothing to allocate or carry at runtime.
-    const factory: TNeuronFactory<TExt> = {
-        withGlobal: () => factory as unknown as TNeuronFactory<any>,
-        neuron: axon => neuron(axon) as any,
+    const factory: TCNSNeuronFactory<TExt> = {
+        withGlobal: () => factory as unknown as TCNSNeuronFactory<any>,
+        neuron: axon => cnsNeuron(axon) as any,
     };
     return factory;
 };
 
-/** Sugar: `neuronFactory().withGlobal<T>()`. */
-export const withGlobal = <T>(): TNeuronFactory<{ global: T }> =>
-    neuronFactory<{ global: T }>();
+/** Sugar: `cnsNeuronFactory().withGlobal<T>()`. */
+export const withCNSGlobal = <T>(): TCNSNeuronFactory<{ global: T }> =>
+    cnsNeuronFactory<{ global: T }>();
 
-export const afferentPath = (
+export const cnsAfferentPath = (
     parentAfferentPath?: TCNSAfferentPath
 ): TCNSAfferentPath => {
     return {
+        index: nextAfferentPathIndex++,
         ...(parentAfferentPath !== undefined && {
             parentAfferentPath,
         }),
     };
 };
 
-export const modality = (
+export const cnsModality = (
     afferentPaths: Record<string | number, TCNSAfferentPath>
 ): TCNSModality => {
     return {
+        index: nextModalityIndex++,
         afferentPaths,
     };
 };

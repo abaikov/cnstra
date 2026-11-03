@@ -15,7 +15,7 @@ import type { ICNS, TCNSNeuron } from '@cnstra/types';
 type AnyNeuron = TCNSNeuron<any>;
 type AnyCollateral = CNSCollateral<unknown>;
 
-export type CNSMCPServerOptions = {
+export type TCNSMCPServerOptions = {
     /** Server name shown to the AI tool. Default: 'cnstra' */
     name?: string;
     /** Server version. Default: '1.0.0' */
@@ -241,7 +241,7 @@ const TOOLS = [
 export async function startCNSMCPServer(
     cns: ICNS<AnyNeuron>,
     registry: CNSPersistOptionsRegistry,
-    options: CNSMCPServerOptions = {}
+    options: TCNSMCPServerOptions = {}
 ): Promise<void> {
     const server = new Server(
         { name: options.name ?? 'cnstra', version: options.version ?? '1.0.0' },
