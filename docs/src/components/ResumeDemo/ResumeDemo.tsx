@@ -4,7 +4,6 @@ import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
 import type { TCNSNeuronActivationTask, TCNSStimulationResponse } from '@cnstra/types';
 import OrderGraph, { IDLE_ORDER_NODES } from '../OrderGraph/OrderGraph';
 import type { TOrderNodeId, TOrderNodes } from '../OrderGraph/OrderGraph';
-import monitorStyles from '../RunMonitor/RunMonitor.module.css';
 import styles from './ResumeDemo.module.css';
 
 type TPhase = 'idle' | 'running' | 'crashed' | 'resuming' | 'completed';
@@ -149,26 +148,26 @@ export default function ResumeDemo(): ReactNode {
     const isBusy = phase === 'running' || phase === 'resuming';
 
     return (
-        <div className={monitorStyles.monitor}>
-            <div className={monitorStyles.header}>
-                <span className={monitorStyles.brand}>cnstra · resume</span>
+        <div className={styles.monitor}>
+            <div className={styles.header}>
+                <span className={styles.brand}>cnstra · resume</span>
                 <span className={styles.phase} data-phase={phase}>
                     {phase}
                 </span>
             </div>
-            <div className={monitorStyles.body}>
-                <div className={monitorStyles.graphPane}>
-                    <div className={monitorStyles.paneTitle}>topology</div>
+            <div className={styles.body}>
+                <div className={styles.graphPane}>
+                    <div className={styles.paneTitle}>topology</div>
                     <OrderGraph nodes={nodes} badges={badgesOf(nodes)} />
-                    <div className={monitorStyles.actions}>
+                    <div className={styles.actions}>
                         {phase === 'crashed' ? (
-                            <button type="button" className={monitorStyles.action} onClick={resume}>
+                            <button type="button" className={styles.action} onClick={resume}>
                                 resume from the frontier
                             </button>
                         ) : (
                             <button
                                 type="button"
-                                className={`${monitorStyles.action} ${monitorStyles.actionDanger}`}
+                                className={`${styles.action} ${styles.actionDanger}`}
                                 onClick={runAndCrash}
                                 disabled={isBusy}
                             >
@@ -177,8 +176,8 @@ export default function ResumeDemo(): ReactNode {
                         )}
                     </div>
                 </div>
-                <div className={monitorStyles.runsPane}>
-                    <div className={monitorStyles.paneTitle}>console</div>
+                <div className={styles.runsPane}>
+                    <div className={styles.paneTitle}>console</div>
                     <ol className={styles.log}>
                         {log.map((line, index) => (
                             <li key={index} className={styles[line.tone]}>

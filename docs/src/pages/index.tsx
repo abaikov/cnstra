@@ -1,13 +1,13 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import CodeBlock from '@theme/CodeBlock';
 import BrowserOnly from '@docusaurus/BrowserOnly';
-import RunMonitor from '@site/src/components/RunMonitor/RunMonitor';
 import ResumeDemo from '@site/src/components/ResumeDemo/ResumeDemo';
 import Reveal from '@site/src/components/Reveal/Reveal';
+import Heartbeat from '@site/src/components/Heartbeat/Heartbeat';
 import styles from './index.module.css';
 
 const HERO_CODE = `const userCreated = cnsCollateral<{ id: string; name: string }>();
@@ -51,14 +51,26 @@ const USE_CASES = [
 ];
 
 function Hero(): ReactNode {
+    const logoRef = useRef<HTMLImageElement>(null);
+    const contract = useCallback(() => {
+        logoRef.current?.animate(
+            [
+                { transform: 'scale(1)', filter: 'drop-shadow(0 0 0 transparent)' },
+                { transform: 'scale(1.18)', filter: 'drop-shadow(0 0 10px rgba(82, 167, 201, 0.9))' },
+                { transform: 'scale(1)', filter: 'drop-shadow(0 0 0 transparent)' },
+            ],
+            { duration: 320, easing: 'ease-out' }
+        );
+    }, []);
     return (
         <header className={styles.hero}>
             <div className={styles.glow} aria-hidden="true" />
             <div className={styles.grid} aria-hidden="true" />
+            <div className={styles.scanlines} aria-hidden="true" />
             <div className={`container ${styles.heroInner}`}>
                 <div className={styles.heroText}>
                     <div className={styles.brand}>
-                        <img className={styles.brandLogo} src={useBaseUrl('/img/logo.svg')} alt="" aria-hidden="true" />
+                        <img ref={logoRef} className={styles.brandLogo} src={useBaseUrl('/img/logo.svg')} alt="" aria-hidden="true" />
                         <span className={styles.brandName}>CNStra</span>
                         <span className={styles.brandTag}>v3 · MIT</span>
                     </div>
@@ -66,7 +78,9 @@ function Hero(): ReactNode {
                     <h1 className={styles.title}>
                         Every flow is a graph.
                         <br />
-                        <span className={styles.accent}>Every run is visible.</span>
+                        <span className={styles.accent} data-text="Every run is visible.">
+                            Every run is visible.
+                        </span>
                     </h1>
                     <p className={styles.subtitle}>
                         Wire your app as neurons and typed signals. The compiler checks the wiring, the engine runs it
@@ -92,25 +106,44 @@ function Hero(): ReactNode {
                     <CodeBlock language="ts">{HERO_CODE}</CodeBlock>
                 </Reveal>
             </div>
+            <div className={`container ${styles.heartbeat}`}>
+                <BrowserOnly fallback={<div className={styles.heartbeatFallback} />}>{() => <Heartbeat onContraction={contract} />}</BrowserOnly>
+            </div>
         </header>
     );
 }
 
 function LiveSection(): ReactNode {
+    const demoUrl = useBaseUrl('/devtools/?transport=demo');
     return (
         <section className={styles.section}>
             <div className="container">
                 <Reveal>
                     <p className={styles.eyebrow}>Live</p>
-                    <h2 className={styles.statement}>This is the real engine, running in your browser.</h2>
+                    <h2 className={styles.statement}>The real devtools, watching a real engine in your browser.</h2>
                     <p className={styles.lead}>
-                        An order flow of four neurons: inventory, then payment, then the receipt and the shipment in
-                        parallel. Watch the hops light up, or decline a card and see where the run stops.
+                        A shop flow of six neurons runs here every couple of seconds, and every fifth card is declined.
+                        This is the actual devtools panel, connected to it without a server: open a failed run and press
+                        Retry, and it resumes from the neuron that failed.
                     </p>
                 </Reveal>
                 <Reveal>
-                    <BrowserOnly fallback={<div className={styles.monitorFallback} />}>{() => <RunMonitor />}</BrowserOnly>
+                    <div className={styles.window}>
+                        <div className={styles.windowBar}>
+                            <span />
+                            <span />
+                            <span />
+                            <em>cnstra devtools · demo</em>
+                        </div>
+                        <iframe className={styles.devtools} src={demoUrl} title="CNStra devtools running a demo shop flow" loading="lazy" />
+                    </div>
                 </Reveal>
+                <div className={styles.links}>
+                    <a href={demoUrl} target="_blank" rel="noopener noreferrer">
+                        Open it full screen →
+                    </a>
+                    <Link to="/docs/devtools/overview">Devtools docs →</Link>
+                </div>
             </div>
         </section>
     );

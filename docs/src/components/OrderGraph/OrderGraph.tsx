@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ReactNode } from 'react';
+import { PixelSkull } from '../PixelSprite/PixelSprite';
 import styles from './OrderGraph.module.css';
 
 export type TOrderNodeId = 'entry' | 'inventory' | 'payment' | 'mailer' | 'shipping';
@@ -56,7 +57,8 @@ export default function OrderGraph({ nodes, badges }: { nodes: TOrderNodes; badg
             {NODES.map(node => (
                 <g key={node.id} className={styles[`node_${nodes[node.id]}`]}>
                     <rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} rx={2} />
-                    <text x={node.x + NODE_W / 2} y={node.y + NODE_H / 2 + 4} textAnchor="middle">
+                    {nodes[node.id] === 'failed' && <PixelSkull size={20} x={node.x + 6} y={node.y + 6} />}
+                    <text x={node.x + NODE_W / 2 + (nodes[node.id] === 'failed' ? 10 : 0)} y={node.y + NODE_H / 2 + 4} textAnchor="middle">
                         {node.label}
                     </text>
                     {badges?.[node.id] !== undefined && (

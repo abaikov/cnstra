@@ -54,6 +54,10 @@
     "ws": "8.18.0",
     "@swc/core": "^1.15.0",
     "swc-plugin-exodra": "^0.1.0",
-    "identity-obj-proxy": "3.0.0"
+    "identity-obj-proxy": "3.0.0",
+    "@cnstra/devtools": "^3.1.0",
+    "@cnstra/devtools-server": "^3.5.0",
+    "@cnstra/devtools-server-repository-in-memory": "^3.0.1",
+    "@cnstra/persist": "^0.2.7"
   }
 }

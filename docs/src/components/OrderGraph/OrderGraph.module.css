@@ -33,28 +33,64 @@
   to { stroke-dashoffset: -14; }
 }
 
-.node_idle rect { fill: var(--bg-card); stroke: var(--border-accent); }
-.node_idle text { fill: var(--text-muted); }
+.node_idle > rect { fill: var(--bg-card); stroke: var(--border-accent); }
+.node_idle > text { fill: var(--text-muted); }
 
-.node_running rect {
+.node_running > rect {
   fill: rgba(245, 195, 68, 0.1);
   stroke: var(--neon-yellow);
   filter: drop-shadow(0 0 6px rgba(245, 195, 68, 0.45));
 }
-.node_running text { fill: var(--neon-yellow); }
+.node_running > text { fill: var(--neon-yellow); }
 
-.node_done rect { fill: rgba(179, 224, 83, 0.08); stroke: var(--neon-green); }
-.node_done text { fill: var(--neon-green); }
+.node_done > rect { fill: rgba(179, 224, 83, 0.08); stroke: var(--neon-green); }
+.node_done > text { fill: var(--neon-green); }
 
-.node_failed rect {
+.node_failed > rect {
   fill: rgba(207, 111, 99, 0.12);
   stroke: var(--neon-red);
   filter: drop-shadow(0 0 6px rgba(207, 111, 99, 0.45));
 }
-.node_failed text { fill: var(--neon-red); }
+.node_failed > text { fill: var(--neon-red); }
+
+.node_running,
+.node_done,
+.node_failed {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.node_running { animation: twitch 1.3s steps(1, end) infinite; }
+.node_done { animation: settle 0.45s ease-out; }
+.node_failed { animation: seizure 0.6s steps(1, end); }
+
+@keyframes twitch {
+  0%, 100% { transform: none; }
+  18% { transform: translate(0.6px, -0.4px); }
+  21% { transform: none; }
+  64% { transform: translate(-0.5px, 0.5px); }
+  67% { transform: none; }
+}
+
+@keyframes settle {
+  0% { filter: drop-shadow(0 0 10px rgba(179, 224, 83, 0.9)); }
+  100% { filter: none; }
+}
+
+@keyframes seizure {
+  0% { transform: translate(-3px, 0); }
+  12% { transform: translate(3px, 1px); }
+  24% { transform: translate(-2px, -1px); }
+  36% { transform: translate(2px, 0); }
+  48% { transform: translate(-1px, 1px); }
+  60%, 100% { transform: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .edge_running { animation: none; }
+  .edge_running,
+  .node_running,
+  .node_done,
+  .node_failed { animation: none; }
 }
 
 .graph .badge {

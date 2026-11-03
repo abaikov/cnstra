@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import { transform } from '@swc/core';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 // Exodra JSX transform via the official SWC compiler (`swc-plugin-exodra`, a
 // Rust/Wasm port of @exodra/babel-plugin-jsx) — faster than Babel. Every
@@ -32,8 +33,14 @@ function jsxPlugin(): Plugin {
     };
 }
 
+const nodeBuiltinStub = fileURLToPath(new URL('./src/demo/nodeBuiltinStub.ts', import.meta.url));
+
 export default defineConfig({
+    base: './',
     plugins: [jsxPlugin()],
+    resolve: {
+        alias: [{ find: /^(node:)?(crypto|fs|http|module|path|ws)$/, replacement: nodeBuiltinStub }],
+    },
     server: {
         port: 5173,
         host: '0.0.0.0',

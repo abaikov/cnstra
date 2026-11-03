@@ -101,8 +101,89 @@
 }
 
 .accent {
+  position: relative;
+  display: inline-block;
   color: var(--neon-yellow);
   text-shadow: 0 0 18px rgba(245, 195, 68, 0.35);
+  animation: flicker 9s steps(1, end) infinite;
+}
+
+.accent::before,
+.accent::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  text-shadow: none;
+}
+
+.accent::before {
+  color: var(--neon-red);
+  animation: glitchRed 7s steps(1, end) infinite;
+}
+
+.accent::after {
+  color: var(--neon-cyan);
+  animation: glitchCyan 7s steps(1, end) infinite;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  61% { opacity: 0.55; }
+  62% { opacity: 1; }
+  63.5% { opacity: 0.7; }
+  64.5% { opacity: 1; }
+}
+
+@keyframes glitchRed {
+  0%, 91%, 100% { opacity: 0; transform: none; clip-path: none; }
+  92% { opacity: 0.85; transform: translate(-3px, 1px); clip-path: inset(10% 0 55% 0); }
+  94% { opacity: 0.85; transform: translate(2px, -1px); clip-path: inset(60% 0 8% 0); }
+  96% { opacity: 0.85; transform: translate(-2px, 0); clip-path: inset(35% 0 40% 0); }
+  97% { opacity: 0; }
+}
+
+@keyframes glitchCyan {
+  0%, 91%, 100% { opacity: 0; transform: none; clip-path: none; }
+  92% { opacity: 0.85; transform: translate(3px, -1px); clip-path: inset(55% 0 12% 0); }
+  94% { opacity: 0.85; transform: translate(-2px, 1px); clip-path: inset(5% 0 70% 0); }
+  96% { opacity: 0.85; transform: translate(2px, 0); clip-path: inset(42% 0 30% 0); }
+  97% { opacity: 0; }
+}
+
+.scanlines {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 90% at 50% 45%, transparent 60%, rgba(0, 0, 0, 0.55) 100%);
+  pointer-events: none;
+  animation: scanFlicker 5s steps(1, end) infinite;
+}
+
+@keyframes scanFlicker {
+  0%, 100% { opacity: 0.9; }
+  37% { opacity: 0.75; }
+  38% { opacity: 0.9; }
+}
+
+.heartbeat {
+  position: relative;
+  margin-top: 40px;
+}
+
+.heartbeatFallback {
+  height: 48px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accent,
+  .accent::before,
+  .accent::after,
+  .scanlines {
+    animation: none;
+  }
 }
 
 .subtitle {
@@ -219,6 +300,14 @@
   margin: 0 0 28px;
   color: var(--text-secondary);
   line-height: 1.65;
+}
+
+.devtools {
+  display: block;
+  width: 100%;
+  height: min(760px, 85vh);
+  border: 0;
+  background: var(--bg-primary);
 }
 
 .monitorFallback {

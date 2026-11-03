@@ -4,7 +4,7 @@ import type { TExoWritableBindable } from '@exodra/reactivity';
 import { exoCombine } from '@oimdb/exodra';
 import type { TCNSExplorerController } from './explorerController';
 import type { TCNSExplorerTab } from './queryState';
-import type { ConnectionStatus } from '../app/controllers/socket';
+import type { ConnectionStatus, TCNSDevToolsTransportKind } from '../app/controllers/socket';
 import { vitalsMonitor } from './VitalsMonitor';
 import { viewList, detailsPane, breadcrumb } from './entityViews';
 import {
@@ -24,7 +24,7 @@ import {
 export type TCNSExplorerConnection = {
     connectionStatus: TExoWritableBindable<ConnectionStatus, ConnectionStatus>;
     /** Which transport carries this connection — shown beside the status dot. */
-    transport?: TExoWritableBindable<'socket' | 'polling', 'socket' | 'polling'>;
+    transport?: TExoWritableBindable<TCNSDevToolsTransportKind, TCNSDevToolsTransportKind>;
     appName: TExoWritableBindable<string, string>;
 };
 
@@ -55,8 +55,8 @@ export function explorerPage(
         const name = conn.appName.getValue();
         // Say which transport when it is NOT the default socket: on polling the
         // panel can be a poll behind, and "connected" alone would not explain it.
-        const via =
-            conn.transport?.getValue() === 'polling' ? ' · polling' : '';
+        const transportKind = conn.transport?.getValue();
+        const via = transportKind && transportKind !== 'socket' ? ` · ${transportKind}` : '';
         const label =
             s === 'connected'
                 ? `${name || 'Server Connected'}${via}`

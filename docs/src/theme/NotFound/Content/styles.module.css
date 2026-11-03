@@ -1,0 +1,76 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 72px 16px 96px;
+  text-align: center;
+}
+
+.skull {
+  margin-bottom: 28px;
+  filter: drop-shadow(0 0 22px rgba(207, 111, 99, 0.35));
+  animation: hover 3.2s ease-in-out infinite alternate;
+}
+
+@keyframes hover {
+  to { transform: translateY(-8px); }
+}
+
+.code {
+  margin: 0 0 10px;
+  color: var(--neon-red);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+}
+
+.title {
+  margin: 0 0 14px;
+  font-size: clamp(22px, 3vw, 32px);
+}
+
+.text {
+  max-width: 34rem;
+  margin: 0 0 32px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.flatline {
+  position: relative;
+  width: min(420px, 100%);
+  height: 2px;
+  margin-bottom: 36px;
+  background: rgba(207, 111, 99, 0.35);
+  box-shadow: 0 0 6px rgba(207, 111, 99, 0.5);
+}
+
+.flatline i {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background: #ffd9d3;
+  box-shadow: 0 0 8px 2px var(--neon-red);
+  animation: sweep 2.4s linear infinite;
+}
+
+@keyframes sweep {
+  to { left: calc(100% - 6px); }
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skull,
+  .flatline i {
+    animation: none;
+  }
+}

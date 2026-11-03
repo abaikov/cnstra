@@ -10,6 +10,8 @@ slug: /devtools/overview
 
 Debugging and monitoring for CNStra applications: every run your app makes, task by task, with Retry and Clone on a failed one.
 
+[Try it in the browser](pathname:///devtools/?transport=demo): the real panel opened with `?transport=demo` runs a small shop flow, a devtools client and a devtools server inside the page itself, with no network and nothing to install.
+
 ## Features
 
 The panel is one Explorer with five tabs:

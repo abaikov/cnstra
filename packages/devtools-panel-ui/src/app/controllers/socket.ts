@@ -4,6 +4,7 @@ import type { TExoWritableBindable } from '@exodra/reactivity';
 import { mainCNS } from '../../cns';
 import { wsAxon } from '../../cns/ws/WsAxon';
 import { createPollingTransport } from './pollingTransport';
+import { createDemoTransport } from './demoTransport';
 
 // Framework-agnostic port of the old `useDevtoolsSocket` React hook: owns the
 // DevTools <-> server connection (lifecycle, auto-reconnect) and forwards
@@ -21,7 +22,7 @@ import { createPollingTransport } from './pollingTransport';
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 /** Which wire this panel is on. */
-export type TCNSDevToolsTransportKind = 'socket' | 'polling';
+export type TCNSDevToolsTransportKind = 'socket' | 'polling' | 'demo';
 
 /**
  * What a transport tells the controller. None of these ever fire synchronously
@@ -129,7 +130,7 @@ export const selectTransportKind = (): TCNSDevToolsTransportKind => {
         const requested = new URLSearchParams(window.location.search).get(
             'transport'
         );
-        return requested === 'polling' ? 'polling' : 'socket';
+        return requested === 'polling' || requested === 'demo' ? requested : 'socket';
     } catch {
         return 'socket';
     }
@@ -269,7 +270,9 @@ export function createDevtoolsSocket(): DevtoolsSocket {
                   url: httpUrlFromWsUrl(wsUrl()),
                   hooks,
               })
-            : createWebSocketTransport(hooks);
+            : kind === 'demo'
+              ? createDemoTransport(hooks)
+              : createWebSocketTransport(hooks);
 
     return {
         connectionStatus,

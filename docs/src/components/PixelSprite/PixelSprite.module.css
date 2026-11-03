@@ -1,0 +1,66 @@
+.skull {
+  overflow: visible;
+}
+
+.skull [data-pixel='h'] { fill: #fffbe9; }
+.skull [data-pixel='#'] { fill: #e6dcc3; }
+.skull [data-pixel='s'] { fill: #a89a80; }
+.skull [data-pixel='o'] { fill: #140a0d; }
+.skull [data-pixel='c'] { fill: #5d5042; }
+.skull [data-pixel='w'] { fill: var(--neon-violet-strong); }
+
+.skull [data-pixel='r'] {
+  fill: #ff4a3d;
+  filter: drop-shadow(0 0 0.6px #ff4a3d);
+  animation: eyeFlicker 2.6s steps(1, end) infinite;
+}
+
+.skull [data-pixel='g'] {
+  fill: var(--neon-green);
+  animation: synapse 1s ease-in-out infinite alternate;
+}
+
+.jaw,
+.jawChattering {
+  transform-box: fill-box;
+}
+
+.jaw {
+  animation: chatter 0.18s steps(1, end) 3;
+}
+
+.jawChattering {
+  animation: chatterBurst 2.4s steps(1, end) infinite;
+}
+
+@keyframes chatter {
+  0%, 100% { transform: none; }
+  50% { transform: translateY(1px); }
+}
+
+@keyframes chatterBurst {
+  0%, 8%, 16%, 24%, 32%, 100% { transform: none; }
+  4%, 12%, 20%, 28% { transform: translateY(1px); }
+}
+
+@keyframes eyeFlicker {
+  0%, 100% { opacity: 1; }
+  41% { opacity: 0.2; }
+  44% { opacity: 1; }
+  47% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+@keyframes synapse {
+  from { opacity: 0.45; filter: none; }
+  to { opacity: 1; filter: drop-shadow(0 0 1px var(--neon-green)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skull [data-pixel='r'],
+  .skull [data-pixel='g'],
+  .jaw,
+  .jawChattering {
+    animation: none;
+  }
+}

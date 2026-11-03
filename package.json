@@ -14,6 +14,7 @@
     "build:devtools": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools && npm run build --workspace=@cnstra/devtools-transport-ws && npm run build --workspace=@cnstra/devtools-transport-http && npm run build --workspace=@cnstra/devtools-panel-ui",
     "build:devtools-server": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-server && npm run build --workspace=@cnstra/devtools-server-repository-in-memory && npm run build --workspace=@cnstra/devtools-server-repository-postgres && npm run build --workspace=@cnstra/devtools-server-repository-redis",
     "build:devtools-panel-ui": "npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools-panel-ui",
+    "build:devtools-demo": "npm run build --workspace=@cnstra/types && npm run build --workspace=@cnstra/persist-dto && npm run build:core && npm run build --workspace=@cnstra/persist && npm run build --workspace=@cnstra/devtools-dto && npm run build --workspace=@cnstra/devtools && npm run build --workspace=@cnstra/devtools-server-repository-in-memory && npm run build --workspace=@cnstra/devtools-server && npm run build --workspace=@cnstra/devtools-panel-ui -- --outDir ../../docs/static/devtools",
     "build:example": "npm run build --workspace=@cnstra/example-app",
     "dev": "npm run dev --workspaces",
     "dev:docs": "npm run start --workspace=cnstra-docs",

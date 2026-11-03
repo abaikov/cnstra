@@ -1,0 +1,63 @@
+.heartbeat {
+  display: grid;
+  grid-template-areas: 'route count' 'trace trace';
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.route,
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: var(--neon-red);
+  box-shadow: 0 0 8px var(--neon-red);
+  opacity: 0.35;
+}
+
+.route { grid-area: route; overflow: hidden; }
+.count { grid-area: count; }
+
+.monitor {
+  grid-area: trace;
+  position: relative;
+  min-width: 0;
+  height: 56px;
+  mask-image: linear-gradient(90deg, transparent, #000 22%);
+}
+
+.trace {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.line {
+  fill: none;
+  stroke: var(--neon-green);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(179, 224, 83, 0.7));
+}
+
+.head {
+  position: absolute;
+  right: -3px;
+  top: 66.7%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  background: #f4ffd9;
+  box-shadow: 0 0 6px 2px var(--neon-green);
+}
