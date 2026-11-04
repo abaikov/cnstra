@@ -9451,27 +9451,6 @@ runs, the panel writes the page's URL hash when it connects (the default time wi
 the server sends) and on every navigation, so it overwrites your hash: mount at most
 one such panel per page.
 
-### React
-
-```bash
-npm install @cnstra/devtools-panel-react
-```
-
-Add it next to the packages above.
-
-```tsx
-import { CNSDevToolsPanel } from '@cnstra/devtools-panel-react';
-import '@cnstra/devtools-panel-ui/embed.css';
-
-export function AdminCNStraPage() {
-    return <CNSDevToolsPanel url="/admin/cnstra" style={{ height: '100vh' }} />;
-}
-```
-
-`CNSDevToolsPanel` takes the same options as props, `db` included, plus `className` and `style` for
-its outer div. It mounts the panel into an inner div of full height, and mounts it
-again when `url`, `transport`, `isReadOnly` or `location` change.
-
 ### What the panel is
 
 The panel is written in Exodra and renders into its own element, not through React.
