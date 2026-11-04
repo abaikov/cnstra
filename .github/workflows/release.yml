@@ -41,5 +41,7 @@ jobs:
         run: npm install -g npm@^11.5.1
       - name: Install
         run: npm ci
+      - name: Build
+        run: npm run build
       - name: Publish what the registry does not have
         run: npm run publish:bumped -- ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run && '--dry-run' || '' }}
