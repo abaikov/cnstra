@@ -143,7 +143,7 @@ if (process.env.GITHUB_ACTIONS) {
                     .map(
                         name =>
                             `  npm publish --workspace=${name} --access public && ` +
-                            `npm trust github ${name} --file release.yml --repo abaikov/cnstra -y`
+                            `npm trust github ${name} --file release.yml --repo abaikov/cnstra --allow-publish -y`
                     )
                     .join('\n') +
                 '\n'
