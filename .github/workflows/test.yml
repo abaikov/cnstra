@@ -43,18 +43,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22.12.0
+          node-version: 24
           cache: 'npm'
       - name: Install
         run: npm ci
       - name: Generate the Prisma client used by the jobs-postgres tests
         run: npm exec --workspace @cnstra/jobs-postgres -- prisma generate --schema src/tests/prisma/schema.prisma
-      - name: Typecheck every workspace
-        run: npm run test:types
       - name: Lint
         run: npm run lint
       - name: Build
         run: npm run build
+      - name: Typecheck every workspace
+        run: npm run test:types
       - name: Load every public package's dist in ESM and CJS
         run: npm run check:dist
       # The worker cap is not a courtesy: each jest worker compiles the project

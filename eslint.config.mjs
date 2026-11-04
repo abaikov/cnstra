@@ -16,6 +16,7 @@ export default tseslint.config(
             '**/dist/**',
             '**/build/**',
             'docs/build/**',
+            'docs/static/devtools/**',
             '**/.docusaurus/**',
             '**/coverage/**',
             '**/resources/**',
