@@ -148,6 +148,8 @@ export const findDrift = ({ build = true, only, log = () => {} } = {}) => {
                 });
                 if (built.status !== 0) {
                     log(`  BUILD FAILED ${name}@${version}`);
+                    const buildOutput = `${built.stdout ?? ''}${built.stderr ?? ''}`.trim().split('\n');
+                    for (const line of buildOutput.slice(-20)) log(`      ${line}`);
                     results.push({ name, version, status: 'unknown', differences: ['build failed'] });
                     continue;
                 }
