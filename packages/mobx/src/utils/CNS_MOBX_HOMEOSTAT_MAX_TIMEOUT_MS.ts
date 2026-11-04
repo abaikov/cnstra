@@ -1,0 +1,1 @@
+export const CNS_MOBX_HOMEOSTAT_MAX_TIMEOUT_MS = 2 ** 31 - 1;

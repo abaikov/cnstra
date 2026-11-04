@@ -5,8 +5,8 @@ export * from './schemas/entities';
 export * from './schemas/app-messages';
 export * from './schemas/app-commands';
 export * from './schemas/signal';
-export * from './schemas/stimulations-query';
-export * from './schemas/scheduled-stimulations-query';
+export * from './schemas/sync';
+export * from './schemas/panel-config';
 export * from './schemas/client-messages';
 export * from './schemas/server-messages';
 

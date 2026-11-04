@@ -1,16 +1,16 @@
-import { CNS, cnsCollateral, cnsNeuron } from '../src/index';
+import { CNS, collateral, neuron } from '../src/index';
 
 describe('a collateral is owned by one neuron', () => {
-    const clicked = cnsCollateral<{ title: string }>();
-    const started = cnsCollateral<{ title: string }>();
+    const clicked = collateral<{ title: string }>();
+    const started = collateral<{ title: string }>();
 
     it('rejects two neurons whose axons hold the same collateral when the CNS is constructed', () => {
-        const deckAxon = { deckCreated: cnsCollateral<{ title: string }>() };
-        const deckFromClick = cnsNeuron(deckAxon).dendrite({
+        const deckAxon = { deckCreated: collateral<{ title: string }>() };
+        const deckFromClick = neuron(deckAxon).dendrite({
             collateral: clicked,
             response: (payload, axon) => axon.deckCreated.createSignal(payload),
         });
-        const deckFromOnboarding = cnsNeuron(deckAxon).dendrite({
+        const deckFromOnboarding = neuron(deckAxon).dendrite({
             collateral: started,
             response: (payload, axon) => axon.deckCreated.createSignal(payload),
         });
@@ -20,8 +20,8 @@ describe('a collateral is owned by one neuron', () => {
     });
 
     it('rejects the same neuron listed twice, which would run each of its dendrites twice', () => {
-        const deckAxon = { deckCreated: cnsCollateral<{ title: string }>() };
-        const deck = cnsNeuron(deckAxon).dendrite({
+        const deckAxon = { deckCreated: collateral<{ title: string }>() };
+        const deck = neuron(deckAxon).dendrite({
             collateral: clicked,
             response: (payload, axon) => axon.deckCreated.createSignal(payload),
         });
@@ -29,18 +29,18 @@ describe('a collateral is owned by one neuron', () => {
     });
 
     it('joins two branches through one dendrite per branch on the listener', async () => {
-        const fromClick = cnsCollateral<{ title: string }>();
-        const fromOnboarding = cnsCollateral<{ title: string }>();
-        const clickBranch = cnsNeuron({ fromClick }).dendrite({
+        const fromClick = collateral<{ title: string }>();
+        const fromOnboarding = collateral<{ title: string }>();
+        const clickBranch = neuron({ fromClick }).dendrite({
             collateral: clicked,
             response: (payload, axon) => axon.fromClick.createSignal(payload),
         });
-        const onboardingBranch = cnsNeuron({ fromOnboarding }).dendrite({
+        const onboardingBranch = neuron({ fromOnboarding }).dendrite({
             collateral: started,
             response: (payload, axon) => axon.fromOnboarding.createSignal(payload),
         });
         const titles: string[] = [];
-        const listener = cnsNeuron({})
+        const listener = neuron({})
             .dendrite({ collateral: fromClick, response: payload => { titles.push(payload.title); } })
             .dendrite({ collateral: fromOnboarding, response: payload => { titles.push(payload.title); } });
         const cns = new CNS([clickBranch, onboardingBranch, listener]);

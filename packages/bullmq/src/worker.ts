@@ -8,6 +8,9 @@ import type {
 } from '@cnstra/persist';
 import type { ICNS } from '@cnstra/types';
 import { runCNSStimulationJob, createCNSDrainState } from '@cnstra/broker';
+import type { TCNSDevToolsActionMiddleware } from '@cnstra/persist-dto';
+import { createCNSBullActions } from './actions';
+import type { ICNSBullActionQueueLike } from './actions';
 import type {
     ICNSBullJob,
     ICNSBullWorkerCtor,
@@ -22,8 +25,7 @@ export type TCNSWorkerOptions<TWorkerClass extends ICNSBullWorkerCtor<never>> = 
     cns: ICNS<any, any>;
     /** Name ↔ object registry used to reconstruct signals from job data. */
     registry: CNSPersistOptionsRegistry;
-    /** Queue name to consume. */
-    queue: string;
+    queue: string | (ICNSBullActionQueueLike & { readonly name: string });
     /**
      * Optional **observability** store: the canonical name-based
      * Stimulation → Attempt → Task history (the SAME model the devtools use),
@@ -111,13 +113,19 @@ export type TCNSBullWorkerHandle<TWorker extends ICNSBullWorkerLike = ICNSBullWo
      * after this resolves).
      */
     shutdown(opts?: { drainMs?: number }): Promise<void>;
+    cns: ICNS<any, any>;
+    registry: CNSPersistOptionsRegistry;
+    queue: string;
+    actions?(): TCNSDevToolsActionMiddleware;
 };
 
 export function createCNSWorker<TWorkerClass extends ICNSBullWorkerCtor<never>>(
     options: TCNSWorkerOptions<TWorkerClass>
 ): TCNSBullWorkerHandle<InstanceType<TWorkerClass>> {
-    const { Worker, cns, registry, queue, observe, resume, workerOptions } =
+    const { Worker, cns, registry, observe, resume, workerOptions } =
         options;
+    const queue = typeof options.queue === 'string' ? options.queue : options.queue.name;
+    const actionQueue = typeof options.queue === 'string' ? undefined : options.queue;
 
     // One serializer per worker; the per-job pipeline lives in @cnstra/broker.
     const serializer = resume ? new CNSProgressSerializer(registry) : undefined;
@@ -161,5 +169,12 @@ export function createCNSWorker<TWorkerClass extends ICNSBullWorkerCtor<never>>(
         await worker.close();
     };
 
-    return { worker, shutdown };
+    return {
+        worker,
+        shutdown,
+        cns,
+        registry,
+        queue,
+        ...(actionQueue ? { actions: () => createCNSBullActions(actionQueue) } : {}),
+    };
 }

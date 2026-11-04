@@ -51,20 +51,20 @@ Consider a scenario where two different external triggers can lead to nearly ide
 Without modalities and afferent paths, you'd need to duplicate the entire flow:
 
 ```ts setup
-import { CNS, cnsCollateral, cnsNeuron, cnsAfferentPath, cnsModality } from '@cnstra/core';
+import { CNS, collateral, neuron, afferentPath, modality } from '@cnstra/core';
 import type { ICNSCollateral, TCNSModality, TCNSNeuron, TCNSSignal } from '@cnstra/types';
 
 type TCardWithDeck = { deckTitle: string; cardTitle: string };
-const uiAxon = { createCardWithDeckButtonClicked: cnsCollateral<TCardWithDeck>() };
-const onboardingAxon = { started: cnsCollateral<TCardWithDeck>() };
-const deckAxon = { createdAtCreateCardWithDeckButtonClicked: cnsCollateral<{ deckId: string; cardTitle: string }>() };
+const uiAxon = { createCardWithDeckButtonClicked: collateral<TCardWithDeck>() };
+const onboardingAxon = { started: collateral<TCardWithDeck>() };
+const deckAxon = { createdAtCreateCardWithDeckButtonClicked: collateral<{ deckId: string; cardTitle: string }>() };
 declare function handler(payload: TCardWithDeck): { deckId: string; cardTitle: string };
 
 declare const cns: CNS<TCNSNeuron>;
 declare const signal: TCNSSignal<ICNSCollateral<unknown>>;
 declare const interactionModality: TCNSModality;
-const input = cnsCollateral<{ source: string }>();
-const output = cnsCollateral<{ id: string }>();
+const input = collateral<{ source: string }>();
+const output = collateral<{ id: string }>();
 declare function onUI(payload: { source: string }): { id: string };
 declare function onAPI(payload: { source: string }): { id: string };
 declare function onDefault(payload: { source: string }): { id: string };
@@ -72,7 +72,7 @@ declare function onDefault(payload: { source: string }): { id: string };
 
 ```ts
 // ❌ Without modalities - duplicated flows
-const deckFromClick = cnsNeuron(deckAxon)
+const deckFromClick = neuron(deckAxon)
   .dendrite({
     collateral: uiAxon.createCardWithDeckButtonClicked,
     response: (payload, axon) => {
@@ -80,7 +80,7 @@ const deckFromClick = cnsNeuron(deckAxon)
     },
   });
 
-const deckFromOnboarding = cnsNeuron(deckAxon)
+const deckFromOnboarding = neuron(deckAxon)
   .dendrite({
     collateral: onboardingAxon.started,
     response: (payload, axon) => {
@@ -102,11 +102,11 @@ With modalities and afferent paths, you create **path families** that allow:
 Minimal shape:
 
 ```ts
-const click = cnsAfferentPath();
-const clickDeck = cnsAfferentPath(click);
-const userInteractionModality = cnsModality({ click, clickDeck });
+const click = afferentPath();
+const clickDeck = afferentPath(click);
+const userInteractionModality = modality({ click, clickDeck });
 
-cnsNeuron(deckAxon).modalityDendrite({
+neuron(deckAxon).modalityDendrite({
   collateral: uiAxon.createCardWithDeckButtonClicked,
   modality: userInteractionModality,
   afferentPaths: new Map([[clickDeck, handler]]),
@@ -116,33 +116,33 @@ cnsNeuron(deckAxon).modalityDendrite({
 
 ```ts file=deck-flow.ts
 // ✅ With modalities - shared flow with path awareness using modalityDendrite
-import { cnsCollateral, cnsNeuron, cnsAfferentPath, cnsModality } from '@cnstra/core';
+import { collateral, neuron, afferentPath, modality } from '@cnstra/core';
 
 type TCardWithDeck = { deckTitle: string; cardTitle: string };
 
 // Define collaterals
 const uiAxon = {
-  createCardWithDeckButtonClicked: cnsCollateral<TCardWithDeck>(),
+  createCardWithDeckButtonClicked: collateral<TCardWithDeck>(),
 };
 
 const onboardingAxon = {
-  started: cnsCollateral<TCardWithDeck>(),
+  started: collateral<TCardWithDeck>(),
 };
 
 const deckAxon = {
-  createdAtCreateCardWithDeckButtonClicked: cnsCollateral<{
+  createdAtCreateCardWithDeckButtonClicked: collateral<{
     deckId: string;
     cardTitle: string;
   }>(),
 };
 
 // Create afferent paths as objects (no names - identity-based)
-const click = cnsAfferentPath();
-const onboarding = cnsAfferentPath();
-const clickDeck = cnsAfferentPath(click);
-const onboardingDeck = cnsAfferentPath(onboarding);
+const click = afferentPath();
+const onboarding = afferentPath();
+const clickDeck = afferentPath(click);
+const onboardingDeck = afferentPath(onboarding);
 
-const userInteractionModality = cnsModality({
+const userInteractionModality = modality({
   click,
   onboarding,
   clickDeck,
@@ -158,7 +158,7 @@ function trackOnboardingProgress(event: string) {
   console.log(`Onboarding: ${event}`);
 }
 
-const deck = cnsNeuron(deckAxon)
+const deck = neuron(deckAxon)
   .modalityDendrite({
     collateral: uiAxon.createCardWithDeckButtonClicked,
     modality: userInteractionModality,
@@ -234,27 +234,27 @@ The key idea: **every response sees the same selected afferent path** (from the 
 Example: the flow is `createDeck → createCard → trackAnalytics`. For onboarding we only want to change analytics, everything else stays identical.
 
 ```ts file=override-one-step.ts
-import { CNS, cnsCollateral, cnsNeuron, cnsAfferentPath, cnsModality } from '@cnstra/core';
+import { CNS, collateral, neuron, afferentPath, modality } from '@cnstra/core';
 
 type TCardWithDeck = { deckTitle: string; cardTitle: string };
 type TDeckCreated = { deckId: string; cardTitle: string };
 type TCardCreated = { cardId: string };
 
 const uiAxon = {
-  createCardWithDeck: cnsCollateral<TCardWithDeck>(),
+  createCardWithDeck: collateral<TCardWithDeck>(),
 };
 
 const axon = {
-  deckCreated: cnsCollateral<TDeckCreated>(),
-  cardCreated: cnsCollateral<TCardCreated>(),
+  deckCreated: collateral<TDeckCreated>(),
+  cardCreated: collateral<TCardCreated>(),
 };
 
 // Paths = scenarios (identity-based)
-const normal = cnsAfferentPath();
-const onboarding = cnsAfferentPath();
-const scenarios = cnsModality({ normal, onboarding });
+const normal = afferentPath();
+const onboarding = afferentPath();
+const scenarios = modality({ normal, onboarding });
 
-const createDeck = cnsNeuron(axon).modalityDendrite({
+const createDeck = neuron(axon).modalityDendrite({
   collateral: uiAxon.createCardWithDeck,
   modality: scenarios,
   // Same step shape, potentially different behavior per scenario
@@ -265,7 +265,7 @@ const createDeck = cnsNeuron(axon).modalityDendrite({
   output: (result, axon) => axon.deckCreated.createSignal(result),
 });
 
-const createCard = cnsNeuron(axon).modalityDendrite({
+const createCard = neuron(axon).modalityDendrite({
   collateral: axon.deckCreated,
   modality: scenarios,
   afferentPaths: new Map([
@@ -276,7 +276,7 @@ const createCard = cnsNeuron(axon).modalityDendrite({
 });
 
 // ✅ Only this step differs per scenario (the “override”)
-const trackAnalytics = cnsNeuron({}).modalityDendrite({
+const trackAnalytics = neuron({}).modalityDendrite({
   collateral: axon.cardCreated,
   modality: scenarios,
   afferentPaths: new Map([
@@ -311,19 +311,19 @@ CNStra provides factory functions to create modalities and afferent paths. These
 
 ### Creating Afferent Paths
 
-Use the `cnsAfferentPath()` function to create an afferent path. You can optionally specify a parent path to create a hierarchy:
+Use the `afferentPath()` function to create an afferent path. You can optionally specify a parent path to create a hierarchy:
 
 ```ts file=afferent-path-hierarchy.ts
-import { cnsAfferentPath } from '@cnstra/core';
+import { afferentPath } from '@cnstra/core';
 
 // Create a root path (no parent)
-const root = cnsAfferentPath();
+const root = afferentPath();
 
 // Create a child path
-const child = cnsAfferentPath(root);
+const child = afferentPath(root);
 
 // Create a grandchild path
-const grandchild = cnsAfferentPath(child);
+const grandchild = afferentPath(child);
 ```
 
 This creates a hierarchy:
@@ -335,18 +335,18 @@ root
 
 ### Creating Modalities
 
-Use the `cnsModality()` function to group related afferent paths together. Pass an object where keys are meaningful names (for your own reference) and values are the afferent path objects:
+Use the `modality()` function to group related afferent paths together. Pass an object where keys are meaningful names (for your own reference) and values are the afferent path objects:
 
 ```ts file=modality.ts
-import { cnsAfferentPath, cnsModality } from '@cnstra/core';
+import { afferentPath, modality } from '@cnstra/core';
 
 // Create afferent paths
-const ui = cnsAfferentPath();
-const deck = cnsAfferentPath(ui);
-const card = cnsAfferentPath(deck);
+const ui = afferentPath();
+const deck = afferentPath(ui);
+const card = afferentPath(deck);
 
 // Create a modality grouping these paths
-const userInteractionModality = cnsModality({
+const userInteractionModality = modality({
   ui,
   deck,
   card,
@@ -356,18 +356,18 @@ const userInteractionModality = cnsModality({
 The keys in the modality object (`ui`, `deck`, `card`) are for your convenience when debugging or logging. At runtime, paths are compared by object reference, not by these keys.
 
 ```ts file=modality-hierarchy.ts
-import { cnsAfferentPath, cnsModality } from '@cnstra/core';
+import { afferentPath, modality } from '@cnstra/core';
 
 // Step 1: Create afferent paths with hierarchy
-const click = cnsAfferentPath();
-const onboarding = cnsAfferentPath();
-const clickDeck = cnsAfferentPath(click);
-const onboardingDeck = cnsAfferentPath(onboarding);
-const clickCard = cnsAfferentPath(clickDeck);
-const onboardingCard = cnsAfferentPath(onboardingDeck);
+const click = afferentPath();
+const onboarding = afferentPath();
+const clickDeck = afferentPath(click);
+const onboardingDeck = afferentPath(onboarding);
+const clickCard = afferentPath(clickDeck);
+const onboardingCard = afferentPath(onboardingDeck);
 
 // Step 2: Group them into a modality
-const userInteractionModality = cnsModality({
+const userInteractionModality = modality({
   click,
   onboarding,
   clickDeck,
@@ -397,9 +397,9 @@ const stimulation = cns.stimulate(signal, {
   modality: interactionModality,
   afferentPath: interactionModality.afferentPaths.clickDeck,
 });
-const { modality, afferentPath } = stimulation.options ?? {};
-console.log('modality match:', modality === interactionModality);
-console.log('afferentPath:', afferentPath);
+const { modality: selectedModality, afferentPath: selectedAfferentPath } = stimulation.options ?? {};
+console.log('modality match:', selectedModality === interactionModality);
+console.log('afferentPath:', selectedAfferentPath);
 await stimulation.waitUntilComplete();
 ```
 
@@ -410,14 +410,14 @@ The `modalityDendrite` helper is the recommended way to handle modality-based ro
 ### Basic Usage
 
 ```ts
-const click = cnsAfferentPath();
-const onboarding = cnsAfferentPath();
-const userModality = cnsModality({
+const click = afferentPath();
+const onboarding = afferentPath();
+const userModality = modality({
   click,
   onboarding,
 });
 
-const createNeuron = cnsNeuron({ output: cnsCollateral<{ id: string }>() })
+const createNeuron = neuron({ output: collateral<{ id: string }>() })
   .modalityDendrite({
     collateral: input,
     modality: userModality,
@@ -440,16 +440,16 @@ const createNeuron = cnsNeuron({ output: cnsCollateral<{ id: string }>() })
 You can provide default handlers at different levels:
 
 ```ts
-const click = cnsAfferentPath();
-const onboarding = cnsAfferentPath();
-const unknown = cnsAfferentPath();
-const userModality = cnsModality({
+const click = afferentPath();
+const onboarding = afferentPath();
+const unknown = afferentPath();
+const userModality = modality({
   click,
   onboarding,
   unknown,
 });
 
-const createNeuron = cnsNeuron({ output: cnsCollateral<{ id: string }>() })
+const createNeuron = neuron({ output: collateral<{ id: string }>() })
   .modalityDendrite({
     collateral: input,
     modality: userModality,
@@ -480,7 +480,7 @@ await cns.stimulate(input.createSignal({ source: 'test' }), {
 For a stimulation with a modality and an afferent path, a `modalityDendrite` runs the first of:
 
 1. the handler of the path itself;
-2. the handler of the nearest parent path (`cnsAfferentPath(parent)`);
+2. the handler of the nearest parent path (`afferentPath(parent)`);
 3. the `default` of the modality;
 4. the `default` of the dendrite.
 
@@ -491,10 +491,10 @@ If none exists, the neuron is not woken in that stimulation: no task, no body, n
 A single `modalityDendrite` can handle multiple modalities:
 
 ```ts
-const uiModality = cnsModality({ interaction: cnsAfferentPath() });
-const apiModality = cnsModality({ request: cnsAfferentPath() });
+const uiModality = modality({ interaction: afferentPath() });
+const apiModality = modality({ request: afferentPath() });
 
-cnsNeuron({ output })
+neuron({ output })
   .modalityDendrite({
     collateral: input,
     modalities: [
@@ -508,7 +508,7 @@ cnsNeuron({ output })
 
 ## Best Practices
 
-1. **Use meaningful variable names**: Variable names for afferent paths should reflect their purpose (e.g., `const onboarding = cnsAfferentPath()`)
+1. **Use meaningful variable names**: Variable names for afferent paths should reflect their purpose (e.g., `const onboarding = afferentPath()`)
 2. **Create hierarchies logically**: Parent paths should represent a higher level of abstraction
 3. **Group related paths**: Combine related paths into a single modality
 4. **Use for scenario overrides**: Treat afferent paths as “scenario selectors” that let you override a step (or a subtree) without duplicating the whole flow

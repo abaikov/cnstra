@@ -64,12 +64,12 @@ awaits completion. If the stimulation fails, the processor rejects and the error
 
 ```ts
 import { Queue } from 'bullmq';
-import { enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/bullmq';
+import { enqueueCNSStimulation, stimulationJob } from '@cnstra/bullmq';
 
 const queue = new Queue('cns', { connection: { host: '127.0.0.1', port: 6379 } });
 
 // Type-safe: throws if the collateral isn't registered
-const job = cnsStimulationJob(registry, importUser, { userId: '42' });
+const job = stimulationJob(registry, importUser, { userId: '42' });
 
 await enqueueCNSStimulation(queue, job, {
   attempts: 5,

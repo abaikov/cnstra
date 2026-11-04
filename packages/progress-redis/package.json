@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/progress-redis",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Redis-backed progress store (ICNSProgressRepository) for CNStra resumable execution — broker-agnostic, use with pg-boss, BullMQ, or anything",
   "repository": {
     "type": "git",
@@ -22,13 +22,13 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@cnstra/persist": "^0.2.0",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.0",
     "ioredis": ">=5"
   },
   "peerDependenciesMeta": { "ioredis": { "optional": true } },
   "devDependencies": {
-    "@cnstra/persist": "^0.2.0",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.0",
     "@types/jest": "29.5.12",
     "ioredis": "^5.4.0",

@@ -60,8 +60,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   CNS,
   CNSStimulationGate,
-  cnsCollateral,
-  cnsNeuron,
+  collateral,
+  neuron,
 } from '@cnstra/core';
 
 type PendingUser = {
@@ -70,14 +70,14 @@ type PendingUser = {
 };
 
 const jobsAxon = {
-  processPendingUsers: cnsCollateral<void>(),
+  processPendingUsers: collateral<void>(),
 };
 
 @Injectable()
 export class PendingUsersWorkflow {
   private readonly logger = new Logger(PendingUsersWorkflow.name);
 
-  private readonly processPendingUsers = cnsNeuron(jobsAxon).dendrite({
+  private readonly processPendingUsers = neuron(jobsAxon).dendrite({
     collateral: jobsAxon.processPendingUsers,
     response: async (_payload, axon, ctx) => {
       const users = await this.claimPendingUsers(100);

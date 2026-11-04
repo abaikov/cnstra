@@ -3,3 +3,13 @@ export { CNSMobXHomeostatCorrectionRepository } from './CNSMobXHomeostatCorrecti
 export { createCNSMobXHomeostatEnvironment } from './utils/createCNSMobXHomeostatEnvironment';
 export type { TCNSMobXHomeostasisSourceTrackingComputedOptions } from './types/TCNSMobXHomeostasisSourceTrackingComputedOptions';
 export type { TCNSMobXHomeostatCorrectionRepositoryOptions } from './types/TCNSMobXHomeostatCorrectionRepositoryOptions';
+export { CNSMobXHomeostatReceptiveField } from './CNSMobXHomeostatReceptiveField';
+export { CNSMobXHomeostatEntryCollection } from './CNSMobXHomeostatEntryCollection';
+export { CNSMobXHomeostatBucketCollection } from './CNSMobXHomeostatBucketCollection';
+export { CNSMobXHomeostatModelBinding } from './CNSMobXHomeostatModelBinding';
+export { createCNSMobXHomeostatSchema } from './utils/createCNSMobXHomeostatSchema';
+export type { ICNSMobXHomeostatModelHandles } from './interfaces/ICNSMobXHomeostatModelHandles';
+export type { TCNSMobXHomeostatEntryCollectionOptions } from './types/TCNSMobXHomeostatEntryCollectionOptions';
+export type { TCNSMobXHomeostatEntryMemberHold } from './types/TCNSMobXHomeostatEntryMemberHold';
+export type { TCNSMobXHomeostatSchema } from './types/TCNSMobXHomeostatSchema';
+export type { TCNSMobXHomeostatSchemaOptions } from './types/TCNSMobXHomeostatSchemaOptions';

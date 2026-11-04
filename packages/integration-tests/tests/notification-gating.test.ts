@@ -1,7 +1,7 @@
 import { createStore as createZustandStore } from 'zustand/vanilla';
 import { proxy, subscribe as valtioSubscribe, snapshot } from 'valtio/vanilla';
 import { legacy_createStore } from 'redux';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 /**
  * Verifies the notification-interception pattern from the "Batching state
@@ -45,19 +45,19 @@ const buildGraph = (
     write: (step: string) => void,
     read: () => void
 ) => {
-    const start = cnsCollateral<number>();
-    const second = cnsCollateral<number>();
-    const third = cnsCollateral<number>();
+    const start = collateral<number>();
+    const second = collateral<number>();
+    const third = collateral<number>();
 
-    const n1 = cnsNeuron({ second }).dendrite({
+    const n1 = neuron({ second }).dendrite({
         collateral: start,
         response: (_p, axon) => { write('a'); return axon.second.createSignal(1); },
     });
-    const n2 = cnsNeuron({ third }).dendrite({
+    const n2 = neuron({ third }).dendrite({
         collateral: second,
         response: (_p, axon) => { write('b'); return axon.third.createSignal(1); },
     });
-    const n3 = cnsNeuron({}).dendrite({
+    const n3 = neuron({}).dendrite({
         collateral: third,
         response: () => { write('c'); read(); return undefined; },
     });
@@ -98,10 +98,10 @@ describe('Zustand gated by onDrain', () => {
             () => ({ loading: false, data: null })
         );
 
-        const click = cnsCollateral<number>();
-        const done = cnsCollateral<number>();
+        const click = collateral<number>();
+        const done = collateral<number>();
 
-        const loader = cnsNeuron({ done }).dendrite({
+        const loader = neuron({ done }).dendrite({
             collateral: click,
             response: async (_p, axon) => {
                 store.setState({ loading: true }); // before yielding
@@ -109,7 +109,7 @@ describe('Zustand gated by onDrain', () => {
                 return axon.done.createSignal(1);
             },
         });
-        const finish = cnsNeuron({}).dendrite({
+        const finish = neuron({}).dendrite({
             collateral: done,
             response: () => {
                 store.setState({ loading: false, data: 'payload' });
@@ -164,10 +164,10 @@ describe('Valtio gated by onDrain', () => {
             data: null,
         });
 
-        const click = cnsCollateral<number>();
-        const done = cnsCollateral<number>();
+        const click = collateral<number>();
+        const done = collateral<number>();
 
-        const loader = cnsNeuron({ done }).dendrite({
+        const loader = neuron({ done }).dendrite({
             collateral: click,
             response: async (_p, axon) => {
                 state.loading = true; // before yielding
@@ -175,7 +175,7 @@ describe('Valtio gated by onDrain', () => {
                 return axon.done.createSignal(1);
             },
         });
-        const finish = cnsNeuron({}).dendrite({
+        const finish = neuron({}).dendrite({
             collateral: done,
             response: () => {
                 state.loading = false;
@@ -264,10 +264,10 @@ describe('Redux gated by onDrain', () => {
     it('surfaces an optimistic write made before an await', async () => {
         const store = legacy_createStore(reducer);
 
-        const click = cnsCollateral<number>();
-        const done = cnsCollateral<number>();
+        const click = collateral<number>();
+        const done = collateral<number>();
 
-        const loader = cnsNeuron({ done }).dendrite({
+        const loader = neuron({ done }).dendrite({
             collateral: click,
             response: async (_p, axon) => {
                 store.dispatch({ type: 'push', step: 'optimistic' });
@@ -275,7 +275,7 @@ describe('Redux gated by onDrain', () => {
                 return axon.done.createSignal(1);
             },
         });
-        const finish = cnsNeuron({}).dendrite({
+        const finish = neuron({}).dendrite({
             collateral: done,
             response: () => {
                 store.dispatch({ type: 'push', step: 'settled' });

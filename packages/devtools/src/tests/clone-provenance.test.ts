@@ -1,6 +1,6 @@
 import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
-import { CNS, cnsCollateral, cnsNeuronFactory } from '@cnstra/core';
+import { CNS, collateral, neuronFactory } from '@cnstra/core';
 import {
     CNSInMemoryStimulationRepository,
     CNSPersistOptionsRegistry,
@@ -20,10 +20,10 @@ import type {
 let calls: string[] = [];
 
 function buildCNS() {
-    const entryCol = cnsCollateral<{ id: string }>();
-    const importedCol = cnsCollateral<{ id: string }>();
+    const entryCol = collateral<{ id: string }>();
+    const importedCol = collateral<{ id: string }>();
 
-    const importUser = cnsNeuronFactory()
+    const importUser = neuronFactory()
         .neuron({ importedCol })
         .bind(
             { entryCol },
@@ -35,7 +35,7 @@ function buildCNS() {
             }
         );
 
-    const persistUser = cnsNeuronFactory()
+    const persistUser = neuronFactory()
         .neuron({})
         .bind(
             { importedCol },

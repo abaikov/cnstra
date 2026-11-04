@@ -1,225 +1,185 @@
-# CNStra DevTools Panel — Design Decisions
+# CNStra DevTools Panel — Design
 
-This document justifies every element of the redesigned DevTools panel: what it
-is, where it lives, why it's there, and how a user flows through it. It also
-records what was **removed** and why. The redesign answers the owner's core
-complaint — the panel was cluttered and confusing — by collapsing three-plus
-columns and two useless views into **one coherent surface: an observability /
-runs viewer** (the mental model is Sentry's issues list or a CI runs list).
+The panel is a CNStra application itself. One CNS instance owns every mutation
+of the panel state; OIMDB holds that state in slots; Exodra machines read the
+slots and stimulate the CNS. The job of the panel is "find a stimulation,
+understand it, act on it" across five tabs: stimulations, neurons, tasks,
+collaterals, scheduled.
 
----
+## 1. Layers
 
-## 1. What the tool actually is
+| layer | files | owns |
+|---|---|---|
+| model | `src/model/*` | the OIMDB database, the CNS instance, the sync receptors, navigation |
+| view | `src/view/*` | Exodra machines; read slots, stimulate `ExplorerAxon` collaterals |
+| transport | `src/app/controllers/socket.ts`, `src/model/createDevToolsSyncTransport.ts`, `src/explorer/explorerClient.ts` | the connection to the devtools server: reads through `@cnstra/sync`, actions as typed messages |
 
-The panel observes a live CNStra network: every stimulation ("run") that flows
-through the neuron graph, its per-step waterfall, and aggregate throughput. The
-job is **"find a run, understand it, act on it (retry / clone)."** That is a
-runs viewer. Everything below is designed around that single job. There is no
-separate "app" to configure, no topology to author — so there is no reason for a
-landing page, a sidebar of debug widgets, or a graph canvas.
+`src/main.ts` wires them: it opens the devtools socket, builds the sync
+transport, calls `createDevToolsDB`, and renders `ExplorerMachine` with an
+Exodra DOM backend whose context carries `devTools`, `cns` and the OIMDB Exodra
+plugin. The socket reports status and user interface configuration by
+stimulating `ExplorerAxon.connectionChanged` and `ExplorerAxon.uiConfigReceived`.
 
-## 2. Information architecture (the final layout)
+## 2. Model — `createDevTools`
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ TOP BAR (one row):  🧠 CNStra ● app-name │ search │ Runs Waterfall Chart │
-│                     [metric input — chart only]      ~ heartbeat ~   N runs │
-├───────────────┬──────────────────────────────────────────────────────────┤
-│ FACET RAIL    │  MAIN AREA                                                 │
-│ (~200px)      │  active-filter chips (only when filters are set)           │
-│  Collaterals  │  ┌────────────────────────────────────────────────────┐   │
-│  | Neurons    │  │  Runs list  ·  Waterfall  ·  Chart                  │   │
-│  STATUS chips │  │                                                     │   │
-│  JOB TYPE chips│ │                                                     │   │
-└───────────────┴──────────────────────────────────────────────────────────┘
-```
+`createDevTools({ batchTransduceFn, actionClient, transportKind, isReadOnly?, getNowMs? })`
+returns `{ db, cns, neurons, models, readExplorerQuery, dispose }`. The CNS
+instance is built by `createCNSOIMDBHomeostatSchema` from three synced domain
+models and the panel's own neurons; `neurons` names every neuron the panel
+builds (the receptor neurons and the domain neurons) and is what `cns-mcp.ts`
+registers. `models` keeps one flat name per handle the view reads.
 
-Two regions only: **one top bar** and **one secondary column** (the facet rail).
-The rest is the main viewing area. This is the whole panel.
+### Entry axons
 
----
+The view and the transport stimulate two axons that no neuron owns:
 
-## 3. Every element, and why it's placed where it is
+- **`explorerUiAxon`**: `queryPatched`, `tabSelected`, `entityOpened`,
+  `navigatedBack`, `crumbSelected`, `stimulationRetryRequested`,
+  `stimulationCloneRequested`, `stimulationCommandRequested`,
+  `stimulationLaunchRequested`, `launchPayloadRejected`,
+  `cancelConfirmationRequested`, `listNextPageRequested`, `listNewestRequested`.
+- **`devToolsTransportAxon`**: `connectionChanged`, `uiConfigReceived`.
 
-### Top bar (single row) — `ExplorerPage.tsx`
+### Synced domain models
 
-The top bar carries identity, global search, mode selection, and vital signs in
-a single glanceable strip. One row, left-to-right in order of "who/where →
-what → how":
+Each aggregate is one `defineCNSHomeostatModel(axon)` definition. The schema
+generates its collections, receptive fields and answer writes; the model's
+`homeostatDendrites` sit on exactly one neuron, its owner.
 
-- **`🧠 CNStra` brand + connection dot + app name** (far left). This is the
-  *identity + health* block that used to be a whole sidebar card. It answers "am
-  I connected, and to what?" A colored dot (green = connected, yellow =
-  connecting, red = disconnected) plus the connected app's name, both pulled
-  from the existing `socket.connectionStatus` and `selection` state. Folding it
-  into the bar reclaims the entire left column the sidebar wasted. The brand uses
-  the **branded pixel font**; the app name uses the clean body font.
-- **Search box.** Free-text `stimulationId` search — the fastest path to a known
-  run. Placed immediately after identity because "search" is the primary verb of
-  a runs viewer. Debounced; drives `query.text`.
-- **View tabs — `Runs · Waterfall · Chart`.** The three modes of looking at
-  runs: the list, a single run's steps, and aggregate throughput. The **active
-  tab is bright yellow** (owner ask) so the current mode is unmistakable.
-- **Metric-path input — shown only when Chart is active.** It's meaningless in
-  Runs/Waterfall, so it doesn't occupy the bar there (it collapses to nothing).
-  This kills the "wasteful near-empty" feeling the owner hated.
-- **Heartbeat ECG monitor** (`HeartbeatMonitor.tsx`, unchanged). The panel's
-  vital sign — one PQRST beat per new run. Positioned right-of-center as an
-  ambient "is anything happening?" indicator that needs no reading.
-- **`N runs` count** (far right, **bright yellow, bold**). The single most
-  important scalar in a runs viewer — how many runs match the current filter.
-  Yellow + bold makes it the loudest number on screen.
+| model | axon | collections | receptors → buckets / summaries | owner |
+|---|---|---|---|---|
+| `stimulationModel` (`defineStimulationModel`) | `stimulationAxon` | `stimulations` by stimulation id | `stimulationPage` → bucket `stimulations`, summary `{ total, nextCursor }`; `stimulationSnapshot` → bucket `stimulations`; `stimulationFacets` → summary; `stimulationDetail` → summary | `stimulationNeuron` |
+| `scheduledStimulationModel` (`defineScheduledStimulationModel`) | none | `scheduledStimulations` by stimulation id | `scheduledPage` → bucket `scheduledStimulations`, summary: the page without its rows | `scheduledStimulationNeuron` |
+| `topologyModel` (`defineTopologyModel`) | none | none | `apps` → summary; `topology` → summary | `topologyNeuron` |
 
-### Facet rail (~200px, the ONLY secondary column) — `ExplorerPage.tsx`
+`models` maps them to the names the view reads: `stimulations`,
+`stimulationPages`, `stimulationPageCursors`, `stimulationSnapshots`,
+`stimulationFacets`, `stimulationDetails`, `scheduledStimulations`,
+`scheduledPages`, `scheduledPageSummaries`, `apps`, `topology`, and each
+receptor's homeostasis aggregate (`stimulationPageHomeostasis`,
+`stimulationDetailHomeostasis`, and so on). Every summary and bucket is keyed
+by its receptor's key, so a detail is read under `stimulationDetailKeyOf(id)`.
 
-This is the **primary filter/navigation**, not decoration. It's deliberately
-compact and allowed to look sparse when there are few facet values — that is
-correct behavior for a tight rail, not a bug, and it never becomes a giant empty
-column.
+An answer equal to what the model holds wakes nobody (`isCNSHomeostatSameValue`).
 
-- **`Collaterals | Neurons` lens switch** (top). Flips the facet dimension
-  between "entry collateral (job type)" and "neuron that was activated" — the two
-  ways you slice runs. Active side = violet.
-- **`STATUS` chips.** Filter by run status (completed / failed / running). Each
-  chip shows its count. Section label is a **pixel-font heading in bright
-  yellow**.
-- **`JOB TYPE` chips** (labeled `Neuron` under the Neurons lens). The dominant
-  navigation axis — "show me the `userLogin` runs." Also count-bearing, click to
-  filter, click again to clear.
+### Domain neurons
 
-Chips are the whole filter model: clicking one patches the query, refetches, and
-updates the URL (shareable / back-forwardable).
+Each neuron is the only writer of the models it owns and emits past events only.
 
-### Main area
+| neuron | owns | reacts to | emits |
+|---|---|---|---|
+| `connectionNeuron` | `connection` | `connectionChanged`, `uiConfigReceived` | `connectionStatusChanged`, `uiConfigApplied` |
+| `explorerNavigationNeuron` | the URL hash, `listPagings` | the five navigation events, `listNextPageRequested`, `listNewestRequested`, `uiConfigApplied` (default time window) | `explorerQueryChanged` |
+| `stimulationNeuron` | `stimulationModel` | its sync dendrites; its own `stimulationsChanged`; `retryAccepted`, `cloneAccepted`, `launchAccepted` (invalidation) | `stimulationsChanged` |
+| `explorerActionNeuron` | nothing but its own in-flight flag; retry, clone, command and launch through the action client, one action at a time | `stimulationRetryRequested`, `stimulationCloneRequested`, `stimulationCommandRequested`, `stimulationLaunchRequested` | `retryAccepted`, `retryRejected`, `retryRefused`, `cloneAccepted`, `cloneRejected`, `cloneRefused`, `commandAccepted`, `commandRejected`, `commandRefused`, `launchAccepted`, `launchRejected`, `launchRefused` |
+| `scheduledStimulationNeuron` | `scheduledStimulationModel` | its sync dendrites; `commandAccepted`, `launchAccepted` (invalidation) | nothing |
+| `topologyNeuron` | `topologyModel` | its sync dendrites | nothing |
+| `actionFeedbackNeuron` | `actionFeedback` | the four requests (pending), every action outcome, `launchPayloadRejected`, `cancelConfirmationRequested`, its own `noticeExpired` | `noticeExpired`, six seconds after a notice |
 
-- **Active-filter chips** (thin strip at the top of the main area). A removable
-  breadcrumb of currently-applied filters. It renders **only when filters are
-  set** (`display:none` otherwise) so it never wastes a row. This replaces the
-  old always-present filter clutter.
-- **Runs list** (default). A windowed, virtualized list (only visible rows in the
-  DOM — usable at 20k+ runs). Each row: a status dot, the entry collateral name,
-  time, hop count, and status. Click a row → its Waterfall. This is the home
-  screen of the tool.
-- **Waterfall.** The selected run's attempts and per-step tasks (neuron ·
-  dendrite → output), with errors highlighted. Hosts the **Retry** (resume a
-  failed run's frontier) and **Clone** (fresh run from entry) actions, plus their
-  feedback toast (below).
-- **Chart.** See §5.
+The URL hash is read and written through `window.location.hash` by
+`explorerNavigationNeuron` alone, so two navigations in one turn compose. The
+view reads it through the browser location slot (`readExplorerQuery`).
 
----
+`isReadOnly` is written once into `connection` and kept by every later write.
+An action is refused as `busy` while another action runs, and as `notAllowed`
+when the panel is read-only or, for retry and clone, when the server user
+interface configuration turns it off. A `busy` refusal leaves `pending` alone.
+The action neurons are listed before `actionFeedbackNeuron`, so they read
+`pending` before the request sets it.
 
-## 4. Fonts (owner: "branded font for headings only")
+A page or snapshot answer whose rows changed what `stimulations` held returns
+`stimulationsChanged` from `afterWrite`; on it the stimulation neuron asks again
+the detail of each changed row whose detail is already held.
 
-- The global body/data font is now a **clean, readable terminal mono**
-  (`--font-body`: JetBrains Mono / SF Mono / Menlo / Consolas …), antialiased.
-- The **branded pixel font** (`Px437_IBM_Conv`, `--font-primary`) is applied
-  **only** to `h1–h4`, the `.brand`, and section headings (`.exp-heading`) — via
-  CSS selectors in `theme.css`, not inline per element. It renders crisp
-  (`font-smoothing: none`) while body text stays smooth.
+### Sync receptors
 
-So: brand, `STATUS` / `JOB TYPE` labels, and the `THROUGHPUT` chart title are
-pixel-font; every list row, chip, value, and input is clean mono. The pixel font
-is now a deliberate accent, not the default.
+| name | key | stale time |
+|---|---|---|
+| `apps` | scope | 5 seconds |
+| `topology` | scope | 5 seconds |
+| `stimulationPage` | filter, since cursor, cursor, limit | 2 seconds |
+| `stimulationFacets` | filter, metric path | 2 seconds |
+| `stimulationSnapshot` | filter, limit | 2 seconds |
+| `stimulationDetail` | stimulation id | 2 seconds; never again once settled |
+| `scheduledPage` | neuron, collateral, cursor, limit | 2 seconds |
 
-## 5. Chart — from "giant unlabeled bars" to a legible throughput chart
+Keys are built only in `src/model/explorerSyncKeys.ts`. A failed fetch backs off
+by the shared refractory policy (500 milliseconds doubling to 8 seconds, 20 %
+jitter). The firing policy fires only while `connection.isOnline` and the
+document is visible. `CNSStimulationDetailRefetchPolicy` stops refetching a
+detail whose latest attempt completed with a settled `ECNSStimulationStatus`.
 
-The old chart was full-height ambiguous stacked slabs. The new Chart
-(`chartView`) is a proper small-multiple throughput histogram:
+### OIMDB slots and release policies
 
-- **Title** (`THROUGHPUT`, pixel-font heading) + subtitle (`runs per bucket ·
-  peak N`).
-- **Legend**: green = completed, red = failed, purple = running (or, in metric
-  mode, yellow = the summed payload metric).
-- **Y-axis scale**: the peak value at the top, `0` at the bottom.
-- **Faint gridlines** at 25 / 50 / 75 / 100% for reference.
-- **Thin, centered bars with small gaps** (each bar capped in width, its slot
-  centering it) instead of edge-to-edge slabs.
-- **Hover tooltips** (`title`) on every bar: time + completed/failed/running
-  breakdown.
-- **X-axis**: first and last bucket timestamps.
-- A **Count / Metric toggle** appears only once a metric path is set; the input
-  itself lives in the top bar (chart-only).
+| model | kind | release policy |
+|---|---|---|
+| `connection`, `actionFeedback` | entity single slot, held | never released |
+| `listPagings` | entity collection by list name | default |
+| browser location, browser visibility | single slot from `@oimdb/browser` | location held by the model; visibility read by the firing policy |
+| collections, buckets and summaries of the three models | generated by the schema | the binding's default |
+| homeostat correction records | slot collection | after unhold, kept 30 seconds |
 
-Now a viewer can actually read "how many runs, of what outcome, when."
+Each receptor has one receptive field on the bucket or summary it answers; a
+slot's first reader starts its receptor. A key nobody reads is never fetched.
 
-## 6. Map — REMOVED (decision + justification)
+The view reads models only through `CNSExplorerReads`.
 
-**Decision: removed the Map view entirely.**
+## 3. Transport
 
-The Map was a proportional activation heat-map: tiles per neuron / entry
-collateral, sized and colored by run count, click-to-filter. Every one of those
-properties is **already provided by the facet rail**, which shows the exact same
-dimension, the exact same counts (`name · count`), and filters on the exact same
-click. The Map was therefore a **second, noisier rendering of data the left rail
-already shows** — pure redundancy, and the owner found it actively confusing
-("еще хуже, я вообще не понимаю что происходит").
+- **Reads.** `createDevToolsSyncTransport` returns the batch transduce function
+  for the receptors. Over the socket it is a `CNSHomeostatTransductionChannel`
+  sending `sync.request` and receiving `sync.response`; with
+  `?transport=polling` it is a `CNSHomeostatTransductionFetch` on
+  `GET /__cnstra/sync`. When the socket leaves `connected`, pending requests
+  fail at once.
+- **Actions.** `CNSExplorerActionClient` sends `stimulation.retry`,
+  `stimulation.clone`, `stimulation.command` and `stimulation.launch` with a
+  request id and resolves on the matching `accepted` / `rejected` message.
+- **Demo.** `?transport=demo` runs a CNStra application inside the page
+  (`src/demo`) behind the same socket interface.
 
-The owner's instruction was explicit: make it genuinely useful *or* remove it.
-Making it "useful" would mean either duplicating the facet rail (no new
-information) or inventing a relationship the data doesn't have (the tiles have no
-spatial meaning — position is just flex-wrap order, so "heat map" implies a
-structure that isn't there). For an observability runs viewer, the honest,
-less-cluttered choice is to **delete it** and let the facet rail be the single
-place you see "where runs concentrate." This drops the view tabs to a clean
-three (Runs · Waterfall · Chart) — list, drill-down, aggregate — which is the
-complete and non-overlapping set of ways to look at runs.
+## 4. View — Exodra machines
 
-`'map'` was removed from the `TCNSExplorerView` union and the tab bar; a stale
-`?view=map` URL now falls back to the Runs list.
+`ExplorerMachine` lays out two columns:
 
-## 7. Removed — and why
+- left: `ConnectionBadgeMachine`, `TabsMachine`, the filter machines
+  (`StatusFilterMachine`, `EntryToggleMachine`, `SearchMachine`, two
+  `TypeaheadMachine`s, `TimeRangeMachine`, `FilterChipsMachine`), then
+  `TabListMachine` showing the list of the current tab;
+- right: `GraphsMachine` (throughput chart from the time facets; selecting a
+  range patches `since` / `until`), `BreadcrumbMachine`, and `DetailsMachine`
+  showing the stimulation, neuron, collateral or task detail of the selection.
 
-| Removed | Why |
-|---|---|
-| **Left sidebar** (`Sidebar.tsx`) | Its "Select an app to…" debug cards, Connected-Apps card, connection block, and nav buttons were a whole wasted column. Identity + connection are folded into the top bar; app selection is automatic. |
-| **Network Topology graph** (`TopologyView.tsx`, `CNSGraph.tsx`, `cns-graph.css`) | The cytoscape graph "didn't help at all" (owner). It's not part of the runs-viewer job. Removing it also removes the heaviest dependency surface from the default view. |
-| **Debug panels** (`PerformanceMonitor`, `SignalDebugger`, `ContextStoreMonitor`, `AnalyticsDashboard`, `NeuronDetailsPanel`) | Only ever mounted by the sidebar / topology. Orphaned once those were removed. |
-| **`stimulationIngest.ts`** (+ its `WebSocketToOIMDB` test) | It polled a snapshot every 2s **solely** to feed `db.stimulations` / `db.responses`, which only the removed graph / signal-debugger read. The Explorer has its own data path (`explorerController`), so this poll became dead weight. Verified via grep that no remaining runtime code reads those collections. |
-| **The extra nav click to reach the Explorer** | The Explorer is now the landing route; there is nothing to click into. |
-| **Map view** | See §6. |
-| **e2e specs** `graph`, `sidepanel`, `statsbar`, `frontier` | They asserted against the removed graph / sidebar. Removed with the features they tested. Explorer/panel/replay specs were rewritten for the new IA. |
+Each machine reads slots inside `withOIMEffects`, so an effect reruns only when
+a slot it read changed. Handlers only stimulate `ExplorerAxon` collaterals;
+no machine writes a slot. Lists render through `WindowedListMachine`: fixed
+52-pixel rows, only the visible window plus overscan in the DOM, keyed
+reconciliation through `@exodra/list-reconcile`.
 
-## 8. Landing + reload always show the Explorer
+## 5. Stimulation paging — head and frozen tail
 
-- `main.tsx` navigates `/` → `/explorer` on boot; the router's default is the
-  Explorer.
-- `selection.selectApp` no longer navigates to `/apps/:appId` — selecting an app
-  only updates the identity indicator. Nothing ever leaves `/explorer`.
-- A bare reload of the panel URL (empty hash → pathname `/`) re-lands on the
-  Explorer. Covered by an e2e that does `goto('/') → reload()` and asserts the
-  roster is visible with **no click**.
+The roster is sorted newest first and paged by keyset cursors
+(`stimulationRowsOf` in `src/view/explorerData.ts`).
 
-## 9. Retry / Clone always give visible feedback
+- Before the user scrolls, the list reads one page of 50 with no bounds; it
+  stays live through its stale time.
+- Scrolling near the end appends the last page's `nextCursor` to the paging
+  cursors. From then on the list reads a **head** — the rows at or newer than
+  the first cursor, up to 200 — and one **tail** page per cursor, each holding
+  the rows strictly older than its cursor. A tail page is defined by its key
+  alone, so new stimulations never shift it.
+- Rows are merged in order and deduplicated by stimulation id.
+- When the head itself has a `nextCursor`, more than 200 stimulations arrived
+  above it: the list shows "newer runs above — show the newest", which resets
+  paging to the single first page and scrolls to the top.
+- Changing the filter resets paging to the first page.
+- While a requested page is loading, the list keeps the rows it already shows.
 
-Previously Clone did nothing visible. Now (`explorerController`):
+Scheduled stimulations page by cursor in the same windowed list, without a
+head.
 
-- **Clone** resolves the server's `newStimulationId` and shows a transient green
-  toast **"Cloned → new run &lt;id&gt;"**, then refetches so the new run appears at
-  the top of the roster.
-- **Retry** shows **"Retry accepted — resuming this run"** and refreshes the
-  run's detail.
-- **Failures** show a red toast with the server's reason.
-- The toast auto-dismisses after 6s (`actionNotice`), and each new action clears
-  the previous notice/error first.
+## 6. Graph exposed to AI tools
 
-Covered by jest (controller sets `actionNotice` on clone/retry success and
-`actionError` on rejection) and by an e2e that clicks Clone and asserts the
-"Cloned → new run" toast appears.
-
-## 10. Palette / yellow
-
-The Evangelion/MAGI terminal palette is preserved (dark bg, lime green, teal,
-violet, pink; red reserved for errors). The muted olive yellow was replaced with
-the **bright terminal yellow `#F5C344`** (`--infection-yellow`, `--pus-yellow`,
-`--text-warning`) and given prominent, tasteful placement: the facet section
-labels (`STATUS`, `JOB TYPE`), the `N runs` count, the active view-tab accent,
-attempt headers, and the `THROUGHPUT` axis peak. Yellow now reads as the panel's
-signature accent rather than a rare olive tint.
-
-## 11. Verification
-
-- `npx tsc --noEmit` → 0 errors.
-- `npm test` (jest) → 8 suites, 75 tests, all green.
-- `npm run e2e` (Playwright) → 4 specs, all green.
-- `npm run build` → succeeds.
-- Screenshots: `e2e/.artifacts/redesign.png` (Runs), `e2e/.artifacts/redesign-chart.png` (Chart).
+`cns-mcp.ts` builds the same model under Node with a transport that serves
+nothing and exposes `devTools.cns` to `@cnstra/mcp` (the `cnstra` server in the
+repository `.mcp.json`).

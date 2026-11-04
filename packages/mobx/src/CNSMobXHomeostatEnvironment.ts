@@ -1,11 +1,41 @@
 import { computed, onBecomeUnobserved } from 'mobx';
 import type { IComputedValue } from 'mobx';
 import { CNSHomeostatEnvironment } from '@cnstra/sync';
-import type { CNSHomeostatReceptor, ICNSHomeostatCorrectionRepository, ICNSHomeostatFiringPolicy, TCNSHomeostasisState } from '@cnstra/sync';
+import type {
+    CNSHomeostatReceptor,
+    ICNSHomeostatCorrectionRepository,
+    ICNSHomeostatFiringPolicy,
+    TCNSHomeostasisState,
+    TCNSHomeostatModelKey,
+    TCNSHomeostatModelReceptiveDemandOptions,
+} from '@cnstra/sync';
+import { CNSMobXHomeostatReceptiveField } from './CNSMobXHomeostatReceptiveField';
 import type { TCNSMobXHomeostasisSourceTrackingComputedOptions } from './types/TCNSMobXHomeostasisSourceTrackingComputedOptions';
 
 export class CNSMobXHomeostatEnvironment extends CNSHomeostatEnvironment<ICNSHomeostatFiringPolicy, ICNSHomeostatCorrectionRepository<readonly unknown[]>> {
     private readonly homeostasisComputedByKeyHashByReceptor = new Map<CNSHomeostatReceptor<never, unknown>, Map<string, unknown>>();
+
+    private readonly homeostatReceptiveFields: Pick<CNSMobXHomeostatReceptiveField<TCNSHomeostatModelKey, unknown>, 'dispose'>[] = [];
+
+    public override dispose(): void {
+        super.dispose();
+        for (const homeostatReceptiveField of this.homeostatReceptiveFields) homeostatReceptiveField.dispose();
+        this.homeostatReceptiveFields.length = 0;
+    }
+
+    public createReceptiveField<TKey extends TCNSHomeostatModelKey, TData, TEntryKey>(
+        homeostatReceptor: CNSHomeostatReceptor<TKey, TData>,
+        options: TCNSHomeostatModelReceptiveDemandOptions<TEntryKey, TKey>
+    ): CNSMobXHomeostatReceptiveField<TKey, TEntryKey> {
+        const homeostatReceptiveField = new CNSMobXHomeostatReceptiveField<TKey, TEntryKey>(
+            key => this.createComputed(homeostatReceptor, key),
+            this.homeostatEnvironmentOptions.keyHashFn,
+            this.homeostatEnvironmentOptions.runUntracked,
+            options
+        );
+        this.homeostatReceptiveFields.push(homeostatReceptiveField);
+        return homeostatReceptiveField;
+    }
 
     public createComputed<TKey extends readonly unknown[], TData>(
         homeostatReceptor: CNSHomeostatReceptor<TKey, TData>,

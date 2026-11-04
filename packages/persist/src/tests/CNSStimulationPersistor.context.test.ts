@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 import { CNSStimulationPersistor } from '.././CNSStimulationPersistor';
@@ -11,14 +11,14 @@ import { CNSInMemoryStimulationRepository } from '.././CNSInMemoryStimulationRep
  */
 
 const buildFlow = () => {
-    const input = cnsCollateral<{ id: number }>();
-    const out = cnsCollateral<{ ok: boolean }>();
+    const input = collateral<{ id: number }>();
+    const out = collateral<{ ok: boolean }>();
 
-    const worker = cnsNeuron({ out }).dendrite({
+    const worker = neuron({ out }).dendrite({
         collateral: input,
         response: (_p, axon) => axon.out.createSignal({ ok: true }),
     });
-    const sink = cnsNeuron({}).dendrite({
+    const sink = neuron({}).dendrite({
         collateral: out,
         response: () => undefined,
     });

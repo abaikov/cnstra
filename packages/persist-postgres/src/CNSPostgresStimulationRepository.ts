@@ -340,26 +340,12 @@ export class CNSPostgresStimulationRepository
 
     private async selectRoster(
         filter: TCNSStimulationRosterFilter,
-        opts?: { cursor?: string; limit?: number }
+        opts?: { cursor?: string; sinceCursor?: string; limit?: number }
     ): Promise<{ entries: TCNSRosterEntry[]; total: number }> {
         await this.schemaReady();
         const { p } = this;
         // Decode the keyset cursor → the (startedAt, stimulationId) to page past.
-        let curStarted: number | null = null;
-        let curId: string | null = null;
-        if (opts?.cursor) {
-            // Split on the FIRST separator only. A stimulation id is a key the
-            // caller chose — a BullMQ job id, an order number — and one
-            // containing `|` would otherwise lose everything after it, sending
-            // the page to a run that does not exist.
-            const decoded = Buffer.from(opts.cursor, 'base64').toString('utf8');
-            const at = decoded.indexOf('|');
-            const started = Number(decoded.slice(0, at));
-            if (at >= 0 && Number.isFinite(started)) {
-                curStarted = started;
-                curId = decoded.slice(at + 1);
-            }
-        }
+        const [curStarted, curId] = this.rosterCursorKeyOf(opts?.cursor);
         const params: unknown[] = [
             filter.scopeName ?? null,
             filter.status ?? null,
@@ -370,6 +356,7 @@ export class CNSPostgresStimulationRepository
             filter.until ?? null,
             curStarted,
             curId,
+            ...this.rosterCursorKeyOf(opts?.sinceCursor),
         ];
         const limitClause =
             opts?.limit != null && Number.isFinite(opts.limit) ? ` LIMIT ${Math.max(0, Math.floor(opts.limit))}` : '';
@@ -381,6 +368,7 @@ export class CNSPostgresStimulationRepository
             -- and the two are contractually identical.
             SELECT * FROM filtered
             WHERE ($8::bigint IS NULL OR (started_at, stimulation_id COLLATE "C") < ($8, $9::text COLLATE "C"))
+              AND ($10::bigint IS NULL OR (started_at, stimulation_id COLLATE "C") >= ($10, $11::text COLLATE "C"))
             ORDER BY started_at DESC, stimulation_id COLLATE "C" DESC${limitClause}`;
         const res = await this.db.query(sql, params);
         const rows = res.rows as TRosterRow[];
@@ -392,6 +380,8 @@ export class CNSPostgresStimulationRepository
         if (!rows.length && curStarted !== null) {
             const countRes = await this.db.query(sql, [
                 ...params.slice(0, 7),
+                null,
+                null,
                 null,
                 null,
             ]);
@@ -414,9 +404,21 @@ export class CNSPostgresStimulationRepository
         return { entries, total };
     }
 
+    private rosterCursorKeyOf(cursor: string | undefined): [number | null, string | null] {
+        if (!cursor) return [null, null];
+        // Split on the FIRST separator only. A stimulation id is a key the
+        // caller chose — a BullMQ job id, an order number — and one
+        // containing `|` would otherwise lose everything after it, sending
+        // the page to a run that does not exist.
+        const decoded = Buffer.from(cursor, 'base64').toString('utf8');
+        const at = decoded.indexOf('|');
+        const started = Number(decoded.slice(0, at));
+        return at >= 0 && Number.isFinite(started) ? [started, decoded.slice(at + 1)] : [null, null];
+    }
+
     async queryRoster(
         filter: TCNSStimulationRosterFilter,
-        opts: { cursor?: string; limit: number }
+        opts: { cursor?: string; sinceCursor?: string; limit: number }
     ): Promise<TCNSStimulationRosterPage> {
         // Ask for one row beyond the page. Its presence is what says "there is
         // another page" — `total` cannot answer that any more, now that it counts
@@ -507,10 +509,10 @@ export class CNSPostgresStimulationRepository
         const res = await this.db.query(sql, params);
         const rows = res.rows as TFacetRow[];
 
-        const tally = (kind: string) =>
+        const tally = <TKey extends string = string>(kind: string) =>
             rows
                 .filter(r => r.kind === kind && r.key != null)
-                .map(r => ({ key: r.key as string, count: Number(r.cnt) }))
+                .map(r => ({ key: r.key as TKey, count: Number(r.cnt) }))
                 // Deterministic on ties: a facet rail that reshuffles between two
                 // refreshes of the same data reads as data changing.
                 .sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : 1));
@@ -520,7 +522,7 @@ export class CNSPostgresStimulationRepository
                 name: x.key,
                 count: x.count,
             })),
-            byStatus: tally('status').map(x => ({
+            byStatus: tally<ECNSStimulationStatus>('status').map(x => ({
                 status: x.key,
                 count: x.count,
             })),
@@ -683,7 +685,7 @@ type TFacetRow = {
 type TRosterRow = {
     stimulation_id: string;
     entry: unknown;
-    status: string;
+    status: ECNSStimulationStatus;
     scope_name: string | null;
     started_at: string | number;
     completed_at: string | number | null;

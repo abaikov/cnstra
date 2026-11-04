@@ -10,6 +10,7 @@ import {
     CNSStimulationResumeCommandDTOSchema,
 } from '.././app-commands';
 import { CNSServerMessageDTOSchema } from '.././server-messages';
+import { CNSDevToolsSyncKeySchemas } from '.././sync';
 
 /**
  * These schemas ARE the contract between the app, the server and the panel. They
@@ -166,5 +167,30 @@ describe('panel action replies', () => {
 
     it('rejects a launch acceptance without the new stimulation id', () => {
         expect(CNSServerMessageDTOSchema.safeParse({ type: 'stimulation.launch.accepted', requestId: 'r' }).success).toBe(false);
+    });
+});
+
+describe('sync keys', () => {
+    it('reads a stimulation page key whose unset filter parts came off the query as undefined', () => {
+        const key = [undefined, 'failed', undefined, undefined, undefined, 1_700_000_000_000, undefined, undefined, undefined, 50];
+        expect(CNSDevToolsSyncKeySchemas.stimulationPage.parse(key)).toEqual(key);
+    });
+
+    it('refuses a page key without a limit', () => {
+        expect(CNSDevToolsSyncKeySchemas.stimulationPage.safeParse([undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]).success).toBe(false);
+    });
+
+    it('refuses a time window written as text', () => {
+        expect(CNSDevToolsSyncKeySchemas.stimulationFacets.safeParse([undefined, undefined, undefined, undefined, undefined, '1700000000000', undefined, undefined]).success).toBe(false);
+    });
+
+    it('reads an apps key with no scope', () => {
+        expect(CNSDevToolsSyncKeySchemas.apps.parse([undefined])).toEqual([undefined]);
+    });
+});
+
+describe('sync frames', () => {
+    it('reads a sync response the server sends back for a request id', () => {
+        expect(CNSServerMessageDTOSchema.safeParse({ type: 'sync.response', requestId: '1', status: 200, headers: { vary: 'accept' }, body: '[]' }).success).toBe(true);
     });
 });

@@ -12,7 +12,7 @@ Sometimes a neuron needs to emit multiple signals in response to a single input.
 A neuron can return an array of signals instead of a single signal:
 
 ```ts setup
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 declare function isValid(data: unknown): boolean;
 declare function fetchData(id: string): Promise<unknown>;
@@ -20,11 +20,11 @@ declare function shouldProcess(payload: { value: number }): boolean;
 ```
 
 ```ts
-const input = cnsCollateral<{ value: number }>();
-const output1 = cnsCollateral<{ result: string }>();
-const output2 = cnsCollateral<{ result: string }>();
+const input = collateral<{ value: number }>();
+const output1 = collateral<{ result: string }>();
+const output2 = collateral<{ result: string }>();
 
-const splitter = cnsNeuron({ output1, output2 }).dendrite({
+const splitter = neuron({ output1, output2 }).dendrite({
   collateral: input,
   response: (payload, axon) => {
     // Return an array of signals
@@ -43,12 +43,12 @@ const splitter = cnsNeuron({ output1, output2 }).dendrite({
 Split a single input into multiple parallel processing paths:
 
 ```ts
-const processPayment = cnsCollateral<{ orderId: string }>();
-const updateInventory = cnsCollateral<{ orderId: string }>();
-const notifyUser = cnsCollateral<{ orderId: string }>();
-const logTransaction = cnsCollateral<{ orderId: string }>();
+const processPayment = collateral<{ orderId: string }>();
+const updateInventory = collateral<{ orderId: string }>();
+const notifyUser = collateral<{ orderId: string }>();
+const logTransaction = collateral<{ orderId: string }>();
 
-const orderProcessor = cnsNeuron({
+const orderProcessor = neuron({
   updateInventory,
   notifyUser,
   logTransaction,
@@ -70,10 +70,10 @@ const orderProcessor = cnsNeuron({
 Generate a variable number of signals based on input:
 
 ```ts
-const batchInput = cnsCollateral<{ items: string[] }>();
-const itemOutput = cnsCollateral<{ item: string; index: number }>();
+const batchInput = collateral<{ items: string[] }>();
+const itemOutput = collateral<{ item: string; index: number }>();
 
-const batchProcessor = cnsNeuron({ itemOutput }).dendrite({
+const batchProcessor = neuron({ itemOutput }).dendrite({
   collateral: batchInput,
   response: (payload, axon) => {
     // Create a signal for each item
@@ -89,12 +89,12 @@ const batchProcessor = cnsNeuron({ itemOutput }).dendrite({
 Return different numbers of signals based on conditions:
 
 ```ts
-const validation = cnsCollateral<{ data: any }>();
-const success = cnsCollateral<{ validated: any }>();
-const error = cnsCollateral<{ error: string }>();
-const audit = cnsCollateral<{ action: string }>();
+const validation = collateral<{ data: any }>();
+const success = collateral<{ validated: any }>();
+const error = collateral<{ error: string }>();
+const audit = collateral<{ action: string }>();
 
-const validator = cnsNeuron({ success, error, audit }).dendrite({
+const validator = neuron({ success, error, audit }).dendrite({
   collateral: validation,
   response: (payload, axon) => {
     const signals = [];
@@ -118,10 +118,10 @@ const validator = cnsNeuron({ success, error, audit }).dendrite({
 Arrays of signals work seamlessly with async functions:
 
 ```ts
-const dataFetch = cnsCollateral<{ ids: string[] }>();
-const dataReady = cnsCollateral<{ id: string; data: any }>();
+const dataFetch = collateral<{ ids: string[] }>();
+const dataReady = collateral<{ id: string; data: any }>();
 
-const fetcher = cnsNeuron({ dataReady }).dendrite({
+const fetcher = neuron({ dataReady }).dendrite({
   collateral: dataFetch,
   response: async (payload, axon) => {
     // Fetch all data asynchronously
@@ -142,10 +142,10 @@ const fetcher = cnsNeuron({ dataReady }).dendrite({
 Returning an empty array is valid and will not propagate any signals:
 
 ```ts
-const input = cnsCollateral<{ value: number }>();
-const output = cnsCollateral<{ value: number }>();
+const input = collateral<{ value: number }>();
+const output = collateral<{ value: number }>();
 
-const filter = cnsNeuron({ output }).dendrite({
+const filter = neuron({ output }).dendrite({
   collateral: input,
   response: (payload, axon) => {
     if (!shouldProcess(payload)) {
@@ -161,7 +161,7 @@ const filter = cnsNeuron({ output }).dendrite({
 You can also start a stimulation with multiple signals:
 
 ```ts
-const input = cnsCollateral<{ value: number }>();
+const input = collateral<{ value: number }>();
 const cns = new CNS([/* neurons */]);
 
 // Stimulate with an array of signals

@@ -1,0 +1,1 @@
+export const COLLATERAL_DISPATCH_LIMIT = 50;

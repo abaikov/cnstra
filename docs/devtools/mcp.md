@@ -29,20 +29,20 @@ npm i -D @cnstra/mcp
 The examples assume your neurons live in `src/neurons/index.ts` and the `CNS` in `src/cns.ts`:
 
 ```ts file=src/neurons/index.ts
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 
-export const userLogin = cnsCollateral<{ userId: string }>();
-export const deckCreated = cnsCollateral<{ deckId: string }>();
-export const cardAdded = cnsCollateral<{ deckId: string }>();
-export const deckNeuron = cnsNeuron({ deckCreated }).dendrite({
+export const userLogin = collateral<{ userId: string }>();
+export const deckCreated = collateral<{ deckId: string }>();
+export const cardAdded = collateral<{ deckId: string }>();
+export const deckNeuron = neuron({ deckCreated }).dendrite({
     collateral: userLogin,
     response: ({ userId }, axon) => axon.deckCreated.createSignal({ deckId: userId }),
 });
-export const cardNeuron = cnsNeuron({ cardAdded }).dendrite({
+export const cardNeuron = neuron({ cardAdded }).dendrite({
     collateral: deckCreated,
     response: (payload, axon) => axon.cardAdded.createSignal(payload),
 });
-export const uiNeuron = cnsNeuron({});
+export const uiNeuron = neuron({});
 ```
 
 ```ts file=src/cns.ts

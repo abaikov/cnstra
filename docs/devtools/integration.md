@@ -8,7 +8,8 @@ slug: /devtools/integration
 
 # DevTools Integration
 
-Two ways to run the DevTools UI — pick the one that fits your setup.
+Two ways to run the DevTools UI — pick the one that fits your setup. To mount the
+panel inside your own server, behind your own auth, see [Admin](./admin.md).
 
 ## Option A: Embedded (one function call)
 
@@ -21,12 +22,12 @@ npm i -D @cnstra/devtools-server
 The examples assume your app keeps its `CNS` in `src/cns.ts`:
 
 ```ts file=src/cns.ts
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
-export const deckCreated = cnsCollateral<{ deckId: string }>();
-export const cardAdded = cnsCollateral<{ deckId: string }>();
-export const deckNeuron = cnsNeuron({ deckCreated });
-export const cardNeuron = cnsNeuron({ cardAdded }).dendrite({
+export const deckCreated = collateral<{ deckId: string }>();
+export const cardAdded = collateral<{ deckId: string }>();
+export const deckNeuron = neuron({ deckCreated });
+export const cardNeuron = neuron({ cardAdded }).dendrite({
     collateral: deckCreated,
     response: (payload, axon) => axon.cardAdded.createSignal(payload),
 });
@@ -49,8 +50,21 @@ import { startCNSDevTools } from '@cnstra/devtools-server';
 import { cns } from './src/cns';
 import { registry } from './src/neurons/registry'; // your CNSPersistOptionsRegistry
 
-await startCNSDevTools(cns, registry);
+await startCNSDevTools({ cns, registry });
 // → 🧠 CNStra DevTools: http://localhost:3141
+```
+
+Running a BullMQ or pg-boss worker? Pass the worker itself. It already knows its
+`cns`, `registry` and queue; the panel records every job it runs once, under its job id:
+
+```ts
+import { createCNSWorker } from '@cnstra/pg-boss';
+import type { ICNSPgBossLike } from '@cnstra/pg-boss';
+
+declare const boss: ICNSPgBossLike;
+
+const worker = await createCNSWorker({ boss, cns, registry, queue: 'cns' });
+await startCNSDevTools(worker);
 ```
 
 If you don't have a shared registry yet:
@@ -61,15 +75,16 @@ import { deckNeuron, cardNeuron } from '../cns';
 export const registry = CNSPersistOptionsRegistryFactory.create({ deckNeuron, cardNeuron });
 ```
 
-Opens the browser automatically. The UI, WebSocket server, and your CNS instance are all wired up in one call.
+Opens the browser automatically. The UI, the HTTP endpoints and your CNS instance are all wired up in one call.
 
 ### Options
 
 ```ts
-await startCNSDevTools(cns, registry, {
+await startCNSDevTools({ cns, registry }, {
     port: 3141,    // default
     open: true,    // auto-open browser (default: true in TTY)
     appId: 'app',  // identifies the SERVICE — the routing key for Retry/Clone
+    webSocket: {}, // the panel talks over a WebSocket instead of HTTP polling; loopback only
     consoleLogEnabled: false,
 });
 ```
@@ -82,11 +97,10 @@ runs on all of them — see
 
 :::caution Not for a replicated deployment
 
-`startCNSDevTools` builds the server for you and takes no actions chain, so Retry and
-Clone are delivered over the app socket — to **every** connected replica of the
-`appId`. With more than one replica that runs the same retry more than once.
-
-Construct `CNSDevToolsServer` yourself when you need a broker link in front. See
+Given `{ cns, registry }` and no `actions`, Retry and Clone are delivered over the
+in-process link to the app, and every replica of the `appId` has its own server.
+With more than one replica, pass the worker (a pg-boss worker, or a BullMQ worker
+given its `Queue` instance as `queue`) or an `actions` chain so the retry goes through the broker. See
 [Retry with replicas](./deployments.md#retry-with-replicas).
 
 :::
@@ -99,7 +113,7 @@ if (process.env.NODE_ENV === 'development') {
     const { startCNSDevTools } = await import('@cnstra/devtools-server');
     const { cns } = await import('./src/cns');
     const { registry } = await import('./src/neurons/registry');
-    await startCNSDevTools(cns, registry);
+    await startCNSDevTools({ cns, registry });
 }
 ```
 
@@ -117,7 +131,7 @@ export default defineConfig({
                 const { startCNSDevTools } = await import('@cnstra/devtools-server');
                 const { cns } = await import('./src/cns');
                 const { registry } = await import('./src/neurons/registry');
-                await startCNSDevTools(cns, registry);
+                await startCNSDevTools({ cns, registry });
             }
         }
     }]
@@ -138,6 +152,16 @@ npx @cnstra/devtools-server
 # Or with custom port:
 PORT=4000 npx @cnstra/devtools-server
 ```
+
+The server listens on `127.0.0.1` and answers only requests addressed to that loopback
+host, so a web page you open cannot read the runs or send a Retry. Two switches open it up:
+
+- `CNSTRA_DEVTOOLS_ALLOWED_ORIGINS=http://localhost:5173` lets a browser app on another
+  origin connect its socket (comma-separated list). A Node or React Native app sends no
+  `Origin` and needs nothing.
+- `HOST=0.0.0.0` listens on every interface, for a phone or another machine. The Host check
+  is then off, and the socket accepts same-origin pages, the allowed origins and clients
+  without an `Origin`; there is no authentication, so keep it on a trusted network.
 
 Then connect your app:
 
@@ -167,10 +191,12 @@ Once connected, the Explorer shows every run with its attempts and tasks, per-ne
 
 ## Production
 
-DevTools are dev-only. In production:
+`startCNSDevTools` is a development server: no auth, its own port. In production,
+either leave it out entirely:
 
 - Don't import `@cnstra/devtools-server` or call `startCNSDevTools`
 - Don't import `@cnstra/devtools` or `@cnstra/devtools-transport-ws`
-- The `CNSPersistOptionsRegistry` (used for naming) is also dev-only
+- Install every devtools package as a dev dependency (`npm i -D`) only
 
-Install every devtools package as a dev dependency (`npm i -D`) only.
+or mount the panel in your own server behind your own auth, the way an admin
+dashboard is mounted — see [Admin](./admin.md).

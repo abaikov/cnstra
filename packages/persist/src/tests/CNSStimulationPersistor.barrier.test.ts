@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 import { CNSStimulationPersistor } from '.././CNSStimulationPersistor';
 import type { ICNSStimulationWriter } from '.././interfaces/ICNSStimulationRepository';
@@ -38,18 +38,18 @@ const slowWriter = (delayMs: number) => {
 };
 
 const buildFlow = (log: string[]) => {
-    const input = cnsCollateral<{ id: number }>();
-    const mid = cnsCollateral<{ id: number }>();
-    const out = cnsCollateral<{ result: string }>();
+    const input = collateral<{ id: number }>();
+    const mid = collateral<{ id: number }>();
+    const out = collateral<{ result: string }>();
 
-    const first = cnsNeuron({ mid }).dendrite({
+    const first = neuron({ mid }).dendrite({
         collateral: input,
         response: (p, axon) => {
             log.push('hop:first');
             return axon.mid.createSignal({ id: p!.id });
         },
     });
-    const second = cnsNeuron({ out }).dendrite({
+    const second = neuron({ out }).dendrite({
         collateral: mid,
         response: (p, axon) => {
             log.push('hop:second');

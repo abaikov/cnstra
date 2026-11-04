@@ -1,0 +1,361 @@
+@keyframes cns-devtools-live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+@scope (.cns-devtools) {
+  .exp-graphs {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--bg-panel);
+  }
+
+  .exp-graphs-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .exp-graphs-title {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--color-green);
+    white-space: nowrap;
+  }
+
+  .exp-graphs-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-card);
+    color: var(--text-muted);
+  }
+
+  .exp-graphs-body {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .exp-graphs-main {
+    flex: 1;
+    min-width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .exp-vitals {
+    flex: none;
+    width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+  }
+
+  .exp-vitals-rule {
+    height: 1px;
+    margin: 1px 0;
+    background: var(--border-primary);
+  }
+
+  .exp-vital {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .exp-vital-label {
+    font-size: 8.5px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .exp-vital-value {
+    font-family: var(--font-body);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+  }
+
+  .exp-vital-value[data-tone] { color: var(--tone-color); }
+
+  .exp-throughput {
+    flex: 1;
+    min-width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px 10px;
+    overflow: hidden;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background:
+      repeating-linear-gradient(90deg, rgba(65, 143, 174, 0.06) 0 1px, transparent 1px 16px),
+      repeating-linear-gradient(0deg, rgba(65, 143, 174, 0.06) 0 1px, transparent 1px 16px),
+      var(--bg-secondary);
+  }
+
+  .exp-throughput-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .exp-throughput-title {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--color-yellow);
+  }
+
+  .exp-throughput-hint {
+    font-size: 8.5px;
+    color: var(--text-muted);
+  }
+
+  .exp-live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--color-green);
+    color: var(--color-green);
+    background: color-mix(in srgb, var(--color-green) 8%, transparent);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+
+  .exp-live-pill .exp-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-green);
+    box-shadow: 0 0 6px var(--color-green);
+  }
+
+  .exp-chart-modes {
+    display: flex;
+    gap: 3px;
+  }
+
+  .exp-chart-mode {
+    --series-color: var(--color-cyan);
+    padding: 2px 8px;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 3px;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-card);
+    color: var(--text-muted);
+  }
+
+  .exp-chart-mode[data-status] {
+    --series-color: var(--status-color);
+  }
+
+  .exp-throughput[data-mode='both'] .exp-chart-mode[data-series='both'],
+  .exp-throughput[data-mode='completed'] .exp-chart-mode[data-series='completed'],
+  .exp-throughput[data-mode='failed'] .exp-chart-mode[data-series='failed'] {
+    border-color: var(--series-color);
+    background: color-mix(in srgb, var(--series-color) 13%, transparent);
+    color: var(--series-color);
+  }
+
+  .exp-chart {
+    position: relative;
+    width: 100%;
+    height: 96px;
+    cursor: crosshair;
+    user-select: none;
+    touch-action: none;
+  }
+
+  .exp-chart > * {
+    pointer-events: none;
+  }
+
+  .exp-chart-plot {
+    display: block;
+    width: 100%;
+    height: 96px;
+  }
+
+  .exp-throughput[data-mode='completed'] .exp-chart-plot [data-status='failed'],
+  .exp-throughput[data-mode='failed'] .exp-chart-plot [data-status='completed'] {
+    display: none;
+  }
+
+  .exp-chart-grid {
+    stroke: var(--border-primary);
+    stroke-width: 0.5;
+    opacity: 0.5;
+  }
+
+  .exp-chart-area {
+    fill: var(--status-color);
+    opacity: 0.14;
+  }
+
+  .exp-chart-line {
+    fill: none;
+    stroke: var(--status-color);
+    stroke-width: 1.6;
+    filter: drop-shadow(0 0 2px var(--status-color));
+  }
+
+  .exp-chart-guide {
+    stroke: var(--color-pink);
+    stroke-width: 1;
+    stroke-dasharray: 2 3;
+    opacity: 0.8;
+  }
+
+  .exp-chart-dot {
+    fill: var(--status-color);
+  }
+
+  .exp-chart-selection {
+    fill: var(--color-pink);
+    opacity: 0.18;
+  }
+
+  .exp-chart-peak {
+    position: absolute;
+    left: 4px;
+    top: 2px;
+    font-size: 9px;
+    color: var(--text-muted);
+  }
+
+  .exp-chart-tip {
+    position: absolute;
+    top: 2px;
+    z-index: 5;
+    padding: 4px 8px;
+    font-size: 10px;
+    white-space: nowrap;
+    border-radius: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-accent);
+    color: var(--text-primary);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  }
+
+  .exp-chart-tip[data-side='start'] {
+    left: 4px;
+  }
+
+  .exp-chart-tip[data-side='end'] {
+    right: 4px;
+  }
+
+  .exp-chart-tip-stamp {
+    color: var(--text-muted);
+  }
+
+  .exp-chart-tip [data-status] {
+    color: var(--status-color);
+  }
+
+  .exp-chart-axis {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8.5px;
+    color: var(--text-muted);
+  }
+
+  .exp-pulse-box {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .exp-pulse-label {
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .exp-pulse {
+    display: block;
+    width: 100%;
+    height: 30px;
+    filter: drop-shadow(0 0 3px var(--color-green));
+  }
+
+  .exp-pulse-trace {
+    fill: none;
+    stroke: var(--color-green);
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  .exp-pulse-head {
+    fill: #eafbc7;
+  }
+
+  .exp-share {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .exp-share-bar {
+    display: block;
+    width: 100%;
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+  }
+
+  .exp-share-bar rect {
+    fill: var(--status-color);
+  }
+
+  .exp-share-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
+
+  .exp-live-dot {
+    animation: cns-devtools-live-pulse 1.4s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .exp-live-dot { animation: none; }
+  }
+}

@@ -27,6 +27,7 @@ function notifyWindowsChanged(port) {
 try { app.setName('CNStra DevTools'); } catch {}
 
 const DEFAULT_PORT = Number(process.env.CNSTRA_DEVTOOLS_PORT || 8080);
+const ALLOWED_ORIGINS = (process.env.CNSTRA_DEVTOOLS_ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean);
 // IS_DEV = true только если явно указан DEV=1 или DEV=true И приложение не запаковано
 const IS_DEV = (process.env.DEV === '1' || process.env.DEV === 'true') && !app.isPackaged;
 
@@ -90,8 +91,33 @@ async function findAvailablePort(startPort) {
  * Start HTTP + WS DevTools server using @cnstra/devtools-server core.
  */
 async function startDevToolsServer(port) {
+  const { CNSDevToolsLocalRequestPolicy } = require('@cnstra/devtools-server');
   const server = http.createServer(async (req, res) => {
     try {
+      if (!CNSDevToolsLocalRequestPolicy.isLoopbackHost(req.headers.host, port)) {
+        res.writeHead(403);
+        res.end();
+        return;
+      }
+      if (req.url && req.url.startsWith('/__cnstra/sync')) {
+        if (req.method !== 'GET') {
+          res.writeHead(405);
+          res.end();
+          return;
+        }
+        if (!devToolsServer) {
+          res.writeHead(503);
+          res.end();
+          return;
+        }
+        const answer = await devToolsServer.homeostatTransductionEndpoint.respond(
+          req.url.slice('/__cnstra/sync'.length).replace(/^\?/, ''),
+          req.headers.accept
+        );
+        res.writeHead(answer.status, answer.headers);
+        res.end(answer.body);
+        return;
+      }
       // In dev we just redirect to webpack-dev-server assets
       if (IS_DEV) {
         res.writeHead(302, { Location: `http://localhost:5173` });
@@ -100,10 +126,13 @@ async function startDevToolsServer(port) {
       }
       // In prod, serve built panel UI from resources (copied during build)
       const uiDist = path.resolve(process.resourcesPath, 'devtools-panel-ui', 'dist');
-      let filePath = path.join(
-        uiDist,
-        !req?.url || req.url === '/' ? 'index.html' : req.url
-      );
+      const requestPath = decodeURIComponent(new URL(req.url || '/', 'http://localhost').pathname);
+      let filePath = path.resolve(uiDist, '.' + (requestPath === '/' ? '/index.html' : requestPath));
+      if (!filePath.startsWith(uiDist + path.sep)) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
       const fs = require('fs');
       if (!fs.existsSync(filePath)) filePath = path.join(uiDist, 'index.html');
       if (!fs.existsSync(filePath)) {
@@ -127,7 +156,11 @@ async function startDevToolsServer(port) {
     server.listen(port, '127.0.0.1', resolve);
   });
 
-  const wss = new WebSocketServer({ server });
+  const panelOrigins = IS_DEV ? ['http://localhost:5173'] : ['file://'];
+  const wss = new WebSocketServer({
+    server,
+    verifyClient: ({ req }) => CNSDevToolsLocalRequestPolicy.isLocalUpgrade(req, port, [...panelOrigins, ...ALLOWED_ORIGINS]),
+  });
   let devToolsServer = null;
 
   try {
@@ -161,7 +194,7 @@ async function startDevToolsServer(port) {
           console.error('❌ Electron message processing error:', error);
         }
       });
-      ws.on('close', () => devToolsServer.handleDisconnect(ws));
+      ws.on('close', () => devToolsServer.removeClient(ws));
     });
   } catch (e) {
     // If devtools-server packages are missing, keep only static hosting
@@ -318,9 +351,6 @@ ipcMain.handle('mgr:stop', async (_e, port) => {
       
       entry.server.close((err) => {
         clearTimeout(timeout);
-        if (entry.devToolsServer) {
-          entry.devToolsServer.stop();
-        }
         if (err) {
           console.log('[CNStra DevTools] Error closing server:', err);
           reject(err);

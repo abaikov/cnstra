@@ -1,5 +1,5 @@
 import { OIMEventQueue, OIMReactiveCollection } from '@oimdb/core';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 /**
  * Verifies the "Batching state managers" recipe against real OIMDB.
@@ -43,28 +43,28 @@ describe('OIMDB driven by onDrain', () => {
     });
 
     it('collapses a whole synchronous turn into one notification', async () => {
-        const start = cnsCollateral<number>();
-        const second = cnsCollateral<number>();
-        const third = cnsCollateral<number>();
+        const start = collateral<number>();
+        const second = collateral<number>();
+        const third = collateral<number>();
 
         let readInsideTurn: string | undefined;
 
         const cns = new CNS([
-            cnsNeuron({ second }).dendrite({
+            neuron({ second }).dendrite({
                 collateral: start,
                 response: (_p, axon) => {
                     users.upsertOneByPk('u1', { id: 'u1', name: 'a' });
                     return axon.second.createSignal(1);
                 },
             }),
-            cnsNeuron({ third }).dendrite({
+            neuron({ third }).dendrite({
                 collateral: second,
                 response: (_p, axon) => {
                     users.upsertOneByPk('u1', { id: 'u1', name: 'b' });
                     return axon.third.createSignal(1);
                 },
             }),
-            cnsNeuron({}).dendrite({
+            neuron({}).dendrite({
                 collateral: third,
                 response: () => {
                     users.upsertOneByPk('u1', { id: 'u1', name: 'c' });
@@ -90,11 +90,11 @@ describe('OIMDB driven by onDrain', () => {
     });
 
     it('surfaces an optimistic write made before an await', async () => {
-        const click = cnsCollateral<number>();
-        const done = cnsCollateral<number>();
+        const click = collateral<number>();
+        const done = collateral<number>();
 
         const cns = new CNS([
-            cnsNeuron({ done }).dendrite({
+            neuron({ done }).dendrite({
                 collateral: click,
                 response: async (_p, axon) => {
                     // Written before yielding - the case a queueLength-driven
@@ -104,7 +104,7 @@ describe('OIMDB driven by onDrain', () => {
                     return axon.done.createSignal(1);
                 },
             }),
-            cnsNeuron({}).dendrite({
+            neuron({}).dendrite({
                 collateral: done,
                 response: () => {
                     users.upsertOneByPk('u1', {
@@ -133,9 +133,9 @@ describe('OIMDB driven by onDrain', () => {
     });
 
     it('stops flushing once the listener is removed', async () => {
-        const a = cnsCollateral<number>();
+        const a = collateral<number>();
         const cns = new CNS([
-            cnsNeuron({}).dendrite({
+            neuron({}).dendrite({
                 collateral: a,
                 response: () => {
                     users.upsertOneByPk('u1', { id: 'u1', name: 'x' });

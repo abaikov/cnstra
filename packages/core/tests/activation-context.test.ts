@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '../src';
+import { CNS, collateral, neuron } from '../src';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 
 /**
@@ -13,11 +13,11 @@ import type { TCNSStimulationResponse } from '@cnstra/types';
 
 describe('activationContext', () => {
     it('reaches the activation the listener wrote it on', async () => {
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ ok: boolean }>();
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ ok: boolean }>();
         const seen: unknown[] = [];
 
-        const worker = cnsNeuron({ out }).dendrite({
+        const worker = neuron({ out }).dendrite({
             collateral: input,
             response: (_p, axon, ctx: any) => {
                 seen.push(ctx.activationContext);
@@ -40,21 +40,21 @@ describe('activationContext', () => {
 
     it('is per activation, not per signal', async () => {
         // One signal wakes two subscribers: two activations, two stores.
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ ok: boolean }>();
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ ok: boolean }>();
         const seen: Record<string, unknown> = {};
 
-        const producer = cnsNeuron({ out }).dendrite({
+        const producer = neuron({ out }).dendrite({
             collateral: input,
             response: (_p, axon) => axon.out.createSignal({ ok: true }),
         });
-        const a = cnsNeuron({}).dendrite({
+        const a = neuron({}).dendrite({
             collateral: out,
             response: (_p, _axon, ctx: any) => {
                 seen.a = ctx.activationContext?.['test'];
             },
         });
-        const b = cnsNeuron({}).dendrite({
+        const b = neuron({}).dendrite({
             collateral: out,
             response: (_p, _axon, ctx: any) => {
                 seen.b = ctx.activationContext?.['test'];
@@ -80,10 +80,10 @@ describe('activationContext', () => {
     it('an async listener is still in time', async () => {
         // The engine waits for a listener's promise before enqueuing, so a
         // listener that awaits before writing has not missed its window.
-        const input = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
         let seen: unknown;
 
-        const worker = cnsNeuron({}).dendrite({
+        const worker = neuron({}).dendrite({
             collateral: input,
             response: (_p, _axon, ctx: any) => {
                 seen = ctx.activationContext?.['late'];
@@ -106,10 +106,10 @@ describe('activationContext', () => {
 
     it('survives a listener that throws', async () => {
         // The engine enqueues the same tasks from the catch path too.
-        const input = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
         let seen: unknown;
 
-        const worker = cnsNeuron({}).dendrite({
+        const worker = neuron({}).dendrite({
             collateral: input,
             response: (_p, _axon, ctx: any) => {
                 seen = ctx.activationContext?.['test'];
@@ -132,10 +132,10 @@ describe('activationContext', () => {
     });
 
     it('is undefined when nobody wrote anything', async () => {
-        const input = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
         let seen: unknown = 'untouched';
 
-        const worker = cnsNeuron({}).dendrite({
+        const worker = neuron({}).dendrite({
             collateral: input,
             response: (_p, _axon, ctx: any) => {
                 seen = ctx.activationContext;
@@ -152,16 +152,16 @@ describe('activationContext', () => {
     });
 
     it('hands the listener the tasks that actually run', async () => {
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ ok: boolean }>();
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ ok: boolean }>();
         const scheduled: object[] = [];
         const ran: object[] = [];
 
-        const producer = cnsNeuron({ out }).dendrite({
+        const producer = neuron({ out }).dendrite({
             collateral: input,
             response: (_p, axon) => axon.out.createSignal({ ok: true }),
         });
-        const worker = cnsNeuron({}).dendrite({
+        const worker = neuron({}).dendrite({
             collateral: out,
             response: (_p, _axon, ctx: any) => {
                 ran.push(ctx.activationContext);
@@ -187,10 +187,10 @@ describe('activationContext', () => {
     });
 
     it('is empty on a response that starts nothing', async () => {
-        const input = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
         const counts: number[] = [];
 
-        const sink = cnsNeuron({}).dendrite({
+        const sink = neuron({}).dendrite({
             collateral: input,
             response: () => undefined,
         });

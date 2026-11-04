@@ -2,8 +2,10 @@ import {
     CNSProgressRecorder,
     CNSProgressSerializer,
     CNSStimulationPersistor,
+    CNS_JOB_IDENTITY_CONTEXT_KEY,
 } from '@cnstra/persist';
 import type {
+    TCNSJobIdentity,
     CNSPersistOptionsRegistry,
     ICNSProgressRepository,
     ICNSProgressRecordingStrategy,
@@ -115,6 +117,7 @@ export async function runCNSStimulationJob(
         ...p.stimulationContext,
         stimulationId: p.jobId,
         attemptNumber: p.attemptNumber,
+        [CNS_JOB_IDENTITY_CONTEXT_KEY]: { stimulationId: p.jobId, attemptNumber: p.attemptNumber } satisfies TCNSJobIdentity,
     };
 
     let stimulation: ICNSStimulation<any> | undefined;

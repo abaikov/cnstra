@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '../src';
+import { CNS, collateral, neuron } from '../src';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -12,11 +12,11 @@ describe('a hop-limit throw ends the run instead of wedging it', () => {
     // regression fails in seconds instead of stalling the suite.
 
     it('settles when the throw lands in an async continuation', async () => {
-        const start = cnsCollateral<{ hop: number }>();
-        const aToB = cnsCollateral<{ hop: number }>();
-        const bToA = cnsCollateral<{ hop: number }>();
+        const start = collateral<{ hop: number }>();
+        const aToB = collateral<{ hop: number }>();
+        const bToA = collateral<{ hop: number }>();
 
-        const a = cnsNeuron({ aToB })
+        const a = neuron({ aToB })
             .dendrite({
                 collateral: start,
                 response: async (p, axon) => {
@@ -32,7 +32,7 @@ describe('a hop-limit throw ends the run instead of wedging it', () => {
                 },
             });
 
-        const b = cnsNeuron({ bToA }).dendrite({
+        const b = neuron({ bToA }).dendrite({
             collateral: aToB,
             response: async (p, axon) => {
                 await tick();
@@ -55,11 +55,11 @@ describe('a hop-limit throw ends the run instead of wedging it', () => {
         // pump's while loop, so the throw escapes past `pumping = false`. The
         // flag stayed set forever and every later enqueue took the "already
         // pumping" branch.
-        const start = cnsCollateral<{ hop: number }>();
-        const aToB = cnsCollateral<{ hop: number }>();
-        const bToA = cnsCollateral<{ hop: number }>();
+        const start = collateral<{ hop: number }>();
+        const aToB = collateral<{ hop: number }>();
+        const bToA = collateral<{ hop: number }>();
 
-        const a = cnsNeuron({ aToB })
+        const a = neuron({ aToB })
             .dendrite({
                 collateral: start,
                 response: async (p, axon) => {
@@ -75,7 +75,7 @@ describe('a hop-limit throw ends the run instead of wedging it', () => {
                 },
             });
 
-        const b = cnsNeuron({ bToA }).dendrite({
+        const b = neuron({ bToA }).dendrite({
             collateral: aToB,
             response: (p, axon) => axon.bToA.createSignal({ hop: p!.hop + 1 }),
         });
@@ -98,26 +98,26 @@ describe('the outstanding frontier after an abort', () => {
         // Concatenating the two sources handed the broker a resume checkpoint
         // with the whole frontier listed twice - every one of those tasks then
         // ran a second time on the retry.
-        const input = cnsCollateral<{ id: number }>();
-        const mid = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
+        const mid = collateral<{ id: number }>();
         const controller = new AbortController();
 
-        const slow = cnsNeuron({ mid }).dendrite({
+        const slow = neuron({ mid }).dendrite({
             collateral: input,
             response: async (p, axon) => {
                 await new Promise(r => setTimeout(r, 30));
                 return axon.mid.createSignal({ id: p!.id });
             },
         });
-        const leafOne = cnsNeuron({}).dendrite({
+        const leafOne = neuron({}).dendrite({
             collateral: mid,
             response: () => undefined,
         });
-        const leafTwo = cnsNeuron({}).dendrite({
+        const leafTwo = neuron({}).dendrite({
             collateral: mid,
             response: () => undefined,
         });
-        const leafThree = cnsNeuron({}).dendrite({
+        const leafThree = neuron({}).dendrite({
             collateral: mid,
             response: () => undefined,
         });

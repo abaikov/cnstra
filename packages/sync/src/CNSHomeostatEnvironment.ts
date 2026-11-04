@@ -66,6 +66,11 @@ export class CNSHomeostatEnvironment<
         return this.runWriteAndWait(() => homeostatRegulator.invalidate(key));
     }
 
+    public invalidateAll<TKey extends readonly unknown[]>(homeostatReceptor: CNSHomeostatReceptor<TKey, unknown>): Promise<(TCNSHomeostasisState<TKey> | undefined)[]> {
+        const homeostatRegulator = this.homeostatRegulatorOf(homeostatReceptor);
+        return this.runWriteAndWait(() => homeostatRegulator.invalidateAll());
+    }
+
     public invalidateByKeyPrefix<TKey extends readonly unknown[]>(
         homeostatReceptor: CNSHomeostatReceptor<TKey, unknown>,
         keyPrefix: NoInfer<Readonly<Partial<TKey>>>

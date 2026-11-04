@@ -1,0 +1,1 @@
+export const STIMULATION_SNAPSHOT_LIMIT = 200;

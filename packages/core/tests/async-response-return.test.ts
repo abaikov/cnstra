@@ -1,10 +1,10 @@
-import { CNS, cnsCollateral, cnsNeuron } from '../src/index';
+import { CNS, collateral, neuron } from '../src/index';
 
 describe('an async response that returns a signal on one branch and nothing on another', () => {
-    const requested = cnsCollateral<{ skip: boolean; fanOut: boolean }>();
-    const handled = cnsCollateral<{ copy: number }>();
+    const requested = collateral<{ skip: boolean; fanOut: boolean }>();
+    const handled = collateral<{ copy: number }>();
 
-    const handler = cnsNeuron({ handled }).dendrite({
+    const handler = neuron({ handled }).dendrite({
         collateral: requested,
         response: async (payload, axon) => {
             await Promise.resolve();
@@ -15,7 +15,7 @@ describe('an async response that returns a signal on one branch and nothing on a
     });
 
     const received: number[] = [];
-    const sink = cnsNeuron({}).dendrite({
+    const sink = neuron({}).dendrite({
         collateral: handled,
         response: payload => {
             received.push(payload.copy);

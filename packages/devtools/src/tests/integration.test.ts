@@ -1,15 +1,15 @@
 import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
-import { cnsCollateral, cnsNeuronFactory } from '@cnstra/core';
+import { collateral, neuronFactory } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import type { TCNSAppBatchMessageDTO, TCNSAppBatchItemDTO } from '@cnstra/devtools-dto';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeRegistry() {
-    const outputCol = cnsCollateral<{ data: string }>();
-    const inputCol = cnsCollateral<{ query: string }>();
-    const testNeuron = cnsNeuronFactory()
+    const outputCol = collateral<{ data: string }>();
+    const inputCol = collateral<{ query: string }>();
+    const testNeuron = neuronFactory()
         .neuron({ outputCol })
         .bind({ inputCol }, { inputCol: (_, axon) => axon.outputCol.createSignal({ data: 'out' }) });
 

@@ -1,6 +1,6 @@
 import { OIMChannelService, OIMSlotRefetchWheel } from '@oimdb/core';
 import type { TOIMSlot } from '@oimdb/core';
-import { cnsRunAll, createCNSHomeostatEnvironmentOptions } from '@cnstra/sync';
+import { runAll, createCNSHomeostatEnvironmentOptions } from '@cnstra/sync';
 import { CNSOIMDBHomeostatCorrectionRepository } from '../CNSOIMDBHomeostatCorrectionRepository';
 import { CNSOIMDBHomeostatEnvironment } from '../CNSOIMDBHomeostatEnvironment';
 import { CNSOIMDBHomeostatFiringPolicy } from '../CNSOIMDBHomeostatFiringPolicy';
@@ -26,7 +26,7 @@ export function createCNSOIMDBHomeostatEnvironment(options: TCNSOIMDBHomeostatEn
                     dueRefetches.push(refetch);
                 }
                 try {
-                    options.cns.batch(() => cnsRunAll(dueRefetches));
+                    options.cns.batch(() => runAll(dueRefetches));
                 } finally {
                     if (refetchBySlot.size === 0) slotRefetchWheel.cancelAllSlots();
                 }

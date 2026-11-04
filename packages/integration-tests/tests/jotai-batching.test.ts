@@ -1,5 +1,5 @@
 import { atom, createStore } from 'jotai';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 /**
  * Verifies the "Batching state managers" recipe against real Jotai.
@@ -40,17 +40,17 @@ describe('Jotai driven by onDrain', () => {
         const viewAtom = atom(get => `${get(countAtom)}:${get(labelAtom)}`);
         const store = createStore();
 
-        const start = cnsCollateral<number>();
-        const second = cnsCollateral<number>();
+        const start = collateral<number>();
+        const second = collateral<number>();
 
-        const n1 = cnsNeuron({ second }).dendrite({
+        const n1 = neuron({ second }).dendrite({
             collateral: start,
             response: (_p, axon) => {
                 store.set(countAtom, 1);
                 return axon.second.createSignal(1);
             },
         });
-        const n2 = cnsNeuron({}).dendrite({
+        const n2 = neuron({}).dendrite({
             collateral: second,
             response: () => {
                 store.set(labelAtom, 'done');
@@ -87,10 +87,10 @@ describe('Jotai driven by onDrain', () => {
         );
         const store = createStore();
 
-        const click = cnsCollateral<number>();
-        const done = cnsCollateral<number>();
+        const click = collateral<number>();
+        const done = collateral<number>();
 
-        const loader = cnsNeuron({ done }).dendrite({
+        const loader = neuron({ done }).dendrite({
             collateral: click,
             response: async (_p, axon) => {
                 store.set(loadingAtom, true); // optimistic, before yielding
@@ -98,7 +98,7 @@ describe('Jotai driven by onDrain', () => {
                 return axon.done.createSignal(1);
             },
         });
-        const finish = cnsNeuron({}).dendrite({
+        const finish = neuron({}).dendrite({
             collateral: done,
             response: () => {
                 store.set(loadingAtom, false);
@@ -151,17 +151,17 @@ describe('Jotai driven by onDrain', () => {
         const store = createStore();
         const readings: number[] = [];
 
-        const a = cnsCollateral<number>();
-        const b = cnsCollateral<number>();
+        const a = collateral<number>();
+        const b = collateral<number>();
 
-        const writer = cnsNeuron({ b }).dendrite({
+        const writer = neuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => {
                 store.set(nAtom, 42);
                 return axon.b.createSignal(1);
             },
         });
-        const reader = cnsNeuron({}).dendrite({
+        const reader = neuron({}).dendrite({
             collateral: b,
             response: () => {
                 readings.push(store.get(nAtom));

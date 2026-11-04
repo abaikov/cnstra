@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/mcp",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "MCP server for CNStra — gives Claude and Cursor instant understanding of your neuron graph",
   "repository": {
     "type": "git",
@@ -43,12 +43,12 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "peerDependencies": {
-    "@cnstra/core": "^3.0.0",
-    "@cnstra/persist": "^0.2.0"
+    "@cnstra/core": "^3.2.2",
+    "@cnstra/persist": "^0.2.8"
   },
   "devDependencies": {
-    "@cnstra/core": "^3.0.0",
-    "@cnstra/persist": "^0.2.0",
+    "@cnstra/core": "^3.2.2",
+    "@cnstra/persist": "^0.2.8",
     "@types/node": "22.7.4",
     "tsup": "8.5.1",
     "typescript": "5.8.3"

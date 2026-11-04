@@ -25,12 +25,12 @@ construct `CNSDevTools` with a WebSocket transport where you would have called
 The examples assume an app with these two modules:
 
 ```ts file=src/cns.ts
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 export type TOrder = { id: string };
-export const orderCreated = cnsCollateral<TOrder>();
-export const orderAccepted = cnsCollateral<TOrder>();
-export const orders = cnsNeuron({ orderAccepted }).dendrite({
+export const orderCreated = collateral<TOrder>();
+export const orderAccepted = collateral<TOrder>();
+export const orders = neuron({ orderAccepted }).dendrite({
     collateral: orderCreated,
     response: (order, axon) => axon.orderAccepted.createSignal(order),
 });
@@ -82,7 +82,7 @@ const server = app.listen(3000);
 // who can open it. Gate it, do not ship it on by accident.
 if (process.env.CNSTRA_DEVTOOLS === '1') {
     const { startCNSDevTools } = await import('@cnstra/devtools-server');
-    const devtools = await startCNSDevTools(cns, registry, {
+    const devtools = await startCNSDevTools({ cns, registry }, {
         appId: 'orders-api',
     });
     console.log(`DevTools: ${devtools.url}`);
@@ -137,7 +137,7 @@ export class CnsModule {
     async onModuleInit(): Promise<void> {
         if (process.env.CNSTRA_DEVTOOLS !== '1') return;
         const { startCNSDevTools } = await import('@cnstra/devtools-server');
-        this.devtools = await startCNSDevTools(this.cns, this.registry, {
+        this.devtools = await startCNSDevTools({ cns: this.cns, registry: this.registry }, {
             appId: 'orders-api',
         });
     }
@@ -182,19 +182,21 @@ await fastify.listen({ port: 3000 });
 
 if (process.env.CNSTRA_DEVTOOLS === '1') {
     const { startCNSDevTools } = await import('@cnstra/devtools-server');
-    await startCNSDevTools(cns, registry, { appId: 'orders-api' });
+    await startCNSDevTools({ cns, registry }, { appId: 'orders-api' });
 }
 ```
 
-There is no plugin or middleware to register: nothing about DevTools sits on your
-request path, so it cannot slow a route down or leak into a response.
+Nothing about DevTools sits on your request path, so it cannot slow a route down or
+leak into a response. To serve the panel from your own server instead, under a path
+and behind your auth, see [Admin](./admin.md).
 
 ## Keeping run history across restarts
 
 By default the panel's store is in-memory and dies with the process — fine for
 development, useless the moment you restart while reading an incident. Pass a
-Postgres store, and the same instance you give a queue worker as its `observe`
-store, so jobs and HTTP-triggered runs land in one place:
+Postgres store. The panel records every run of this process into it, jobs and
+HTTP-triggered runs alike, so a worker in the same process needs no `observe` of
+its own; an admin in another process reads the `observe` store the workers write to:
 
 ```ts
 import { Pool } from 'pg';
@@ -204,7 +206,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 await CNSPostgresStimulationSchema.migrate(pool);   // once, from a place you control
 const runs = new CNSPostgresStimulationRepository({ pool });
 
-await startCNSDevTools(cns, registry, { stimulationRepository: runs });
+await startCNSDevTools({ cns, registry }, { stimulationRepository: runs });
 ```
 
 See [Stimulations](./stimulations.md) for what the store holds and
@@ -212,15 +214,15 @@ See [Stimulations](./stimulations.md) for what the store holds and
 
 ## Retry through a queue, and hiding an action
 
-`startCNSDevTools` takes the same two knobs as the server it builds, so you do not
+`startCNSDevTools` takes the same knobs as the server it builds, so you do not
 have to drop to assembling one by hand as soon as you need them:
 
 ```ts
 import { createCNSBullActions } from '@cnstra/bullmq';
 
-await startCNSDevTools(cns, registry, {
+await startCNSDevTools({ cns, registry }, {
     appId: 'orders-api',
-    // Retry goes through the broker instead of the app socket — which is what
+    // Retry goes through BullMQ instead of the in-process link — which is what
     // stops one click running on every replica.
     actions: [createCNSBullActions(ordersQueue)],
     // This deployment never overwrites a run's record in place.
@@ -228,15 +230,20 @@ await startCNSDevTools(cns, registry, {
 });
 ```
 
+A worker passed as the first argument brings its own link instead: a pg-boss
+worker always, a BullMQ worker when its `queue` is a `Queue` instance rather than a name.
+
 Both are explained in [Deployments](./deployments.md#retry-with-replicas) and
 [Retry & clone](./stimulations.md#retry--clone).
 
 ## What the panel needs from your network
 
-**A WebSocket, in both directions, by default.** The panel opens a `WebSocket` to
-the server, and the app connects with `@cnstra/devtools-transport-ws`. All
-protocol traffic is on the socket; the HTTP port otherwise serves the panel's
-assets.
+**For a standalone server, a WebSocket in both directions by default.** The panel
+opens a `WebSocket` to the server, and the app connects with
+`@cnstra/devtools-transport-ws`. All protocol traffic is on the socket; the HTTP
+port otherwise serves the panel's assets. `startCNSDevTools` is the other way
+round: the app is linked in-process, and the panel polls over HTTP unless you pass
+`webSocket`.
 
 That matters when something between you and the server does not pass WebSocket
 upgrades. Typical culprits: an ingress or load balancer with upgrades off, a

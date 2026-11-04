@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuronFactory } from '@cnstra/core';
+import { CNS, collateral, neuronFactory } from '@cnstra/core';
 import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { CNSInMemoryJobRepository } from '@cnstra/jobs';
 import { CNSJobs } from '@cnstra/jobs-adapter';
@@ -11,6 +11,7 @@ import {
 // DevTools client is loaded dynamically when enabled
 import { WebSocket as NodeWebSocket, WebSocketServer } from 'ws';
 import { createServer } from 'http';
+import { CNS_DEVTOOLS_SYNC_PATH } from '@cnstra/devtools-dto';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -38,66 +39,66 @@ const SEED_APP_ID = 'bigdata-app';
 const SEED_CNS_ID = 'bigdata:core';
 
 // E-commerce domain collaterals
-const userLogin = cnsCollateral<{ email: string; password: string }>();
-const userAuthenticated = cnsCollateral<{
+const userLogin = collateral<{ email: string; password: string }>();
+const userAuthenticated = collateral<{
     userId: string;
     token: string;
     email: string;
 }>();
-const searchProducts = cnsCollateral<{
+const searchProducts = collateral<{
     query: string;
     category?: string;
     userId?: string;
 }>();
-const productsFound = cnsCollateral<{
+const productsFound = collateral<{
     products: Product[];
     query: string;
     totalCount: number;
 }>();
-const addToCart = cnsCollateral<{
+const addToCart = collateral<{
     userId: string;
     productId: string;
     quantity: number;
 }>();
-const cartUpdated = cnsCollateral<{
+const cartUpdated = collateral<{
     userId: string;
     cartItems: CartItem[];
     total: number;
 }>();
-const checkout = cnsCollateral<{
+const checkout = collateral<{
     userId: string;
     cartItems: CartItem[];
     paymentMethod: string;
 }>();
-const orderCreated = cnsCollateral<{
+const orderCreated = collateral<{
     orderId: string;
     userId: string;
     items: CartItem[];
     total: number;
 }>();
-const processPayment = cnsCollateral<{
+const processPayment = collateral<{
     orderId: string;
     amount: number;
     paymentMethod: string;
 }>();
-const paymentProcessed = cnsCollateral<{
+const paymentProcessed = collateral<{
     orderId: string;
     status: 'success' | 'failed';
     transactionId?: string;
 }>();
-const sendNotification = cnsCollateral<{
+const sendNotification = collateral<{
     userId: string;
     type: string;
     message: string;
     email?: string;
 }>();
-const notificationSent = cnsCollateral<{
+const notificationSent = collateral<{
     userId: string;
     type: string;
     status: 'sent' | 'failed';
 }>();
-const inventoryCheck = cnsCollateral<{ productId: string; quantity: number }>();
-const inventoryUpdated = cnsCollateral<{
+const inventoryCheck = collateral<{ productId: string; quantity: number }>();
+const inventoryUpdated = collateral<{
     productId: string;
     available: number;
     reserved: number;
@@ -217,7 +218,7 @@ const sampleUsers: User[] = [
 sampleUsers.forEach(user => users.set(user.id, user));
 
 // Authentication Service
-const authNeuron = cnsNeuronFactory()
+const authNeuron = neuronFactory()
     .neuron({
         userAuthenticated,
     })
@@ -255,7 +256,7 @@ const authNeuron = cnsNeuronFactory()
     );
 
 // Product Search Service
-const searchNeuron = cnsNeuronFactory()
+const searchNeuron = neuronFactory()
     .neuron({
         productsFound,
     })
@@ -296,7 +297,7 @@ const searchNeuron = cnsNeuronFactory()
     );
 
 // Shopping Cart Service
-const cartNeuron = cnsNeuronFactory()
+const cartNeuron = neuronFactory()
     .neuron({
         cartUpdated,
         inventoryCheck,
@@ -356,7 +357,7 @@ const cartNeuron = cnsNeuronFactory()
     );
 
 // Order Service
-const orderNeuron = cnsNeuronFactory()
+const orderNeuron = neuronFactory()
     .neuron({
         orderCreated,
         processPayment,
@@ -405,7 +406,7 @@ const orderNeuron = cnsNeuronFactory()
     );
 
 // Payment Service
-const paymentNeuron = cnsNeuronFactory()
+const paymentNeuron = neuronFactory()
     .neuron({
         paymentProcessed,
     })
@@ -443,7 +444,7 @@ const paymentNeuron = cnsNeuronFactory()
     );
 
 // Notification Service
-const notificationNeuron = cnsNeuronFactory()
+const notificationNeuron = neuronFactory()
     .neuron({
         notificationSent,
     })
@@ -469,7 +470,7 @@ const notificationNeuron = cnsNeuronFactory()
     );
 
 // Inventory Service
-const inventoryNeuron = cnsNeuronFactory()
+const inventoryNeuron = neuronFactory()
     .neuron({
         inventoryUpdated,
     })
@@ -521,7 +522,7 @@ const domainEvents = {
     inventoryUpdated,
 };
 
-const analyticsNeuron = cnsNeuronFactory()
+const analyticsNeuron = neuronFactory()
     .neuron({})
     .bind(domainEvents, {
         userAuthenticated: ({ userId }) => console.log(`📊 metric user_login_success for user ${userId}`),
@@ -533,7 +534,7 @@ const analyticsNeuron = cnsNeuronFactory()
         inventoryUpdated: ({ productId, available }) => console.log(`📊 metric inventory ${productId}: ${available} available`),
     });
 
-const auditNeuron = cnsNeuronFactory()
+const auditNeuron = neuronFactory()
     .neuron({})
     .bind(domainEvents, {
         userAuthenticated: payload => console.log(`📋 Audit user_login`, JSON.stringify({ userId: payload.userId, email: payload.email })),
@@ -549,7 +550,24 @@ const auditNeuron = cnsNeuronFactory()
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const panelUIDir = join(__dirname, '..', '..', 'devtools-panel-ui', 'dist');
 
-const httpServer = createServer((req, res) => {
+const httpServer = createServer(async (req, res) => {
+    if (req.url?.startsWith(CNS_DEVTOOLS_SYNC_PATH)) {
+        res.setHeader('access-control-allow-origin', '*');
+        if (req.method !== 'GET') {
+            res.writeHead(405);
+            return res.end();
+        }
+        if (!devToolsServer) {
+            res.writeHead(503);
+            return res.end();
+        }
+        const answer = await devToolsServer.homeostatTransductionEndpoint.respond(
+            req.url.slice(CNS_DEVTOOLS_SYNC_PATH.length).replace(/^\?/, ''),
+            req.headers.accept
+        );
+        res.writeHead(answer.status, answer.headers);
+        return res.end(answer.body);
+    }
     // Serve DevTools Panel UI static files
     let filePath = join(
         panelUIDir,
@@ -687,7 +705,7 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
             );
             const buckets = generateBigStimulations(topo, SEED_CNS_ID);
             stimulationRepository = new SeedBigStimulationRepository(buckets);
-            // Inject the synthetic app + topology so topology.query returns hundreds
+            // Inject the synthetic app + topology so the topology sync key answers hundreds
             // of neurons/collaterals and the entity lists/typeaheads populate.
             repository.saveTopology(topo as any);
             console.log(
@@ -726,7 +744,7 @@ const messageBuffer: Array<{ ws: any; message: any }> = [];
             repository,
             stimulationRepository,
             [jobsActionLink],
-            {},
+            SEED_BIG ? { defaultWindowMs: 0 } : {},
             scheduledStimulationReader
         );
         console.log('🔧 DevTools server core is initialized');
@@ -786,32 +804,6 @@ async function processMessage(ws: any, message: any): Promise<void> {
             });
         }
 
-        if (message?.type === 'devtools-client-connect') {
-            // Register this connection as a DevTools client to receive live broadcasts
-            try {
-                devToolsServer.addClient(ws as any);
-            } catch {}
-            const apps = await devToolsServer.getActiveApps();
-            console.log(
-                '📋 Sending apps to client:',
-                JSON.stringify(apps, null, 2)
-            );
-            ws.send(
-                JSON.stringify({
-                    type: 'apps:active',
-                    apps,
-                })
-            );
-            // also send cached topology (like REST bootstrap over WS)
-            const topo = await devToolsServer.handleMessage(
-                ws as any,
-                {
-                    type: 'apps:get-topology',
-                } as any
-            );
-            if (topo) ws.send(JSON.stringify(topo));
-            return;
-        }
     } else {
         // Fallback minimal behavior if server packages are not installed
         if (message?.type === 'batch' && Array.isArray(message.items)) {

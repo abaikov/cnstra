@@ -99,7 +99,6 @@ describe('retry routing + attempt numbering', () => {
             store
         );
     });
-    afterEach(() => server.stop());
 
     async function connectApp(id = 'app') {
         const appWs = makeWs(id);
@@ -253,6 +252,5 @@ describe('retry routing + attempt numbering', () => {
         expect(ui.ofType('stimulation.retry.rejected')?.reason).toMatch(
             /failed state/
         );
-        throwing.stop();
     });
 });

@@ -18,7 +18,7 @@ let nextNeuronIndex = 0;
 let nextAfferentPathIndex = 0;
 let nextModalityIndex = 0;
 
-export const cnsCollateral = <TPayload = undefined>() =>
+export const collateral = <TPayload = undefined>() =>
     new CNSCollateral<TPayload>();
 
 // Helper type to extract payload union from an array of collaterals
@@ -64,6 +64,13 @@ type InterNeuronAPI<
         }
     ) => InterNeuronAPI<TAxonType, TGlobal>;
     dendrite: {
+        (
+            s: readonly TCNSDendrite<
+                ICNSCollateral<unknown>,
+                TAxonType,
+                TGlobal
+            >[]
+        ): InterNeuronAPI<TAxonType, TGlobal>;
         <TSenderCollateral extends ICNSCollateral<unknown>>(s: {
             collateral: TSenderCollateral;
             response: (
@@ -179,7 +186,7 @@ type ExtractResultFromOutput<T> = T extends (
     : never;
 
 // Concrete builder
-export const cnsNeuron = <
+export const neuron = <
     TProvidedAxon extends Record<string, ICNSCollateral<unknown>>,
     TGlobal = unknown
 >(
@@ -229,6 +236,10 @@ export const cnsNeuron = <
         maxDuration: undefined,
         dendrites,
         dendrite(s: any) {
+            if (Array.isArray(s)) {
+                for (const piece of s) api.dendrite(piece);
+                return api;
+            }
             // Check if it's a shorthand format with multiple collaterals
             if (
                 'collateral' in s &&
@@ -337,7 +348,7 @@ export const cnsNeuron = <
  * @example
  * // src/neurons/factory.ts — ctx shape baked once
  * type TGlobal = { store: Store; now(): number; newId(): string };
- * export const { neuron } = cnsNeuronFactory().withGlobal<TGlobal>();
+ * export const { neuron } = neuronFactory().withGlobal<TGlobal>();
  *
  * // any neuron file — plain value, reaches deps via ctx.global
  * export const taskNeuron = neuron({ taskCreated }).bind({ createTask }, {
@@ -353,21 +364,21 @@ export type TCNSNeuronFactory<TExt = unknown> = {
     ) => InterNeuronAPI<TCNSAxon<TProvidedAxon>, TExt>;
 };
 
-export const cnsNeuronFactory = <TExt = unknown>(): TCNSNeuronFactory<TExt> => {
+export const neuronFactory = <TExt = unknown>(): TCNSNeuronFactory<TExt> => {
     // Single stateless object reused across every layer call: `.withX()` only
     // re-types it, so there is nothing to allocate or carry at runtime.
     const factory: TCNSNeuronFactory<TExt> = {
         withGlobal: () => factory as unknown as TCNSNeuronFactory<any>,
-        neuron: axon => cnsNeuron(axon) as any,
+        neuron: axon => neuron(axon) as any,
     };
     return factory;
 };
 
-/** Sugar: `cnsNeuronFactory().withGlobal<T>()`. */
+/** Sugar: `neuronFactory().withGlobal<T>()`. */
 export const withCNSGlobal = <T>(): TCNSNeuronFactory<{ global: T }> =>
-    cnsNeuronFactory<{ global: T }>();
+    neuronFactory<{ global: T }>();
 
-export const cnsAfferentPath = (
+export const afferentPath = (
     parentAfferentPath?: TCNSAfferentPath
 ): TCNSAfferentPath => {
     return {
@@ -378,7 +389,7 @@ export const cnsAfferentPath = (
     };
 };
 
-export const cnsModality = (
+export const modality = (
     afferentPaths: Record<string | number, TCNSAfferentPath>
 ): TCNSModality => {
     return {

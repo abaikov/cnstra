@@ -31,7 +31,7 @@ npm install @cnstra/persist-otel @opentelemetry/api
 ## Traces
 
 ```ts setup
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import type { CNS } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry, ICNSStimulationWriter } from '@cnstra/persist';
 import type { TCNSSignalJSON } from '@cnstra/persist-dto';
@@ -49,8 +49,8 @@ declare const batchId: string;
 declare function chargeCard(order: { orderId: string }): Promise<void>;
 
 const connection = { host: '127.0.0.1', port: 6379 };
-const orderPaid = cnsCollateral<{ orderId: string }>();
-const charged = cnsCollateral<{ orderId: string }>();
+const orderPaid = collateral<{ orderId: string }>();
+const charged = collateral<{ orderId: string }>();
 const input = orderPaid;
 const order = { id: '42' };
 const payload = { orderId: order.id };
@@ -122,7 +122,7 @@ import type { Context } from '@opentelemetry/api';
 import { CNS_OTEL_CONTEXT } from '@cnstra/persist-otel';
 import type { TCNSOtelCompartment } from '@cnstra/persist-otel';
 
-const charge = cnsNeuron({ charged }).dendrite({
+const charge = neuron({ charged }).dendrite({
     collateral: orderPaid,
     response: (p, axon, c) =>
         context.with(
@@ -275,7 +275,7 @@ import {
     CNSInMemoryStimulationRepository,
 } from '@cnstra/persist';
 import { CNSOtelStimulationWriter, attachCNSOtelMetrics } from '@cnstra/persist-otel';
-import { createCNSWorker, enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/bullmq';
+import { createCNSWorker, enqueueCNSStimulation, stimulationJob } from '@cnstra/bullmq';
 
 // One persistor, several sinks: a store you can read back, and the tracer.
 // Put the real store first — `getStimulation` asks each in turn.
@@ -295,7 +295,7 @@ const worker = createCNSWorker({
     resume: {},
 });
 
-await enqueueCNSStimulation(queue, cnsStimulationJob(registry, input, payload), {
+await enqueueCNSStimulation(queue, stimulationJob(registry, input, payload), {
     jobId: `order-${order.id}`,
     attempts: 3,
     backoff: { type: 'fixed', delay: 500 },

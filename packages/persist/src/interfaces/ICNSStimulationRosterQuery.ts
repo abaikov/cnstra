@@ -20,7 +20,7 @@ export interface ICNSStimulationRosterQuery {
     /** One newest-first keyset page of roster rows for the filter. */
     queryRoster(
         filter: TCNSStimulationRosterFilter,
-        opts: { cursor?: string; limit: number }
+        opts: { cursor?: string; sinceCursor?: string; limit: number }
     ): Promise<TCNSStimulationRosterPage>;
     /**
      * Aggregate counts over the WHOLE filtered set (not just a page).

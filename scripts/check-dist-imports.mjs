@@ -32,6 +32,7 @@ export const entriesOf = manifest => {
         if (subpath.includes('*') || subpath === './package.json') continue;
         const specifier = subpath === '.' ? manifest.name : `${manifest.name}/${subpath.slice(2)}`;
         if (JEST_ONLY.has(specifier)) continue;
+        if (typeof target === 'string' && target.endsWith('.css')) continue;
         const conditions = conditionsOf(target);
         for (const mode of conditions.length ? conditions : [moduleKind]) entries.push({ specifier, mode });
     }

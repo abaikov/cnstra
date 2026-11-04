@@ -37,7 +37,7 @@ On a queue worker (`@cnstra/pg-boss` / `@cnstra/bullmq`) these are separate opti
 either, both, or neither:
 
 ```ts setup
-import { CNS, cnsCollateral } from '@cnstra/core';
+import { CNS, collateral } from '@cnstra/core';
 import type { TCNSNeuron } from '@cnstra/types';
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 import type { CNSPersistOptionsRegistry, ICNSProgressRepository, ICNSStimulationWriter } from '@cnstra/persist';
@@ -45,7 +45,7 @@ import type { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres'
 import { createCNSWorker } from '@cnstra/pg-boss';
 import type { ICNSPgBossLike } from '@cnstra/pg-boss';
 
-const entry = cnsCollateral<unknown>();
+const entry = collateral<unknown>();
 
 declare const neurons: TCNSNeuron[];
 declare const boss: ICNSPgBossLike;

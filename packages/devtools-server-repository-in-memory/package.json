@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-server-repository-in-memory",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "In-memory repository for CNStra DevTools server",
   "repository": {
     "type": "git",
@@ -37,14 +37,14 @@
     "dist"
   ],
   "dependencies": {
-    "@cnstra/devtools-dto": "^3.0.0"
+    "@cnstra/devtools-dto": "^3.2.1"
   },
   "peerDependencies": {
-    "@cnstra/devtools": "^3.0.0",
+    "@cnstra/devtools": "^3.1.1",
     "@cnstra/devtools-server": "^3.0.0"
   },
   "devDependencies": {
-    "@cnstra/devtools": "^3.0.0",
+    "@cnstra/devtools": "^3.1.1",
     "@cnstra/devtools-server": "^3.0.0",
     "@types/jest": "^29.5.5",
     "jest": "^29.7.0",

@@ -1,0 +1,1 @@
+export const STIMULATION_HEAD_LIMIT = 200;

@@ -14,25 +14,25 @@ Short‑lived saga (single stimulation)
 - Each neuron emits only its own axon collaterals (signal ownership).
 
 ```ts file=saga.ts
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 declare const inventory: { reserve(id: string): Promise<boolean>; release(id: string): Promise<void> };
 declare const payments: { charge(id: string): Promise<boolean> };
 
 // Domain collaterals
 export const order = {
-  created: cnsCollateral<{ id: string }>(),
-  reserved: cnsCollateral<{ id: string }>(),
-  charged: cnsCollateral<{ id: string }>(),
-  confirmed: cnsCollateral<{ id: string }>(),
-  reservationFailed: cnsCollateral<{ id: string; reason: string }>(),
-  paymentFailed: cnsCollateral<{ id: string; reason: string }>(),
-  compensated: cnsCollateral<{ id: string }>(),
-  paidExternally: cnsCollateral<{ id: string }>(),
+  created: collateral<{ id: string }>(),
+  reserved: collateral<{ id: string }>(),
+  charged: collateral<{ id: string }>(),
+  confirmed: collateral<{ id: string }>(),
+  reservationFailed: collateral<{ id: string; reason: string }>(),
+  paymentFailed: collateral<{ id: string; reason: string }>(),
+  compensated: collateral<{ id: string }>(),
+  paidExternally: collateral<{ id: string }>(),
 };
 
 // Reserve inventory → emits reserved/reservationFailed (owned by reservation)
-export const reservation = cnsNeuron({
+export const reservation = neuron({
   reserved: order.reserved,
   reservationFailed: order.reservationFailed,
 }).dendrite({
@@ -46,7 +46,7 @@ export const reservation = cnsNeuron({
 });
 
 // Charge payment → emits charged/paymentFailed; compensates its own failure (releases stock)
-export const payment = cnsNeuron({
+export const payment = neuron({
   charged: order.charged,
   paymentFailed: order.paymentFailed,
   compensated: order.compensated,
@@ -69,7 +69,7 @@ export const payment = cnsNeuron({
   });
 
 // Confirm order → emits confirmed, whether the charge or an external payment paid it
-export const confirmation = cnsNeuron({
+export const confirmation = neuron({
   confirmed: order.confirmed,
 })
   .dendrite({
@@ -91,15 +91,15 @@ Long‑lived saga (multiple stimulations over time)
 - Use a small bridge neuron to map external events into domain collaterals (ownership preserved).
 
 ```ts file=saga-bridge.ts
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { order, reservation, payment, confirmation } from './saga';
 
 declare const queue: { on(event: string, handler: (message: { orderId: string }) => Promise<void>): void };
 
-const paymentReceivedExternal = cnsCollateral<{ id: string }>();
+const paymentReceivedExternal = collateral<{ id: string }>();
 
 // Bridge: converts the external event into its own domain collateral "paidExternally"
-export const paymentBridge = cnsNeuron({ paidExternally: order.paidExternally })
+export const paymentBridge = neuron({ paidExternally: order.paidExternally })
   .dendrite({
     collateral: paymentReceivedExternal,
     response: (p, axon) => axon.paidExternally.createSignal({ id: p.id }),
@@ -117,6 +117,6 @@ queue.on('payment_received', async (m) => {
 ```
 
 Notes
-- No function-passing neurons: use `cnsNeuron(axon).dendrite({ collateral, response })`.
+- No function-passing neurons: use `neuron(axon).dendrite({ collateral, response })`.
 - Ownership: a collateral belongs to exactly one neuron's axon — `new CNS` throws when two neurons hold the same one. Other neurons listen via dendrites; a listener that joins several sources has one dendrite per source.
 - Compensation is modeled as explicit branches; cancellation via `AbortSignal` if needed.

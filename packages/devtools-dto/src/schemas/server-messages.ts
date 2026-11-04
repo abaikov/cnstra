@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { CNSAppDTOSchema, CNSCollateralDTOSchema, CNSDendriteDTOSchema, CNSNeuronDTOSchema } from './entities';
 import type {
     TCNSStimulationRetryAccepted,
     TCNSStimulationRetryRejected,
@@ -13,34 +12,6 @@ import type {
 
 type Extends<A, _B extends A> = true;
 import { CNSTopologyMessageDTOSchema } from './app-messages';
-import { CNSStimulationsSnapshotResultSchema } from './stimulations-query';
-
-// ─── Broadcasts (server → all connected UI clients) ───────────────────────────
-
-export const CNSAppConnectedBroadcastDTOSchema = z.object({
-    type: z.literal('app.connected'),
-    app: CNSAppDTOSchema,
-    topology: z.object({
-        cnsId: z.string(),
-        neurons: z.array(CNSNeuronDTOSchema),
-        collaterals: z.array(CNSCollateralDTOSchema),
-        dendrites: z.array(CNSDendriteDTOSchema),
-    }),
-});
-
-export const CNSAppDisconnectedBroadcastDTOSchema = z.object({
-    type: z.literal('app.disconnected'),
-    appId: z.string(),
-});
-
-export const CNSServerMetricsBroadcastDTOSchema = z.object({
-    type: z.literal('server.metrics'),
-    timestamp: z.number(),
-    rssMB: z.number(),
-    heapUsedMB: z.number(),
-    heapTotalMB: z.number(),
-    cpuPercent: z.number(),
-});
 
 // ─── Query results (server → requesting UI client, matched by requestId) ──────
 
@@ -75,22 +46,12 @@ export const CNSUiConfigDTOSchema = z.object({
     defaultWindowMs: z.number().nonnegative().optional(),
 });
 
-export const CNSAppsResultDTOSchema = z.object({
-    type: z.literal('apps.result'),
+export const CNSSyncResponseDTOSchema = z.object({
+    type: z.literal('sync.response'),
     requestId: z.string(),
-    items: z.array(CNSAppDTOSchema),
-});
-
-export const CNSTopologyResultDTOSchema = z.object({
-    type: z.literal('topology.result'),
-    requestId: z.string(),
-    snapshots: z.array(z.object({
-        cnsId: z.string(),
-        appId: z.string(),
-        neurons: z.array(CNSNeuronDTOSchema),
-        collaterals: z.array(CNSCollateralDTOSchema),
-        dendrites: z.array(CNSDendriteDTOSchema),
-    })),
+    status: z.number(),
+    headers: z.record(z.string(), z.string()),
+    body: z.string(),
 });
 
 // ─── Resumable-run action results (matched by requestId); types in @cnstra/persist-dto ──
@@ -157,12 +118,8 @@ type _LR = Extends<TCNSStimulationLaunchRejected, z.infer<typeof CNSStimulationL
 
 export const CNSServerMessageDTOSchema = z.discriminatedUnion('type', [
     CNSUiConfigDTOSchema,
-    CNSAppConnectedBroadcastDTOSchema,
-    CNSAppDisconnectedBroadcastDTOSchema,
-    CNSServerMetricsBroadcastDTOSchema,
+    CNSSyncResponseDTOSchema,
     CNSTopologyMessageDTOSchema,
-    CNSAppsResultDTOSchema,
-    CNSTopologyResultDTOSchema,
     CNSStimulationRetryAcceptedDTOSchema,
     CNSStimulationRetryRejectedDTOSchema,
     CNSStimulationCloneAcceptedDTOSchema,
@@ -171,7 +128,6 @@ export const CNSServerMessageDTOSchema = z.discriminatedUnion('type', [
     CNSStimulationCommandRejectedDTOSchema,
     CNSStimulationLaunchAcceptedDTOSchema,
     CNSStimulationLaunchRejectedDTOSchema,
-    CNSStimulationsSnapshotResultSchema,
 ]);
 
 export type TCNSServerMessageDTO = z.infer<typeof CNSServerMessageDTOSchema>;

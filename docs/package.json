@@ -20,8 +20,8 @@
   },
   "devDependencies": {
     "@oimdb/browser": "^1.3.0",
-    "@oimdb/core": "^4.11.0",
-    "@oimdb/react": "^3.4.0",
+    "@oimdb/core": "^4.13.0",
+    "@oimdb/react": "^4.0.0",
     "@oimdb/redux-adapter": "^3.3.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

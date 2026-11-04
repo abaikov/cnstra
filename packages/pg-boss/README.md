@@ -21,12 +21,12 @@ npm install @cnstra/pg-boss @cnstra/core pg-boss
 
 ```ts file=worker.ts
 import { PgBoss } from 'pg-boss';
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { CNSFactory } from '@cnstra/factory';
 import { createCNSWorker } from '@cnstra/pg-boss';
 
-export const importUser = cnsCollateral<{ userId: string }>();
-const importUserNeuron = cnsNeuron({}).dendrite({ collateral: importUser, response: async () => {} });
+export const importUser = collateral<{ userId: string }>();
+const importUserNeuron = neuron({}).dendrite({ collateral: importUser, response: async () => {} });
 
 export const { cns, registry } = CNSFactory.create({ importUserNeuron, /* … */ });
 
@@ -53,11 +53,11 @@ error propagates so **pg-boss applies its retry/backoff policy**.
 ## Producer
 
 ```ts file=producer.ts
-import { enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/pg-boss';
+import { enqueueCNSStimulation, stimulationJob } from '@cnstra/pg-boss';
 import { boss, importUser, registry } from './worker';
 
 // Type-safe: throws if the collateral isn't registered
-const job = cnsStimulationJob(registry, importUser, { userId: '42' });
+const job = stimulationJob(registry, importUser, { userId: '42' });
 
 await enqueueCNSStimulation(boss, 'cns', job, {
   retryLimit: 5,

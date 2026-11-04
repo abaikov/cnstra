@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 import { CNSStimulationPersistor } from '.././CNSStimulationPersistor';
 import type { ICNSStimulationWriter } from '.././interfaces/ICNSStimulationRepository';
@@ -15,24 +15,24 @@ const ENTRY = [{ collateralName: 'input', payload: { id: 1 } }];
 
 /** input → a → b → c → d: four hops, so the barrier checkpoints four times. */
 const buildFlow = () => {
-    const input = cnsCollateral<{ n: number }>();
-    const a = cnsCollateral<{ n: number }>();
-    const b = cnsCollateral<{ n: number }>();
-    const c = cnsCollateral<{ n: number }>();
+    const input = collateral<{ n: number }>();
+    const a = collateral<{ n: number }>();
+    const b = collateral<{ n: number }>();
+    const c = collateral<{ n: number }>();
 
-    const first = cnsNeuron({ a }).dendrite({
+    const first = neuron({ a }).dendrite({
         collateral: input,
         response: (p, axon) => axon.a.createSignal({ n: p!.n + 1 }),
     });
-    const second = cnsNeuron({ b }).dendrite({
+    const second = neuron({ b }).dendrite({
         collateral: a,
         response: (p, axon) => axon.b.createSignal({ n: p!.n + 1 }),
     });
-    const third = cnsNeuron({ c }).dendrite({
+    const third = neuron({ c }).dendrite({
         collateral: b,
         response: (p, axon) => axon.c.createSignal({ n: p!.n + 1 }),
     });
-    const fourth = cnsNeuron({}).dendrite({
+    const fourth = neuron({}).dendrite({
         collateral: c,
         response: () => undefined,
     });

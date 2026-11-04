@@ -57,7 +57,7 @@ so **BullMQ applies its retry/backoff** — and, with `resume`, the retry picks 
 ```ts setup
 import { Worker } from 'bullmq';
 import { createCNSWorker } from '@cnstra/bullmq';
-import { CNS, cnsAfferentPath, cnsCollateral, cnsModality } from '@cnstra/core';
+import { CNS, afferentPath, collateral, modality } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import type { TCNSHandlerContext, TCNSNeuron } from '@cnstra/types';
 
@@ -66,33 +66,33 @@ declare const cns: CNS<TCNSNeuron>;
 declare const ctx: TCNSHandlerContext;
 
 const connection = { host: '127.0.0.1', port: 6379 };
-const importUser = cnsCollateral<{ userId: string }>();
-const createDeck = cnsCollateral<{ title: string }>();
+const importUser = collateral<{ userId: string }>();
+const createDeck = collateral<{ title: string }>();
 const payload = { title: 'Welcome deck' };
-const onboarding = cnsAfferentPath();
-const flow = cnsModality({ onboarding });
+const onboarding = afferentPath();
+const flow = modality({ onboarding });
 ```
 
 ## Producer
 
 ```ts
 import { Queue } from 'bullmq';
-import { enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/bullmq';
+import { enqueueCNSStimulation, stimulationJob } from '@cnstra/bullmq';
 
 const queue = new Queue('cns', { connection });
 
-// cnsStimulationJob resolves the entry collateral to its registered NAME (portable on the queue)
-const job = cnsStimulationJob(registry, importUser, { userId: '42' });
+// stimulationJob resolves the entry collateral to its registered NAME (portable on the queue)
+const job = stimulationJob(registry, importUser, { userId: '42' });
 await enqueueCNSStimulation(queue, job, { attempts: 3, backoff: { type: 'exponential', delay: 1000 } });
 ```
 
 A job can run on an afferent path. Register the modality (`registry.registerModality('flow', flow)`) and pass it, or enqueue from a neuron body with `from: ctx` to keep the path of the run that enqueues it:
 
 ```ts
-import { cnsStimulationJob } from '@cnstra/bullmq';
+import { stimulationJob } from '@cnstra/bullmq';
 
-cnsStimulationJob(registry, createDeck, payload, { modality: flow, afferentPath: onboarding });
-cnsStimulationJob(registry, createDeck, payload, { from: ctx });
+stimulationJob(registry, createDeck, payload, { modality: flow, afferentPath: onboarding });
+stimulationJob(registry, createDeck, payload, { from: ctx });
 ```
 
 The job carries the names (`modalityName`, `afferentPathName`); the worker starts the stimulation on that path, and a retry resumes on it.
@@ -150,20 +150,30 @@ const runs = await history.listStimulations(); // roster for an admin screen
 > history across restarts, use `CNSPostgresStimulationRepository`. The DevTools panel renders
 > this model directly — see [Stimulations](/docs/devtools/stimulations).
 
-**See it live in the Explorer.** Hand that same `history` store to `startCNSDevTools` and every job the
-worker processes shows up in the 🔎 Explorer — filterable by job type (entry collateral) or neuron,
-each run drilling into its attempt/task waterfall. One shared store, no bespoke UI:
+**See it live in the Explorer.** Hand the worker to `startCNSDevTools` and every job it
+processes shows up in the Explorer — filterable by job type (entry collateral) or neuron, each
+run drilling into its attempt/task waterfall. No store to wire: the panel links to the worker's
+`cns` in-process and records each job once, under its job id, in a bounded in-memory history.
+Pass your `Queue` instance as `queue` so Retry and Clone go through BullMQ:
 
 ```ts
-import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
+import { Queue } from 'bullmq';
 import { startCNSDevTools } from '@cnstra/devtools-server';
 
-const history = new CNSInMemoryStimulationRepository({ maxStimulations: 1000 });
+const ordersQueue = new Queue('cns', { connection });
+const worker = createCNSWorker({ Worker, cns, registry, queue: ordersQueue, workerOptions: { connection } });
 
-await startCNSDevTools(cns, registry, { stimulationRepository: history });
-createCNSWorker({ Worker, cns, registry, queue: 'cns', workerOptions: { connection }, observe: history });
-// → open the printed URL → 🔎 Explorer. Separate process? Point both at one Postgres store instead.
+await startCNSDevTools(worker);
+// → open the printed URL → the Explorer.
 ```
+
+The worker consumes `ordersQueue.name`. The queue stays yours: `shutdown()` does not close it. With
+a queue name instead of an instance, Retry and Clone run in this process through the panel's
+in-process link —
+fine while there is one process. To keep history across restarts, pass a
+`CNSPostgresStimulationRepository` as `stimulationRepository`. An admin in a separate process
+reads the workers' `observe` store instead: give it the same store as `stimulationRepository`. To mount the panel in your own
+server behind your auth instead of on its own port, see [Admin](/docs/devtools/admin).
 
 ## Non-serializable data in signals {#non-serializable-data}
 

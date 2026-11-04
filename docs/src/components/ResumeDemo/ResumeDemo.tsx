@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSNeuronActivationTask, TCNSStimulationResponse } from '@cnstra/types';
 import OrderGraph, { IDLE_ORDER_NODES } from '../OrderGraph/OrderGraph';
 import type { TOrderNodeId, TOrderNodes } from '../OrderGraph/OrderGraph';
@@ -16,13 +16,13 @@ const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const executions: Record<TOrderNodeId, number> = { entry: 0, inventory: 0, payment: 0, mailer: 0, shipping: 0 };
 let isPaymentProviderDown = false;
 
-const orderPlaced = cnsCollateral<TOrder>();
-const stockReserved = cnsCollateral<TOrder>();
-const paymentCaptured = cnsCollateral<TOrder>();
-const receiptSent = cnsCollateral<TOrder>();
-const orderShipped = cnsCollateral<TOrder>();
+const orderPlaced = collateral<TOrder>();
+const stockReserved = collateral<TOrder>();
+const paymentCaptured = collateral<TOrder>();
+const receiptSent = collateral<TOrder>();
+const orderShipped = collateral<TOrder>();
 
-const inventory = cnsNeuron({ stockReserved }).dendrite({
+const inventory = neuron({ stockReserved }).dendrite({
     collateral: orderPlaced,
     response: async (order, axon) => {
         executions.inventory++;
@@ -31,7 +31,7 @@ const inventory = cnsNeuron({ stockReserved }).dendrite({
     },
 });
 
-const payment = cnsNeuron({ paymentCaptured }).dendrite({
+const payment = neuron({ paymentCaptured }).dendrite({
     collateral: stockReserved,
     response: async (order, axon) => {
         executions.payment++;
@@ -41,7 +41,7 @@ const payment = cnsNeuron({ paymentCaptured }).dendrite({
     },
 });
 
-const mailer = cnsNeuron({ receiptSent }).dendrite({
+const mailer = neuron({ receiptSent }).dendrite({
     collateral: paymentCaptured,
     response: async (order, axon) => {
         executions.mailer++;
@@ -50,7 +50,7 @@ const mailer = cnsNeuron({ receiptSent }).dendrite({
     },
 });
 
-const shipping = cnsNeuron({ orderShipped }).dendrite({
+const shipping = neuron({ orderShipped }).dendrite({
     collateral: paymentCaptured,
     response: async (order, axon) => {
         executions.shipping++;

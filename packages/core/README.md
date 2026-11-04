@@ -39,14 +39,14 @@ npm install @cnstra/core
 ```
 
 ```typescript
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 // Define collaterals (communication channels)
-const userCreated = cnsCollateral<{ id: string; name: string }>();
-const userRegistered = cnsCollateral<{ userId: string; status: string }>();
+const userCreated = collateral<{ id: string; name: string }>();
+const userRegistered = collateral<{ userId: string; status: string }>();
 
 // Create a neuron
-const userService = cnsNeuron({
+const userService = neuron({
   userRegistered
 })
 .dendrite({
@@ -84,20 +84,20 @@ export const registry = new CNSPersistOptionsRegistry();
 
 ```ts file=deck.ts
 // src/neurons/deck.ts — each neuron registers itself
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { registry } from './registry';
 
-const deckCreated = cnsCollateral<{ deckId: string }>();
-const importStarted = cnsCollateral<{ importId: string }>(); // external entry point
+const deckCreated = collateral<{ deckId: string }>();
+const importStarted = collateral<{ importId: string }>(); // external entry point
 
-const deckNeuron = cnsNeuron({ deckCreated })
+const deckNeuron = neuron({ deckCreated })
     .bind({ importStarted }, {
         importStarted: ({ importId }, axon) => axon.deckCreated.createSignal({ deckId: importId }),
     });
 
 registry
     .register('deckNeuron', deckNeuron, { deckCreated: 'deck-created' }) // neuron + axon collaterals; default name 'deckNeuron.deckCreated'
-    .registerCollateral('importStarted', importStarted);   // standalone cnsCollateral (no neuron)
+    .registerCollateral('importStarted', importStarted);   // standalone collateral (no neuron)
 ```
 
 **All at once (simple projects):**

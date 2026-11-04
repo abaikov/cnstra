@@ -1,8 +1,9 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSInMemoryProgressRepository,
 } from '@cnstra/persist';
+import { runCNSDevToolsAction } from '@cnstra/persist-dto';
 import { createCNSWorker } from '.././worker';
 import type { ICNSPgBossJob, ICNSPgBossLike, TCNSStimulationJobData } from '.././types';
 
@@ -22,6 +23,17 @@ class FakeBoss implements ICNSPgBossLike {
 
     async complete(_name: string, ids: string[]): Promise<unknown> {
         this.completed.push([...ids]);
+        return undefined;
+    }
+
+    readonly retried: Array<{ name: string; id: string }> = [];
+
+    async getJobById(_name: string, id: string): Promise<{ id: string }> {
+        return { id };
+    }
+
+    async retry(name: string, id: string): Promise<unknown> {
+        this.retried.push({ name, id });
         return undefined;
     }
 
@@ -53,14 +65,14 @@ class FakeBoss implements ICNSPgBossLike {
 // Two-step flow n1 → n2; n2 fails until `control.failStep2` is cleared. Same
 // shape as the persist serializer test, driven through the worker instead.
 function buildFlow() {
-    const input = cnsCollateral<{ id: number }>();
-    const step1Out = cnsCollateral<{ id: number }>();
-    const output = cnsCollateral<{ result: string }>();
+    const input = collateral<{ id: number }>();
+    const step1Out = collateral<{ id: number }>();
+    const output = collateral<{ result: string }>();
 
     const ran: string[] = [];
     const control = { failStep2: true };
 
-    const n1 = cnsNeuron({ step1Out }).dendrite({
+    const n1 = neuron({ step1Out }).dendrite({
         collateral: input,
         response: (p, axon) => {
             ran.push('n1');
@@ -68,7 +80,7 @@ function buildFlow() {
         },
     });
 
-    const n2 = cnsNeuron({ output }).dendrite({
+    const n2 = neuron({ output }).dendrite({
         collateral: step1Out,
         response: (p, axon) => {
             ran.push(`n2`);
@@ -154,11 +166,11 @@ test('graceful shutdown stops taking new jobs', async () => {
 describe('a failing job does not take its batch down with it', () => {
     /** Flow whose single neuron fails for the payload ids listed in `fail`. */
     const buildBatchFlow = (fail: number[]) => {
-        const input = cnsCollateral<{ id: number }>();
-        const done = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
+        const done = collateral<{ id: number }>();
         const ran: number[] = [];
 
-        const n = cnsNeuron({ done }).dendrite({
+        const n = neuron({ done }).dendrite({
             collateral: input,
             response: (p, axon) => {
                 ran.push(p!.id);
@@ -245,5 +257,34 @@ describe('a failing job does not take its batch down with it', () => {
 
         await expect(boss.runBatch(batch([1]))).rejects.toThrow(/failed task/);
         expect(boss.completed).toEqual([]);
+    });
+});
+
+describe('the worker handle', () => {
+    it('names its cns, registry and queue', async () => {
+        const { cns, registry } = buildFlow();
+        const handle = await createCNSWorker({ boss: new FakeBoss(), cns, registry, queue: 'orders' });
+        expect(handle.cns).toBe(cns);
+        expect(handle.registry).toBe(registry);
+        expect(handle.queue).toBe('orders');
+    });
+
+    it('builds the DevTools actions against its own boss and queue', async () => {
+        const { cns, registry } = buildFlow();
+        const boss = new FakeBoss();
+        const handle = await createCNSWorker({ boss, cns, registry, queue: 'orders' });
+
+        const handled = await runCNSDevToolsAction([handle.actions()], {
+            type: 'resume',
+            requestId: 'request-1',
+            stimulationId: 'job-1',
+            stimulationAttemptId: 'job-1#2',
+            attemptNumber: 2,
+            entry: { collateralName: 'input', payload: { id: 1 } },
+            progress: { tasks: [] },
+        });
+
+        expect(handled).toBe(true);
+        expect(boss.retried).toEqual([{ name: 'orders', id: 'job-1' }]);
     });
 });

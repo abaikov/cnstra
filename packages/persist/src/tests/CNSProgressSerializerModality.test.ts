@@ -1,22 +1,22 @@
-import { CNS, cnsAfferentPath, cnsCollateral, cnsModality, cnsNeuron } from '@cnstra/core';
+import { CNS, afferentPath, collateral, modality, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '../CNSPersistOptionsRegistry';
 import { CNSProgressSerializer } from '../CNSProgressSerializer';
 
 const buildFlow = () => {
-    const input = cnsCollateral<{ id: number }>();
-    const step1Out = cnsCollateral<{ id: number }>();
-    const output = cnsCollateral<{ by: string }>();
-    const ui = cnsAfferentPath();
-    const onboarding = cnsAfferentPath();
-    const flow = cnsModality({ ui, onboarding });
+    const input = collateral<{ id: number }>();
+    const step1Out = collateral<{ id: number }>();
+    const output = collateral<{ by: string }>();
+    const ui = afferentPath();
+    const onboarding = afferentPath();
+    const flow = modality({ ui, onboarding });
     const ran: string[] = [];
     const control = { failStep2: true };
 
-    const n1 = cnsNeuron({ step1Out }).dendrite({
+    const n1 = neuron({ step1Out }).dendrite({
         collateral: input,
         response: (payload, axon) => axon.step1Out.createSignal({ id: payload!.id }),
     });
-    const n2 = cnsNeuron({ output }).modalityDendrite({
+    const n2 = neuron({ output }).modalityDendrite({
         collateral: step1Out,
         modality: flow,
         afferentPaths: new Map([[onboarding, () => {

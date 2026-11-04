@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/jobs-adapter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Runs @cnstra/jobs job types as CNStra stimulations: a job type is an entry collateral, a job is a resumable stimulation, enqueueing from a neuron links the runs.",
   "repository": {
     "type": "git",
@@ -36,20 +36,20 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@cnstra/broker": "^0.2.2",
+    "@cnstra/broker": "^0.2.3",
     "@cnstra/types": "^0.2.1"
   },
   "peerDependencies": {
-    "@cnstra/core": "^3.2.1",
+    "@cnstra/core": "^3.2.2",
     "@cnstra/jobs": "^0.1.0",
-    "@cnstra/persist": "^0.2.7",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.4"
   },
   "devDependencies": {
-    "@cnstra/core": "^3.2.1",
+    "@cnstra/core": "^3.2.2",
     "@cnstra/jobs": "^0.1.0",
     "@cnstra/jobs-postgres": "^0.1.0",
-    "@cnstra/persist": "^0.2.7",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.4",
     "@jest/globals": "29.7.0",
     "@types/jest": "29.5.12",

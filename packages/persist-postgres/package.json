@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/persist-postgres",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Postgres relational store for CNStra resumable execution (ICNSStimulationRepository: run/attempt/task) \u2014 owns its schema + migrations",
   "repository": {
     "type": "git",
@@ -41,7 +41,7 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@cnstra/persist": "^0.2.0",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.0",
     "pg": ">=8"
   },
@@ -51,7 +51,7 @@
     }
   },
   "devDependencies": {
-    "@cnstra/persist": "^0.2.0",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.0",
     "@types/jest": "29.5.12",
     "@types/node": "^20.0.0",

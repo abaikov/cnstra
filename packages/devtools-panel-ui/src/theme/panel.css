@@ -1,0 +1,26 @@
+@scope (.cns-devtools) {
+  .zone { border: 1px solid var(--border-primary); border-radius: 8px; background: var(--bg-panel); }
+  .eyebrow { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; white-space: nowrap; }
+  .row-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .row-right { flex: none; display: flex; align-items: center; gap: 12px; }
+  .row-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .row-sub { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 8px; }
+  .metric { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+  .metric-value { font-size: 13px; font-weight: 600; font-family: var(--font-body); font-variant-numeric: tabular-nums; }
+  .metric-label { font-size: 8px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+  .tag { flex: none; display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; white-space: nowrap; }
+  .tag-violet { border: 1px solid color-mix(in srgb, var(--color-violet) 40%, transparent); color: var(--color-violet); background: color-mix(in srgb, var(--color-violet) 8%, transparent); }
+  .tag-cyan { border: 1px solid color-mix(in srgb, var(--color-cyan) 40%, transparent); color: var(--color-cyan); background: color-mix(in srgb, var(--color-cyan) 8%, transparent); }
+  .command { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 11px; cursor: pointer; border-radius: 4px; }
+  .command-green { border: 1px solid color-mix(in srgb, var(--color-green) 40%, transparent); background: color-mix(in srgb, var(--color-green) 8%, transparent); color: var(--color-green); }
+  .command-violet { border: 1px solid color-mix(in srgb, var(--color-violet) 40%, transparent); background: color-mix(in srgb, var(--color-violet) 8%, transparent); color: var(--color-violet); }
+  .command-red { border: 1px solid color-mix(in srgb, var(--color-red) 40%, transparent); background: color-mix(in srgb, var(--color-red) 8%, transparent); color: var(--color-red); }
+  .text-input { background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary); border-radius: 4px; }
+  .form-control { padding: 4px 8px; font-size: 11px; background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary); border-radius: 4px; }
+  .date-label { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); white-space: nowrap; }
+  .date-input { padding: 4px 6px; font-size: 10px; background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-primary); border-radius: 4px; color-scheme: dark; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
+  .legend-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .windowed-list { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .newest-runs { flex: none; padding: 5px 12px; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; cursor: pointer; border: none; border-bottom: 1px solid var(--border-secondary); background: color-mix(in srgb, var(--color-green) 8%, transparent); color: var(--color-green); }
+}

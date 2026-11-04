@@ -1,0 +1,31 @@
+@scope (.cns-devtools) {
+  .launch { flex: none; }
+  .launch-bar { padding: 6px 12px; border-bottom: 1px solid var(--border-secondary); }
+  .launch-open,
+  .launch-form-submit {
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid var(--color-green);
+    background: color-mix(in srgb, var(--color-green) 10%, transparent);
+    color: var(--color-green);
+  }
+  .launch-open { padding: 3px 10px; font-size: 10px; letter-spacing: .5px; }
+  .launch-form-submit { align-self: flex-start; padding: 4px 14px; font-size: 11px; letter-spacing: 1px; }
+  .launch-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border-secondary); }
+  .launch-form-head { display: flex; align-items: center; gap: 8px; }
+  .launch-form-heading { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--color-green); white-space: nowrap; }
+  .launch-form-type { flex: 1; min-width: 0; }
+  .launch-form-close {
+    border: 1px solid color-mix(in srgb, var(--text-muted) 40%, transparent);
+    background: color-mix(in srgb, var(--text-muted) 8%, transparent);
+    color: var(--text-muted);
+  }
+  .launch-form-description { font-size: 10px; color: var(--text-muted); }
+  .launch-form-fields { display: flex; flex-direction: column; gap: 4px; }
+  .launch-form-json { resize: vertical; font-family: var(--font-mono, monospace); }
+
+  .payload-field { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .payload-field-label { flex: none; width: 110px; font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .payload-field-control { flex: 1; min-width: 0; }
+}

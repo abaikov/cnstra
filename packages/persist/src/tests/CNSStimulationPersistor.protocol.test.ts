@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 import { CNSStimulationPersistor } from '.././CNSStimulationPersistor';
 import type { ICNSStimulationWriter } from '.././interfaces/ICNSStimulationRepository';
@@ -48,15 +48,15 @@ const recordingWriter = () => {
 };
 
 function buildFlow() {
-    const input = cnsCollateral<{ id: number }>();
-    const mid = cnsCollateral<{ id: number }>();
-    const out = cnsCollateral<{ result: string }>();
+    const input = collateral<{ id: number }>();
+    const mid = collateral<{ id: number }>();
+    const out = collateral<{ result: string }>();
 
-    const first = cnsNeuron({ mid }).dendrite({
+    const first = neuron({ mid }).dendrite({
         collateral: input,
         response: (p, axon) => axon.mid.createSignal({ id: p!.id }),
     });
-    const second = cnsNeuron({ out }).dendrite({
+    const second = neuron({ out }).dendrite({
         collateral: mid,
         response: (p, axon) => axon.out.createSignal({ result: `ok-${p!.id}` }),
     });
@@ -153,18 +153,18 @@ test('the persistor reads the stimulation back on every flush', async () => {
 test('an aborted run settles as `aborted`, not as `failed`', async () => {
     // Needs a genuinely async hop: a synchronous flow runs to completion inside
     // `stimulate()` and there is no mid-run moment left to abort.
-    const input = cnsCollateral<{ id: number }>();
-    const mid = cnsCollateral<{ id: number }>();
-    const out = cnsCollateral<{ result: string }>();
+    const input = collateral<{ id: number }>();
+    const mid = collateral<{ id: number }>();
+    const out = collateral<{ result: string }>();
 
-    const first = cnsNeuron({ mid }).dendrite({
+    const first = neuron({ mid }).dendrite({
         collateral: input,
         response: async (p, axon) => {
             await new Promise(r => setTimeout(r, 30));
             return axon.mid.createSignal({ id: p!.id });
         },
     });
-    const second = cnsNeuron({ out }).dendrite({
+    const second = neuron({ out }).dendrite({
         collateral: mid,
         response: (p, axon) => axon.out.createSignal({ result: `ok-${p!.id}` }),
     });

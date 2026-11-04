@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '../src';
+import { CNS, collateral, neuron } from '../src';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 
 /**
@@ -13,11 +13,11 @@ import type { TCNSStimulationResponse } from '@cnstra/types';
 
 const chain = (hops: number) => {
     const collaterals = Array.from({ length: hops + 1 }, () =>
-        cnsCollateral<{ n: number }>()
+        collateral<{ n: number }>()
     );
     const neurons = collaterals.slice(0, hops).map((input, index) => {
         const out = collaterals[index + 1]!;
-        return cnsNeuron({ out }).dendrite({
+        return neuron({ out }).dendrite({
             collateral: input,
             response: (p, axon) => axon.out.createSignal({ n: p!.n + 1 }),
         });
@@ -97,8 +97,8 @@ describe('the cost of measuring an activation', () => {
     });
 
     it('measures an activation that threw, too', async () => {
-        const input = cnsCollateral<{ n: number }>();
-        const boom = cnsNeuron({}).dendrite({
+        const input = collateral<{ n: number }>();
+        const boom = neuron({}).dendrite({
             collateral: input,
             response: () => {
                 throw new Error('boom');

@@ -47,7 +47,7 @@ test.describe('Scheduled', () => {
         await rows.filter({ hasText: 'reminder-tomorrow' }).getByTitle('Run now').click();
         await expect(page.locator('.exp-scheduled-feedback')).toContainText('reminder-tomorrow moved to now');
         await expect(rows.filter({ hasText: 'reminder-tomorrow' })).toContainText('due', { timeout: 10000 });
-        await expect(rows.filter({ hasText: 'reminder-tomorrow' }).getByTitle('Run now')).toHaveCount(0);
+        await expect(rows.filter({ hasText: 'reminder-tomorrow' }).getByTitle('Run now')).toBeHidden();
         await later.getByTitle('Cancel (press twice)').click();
         await expect(page.locator('.exp-scheduled-feedback')).toContainText('Press ✕ again to cancel checkout-later');
         await expect(later).toHaveCount(1);

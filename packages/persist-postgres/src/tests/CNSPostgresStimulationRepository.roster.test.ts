@@ -130,6 +130,15 @@ d('CNSPostgresStimulationRepository roster pushdown (live Postgres)', () => {
         expect(p2.nextCursor).toBeNull();
     });
 
+    test('a page bounded by sinceCursor matches the in-memory reference', async () => {
+        const m1 = await mem.queryRoster({}, { limit: 2 });
+        const boundary = m1.nextCursor!;
+        const head = await repo.queryRoster({}, { limit: 10, sinceCursor: boundary });
+        const memHead = await mem.queryRoster({}, { limit: 10, sinceCursor: boundary });
+        expect(head.rows.map(r => r.stimulationId)).toEqual(memHead.rows.map(r => r.stimulationId));
+        expect(head.total).toBe(memHead.total);
+    });
+
     test('total is the size of the FILTERED SET, not of the page remainder', async () => {
         // The contract says the pushdown store and the in-memory reference give
         // identical results. `total` drives "N runs" in the panel and its

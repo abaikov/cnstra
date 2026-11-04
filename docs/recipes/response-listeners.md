@@ -14,11 +14,11 @@ CNStra lets you observe traversal without polluting domain neurons. There are tw
 Both receive the same response object with `inputSignal`, `outputSignal`, `error`, `stimulation`, `queueLength`, `pendingActivations` and `activeActivations`.
 
 ```ts setup
-import { CNS, cnsCollateral } from '@cnstra/core';
+import { CNS, collateral } from '@cnstra/core';
 import type { ICNSCollateral, ICNSStimulation, TCNSNeuron } from '@cnstra/types';
 
 declare const cns: CNS<TCNSNeuron>;
-const start = cnsCollateral<{ id: string }>();
+const start = collateral<{ id: string }>();
 declare const input: { id: string };
 declare const metrics: { increment(name: string): void };
 declare const tracer: { add(event: string, collateral: ICNSCollateral<unknown>): void };

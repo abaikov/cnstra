@@ -9,15 +9,15 @@ npm install @cnstra/exodra @cnstra/core @cnstra/types @exodra/core @exodra/conte
 The Exodra binding of CNStra: an event port of an Exodra machine becomes a signal of a CNS. The CNS is the `cns` service of the node, `cns: () => cns` in `composeExoPlugins`, unless `provideCNS` gave another one above it; a machine declares its receptors with `withCNSReceptors`, the same provide and inject pair the Exodra router has. Full guide, with OIMDB and the homeostat: [CNStra & Exodra](https://cnstra.org/docs/frontend/exodra).
 
 ```ts setup
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { EXO_PORT_EVENT, composeExoMachine, createExoMachine, createExoSchema, exoPorts, withExoWire } from '@exodra/core';
 import type { TExoMachineNode } from '@exodra/core';
 import { provideCNS, withCNSReceptors } from '@cnstra/exodra';
 
-const todoAdded = cnsCollateral<{ title: string }>();
-const completedCleared = cnsCollateral();
-const appCNS = new CNS([cnsNeuron({}).dendrite({ collateral: todoAdded, response: () => undefined })]);
-const adminCNS = new CNS([cnsNeuron({}).dendrite({ collateral: todoAdded, response: () => undefined })]);
+const todoAdded = collateral<{ title: string }>();
+const completedCleared = collateral();
+const appCNS = new CNS([neuron({}).dendrite({ collateral: todoAdded, response: () => undefined })]);
+const adminCNS = new CNS([neuron({}).dendrite({ collateral: todoAdded, response: () => undefined })]);
 type TTodoNode = TExoMachineNode & { readonly cns: typeof appCNS };
 const TodoPorts = exoPorts({ ADD: EXO_PORT_EVENT, CLEAR_COMPLETED: EXO_PORT_EVENT });
 const TodoSchema = createExoSchema(TodoPorts, b => {

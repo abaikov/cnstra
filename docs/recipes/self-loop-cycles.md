@@ -15,12 +15,12 @@ Why self-loops
 Counter example (iterate until max)
 
 ```ts
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 
-const step = cnsCollateral<{ amount: number; total?: number; attempt?: number }>();
-const done = cnsCollateral<{ total: number }>();
+const step = collateral<{ amount: number; total?: number; attempt?: number }>();
+const done = collateral<{ total: number }>();
 
-export const counter = cnsNeuron({ step, done })
+export const counter = neuron({ step, done })
   .dendrite({
     collateral: step,
     response: (payload, axon) => {
@@ -39,17 +39,17 @@ export const counter = cnsNeuron({ step, done })
 Pagination example (loop until no next page)
 
 ```ts
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 
-const tryPage = cnsCollateral<{ cursor?: string; items?: unknown[] }>();
-const finished = cnsCollateral<{ items: unknown[] }>();
+const tryPage = collateral<{ cursor?: string; items?: unknown[] }>();
+const finished = collateral<{ items: unknown[] }>();
 
 async function fetchPage(cursor?: string): Promise<{ items: unknown[]; next?: string }> {
   // replace with real API call
   return { items: [{ id: cursor ?? '0' }], next: cursor ? undefined : '1' };
 }
 
-export const pager = cnsNeuron({ tryPage, finished })
+export const pager = neuron({ tryPage, finished })
   .dendrite({
     collateral: tryPage,
     response: async (payload, axon, ctx) => {

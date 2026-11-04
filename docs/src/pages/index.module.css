@@ -316,6 +316,34 @@
   background: var(--bg-panel);
 }
 
+.homeostasisNote {
+  margin: 18px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.pains {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.painQuote {
+  margin: 10px 0 6px;
+  padding: 0;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.painSource {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .pillars {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -347,7 +375,7 @@
 
 .useCases {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--border-primary);
 }
 
@@ -356,8 +384,12 @@
   border-right: 1px solid var(--border-primary);
 }
 
-.useCase:last-child {
+.useCase:nth-child(3n) {
   border-right: none;
+}
+
+.useCase:nth-child(-n + 3) {
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .useCaseTitle {
@@ -397,12 +429,27 @@
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  max-width: 36rem;
+  max-width: 60rem;
   margin: 0 auto 36px;
   padding: 22px 24px;
   border: 1px solid var(--border-primary);
   background: var(--bg-card);
   font-size: 13px;
+}
+
+.pairingItems {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  width: 100%;
+}
+
+.pairingItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
 }
 
 .pairingLabel {
@@ -429,6 +476,14 @@
 }
 
 @media (max-width: 996px) {
+  .pains {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pairingItems {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .heroInner {
     grid-template-columns: minmax(0, 1fr);
     gap: 36px;
@@ -442,12 +497,17 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .useCase:nth-child(2) {
+  .useCase:nth-child(n) {
+    border-right: 1px solid var(--border-primary);
+    border-bottom: 1px solid var(--border-primary);
+  }
+
+  .useCase:nth-child(2n) {
     border-right: none;
   }
 
-  .useCase:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--border-primary);
+  .useCase:nth-last-child(-n + 2) {
+    border-bottom: none;
   }
 }
 
@@ -460,7 +520,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .useCase {
+  .useCase:nth-child(n) {
     border-right: none;
     border-bottom: 1px solid var(--border-primary);
   }

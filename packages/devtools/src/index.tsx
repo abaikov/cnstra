@@ -1,6 +1,7 @@
 import type { CNSCollateral } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry, TCNSSignalJSON } from '@cnstra/persist';
-import { CNSStimulationPersistor, CNSProgressSerializer } from '@cnstra/persist';
+import { CNSStimulationPersistor, CNSProgressSerializer, CNS_JOB_IDENTITY_CONTEXT_KEY } from '@cnstra/persist';
+import type { TCNSJobIdentity } from '@cnstra/persist';
 import type { ICNS, ICNSStimulation, TCNSNeuron } from '@cnstra/types';
 import type { ICNSDevToolsTransport } from './interfaces/ICNSDevToolsTransport';
 import { CNSWireStimulationRepository } from './CNSWireStimulationRepository';
@@ -65,6 +66,19 @@ type AnyCollateral = CNSCollateral<unknown>;
 
 let stimulationCounter = 0;
 const newStimulationId = (appId: string) => `${appId}:stim:${++stimulationCounter}:${Date.now()}`;
+
+const jobIdentityOf = (context: unknown): TCNSJobIdentity | undefined => {
+    if (typeof context !== 'object' || context === null || !(CNS_JOB_IDENTITY_CONTEXT_KEY in context)) return undefined;
+    const identity: unknown = context[CNS_JOB_IDENTITY_CONTEXT_KEY];
+    if (typeof identity !== 'object' || identity === null || !('stimulationId' in identity)) return undefined;
+    const { stimulationId } = identity;
+    if (typeof stimulationId !== 'string') return undefined;
+    const attemptNumber = 'attemptNumber' in identity ? identity.attemptNumber : undefined;
+    return {
+        stimulationId,
+        attemptNumber: typeof attemptNumber === 'number' && Number.isInteger(attemptNumber) && attemptNumber > 0 ? attemptNumber : 1,
+    };
+};
 
 export class CNSDevTools {
     private readonly buffer: TCNSAppBatchItemDTO[] = [];
@@ -225,7 +239,9 @@ export class CNSDevTools {
                         payload: resp.outputSignal?.payload,
                     },
                 ];
-                const stimId = override?.stimulationId ?? newStimulationId(this.appId);
+                const contextIdentity = override ? undefined : jobIdentityOf(stimulation.options?.stimulationContext);
+                const stimId = override?.stimulationId ?? contextIdentity?.stimulationId ?? newStimulationId(this.appId);
+                const attemptNumber = override?.attemptNumber ?? contextIdentity?.attemptNumber ?? 1;
                 const persistor = new CNSStimulationPersistor({
                     // Each resumable write both enqueues AND flushes, so the terminal
                     // records aren't stranded behind a later flush.
@@ -236,8 +252,8 @@ export class CNSDevTools {
                     registry,
                     stimulationId: stimId,
                     stimulationAttemptId:
-                        override?.stimulationAttemptId ?? buildCNSAttemptId(stimId, 1),
-                    attemptNumber: override?.attemptNumber ?? 1,
+                        override?.stimulationAttemptId ?? buildCNSAttemptId(stimId, attemptNumber),
+                    attemptNumber,
                     entry,
                     volume: 'full',
                     scopeName: override?.scopeName ?? cnsId,

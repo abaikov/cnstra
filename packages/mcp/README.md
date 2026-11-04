@@ -34,12 +34,12 @@ export const registry = new CNSPersistOptionsRegistry();
 
 ```ts file=src/neurons/deck.ts
 // src/neurons/deck.ts
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { registry } from './registry';
 
-export const importStarted = cnsCollateral<{ deckId: string }>();
-export const deckCreated = cnsCollateral<{ deckId: string }>();
-export const deckNeuron = cnsNeuron({ deckCreated }).dendrite({
+export const importStarted = collateral<{ deckId: string }>();
+export const deckCreated = collateral<{ deckId: string }>();
+export const deckNeuron = neuron({ deckCreated }).dendrite({
     collateral: importStarted,
     response: (payload, axon) => axon.deckCreated.createSignal(payload),
 });

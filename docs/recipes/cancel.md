@@ -8,7 +8,7 @@ slug: /recipes/cancel
 Use `AbortSignal` to cancel in-flight stimulation runs.
 
 ```ts setup
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSNeuron } from '@cnstra/types';
 
 type TJob = { id: string };
@@ -16,9 +16,9 @@ type TJob = { id: string };
 declare const cns: CNS<TCNSNeuron>;
 declare function heavyTask(job: TJob, abortSignal?: AbortSignal): Promise<unknown>;
 
-const collateral = cnsCollateral<TJob>();
-const someInput = cnsCollateral<TJob>();
-const start = cnsCollateral<TJob>();
+const jobStarted = collateral<TJob>();
+const someInput = collateral<TJob>();
+const start = collateral<TJob>();
 const input: TJob = { id: '1' };
 const payload: TJob = { id: '2' };
 ```
@@ -26,7 +26,7 @@ const payload: TJob = { id: '2' };
 ```ts
 const controller = new AbortController();
 
-const stimulation = cns.stimulate(collateral.createSignal(input), {
+const stimulation = cns.stimulate(jobStarted.createSignal(input), {
   abortSignal: controller.signal,
 });
 
@@ -43,7 +43,7 @@ Notes:
 Example: cooperative cancel inside a neuron
 
 ```ts
-const work = cnsNeuron({}).dendrite({
+const work = neuron({}).dendrite({
   collateral: someInput,
   response: async (payload, axon, ctx) => {
     if (ctx.abortSignal?.aborted) return; // bail before starting

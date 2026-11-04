@@ -60,10 +60,7 @@ async function startExampleServer() {
 }
 
 export default async function globalSetup(_config: FullConfig) {
-    // Build artifacts before starting the server (CI safety)
-    try {
-        await buildWorkspace();
-    } catch {}
+    await buildWorkspace();
     await startExampleServer();
 }
 

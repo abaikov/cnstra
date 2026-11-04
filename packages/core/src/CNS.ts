@@ -49,7 +49,7 @@ export class CNS<
 
     /**
      * Shared, app/organism-wide value handed to every dendrite as `ctx.global`.
-     * Stored untyped (the type is baked into neurons via `cnsNeuronFactory().withGlobal<T>()`);
+     * Stored untyped (the type is baked into neurons via `neuronFactory().withGlobal<T>()`);
      * CNS is just a passthrough carrier, so injecting it here never touches the hot path.
      */
     public readonly global?: unknown;

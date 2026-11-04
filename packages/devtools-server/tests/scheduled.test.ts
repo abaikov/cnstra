@@ -2,6 +2,7 @@ import { CNSDevToolsServer } from '../src/index';
 import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-repository-in-memory';
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 import type { ICNSScheduledStimulationReader, TCNSScheduledStimulationFilter } from '@cnstra/persist-dto';
+import { readSync } from './readSync';
 
 const socket = () => {
     const sent: string[] = [];
@@ -13,7 +14,7 @@ const socket = () => {
 };
 
 describe('scheduled stimulations', () => {
-    it('answers a list request from the reader with the filter, cursor and limit it was given', async () => {
+    it('answers a scheduled page key from the reader with the filter, cursor and limit of the key', async () => {
         const calls: Array<[TCNSScheduledStimulationFilter, string | null, number]> = [];
         const reader: ICNSScheduledStimulationReader = {
             list: async (filter, cursor, limit) => {
@@ -38,16 +39,11 @@ describe('scheduled stimulations', () => {
             },
         };
         const server = new CNSDevToolsServer(new CNSDevToolsServerRepositoryInMemory(), new CNSInMemoryStimulationRepository(), [], {}, reader);
-        const ws = socket();
 
-        await server.handleMessage(
-            ws as any,
-            JSON.stringify({ type: 'cns.scheduled.list', requestId: 'r', filter: { neuronName: 'charge' }, cursor: '1:1', limit: 10 })
-        );
+        const page = await readSync(server, 'scheduledPage', ['charge', undefined, '1:1', 10]);
 
-        expect(calls).toEqual([[{ neuronName: 'charge' }, '1:1', 10]]);
-        expect(ws.reply('cns.scheduled.list.result')).toMatchObject({
-            requestId: 'r',
+        expect(calls).toEqual([[{ neuronName: 'charge', collateralName: undefined }, '1:1', 10]]);
+        expect(page).toMatchObject({
             available: true,
             rows: [{ stimulationId: 'job-1', status: 'scheduled' }],
             schedules: [{ scheduleId: 'hourly' }],
@@ -57,13 +53,8 @@ describe('scheduled stimulations', () => {
 
     it('says the list is unavailable when the server has no reader', async () => {
         const server = new CNSDevToolsServer(new CNSDevToolsServerRepositoryInMemory());
-        const ws = socket();
 
-        await server.handleMessage(ws as any, JSON.stringify({ type: 'cns.scheduled.list', requestId: 'r' }));
-
-        expect(ws.reply('cns.scheduled.list.result')).toEqual({
-            type: 'cns.scheduled.list.result',
-            requestId: 'r',
+        expect(await readSync(server, 'scheduledPage', [undefined, undefined, undefined, 50])).toEqual({
             available: false,
             rows: [],
             schedules: [],

@@ -1,5 +1,5 @@
 import { OIMEventQueue, OIMReactiveCollection } from '@oimdb/core';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 /**
  * The showcase for the recipe: two independent collections, written by two
@@ -34,8 +34,8 @@ describe('OIMDB: two neurons, one request, exactly two frames', () => {
             selectPk: d => d.id!,
         });
 
-        const cardOpened = cnsCollateral<{ cardId: string; deckId: string }>();
-        const loaded = cnsCollateral<{
+        const cardOpened = collateral<{ cardId: string; deckId: string }>();
+        const loaded = collateral<{
             cardId: string;
             deckId: string;
             title: string;
@@ -44,7 +44,7 @@ describe('OIMDB: two neurons, one request, exactly two frames', () => {
 
         // --- turn 1: three independent subscribers of the same signal ---
 
-        const cardLoading = cnsNeuron({}).dendrite({
+        const cardLoading = neuron({}).dendrite({
             collateral: cardOpened,
             response: p => {
                 cards.upsertOneByPk(p!.cardId, { id: p!.cardId, loading: true });
@@ -52,7 +52,7 @@ describe('OIMDB: two neurons, one request, exactly two frames', () => {
             },
         });
 
-        const deckLoading = cnsNeuron({}).dendrite({
+        const deckLoading = neuron({}).dendrite({
             collateral: cardOpened,
             response: p => {
                 decks.upsertOneByPk(p!.deckId, { id: p!.deckId, loading: true });
@@ -60,7 +60,7 @@ describe('OIMDB: two neurons, one request, exactly two frames', () => {
             },
         });
 
-        const fetcher = cnsNeuron({ loaded }).dendrite({
+        const fetcher = neuron({ loaded }).dendrite({
             collateral: cardOpened,
             response: async (p, axon) => {
                 await new Promise(r => setTimeout(r, 5));
@@ -75,7 +75,7 @@ describe('OIMDB: two neurons, one request, exactly two frames', () => {
 
         // --- turn 2: two independent subscribers of the result ---
 
-        const applyCard = cnsNeuron({}).dendrite({
+        const applyCard = neuron({}).dendrite({
             collateral: loaded,
             response: p => {
                 cards.upsertOneByPk(p!.cardId, {
@@ -87,7 +87,7 @@ describe('OIMDB: two neurons, one request, exactly two frames', () => {
             },
         });
 
-        const applyDeck = cnsNeuron({}).dendrite({
+        const applyDeck = neuron({}).dendrite({
             collateral: loaded,
             response: p => {
                 decks.upsertOneByPk(p!.deckId, {

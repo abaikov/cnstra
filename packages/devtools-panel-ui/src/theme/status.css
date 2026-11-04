@@ -1,0 +1,32 @@
+@scope (.cns-devtools) {
+  [data-status] {
+      --status-color: var(--text-muted);
+  }
+
+  [data-status='running'],
+  [data-status='ready'] {
+      --status-color: var(--color-yellow);
+  }
+
+  [data-status='completed'],
+  [data-status='done'] {
+      --status-color: var(--color-green);
+  }
+
+  [data-status='failed'] {
+      --status-color: var(--color-red);
+  }
+
+  [data-status='aborted'] {
+      --status-color: var(--color-cyan);
+  }
+
+  [data-status='scheduled'],
+  [data-status='key'] {
+      --status-color: var(--color-violet);
+  }
+
+  [data-status='unchecked'] {
+      --status-color: var(--text-muted);
+  }
+}

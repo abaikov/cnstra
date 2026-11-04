@@ -1,12 +1,12 @@
-import { cnsCollateral, cnsNeuron, createCNS } from '../src/index';
+import { collateral, neuron, createCNS } from '../src/index';
 
 type TStore = { seen: string[] };
 
-const ping = cnsCollateral<{ id: string }>();
-const done = cnsCollateral<{ id: string }>();
+const ping = collateral<{ id: string }>();
+const done = collateral<{ id: string }>();
 
 const createWorkerNeuron = (store: TStore) =>
-    cnsNeuron({ done }).dendrite({
+    neuron({ done }).dendrite({
         collateral: ping,
         response: ({ id }, axon) => {
             store.seen.push(`worker:${id}`);
@@ -15,7 +15,7 @@ const createWorkerNeuron = (store: TStore) =>
     });
 
 const createAuditNeuron = (store: TStore) =>
-    cnsNeuron({}).dendrite({
+    neuron({}).dendrite({
         collateral: done,
         response: ({ id }) => {
             store.seen.push(`audit:${id}`);
@@ -44,7 +44,7 @@ describe('createCNS: dependencies through neuron factories', () => {
             // @ts-expect-error
             createCNS(neuronFactories, { seen: 'not a list' });
             // @ts-expect-error
-            createCNS([createWorkerNeuron, (clock: { nowMs: number }) => cnsNeuron({}).dendrite({ collateral: ping, response: () => { void clock.nowMs; } })], { seen: [] });
+            createCNS([createWorkerNeuron, (clock: { nowMs: number }) => neuron({}).dendrite({ collateral: ping, response: () => { void clock.nowMs; } })], { seen: [] });
         };
 
         expect(refused).toBeInstanceOf(Function);
@@ -52,7 +52,7 @@ describe('createCNS: dependencies through neuron factories', () => {
 
     it('takes a literal the factory narrows, and refuses a neuron factory listed twice', () => {
         const createLevelNeuron = (dependencies: { level: 'info' | 'debug' }) =>
-            cnsNeuron({}).dendrite({ collateral: done, response: () => { void dependencies.level; } });
+            neuron({}).dendrite({ collateral: done, response: () => { void dependencies.level; } });
 
         expect(createCNS([createLevelNeuron], { level: 'info' })).toBeDefined();
         expect(() => createCNS([createAuditNeuron, createAuditNeuron], { seen: [] }))

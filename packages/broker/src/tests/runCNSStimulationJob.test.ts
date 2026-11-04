@@ -1,7 +1,8 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSProgressSerializer,
+    CNS_JOB_IDENTITY_CONTEXT_KEY,
 } from '@cnstra/persist';
 import type {
     ICNSProgressRepository,
@@ -65,19 +66,19 @@ const memoryProgress = () => {
 
 /** input → step → done; `control.fail` makes `step` throw on the current pass. */
 const buildFlow = () => {
-    const input = cnsCollateral<{ id: number }>();
-    const stepped = cnsCollateral<{ id: number }>();
-    const done = cnsCollateral<{ ok: true }>();
+    const input = collateral<{ id: number }>();
+    const stepped = collateral<{ id: number }>();
+    const done = collateral<{ ok: true }>();
     const control = { fail: true, stepCalls: 0, doneCalls: 0 };
 
-    const step = cnsNeuron({ stepped }).dendrite({
+    const step = neuron({ stepped }).dendrite({
         collateral: input,
         response: (p, axon) => {
             control.stepCalls += 1;
             return axon.stepped.createSignal({ id: p!.id });
         },
     });
-    const finish = cnsNeuron({ done }).dendrite({
+    const finish = neuron({ done }).dendrite({
         collateral: stepped,
         response: (_p, axon) => {
             control.doneCalls += 1;
@@ -132,6 +133,32 @@ describe('runCNSStimulationJob', () => {
         const { cns, registry } = buildFlow();
 
         await expect(runCNSStimulationJob(params({ cns, registry }))).rejects.toThrow();
+    });
+
+    it('puts the job identity under its own context key, next to the fields handlers read', async () => {
+        const input = collateral<{ id: number }>();
+        const contexts: unknown[] = [];
+        const probe = neuron({}).dendrite({
+            collateral: input,
+            response: (_payload, _axon, ctx) => {
+                contexts.push(ctx.stimulationContext);
+            },
+        });
+        const cns = new CNS([probe]);
+        const registry = new CNSPersistOptionsRegistry();
+        registry.register('probe', probe);
+        registry.registerCollateral('input', input);
+
+        await runCNSStimulationJob(
+            params({ cns, registry, attemptNumber: 3, stimulationContext: { requestId: 'request-7', stimulationId: 'request-7' } })
+        );
+
+        expect(contexts[0]).toEqual({
+            requestId: 'request-7',
+            stimulationId: 'job-1',
+            attemptNumber: 3,
+            [CNS_JOB_IDENTITY_CONTEXT_KEY]: { stimulationId: 'job-1', attemptNumber: 3 },
+        });
     });
 
     it('records the run under the job id, one attempt per broker attempt', async () => {
@@ -274,18 +301,18 @@ describe('runCNSStimulationJob', () => {
         // and the run stayed `running` with a stale frontier.
         // Aborting does not cancel a body already running — it stops what has not
         // started. So the flow needs a second hop still queued when the abort lands.
-        const input = cnsCollateral<{ id: number }>();
-        const stepped = cnsCollateral<{ id: number }>();
-        const done = cnsCollateral<{ ok: true }>();
+        const input = collateral<{ id: number }>();
+        const stepped = collateral<{ id: number }>();
+        const done = collateral<{ ok: true }>();
 
-        const slow = cnsNeuron({ stepped }).dendrite({
+        const slow = neuron({ stepped }).dendrite({
             collateral: input,
             response: async (p, axon) => {
                 await new Promise(r => setTimeout(r, 50));
                 return axon.stepped.createSignal({ id: p!.id });
             },
         });
-        const never = cnsNeuron({ done }).dendrite({
+        const never = neuron({ done }).dendrite({
             collateral: stepped,
             response: (_p, axon) => axon.done.createSignal({ ok: true }),
         });

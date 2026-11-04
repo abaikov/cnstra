@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 import { CNSProgressSerializer } from '.././CNSProgressSerializer';
 import { CNSStimulationPersistor } from '.././CNSStimulationPersistor';
@@ -9,17 +9,17 @@ const ENTRY_ = [{ collateralName: 'input', payload: { id: 1 } }];
 // n1 → n2; n2 fails on the first pass. Same shape as the serializer test, but here
 // we drive it through the persistor + stimulation repository (stimulation/attempt model).
 function buildFlow() {
-    const input = cnsCollateral<{ id: number }>();
-    const step1Out = cnsCollateral<{ id: number }>();
-    const output = cnsCollateral<{ result: string }>();
+    const input = collateral<{ id: number }>();
+    const step1Out = collateral<{ id: number }>();
+    const output = collateral<{ result: string }>();
 
     const control = { failStep2: true };
 
-    const n1 = cnsNeuron({ step1Out }).dendrite({
+    const n1 = neuron({ step1Out }).dendrite({
         collateral: input,
         response: (p, axon) => axon.step1Out.createSignal({ id: p!.id }),
     });
-    const n2 = cnsNeuron({ output }).dendrite({
+    const n2 = neuron({ output }).dendrite({
         collateral: step1Out,
         response: (p, axon) => {
             if (control.failStep2) throw new Error('boom');

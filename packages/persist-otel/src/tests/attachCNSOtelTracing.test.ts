@@ -1,6 +1,6 @@
 import { SpanStatusCode, trace } from '@opentelemetry/api';
 import type { Context, Span, SpanOptions, Tracer } from '@opentelemetry/api';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 import { attachCNSOtelTracing, CNS_OTEL_CONTEXT } from '.././attachCNSOtelTracing';
 import type { TCNSOtelCompartment } from '.././attachCNSOtelTracing';
@@ -88,19 +88,19 @@ const fakeTracer = () => {
 
 /** A flow: input → n1 → mid → n2 → out → n3. */
 const buildFlow = () => {
-    const input = cnsCollateral<{ id: number }>();
-    const mid = cnsCollateral<{ id: number }>();
-    const out = cnsCollateral<{ ok: boolean }>();
+    const input = collateral<{ id: number }>();
+    const mid = collateral<{ id: number }>();
+    const out = collateral<{ ok: boolean }>();
 
-    const n1 = cnsNeuron({ mid }).dendrite({
+    const n1 = neuron({ mid }).dendrite({
         collateral: input,
         response: (p, axon) => axon.mid.createSignal({ id: p!.id }),
     });
-    const n2 = cnsNeuron({ out }).dendrite({
+    const n2 = neuron({ out }).dendrite({
         collateral: mid,
         response: (_p, axon) => axon.out.createSignal({ ok: true }),
     });
-    const n3 = cnsNeuron({}).dendrite({
+    const n3 = neuron({}).dendrite({
         collateral: out,
         response: () => undefined,
     });
@@ -212,17 +212,17 @@ describe('attachCNSOtelTracing', () => {
 
     it('gives every subscriber of one collateral its own span', async () => {
         // Two neurons on the same collateral are two activations, not one.
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ ok: boolean }>();
-        const producer = cnsNeuron({ out }).dendrite({
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ ok: boolean }>();
+        const producer = neuron({ out }).dendrite({
             collateral: input,
             response: (_p, axon) => axon.out.createSignal({ ok: true }),
         });
-        const a = cnsNeuron({}).dendrite({
+        const a = neuron({}).dendrite({
             collateral: out,
             response: () => undefined,
         });
-        const b = cnsNeuron({}).dendrite({
+        const b = neuron({}).dendrite({
             collateral: out,
             response: () => undefined,
         });
@@ -251,16 +251,16 @@ describe('attachCNSOtelTracing', () => {
         // An activation returning an ARRAY answers once per signal. Closing its
         // span on the FIRST of those and forgetting it sent every later child to
         // the root instead of to the neuron that actually produced it.
-        const input = cnsCollateral<{ id: number }>();
-        const item = cnsCollateral<{ n: number }>();
-        const fanOut = cnsNeuron({ item }).dendrite({
+        const input = collateral<{ id: number }>();
+        const item = collateral<{ n: number }>();
+        const fanOut = neuron({ item }).dendrite({
             collateral: input,
             response: (_p, axon) => [
                 axon.item.createSignal({ n: 1 }),
                 axon.item.createSignal({ n: 2 }),
             ],
         });
-        const worker = cnsNeuron({}).dendrite({
+        const worker = neuron({}).dendrite({
             collateral: item,
             response: () => undefined,
         });
@@ -284,8 +284,8 @@ describe('attachCNSOtelTracing', () => {
     });
 
     it('marks a failed activation and its run as errors', async () => {
-        const input = cnsCollateral<{ id: number }>();
-        const boom = cnsNeuron({}).dendrite({
+        const input = collateral<{ id: number }>();
+        const boom = neuron({}).dendrite({
             collateral: input,
             response: () => {
                 throw new Error('boom');
@@ -335,10 +335,10 @@ describe('attachCNSOtelTracing', () => {
         // Read from the neuron, not from a local `onResponse`: the engine calls
         // the local listener BEFORE the global ones (CNS.ts), so a local listener
         // is too early to see what a global one stamps. The dendrite is not.
-        const input = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
         const seen: (TCNSOtelCompartment | undefined)[] = [];
 
-        const worker = cnsNeuron({}).dendrite({
+        const worker = neuron({}).dendrite({
             collateral: input,
             response: (_p, _axon, ctx: any) => {
                 seen.push(ctx.activationContext?.[CNS_OTEL_CONTEXT]);
@@ -363,10 +363,10 @@ describe('attachCNSOtelTracing', () => {
     it('leaves the store alone when it is not the one writing', async () => {
         // Its compartment is keyed by package name, so a value someone else put
         // in the same store is still there afterwards.
-        const input = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
         let seen: Record<string, unknown> | undefined;
 
-        const worker = cnsNeuron({}).dendrite({
+        const worker = neuron({}).dendrite({
             collateral: input,
             response: (_p, _axon, ctx: any) => {
                 seen = ctx.activationContext;
@@ -397,13 +397,13 @@ describe('attachCNSOtelTracing', () => {
     describe('a Retry is the same run, so it is the same trace', () => {
         /** A flow whose second neuron fails until `fail.v` is cleared. */
         const failing = (fail: { v: boolean }) => {
-            const input = cnsCollateral<{ id: number }>();
-            const mid = cnsCollateral<{ id: number }>();
-            const n1 = cnsNeuron({ mid }).dendrite({
+            const input = collateral<{ id: number }>();
+            const mid = collateral<{ id: number }>();
+            const n1 = neuron({ mid }).dendrite({
                 collateral: input,
                 response: (p, axon) => axon.mid.createSignal({ id: p!.id }),
             });
-            const n2 = cnsNeuron({}).dendrite({
+            const n2 = neuron({}).dendrite({
                 collateral: mid,
                 response: () => {
                     if (fail.v) throw new Error('boom');

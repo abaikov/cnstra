@@ -27,12 +27,12 @@ export const registry = new CNSPersistOptionsRegistry();
 
 ```ts file=import.ts
 // src/neurons/import.ts
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { registry } from './registry';
 
-export const input = cnsCollateral<{ email: string }>();
-export const userImported = cnsCollateral<{ userId: string }>();
-export const importUserNeuron = cnsNeuron({ userImported }).dendrite({
+export const input = collateral<{ email: string }>();
+export const userImported = collateral<{ userId: string }>();
+export const importUserNeuron = neuron({ userImported }).dendrite({
   collateral: input,
   response: (payload, axon) => axon.userImported.createSignal({ userId: payload.email }),
 });
@@ -59,13 +59,13 @@ library can ship its graph as a factory function and never collide with your nam
 a second copy of itself:
 
 ```ts file=payments.ts
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { CNSFactory } from '@cnstra/factory';
 
 export const createPaymentsGraph = (gateway: { charge(orderId: string): Promise<void> }) => {
-  const charge = cnsCollateral<{ orderId: string }>();
-  const charged = cnsCollateral<{ orderId: string }>();
-  const chargeNeuron = cnsNeuron({ charged }).dendrite({
+  const charge = collateral<{ orderId: string }>();
+  const charged = collateral<{ orderId: string }>();
+  const chargeNeuron = neuron({ charged }).dendrite({
     collateral: charge,
     response: async (payload, axon) => {
       await gateway.charge(payload.orderId);
@@ -110,7 +110,7 @@ rather than half-restored. `hydrate()` hands the run's store back for you to pas
 straight into `activate`:
 
 ```ts setup
-import { CNS, cnsCollateral } from '@cnstra/core';
+import { CNS, collateral } from '@cnstra/core';
 import type { TCNSNeuron } from '@cnstra/types';
 import type {
   CNSPersistOptionsRegistry,
@@ -130,7 +130,7 @@ declare const runId: string;
 declare const saved: TCNSProgress;
 declare const entry: TCNSSignalJSON[];
 
-const signal = cnsCollateral<{ userId: string }>().createSignal({ userId: 'u1' });
+const signal = collateral<{ userId: string }>().createSignal({ userId: 'u1' });
 const stimulation = cns.stimulate(signal);
 ```
 
@@ -272,7 +272,7 @@ stale `running` rows, a custom scheduler, etc.). See [pg-boss](/docs/integration
 |---|---|
 | Every neuron (`register`) | resolves neuron + axon collaterals by name |
 | Entry collaterals (`registerCollateral`, or listed in the factory object) | external triggers are no neuron's axon — needed so the frontier serializes |
-| Modalities (`registerModality('flow', flow)`) | a run started with `{ modality, afferentPath }` resumes on the same path; the path is stored by its key in `cnsModality({ … })` |
+| Modalities (`registerModality('flow', flow)`) | a run started with `{ modality, afferentPath }` resumes on the same path; the path is stored by its key in `modality({ … })` |
 | Nothing else | intermediate collaterals come from `register`; topology is never persisted |
 
 The **same** registry powers persistence, the queue workers, and DevTools/AI inspection.

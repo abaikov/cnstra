@@ -1,0 +1,198 @@
+@scope (.cns-devtools) {
+  .dg-svg {
+      display: block;
+      width: 100%;
+      font-family: var(--font-body);
+      background-image: linear-gradient(rgba(82, 167, 201, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(82, 167, 201, 0.08) 1px, transparent 1px);
+      background-size: 26px 26px;
+  }
+
+  .dg-svg [data-kind='neuron'] {
+      --dg-accent: var(--color-violet);
+  }
+
+  .dg-svg [data-kind='collateral'] {
+      --dg-accent: var(--color-cyan);
+  }
+
+  .dg-svg [data-kind][data-status='failed'] {
+      --dg-accent: var(--color-red);
+  }
+
+  .dg-heading {
+      fill: var(--text-muted);
+      font-size: 9px;
+      letter-spacing: 1.5px;
+  }
+
+  .dg-edge {
+      fill: none;
+      stroke: var(--border-accent);
+      stroke-linecap: round;
+      stroke-dasharray: 3 5;
+  }
+
+  .dg-link[data-flowing] .dg-edge {
+      stroke: var(--dg-accent);
+      stroke-dasharray: none;
+      filter: drop-shadow(0 0 2px var(--dg-accent));
+  }
+
+  .dg-dot {
+      display: none;
+      fill: #eafbc7;
+      filter: drop-shadow(0 0 3px var(--color-green));
+  }
+
+  .dg-link[data-status='failed'] .dg-dot {
+      fill: var(--status-color);
+      filter: drop-shadow(0 0 3px var(--status-color));
+  }
+
+  .dg-link[data-flowing] .dg-dot-moving {
+      display: inline;
+  }
+
+  .dg-box {
+      fill: #191919;
+      stroke: var(--dg-accent);
+      stroke-width: 1.4;
+      filter: drop-shadow(0 0 3px var(--dg-accent));
+  }
+
+  .dg-source .dg-box {
+      stroke-width: 2;
+      filter: drop-shadow(0 0 6px var(--dg-accent));
+  }
+
+  .dg-tag {
+      fill: var(--dg-accent);
+      font-size: 8px;
+      letter-spacing: 1px;
+  }
+
+  .dg-title {
+      fill: var(--text-primary);
+      font-size: 12.5px;
+  }
+
+  .dg-source .dg-title {
+      font-size: 13.5px;
+      font-weight: 700;
+  }
+
+  .dg-sub {
+      fill: var(--text-muted);
+      font-size: 9.5px;
+  }
+
+  .dg-link[data-status='failed'] .dg-sub {
+      fill: var(--status-color);
+  }
+
+  .dg-glyph {
+      fill: var(--status-color);
+      font-size: 11px;
+  }
+
+  .dg-open {
+      display: none;
+      fill: var(--dg-accent);
+      font-size: 12px;
+      opacity: 0.55;
+      transition: opacity 0.14s ease;
+  }
+
+  .dg-click {
+      cursor: pointer;
+  }
+
+  .dg-click:hover {
+      filter: brightness(1.28) drop-shadow(0 0 6px color-mix(in srgb, var(--color-pink) 50%, transparent));
+  }
+
+  .dg-click:hover .dg-open {
+      opacity: 1;
+  }
+
+  .dg-click .dg-open {
+      display: inline;
+  }
+
+  .dg-page-turn {
+      cursor: pointer;
+      outline: none;
+  }
+
+  .dg-page-turn-box {
+      fill: #191919;
+      stroke: var(--border-accent);
+      stroke-width: 1;
+  }
+
+  .dg-page-turn-glyph {
+      fill: var(--text-primary);
+      font-size: 11px;
+  }
+
+  .dg-page-turn:hover .dg-page-turn-box,
+  .dg-page-turn:focus-visible .dg-page-turn-box {
+      stroke: var(--color-pink);
+      filter: drop-shadow(0 0 3px color-mix(in srgb, var(--color-pink) 50%, transparent));
+  }
+
+  .dg-page-label {
+      fill: var(--text-muted);
+      font-size: 10px;
+      letter-spacing: 0.5px;
+  }
+
+  .pipe-connector {
+      flex: none;
+      width: 34px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+  }
+
+  .pipe-connector[data-status='entry'] {
+      --status-color: var(--color-violet);
+  }
+
+  .pipe-connector-svg {
+      width: 34px;
+      height: 44px;
+  }
+
+  .pipe-connector-path {
+      fill: none;
+      stroke: var(--status-color);
+      stroke-width: 2;
+      opacity: 0.8;
+      filter: drop-shadow(0 0 2px var(--status-color));
+  }
+
+  .pipe-connector-dot {
+      display: none;
+      fill: #eafbc7;
+      filter: drop-shadow(0 0 3px var(--status-color));
+  }
+
+  .pipe-connector[data-flowing] .pipe-connector-dot-moving {
+      display: inline;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+      .dg-link[data-flowing] .dg-dot-moving,
+      .pipe-connector[data-flowing] .pipe-connector-dot-moving {
+          display: none;
+      }
+
+      .dg-link[data-flowing] .dg-dot-still,
+      .pipe-connector[data-flowing] .pipe-connector-dot-still {
+          display: inline;
+      }
+  }
+
+  .dg-node { transition: filter 0.14s ease; }
+}

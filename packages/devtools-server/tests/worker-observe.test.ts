@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSInMemoryStimulationRepository,
@@ -6,6 +6,7 @@ import {
 import { runCNSStimulationJob, createCNSDrainState } from '@cnstra/broker';
 import { CNSDevToolsServer } from '../src/index';
 import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-repository-in-memory';
+import { ANY_STIMULATION, readSync } from './readSync';
 
 /**
  * The bull / pg-boss → Explorer connection.
@@ -20,30 +21,19 @@ import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-rep
  * the core and asserts they surface through the Explorer protocol.
  */
 
-function makeWs() {
-    const sent: string[] = [];
-    return {
-        readyState: 1,
-        sent,
-        send: (data: string) => sent.push(data),
-        reply: (type: string) =>
-            sent.map(s => JSON.parse(s)).find(m => m.type === type),
-    };
-}
-
 // Two "job types" (entry collaterals), like two of pg-boss's ~20 queues.
 // importDoc → parse; sendEmail → deliver (which fails when the payload says so).
 function buildFlow() {
-    const importDoc = cnsCollateral<{ docId: number }>();
-    const parsed = cnsCollateral<{ docId: number }>();
-    const sendEmail = cnsCollateral<{ to: string; boom?: boolean }>();
-    const delivered = cnsCollateral<{ to: string }>();
+    const importDoc = collateral<{ docId: number }>();
+    const parsed = collateral<{ docId: number }>();
+    const sendEmail = collateral<{ to: string; boom?: boolean }>();
+    const delivered = collateral<{ to: string }>();
 
-    const parser = cnsNeuron({ parsed }).dendrite({
+    const parser = neuron({ parsed }).dendrite({
         collateral: importDoc,
         response: (p, axon) => axon.parsed.createSignal({ docId: p!.docId }),
     });
-    const mailer = cnsNeuron({ delivered }).dendrite({
+    const mailer = neuron({ delivered }).dendrite({
         collateral: sendEmail,
         response: (p, axon) => {
             if (p!.boom) throw new Error('smtp down');
@@ -111,52 +101,25 @@ describe('bull/pg-boss worker → shared observe store → Explorer', () => {
         });
     });
 
-    it('Explorer list shows every job run the worker observed', async () => {
-        const ws = makeWs();
-        await server.handleMessage(
-            ws as any,
-            JSON.stringify({ type: 'cns.stimulations.list', requestId: 'r' })
-        );
-        const res = ws.reply('cns.stimulations.list.result');
-        expect(res.total).toBe(4);
-        const ids = res.stimulations.map((s: any) => s.stimulationId).sort();
-        expect(ids).toEqual(['job-1', 'job-2', 'job-3', 'job-4']);
-        // one job-id == one stimulation, entry collateral == the pg-boss queue
-        const j4 = res.stimulations.find((s: any) => s.stimulationId === 'job-4');
+    it('a page shows every job run the worker observed', async () => {
+        const page = await readSync(server, 'stimulationPage', [...ANY_STIMULATION, undefined, undefined, 50]);
+        expect(page.total).toBe(4);
+        expect(page.rows.map(row => row.stimulationId).sort()).toEqual(['job-1', 'job-2', 'job-3', 'job-4']);
+        const j4 = page.rows.find(row => row.stimulationId === 'job-4')!;
         expect(j4.entry.collateralName).toBe('sendEmail');
         expect(j4.hasError).toBe(true);
     });
 
     it('facets group by job type (entry collateral) and status', async () => {
-        const ws = makeWs();
-        await server.handleMessage(
-            ws as any,
-            JSON.stringify({ type: 'cns.stimulations.facets', requestId: 'r' })
-        );
-        const { facets } = ws.reply('cns.stimulations.facets.result');
-        expect(
-            facets.byEntryCollateral.find((f: any) => f.name === 'importDoc').count
-        ).toBe(2);
-        expect(
-            facets.byEntryCollateral.find((f: any) => f.name === 'sendEmail').count
-        ).toBe(2);
-        // the neuron that actually ran shows up in the neurons lens
-        expect(facets.byNeuron.find((f: any) => f.name === 'parser').count).toBe(2);
+        const facets = await readSync(server, 'stimulationFacets', [...ANY_STIMULATION, undefined]);
+        expect(facets.byEntryCollateral.find(bucket => bucket.name === 'importDoc')!.count).toBe(2);
+        expect(facets.byEntryCollateral.find(bucket => bucket.name === 'sendEmail')!.count).toBe(2);
+        expect(facets.byNeuron.find(bucket => bucket.name === 'parser')!.count).toBe(2);
     });
 
     it('detail returns the run’s attempt + task waterfall for a job', async () => {
-        const ws = makeWs();
-        await server.handleMessage(
-            ws as any,
-            JSON.stringify({
-                type: 'cns.stimulation.detail',
-                requestId: 'r',
-                stimulationId: 'job-1',
-            })
-        );
-        const res = ws.reply('cns.stimulation.detail.result');
-        expect(res.attempts).toHaveLength(1);
-        expect(res.attempts[0].stimulationId).toBe('job-1');
-        expect(res.tasks.map((t: any) => t.neuronName)).toContain('parser');
+        const detail = await readSync(server, 'stimulationDetail', ['job-1']);
+        expect(detail.attempts.map(attempt => attempt.stimulationId)).toEqual(['job-1']);
+        expect(detail.tasks.map(task => task.neuronName)).toContain('parser');
     });
 });

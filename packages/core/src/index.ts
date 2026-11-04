@@ -10,11 +10,11 @@ export type { TCNSStimulationGateOptions } from './utils/CNSStimulationGate';
 
 // Factory
 export {
-    cnsCollateral,
-    cnsNeuron,
-    cnsNeuronFactory,
+    collateral,
+    neuron,
+    neuronFactory,
     withCNSGlobal,
-    cnsAfferentPath,
-    cnsModality,
+    afferentPath,
+    modality,
 } from './factory/index';
 export type { TCNSNeuronFactory } from './factory/index';

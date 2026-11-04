@@ -1,5 +1,5 @@
 import { configure, observable, autorun, runInAction } from 'mobx';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 /**
  * Verifies the "Batching state managers" recipe against real MobX.
@@ -36,25 +36,25 @@ describe('MobX driven by onDrain', () => {
     it('collapses a whole synchronous turn into one reaction run', async () => {
         const store = observable({ a: 0, b: 0, c: 0 });
 
-        const start = cnsCollateral<number>();
-        const second = cnsCollateral<number>();
-        const third = cnsCollateral<number>();
+        const start = collateral<number>();
+        const second = collateral<number>();
+        const third = collateral<number>();
 
-        const n1 = cnsNeuron({ second }).dendrite({
+        const n1 = neuron({ second }).dendrite({
             collateral: start,
             response: (_p, axon) => {
                 runInAction(() => { store.a = 1; });
                 return axon.second.createSignal(1);
             },
         });
-        const n2 = cnsNeuron({ third }).dendrite({
+        const n2 = neuron({ third }).dendrite({
             collateral: second,
             response: (_p, axon) => {
                 runInAction(() => { store.b = 1; });
                 return axon.third.createSignal(1);
             },
         });
-        const n3 = cnsNeuron({}).dendrite({
+        const n3 = neuron({}).dendrite({
             collateral: third,
             response: () => {
                 runInAction(() => { store.c = 1; });
@@ -84,10 +84,10 @@ describe('MobX driven by onDrain', () => {
     it('produces one reaction run per synchronous turn across an await', async () => {
         const store = observable({ loading: false, loaded: false });
 
-        const click = cnsCollateral<number>();
-        const done = cnsCollateral<number>();
+        const click = collateral<number>();
+        const done = collateral<number>();
 
-        const loader = cnsNeuron({ done }).dendrite({
+        const loader = neuron({ done }).dendrite({
             collateral: click,
             response: async (_p, axon) => {
                 // Optimistic write BEFORE yielding - the case a
@@ -97,7 +97,7 @@ describe('MobX driven by onDrain', () => {
                 return axon.done.createSignal(1);
             },
         });
-        const finish = cnsNeuron({}).dendrite({
+        const finish = neuron({}).dendrite({
             collateral: done,
             response: () => {
                 runInAction(() => {
@@ -130,17 +130,17 @@ describe('MobX driven by onDrain', () => {
         const store = observable({ n: 0 });
         const readings: number[] = [];
 
-        const a = cnsCollateral<number>();
-        const b = cnsCollateral<number>();
+        const a = collateral<number>();
+        const b = collateral<number>();
 
-        const writer = cnsNeuron({ b }).dendrite({
+        const writer = neuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => {
                 runInAction(() => { store.n = 42; });
                 return axon.b.createSignal(1);
             },
         });
-        const reader = cnsNeuron({}).dendrite({
+        const reader = neuron({}).dendrite({
             collateral: b,
             response: () => {
                 // Deferring reactions must not defer the write itself.
@@ -159,8 +159,8 @@ describe('MobX driven by onDrain', () => {
 
     it('holds reactions created outside a turn until the next drain', async () => {
         const store = observable({ n: 0 });
-        const a = cnsCollateral<number>();
-        const touch = cnsNeuron({}).dendrite({
+        const a = collateral<number>();
+        const touch = neuron({}).dendrite({
             collateral: a,
             response: () => {
                 runInAction(() => { store.n += 1; });

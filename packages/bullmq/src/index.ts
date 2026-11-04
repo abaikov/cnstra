@@ -3,7 +3,7 @@ export type { TCNSWorkerOptions, TCNSBullWorkerHandle } from './worker';
 
 export {
     enqueueCNSStimulation,
-    cnsStimulationJob,
+    stimulationJob,
     CNS_JOB_NAME,
 } from './enqueue';
 

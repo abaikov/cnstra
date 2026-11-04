@@ -1,6 +1,6 @@
 import type { CNSCollateral } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
-import { cnsStimulationJob as brokerStimulationJob } from '@cnstra/broker';
+import { stimulationJob as brokerStimulationJob } from '@cnstra/broker';
 import type { TCNSStimulationJobOptions } from '@cnstra/broker';
 import type { ICNSPgBossLike, TCNSStimulationJobData } from './types';
 
@@ -21,7 +21,7 @@ export type TCNSSendOptions = {
  * Build a queue job from a **registered** collateral. Throws if the collateral
  * is not in the registry, so a typo can't reach the queue.
  */
-export function cnsStimulationJob(
+export function stimulationJob(
     registry: CNSPersistOptionsRegistry,
     collateral: CNSCollateral<unknown>,
     payload: unknown,

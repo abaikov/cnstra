@@ -22,7 +22,7 @@ run store:
 
 ```ts setup
 import type { Pool } from 'pg';
-import { CNS, cnsCollateral } from '@cnstra/core';
+import { CNS, collateral } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
 import type { ICNSDevToolsServerRepository } from '@cnstra/devtools-server';
@@ -32,7 +32,7 @@ declare const db: Pool;
 declare const appTopologyRepo: ICNSDevToolsServerRepository;
 declare const itemId: string;
 
-const input = cnsCollateral<{ file: string }>();
+const input = collateral<{ file: string }>();
 const registry = new CNSPersistOptionsRegistry().registerCollateral('input', input);
 const cns = new CNS([/* your neurons */]);
 const runStore = new CNSPostgresStimulationRepository({ connectionString: DATABASE_URL });

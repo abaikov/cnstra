@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-server-repository-redis",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Redis repository for CNStra DevTools server (resumable stimulations & hops)",
   "repository": {
     "type": "git",
@@ -37,7 +37,7 @@
     "dist"
   ],
   "dependencies": {
-    "@cnstra/devtools-dto": "^3.0.0"
+    "@cnstra/devtools-dto": "^3.2.1"
   },
   "peerDependencies": {
     "@cnstra/devtools-server": "^3.0.0",

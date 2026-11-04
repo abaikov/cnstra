@@ -1,0 +1,1 @@
+export const NEURON_SNAPSHOT_LIMIT = 500;

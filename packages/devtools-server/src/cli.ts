@@ -7,65 +7,72 @@
  */
 
 import { createServer } from 'http';
-import { readFileSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { createRequire } from 'module';
-import { WebSocketServer, WebSocket } from 'ws';
+import type { IncomingMessage } from 'http';
+import { WebSocketServer } from 'ws';
+import { CNS_DEVTOOLS_SYNC_PATH } from '@cnstra/devtools-dto';
 import { CNSDevToolsServer } from './index';
 import { createCNSDevToolsServerRepositoryInMemory } from './createCNSDevToolsServerRepositoryInMemory';
-
-const _require = createRequire(join(process.cwd(), 'package.json'));
-
-function findPanelUIDir(): string {
-    try {
-        const pkg = _require.resolve('@cnstra/devtools-panel-ui/package.json');
-        return join(dirname(pkg), 'dist');
-    } catch {
-        const here = dirname(_require.resolve('@cnstra/devtools-server/package.json'));
-        return join(here, '..', '..', 'devtools-panel-ui', 'dist');
-    }
-}
-
-const MIME: Record<string, string> = {
-    html: 'text/html', js: 'application/javascript', css: 'text/css',
-    svg: 'image/svg+xml', png: 'image/png', woff2: 'font/woff2',
-};
+import { CNSDevToolsPanelPage } from './CNSDevToolsPanelPage';
+import { CNSDevToolsLocalRequestPolicy } from './CNSDevToolsLocalRequestPolicy';
 
 const port = Number(process.env.PORT ?? process.argv[2] ?? 3141);
-const panelUIDir = findPanelUIDir();
-
-const httpServer = createServer((req, res) => {
-    const safe = (req.url ?? '/').split('?')[0].replace(/\.\./g, '');
-    const file = safe === '/' ? '/index.html' : safe;
-    const full = join(panelUIDir, file);
-
-    if (existsSync(full) && full.startsWith(panelUIDir)) {
-        const ext = full.split('.').pop() ?? '';
-        res.writeHead(200, { 'Content-Type': MIME[ext] ?? 'text/plain' });
-        res.end(readFileSync(full));
-    } else {
-        const idx = join(panelUIDir, 'index.html');
-        res.writeHead(existsSync(idx) ? 200 : 503, { 'Content-Type': 'text/html' });
-        res.end(existsSync(idx) ? readFileSync(idx) : 'UI not built.');
-    }
-});
-
-const wss = new WebSocketServer({ server: httpServer });
+const host = process.env.HOST ?? '127.0.0.1';
+const isBoundToLoopback = CNSDevToolsLocalRequestPolicy.isLoopbackBind(host);
+const trustedOrigins = (process.env.CNSTRA_DEVTOOLS_ALLOWED_ORIGINS ?? '').split(',').map(origin => origin.trim()).filter(Boolean);
+const page = new CNSDevToolsPanelPage(CNSDevToolsPanelPage.locate(), { basePath: '/', transport: 'socket', readOnly: false });
 
 const dtServer = new CNSDevToolsServer(await createCNSDevToolsServerRepositoryInMemory());
+
+const httpServer = createServer(async (req, res) => {
+    if (isBoundToLoopback && !CNSDevToolsLocalRequestPolicy.isLoopbackHost(req.headers.host, port)) {
+        res.writeHead(403);
+        return res.end();
+    }
+    if (req.url?.startsWith(CNS_DEVTOOLS_SYNC_PATH)) {
+        if (req.method !== 'GET') {
+            res.writeHead(405);
+            return res.end();
+        }
+        const answer = await dtServer.homeostatTransductionEndpoint.respond(
+            req.url.slice(CNS_DEVTOOLS_SYNC_PATH.length).replace(/^\?/, ''),
+            req.headers.accept
+        );
+        res.writeHead(answer.status, answer.headers);
+        return res.end(answer.body);
+    }
+    const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+    const answer =
+        req.method !== 'GET'
+            ? undefined
+            : pathname === '/'
+              ? await page.page()
+              : await page.file(pathname);
+    if (!answer) {
+        res.writeHead(404);
+        return res.end('Not Found');
+    }
+    res.writeHead(answer.status, answer.headers);
+    res.end(answer.body);
+});
+
+const wss = new WebSocketServer({
+    server: httpServer,
+    verifyClient: ({ req }: { req: IncomingMessage }) =>
+        isBoundToLoopback ? CNSDevToolsLocalRequestPolicy.isLocalUpgrade(req, port, trustedOrigins) : CNSDevToolsLocalRequestPolicy.isSameOriginUpgrade(req, trustedOrigins),
+});
 
 wss.on('connection', (ws) => {
     ws.on('message', async (data) => {
         try {
-            await dtServer.handleMessage(ws as any, data.toString());
+            await dtServer.handleMessage(ws, data.toString());
         } catch {}
     });
-    ws.on('close', () => dtServer.removeClient(ws as any));
+    ws.on('close', () => dtServer.removeClient(ws));
 });
 
-httpServer.listen(port, () => {
+httpServer.listen(port, host, () => {
     console.log(`\n🧠 CNStra DevTools`);
-    console.log(`   UI:        http://localhost:${port}`);
-    console.log(`   WebSocket: ws://localhost:${port}`);
-    console.log(`\n   In your app: new CNSDevToolsTransportWs({ url: 'ws://localhost:${port}' })\n`);
+    console.log(`   UI:        http://${host}:${port}`);
+    console.log(`   WebSocket: ws://${host}:${port}`);
+    console.log(`\n   In your app: new CNSDevToolsTransportWs({ url: 'ws://${host}:${port}' })\n`);
 });

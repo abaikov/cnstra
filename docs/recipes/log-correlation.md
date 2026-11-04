@@ -35,7 +35,7 @@ Pass a value as `stimulationContext` when you start a stimulation; it is handed 
 handler on every hop** as `ctx.stimulationContext` — the *same* object throughout the run.
 
 ```ts setup
-import { CNS, cnsNeuron } from '@cnstra/core';
+import { CNS, neuron } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import { createCNSWorker, type ICNSPgBossLike } from '@cnstra/pg-boss';
 import type { ICNSCollateral, TCNSNeuron } from '@cnstra/types';
@@ -66,7 +66,7 @@ cns.stimulate(entryCol.createSignal(payload), {
 });
 
 // any neuron, any hop:
-const importUser = cnsNeuron({ userFetched }).dendrite({
+const importUser = neuron({ userFetched }).dendrite({
   collateral: input,
   response: (payload, axon, ctx) => {
     logger.info({ ...ctx.stimulationContext, msg: 'importing user' });
@@ -99,7 +99,7 @@ cns.addResponseListener(response => {
 });
 
 // the neuron that activation belongs to:
-const hopReader = cnsNeuron({}).dendrite({
+const hopReader = neuron({}).dendrite({
   collateral: input,
   response: (payload, axon, ctx) => {
     const mine = ctx.activationContext?.['my-app'];

@@ -191,33 +191,33 @@ while keeping everything explicit.
 > **New to the vocabulary?** In one breath: a **neuron** is an isolated handler, a **collateral** is a named typed signal, a neuron's **axon** is the collaterals it may emit, a **dendrite** binds a handler to an incoming collateral, and **`stimulate`** fires a signal into the graph. See the full nervous-system analogy in the [Introduction](/docs/concepts/intro).
 
 ```ts
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 const uiAxon = {
-    userEntersApp: cnsCollateral<{
+    userEntersApp: collateral<{
         userId: string;
         deckTitle: string;
         cardTitle: string;
     }>(),
-    createCardWithDeckButtonClicked: cnsCollateral<{
+    createCardWithDeckButtonClicked: collateral<{
         deckTitle: string;
         cardTitle: string;
     }>(),
 };
 
 const deckAxon = {
-    createdAtUserEntersApp: cnsCollateral<{
+    createdAtUserEntersApp: collateral<{
         deckId: string;
         cardTitle: string;
         userId: string;
     }>(),
-    createdAtCreateCardWithDeckButtonClicked: cnsCollateral<{
+    createdAtCreateCardWithDeckButtonClicked: collateral<{
         deckId: string;
         cardTitle: string;
     }>(),
 };
 
-const deck = cnsNeuron(deckAxon)
+const deck = neuron(deckAxon)
     .dendrite({
         collateral: uiAxon.userEntersApp,
         response: (payload, axon) => {
@@ -240,7 +240,7 @@ const deck = cnsNeuron(deckAxon)
         },
     });
 
-const card = cnsNeuron({})
+const card = neuron({})
     .dendrite({
         collateral: deckAxon.createdAtCreateCardWithDeckButtonClicked,
         response: payload => {
@@ -295,15 +295,15 @@ CNStra eliminates this entire class of bugs.
 ### `neuron.bind(axon, handlers)` enforces EXHAUSTIVENESS
 
 ```ts
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 
 const order = {
-  created:   cnsCollateral<{ id: string; amount: number }>(),
-  updated:   cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
-  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
+  created:   collateral<{ id: string; amount: number }>(),
+  updated:   collateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: collateral<{ id: string; reason?: string }>(),
 };
 
-const orderMailer = cnsNeuron({})
+const orderMailer = neuron({})
   .bind(order, {
     created:   (p) => sendCreated(p),
     updated:   (p) => sendUpdated(p),
@@ -314,13 +314,13 @@ const orderMailer = cnsNeuron({})
 Then the domain evolves:
 
 ```ts
-import { cnsCollateral } from '@cnstra/core';
+import { collateral } from '@cnstra/core';
 
 const order = {
-  created:   cnsCollateral<{ id: string; amount: number }>(),
-  updated:   cnsCollateral<{ id: string; changes: Record<string, unknown> }>(),
-  cancelled: cnsCollateral<{ id: string; reason?: string }>(),
-  refunded:  cnsCollateral<{ id: string; amount: number }>(),
+  created:   collateral<{ id: string; amount: number }>(),
+  updated:   collateral<{ id: string; changes: Record<string, unknown> }>(),
+  cancelled: collateral<{ id: string; reason?: string }>(),
+  refunded:  collateral<{ id: string; amount: number }>(),
 };
 ```
 

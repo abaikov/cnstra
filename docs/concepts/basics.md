@@ -8,7 +8,7 @@ keywords: [basics, fundamentals, design principles, single process, command patt
 ---
 
 ```ts setup
-import { CNS, CNSCollateral, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, CNSCollateral, collateral, neuron } from '@cnstra/core';
 import type { TCNSNeuron } from '@cnstra/types';
 
 type Item = { sku: string; quantity: number };
@@ -57,7 +57,7 @@ CNStra implements a large-scale command pattern where each stimulation is a comm
 This approach combines the benefits of the command pattern (encapsulation, decoupling, extensibility) with automatic signal routing through the explicit neuron graph structure.
 
 ```ts
-const orderCreated = cnsCollateral<{ orderId: string }>();
+const orderCreated = collateral<{ orderId: string }>();
 
 // Each stimulation is a command
 const signal = orderCreated.createSignal({ orderId: '123' });
@@ -101,11 +101,11 @@ This separation provides the best of both worlds:
 
 ```ts
 // Domain neuron: owns mutations for Order model
-const orderCreated = cnsCollateral<{ id: string; items: Item[] }>();
-const orderUpdated = cnsCollateral<{ id: string; changes: Partial<Order> }>();
-const orderCancelled = cnsCollateral<{ id: string; reason: string }>();
+const orderCreated = collateral<{ id: string; items: Item[] }>();
+const orderUpdated = collateral<{ id: string; changes: Partial<Order> }>();
+const orderCancelled = collateral<{ id: string; reason: string }>();
 
-const orderDomain = cnsNeuron({
+const orderDomain = neuron({
   created: orderCreated,
   updated: orderUpdated,
   cancelled: orderCancelled,

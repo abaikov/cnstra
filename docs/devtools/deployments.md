@@ -69,7 +69,7 @@ should outlive a restart — see [Stimulations](./stimulations.md).
 
 | id | where it comes from | what it identifies | what it does |
 | --- | --- | --- | --- |
-| `appId` | first argument of `new CNSDevTools('orders-worker', transport, …)`, or `startCNSDevTools(cns, registry, { appId })` | the **service** — not the process | the routing key: the server keeps `appId → Set<socket>` and delivers a forwarded action to that set |
+| `appId` | first argument of `new CNSDevTools('orders-worker', transport, …)`, or `startCNSDevTools({ cns, registry }, { appId })` | the **service** — not the process | the routing key: the server keeps `appId → Set<socket>` and delivers a forwarded action to that set |
 | `cnsId` | the `cnsId` option; defaults to `` `${appId}:cns` `` | one graph **inside** the service | the topology snapshot is stored under it; one service may host several graphs |
 | `scopeName` | recorded on every run — it is the `cnsId` the run executed on | which graph a run belongs to | the server resolves `scopeName → appId` to decide where a resume goes |
 
@@ -190,9 +190,10 @@ If the chain runs out with nobody acting, the panel is told the action was
 rejected (`no runtime accepted the retry`) rather than being left with a button
 that reported success and did nothing.
 
-`startCNSDevTools` takes the same `actions` and `ui` options and passes them to the
-server it builds, so an in-process panel does not have to be reassembled by hand
-to route Retry through a broker.
+`startCNSDevTools` and `createCNSDevToolsHandler` take the same `actions` and `ui`
+options and pass them to the server they build; a pg-boss worker, or a BullMQ
+worker given its `Queue` instance as `queue`, passed as the source brings its own link. An in-process panel does not have
+to be reassembled by hand to route Retry through a broker — see [Admin](./admin.md).
 
 ## When the network will not carry a WebSocket
 
@@ -203,7 +204,9 @@ The panel then reconnects forever and shows nothing, while the server is healthy
 
 Both sides can fall back to HTTP, on the same port, at `/__cnstra/poll` — always
 exposed, no flag to turn it on. The socket stays the default; polling is what a
-client asks for.
+client asks for. On polling the panel reads its lists and details with one
+`GET /__cnstra/sync` per poll and sends Retry, Clone and the queue commands
+through `/__cnstra/poll`, so an ingress in front of it lets both paths through.
 
 - **The panel** — open it with `?transport=polling`. That is a link you can hand
   to whoever is behind the proxy without changing anything for everyone else, and

@@ -105,7 +105,7 @@ The in-memory queue is designed for **short fan-outs within a single business fl
 
 ```ts setup
 import { Queue, Worker, type ConnectionOptions } from 'bullmq';
-import { CNS, cnsNeuron } from '@cnstra/core';
+import { CNS, neuron } from '@cnstra/core';
 import type { ICNSCollateral, TCNSNeuron, TCNSSignal } from '@cnstra/types';
 
 declare const cns: CNS<TCNSNeuron<any>>;
@@ -284,7 +284,7 @@ Payload growth significantly impacts memory usage, because each queued task stor
     CNStra has no mutable per-neuron store — counters, timestamps, and correlation ids ride on the signal, so nothing is held for the whole run:
 
     ```ts
-    const processor = cnsNeuron({ next })
+    const processor = neuron({ next })
       .dendrite({
         collateral: batchInput,
         response: async (payload, axon) => {
@@ -320,7 +320,7 @@ Payload growth significantly impacts memory usage, because each queued task stor
     ```ts
     const BATCH_SIZE = 20;
     
-    const batchProcessor = cnsNeuron({ processBatch, batchesDone })
+    const batchProcessor = neuron({ processBatch, batchesDone })
       .dendrite({
         collateral: processBatch,
         response: async (payload, axon) => {
@@ -386,13 +386,13 @@ If a neuron doesn't perform I/O, return the next signal synchronously:
 
 ```ts
 // ✅ Sync response (fast)
-const doubler = cnsNeuron({ output }).dendrite({
+const doubler = neuron({ output }).dendrite({
   collateral: input,
   response: (p, axon) => axon.output.createSignal({ value: p.value * 2 })
 });
 
 // ⚠️ Async response (schedules a microtask; use when doing I/O)
-const fetcher = cnsNeuron({ output }).dendrite({
+const fetcher = neuron({ output }).dendrite({
   collateral: input,
   response: async (p, axon) => {
     const result = await fetch('/api');

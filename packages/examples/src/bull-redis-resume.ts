@@ -11,9 +11,9 @@
  *   npm run demo:bull:redis
  */
 import { Queue, Worker } from 'bullmq';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
-import { createCNSWorker, enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/bullmq';
+import { createCNSWorker, enqueueCNSStimulation, stimulationJob } from '@cnstra/bullmq';
 import { CNSRedisProgressRepository } from '@cnstra/progress-redis';
 
 const connection = {
@@ -22,20 +22,20 @@ const connection = {
 };
 const QUEUE = 'cns';
 
-const input = cnsCollateral<{ userId: string }>();
-const userFetched = cnsCollateral<{ id: string }>();
-const userSaved = cnsCollateral<{ id: string; ok: true }>();
+const input = collateral<{ userId: string }>();
+const userFetched = collateral<{ id: string }>();
+const userSaved = collateral<{ id: string; ok: true }>();
 
 let attempt = 0;
 
-const importUser = cnsNeuron({ userFetched }).dendrite({
+const importUser = neuron({ userFetched }).dendrite({
     collateral: input,
     response: (p, axon) => {
         console.log(`    ▸ importUser(${p!.userId})`);
         return axon.userFetched.createSignal({ id: p!.userId });
     },
 });
-const persistUser = cnsNeuron({ userSaved }).dendrite({
+const persistUser = neuron({ userSaved }).dendrite({
         collateral: userFetched,
         response: (p, axon) => {
             attempt++;
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     worker.on('failed', (_job, err) => console.log(`    · job failed (BullMQ will retry): ${err.message}`)
     );
 
-    const job = cnsStimulationJob(registry, input, { userId: '42' });
+    const job = stimulationJob(registry, input, { userId: '42' });
     await enqueueCNSStimulation(queue, job, { attempts: 3, backoff: { type: 'fixed', delay: 500 } });
     console.log('  enqueued; attempt #1 throws → BullMQ retries → resume from Redis repo completes it.\n');
 

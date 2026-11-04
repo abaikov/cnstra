@@ -1,7 +1,9 @@
 import type { TCNSNeuron } from '@cnstra/types';
-import { CNS, cnsNeuron } from '@cnstra/core';
+import { CNS, neuron } from '@cnstra/core';
 import {
+    CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS,
     CNS_HOMEOSTAT_REGULATOR_STIMULATION_CONTEXT_KEY,
+    CNSHomeostatBatchTransducer,
     CNSHomeostatFiringContext,
     CNSHomeostatReceptor,
     CNSHomeostatReceptorCorrection,
@@ -141,7 +143,7 @@ export function cnsHomeostatConformance<
         const cardStimulationContexts: unknown[] = [];
         const toasts: string[] = [];
         const hooks = { onFired: [] as ((deckId: string) => void)[], onRestored: [] as ((deckId: string) => void)[] };
-        const recorder = cnsNeuron({});
+        const recorder = neuron({});
         for (const [collateralName, collateral] of Object.entries(deckReceptor.axon)) {
             recorder.dendrite({
                 collateral,
@@ -157,7 +159,7 @@ export function cnsHomeostatConformance<
                 response: (_payload: unknown, _axon: unknown, ctx: { stimulationContext?: unknown }) => { cardStimulationContexts.push(ctx.stimulationContext); },
             });
         }
-        const deckWriter = cnsNeuron({})
+        const deckWriter = neuron({})
             .dendrite({
                 collateral: deckReceptor.axon.homeostatFired,
                 response: ({ key: [deckId] }) => { for (const onFired of hooks.onFired) onFired(deckId); },
@@ -1472,6 +1474,46 @@ export function cnsHomeostatConformance<
                 await world.engine.advance(1_000);
                 expect(world.server.requested).toEqual(['d1', 'd1', 'd1']);
                 deck.dispose();
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('sends the refetches of two keys due within one refetch slice in one batch', async () => {
+            useFakeTimers();
+            try {
+                const engine = createEngine();
+                const sentBatches: string[][] = [];
+                const homeostatBatchTransducer = new CNSHomeostatBatchTransducer({
+                    batchTransduceFn: homeostatTransductionRequests => {
+                        sentBatches.push(homeostatTransductionRequests.map(({ key }) => String(key[0])).sort());
+                        return Promise.resolve(homeostatTransductionRequests.map(({ name, key }) => ({ name, key, data: { id: String(key[0]), title: `deck ${String(key[0])}` } })));
+                    },
+                });
+                const deckReceptor = new CNSHomeostatReceptor<TCNSHomeostatConformanceDeckKey, TCNSHomeostatConformanceDeck>({
+                    name: 'deck',
+                    transduce: homeostatBatchTransducer.transduceOf('deck', ([deck]) => deck as TCNSHomeostatConformanceDeck),
+                });
+                const cns = new CNS([deckReceptor.neuron, new CNSHomeostatReceptorCorrection({ homeostatReceptors: [deckReceptor] }).neuron]);
+                const environment = engine.createEnvironment(cns, {
+                    createHomeostatRefetchPolicy: () => ({
+                        refetchAtMs: ({ key, restoredAtMs }) => {
+                            if (restoredAtMs === undefined) return Infinity;
+                            const sliceStartMs = Math.floor((restoredAtMs + 5_000) / CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS) * CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS;
+                            return Array.isArray(key) && key[0] === 'd1' ? sliceStartMs : sliceStartMs + CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS - 1;
+                        },
+                    }),
+                });
+                const first = engine.watchDeck(environment, deckReceptor, 'd1');
+                const second = engine.watchDeck(environment, deckReceptor, 'd2');
+                await engine.settle();
+                await engine.advance(0);
+                expect(sentBatches).toEqual([['d1', 'd2']]);
+                await engine.advance(5_000);
+                expect(sentBatches).toEqual([['d1', 'd2'], ['d1', 'd2']]);
+                first.dispose();
+                second.dispose();
+                environment.dispose();
             } finally {
                 jest.useRealTimers();
             }

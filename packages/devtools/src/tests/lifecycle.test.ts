@@ -1,6 +1,6 @@
 import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
-import { CNS, cnsCollateral, cnsNeuronFactory } from '@cnstra/core';
+import { CNS, collateral, neuronFactory } from '@cnstra/core';
 import {
     CNSInMemoryStimulationRepository,
     CNSPersistOptionsRegistry,
@@ -24,10 +24,10 @@ let shouldFail = true;
 
 /** importUser (always ok) → persistUser (throws while `shouldFail`). */
 function buildCNS() {
-    const entryCol = cnsCollateral<{ id: string }>();
-    const importedCol = cnsCollateral<{ id: string; name: string }>();
+    const entryCol = collateral<{ id: string }>();
+    const importedCol = collateral<{ id: string; name: string }>();
 
-    const importUser = cnsNeuronFactory()
+    const importUser = neuronFactory()
         .neuron({ importedCol })
         .bind(
             { entryCol },
@@ -37,7 +37,7 @@ function buildCNS() {
             }
         );
 
-    const persistUser = cnsNeuronFactory()
+    const persistUser = neuronFactory()
         .neuron({})
         .bind(
             { importedCol },
@@ -154,10 +154,10 @@ describe('CNSDevTools lifecycle', () => {
         // Only importUser is registered. persistUser sits in the frontier while it
         // runs, so the progress serializer — which the persistor calls from a
         // fire-and-forget async flush — throws over it mid-run.
-        const entryCol = cnsCollateral<{ id: string }>();
-        const importedCol = cnsCollateral<{ id: string }>();
+        const entryCol = collateral<{ id: string }>();
+        const importedCol = collateral<{ id: string }>();
 
-        const importUser = cnsNeuronFactory()
+        const importUser = neuronFactory()
             .neuron({ importedCol })
             .bind(
                 { entryCol },
@@ -171,7 +171,7 @@ describe('CNSDevTools lifecycle', () => {
         // dependence on the persistor's debounce — the guard runs per response.
         let release!: () => void;
         const held = new Promise<void>(resolve => (release = resolve));
-        const unregisteredNeuron = cnsNeuronFactory()
+        const unregisteredNeuron = neuronFactory()
             .neuron({})
             .bind(
                 { importedCol },

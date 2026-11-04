@@ -141,10 +141,14 @@ function decodeRosterCursor(
 }
 
 /** Slice one keyset page out of the already-sorted rows. */
-export function cnsKeysetPage(
-    rows: TCNSStimulationRosterRow[],
-    opts: { cursor?: string; limit: number }
+export function keysetPage(
+    allRows: TCNSStimulationRosterRow[],
+    opts: { cursor?: string; sinceCursor?: string; limit: number }
 ): TCNSStimulationRosterPage {
+    const since = opts.sinceCursor ? decodeRosterCursor(opts.sinceCursor) : undefined;
+    const rows = since
+        ? allRows.filter(r => r.startedAt > since.startedAt || (r.startedAt === since.startedAt && r.stimulationId >= since.stimulationId))
+        : allRows;
     let start = 0;
     const key = opts.cursor ? decodeRosterCursor(opts.cursor) : undefined;
     if (key) {
@@ -179,7 +183,7 @@ export function cnsKeysetPage(
     return {
         rows: page,
         nextCursor: hasMore && lastRow ? encodeCNSRosterCursor(lastRow) : null,
-        total: rows.length,
+        total: allRows.length,
     };
 }
 
@@ -189,8 +193,8 @@ export function computeCNSRosterFacets(
     opts?: { metricPath?: string }
 ): TCNSStimulationRosterFacets {
     const rows = entries.map(e => e.row);
-    const tally = (values: string[]): { key: string; count: number }[] => {
-        const m = new Map<string, number>();
+    const tally = <TKey extends string>(values: TKey[]): { key: TKey; count: number }[] => {
+        const m = new Map<TKey, number>();
         for (const v of values) m.set(v, (m.get(v) ?? 0) + 1);
         return [...m.entries()]
             .map(([key, count]) => ({ key, count }))

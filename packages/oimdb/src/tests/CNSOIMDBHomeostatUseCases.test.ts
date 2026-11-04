@@ -1,4 +1,4 @@
-import { CNS, cnsNeuron } from '@cnstra/core';
+import { CNS, neuron } from '@cnstra/core';
 import { createOIMSlotCollectionService, createOIMEntityContentService, OIMDB, OIMEffectService } from '@oimdb/core';
 import { CNSHomeostatReceptor, CNSHomeostatReceptorCorrection, ECNSHomeostatCorrectionStatus } from '@cnstra/sync';
 import type { TCNSHomeostasisState } from '@cnstra/sync';
@@ -20,7 +20,7 @@ const createApp = () => {
             return Promise.resolve({ id: deckId, title: server.titles[deckId] ?? `deck ${deckId}` });
         },
     });
-    const deckWriter = cnsNeuron({}).dendrite({
+    const deckWriter = neuron({}).dendrite({
         collateral: deckReceptor.axon.homeostasisRestored,
         response: ({ data }) => {
             deckService.writeSlotContentByKey(decks, data.id, data);

@@ -17,19 +17,19 @@ This guide covers common issues you might encounter when using CNStra and how to
 
 ```ts setup
 import { Inject, Module } from '@nestjs/common';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSNeuron } from '@cnstra/types';
 
 type TTask = { id: string };
 
-const task = cnsCollateral<TTask>();
-const request = cnsCollateral<{ url: string }>();
-const output = cnsCollateral<unknown>();
-const workerNeuron = cnsNeuron({}).dendrite({ collateral: task, response: () => {} });
-const apiWorker = cnsNeuron({}).dendrite({ collateral: request, response: () => {} });
-const otherNeuron = cnsNeuron({
-  signal1: cnsCollateral<{ id: string }>(),
-  signal2: cnsCollateral<{ count: number }>(),
+const task = collateral<TTask>();
+const request = collateral<{ url: string }>();
+const output = collateral<unknown>();
+const workerNeuron = neuron({}).dendrite({ collateral: task, response: () => {} });
+const apiWorker = neuron({}).dendrite({ collateral: request, response: () => {} });
+const otherNeuron = neuron({
+  signal1: collateral<{ id: string }>(),
+  signal2: collateral<{ count: number }>(),
 });
 const signal = task.createSignal({ id: '1' });
 
@@ -128,7 +128,7 @@ const sharedLimiter = new RateLimiter({
   interval: 'second'
 });
 
-const rateLimitedWorker = cnsNeuron({ output })
+const rateLimitedWorker = neuron({ output })
   .dendrite({
     collateral: task,
     response: async (payload, axon) => {
@@ -174,10 +174,10 @@ If your signal payloads are large and queues grow, memory usage can spike. See [
 CNStra has no mutable per-neuron store — all per-run state flows through signal payloads (dependencies such as a store come from a [factory function](../core/api.md#dependencies-a-store-a-database-a-clock)). If you need a value downstream, put it on the outgoing signal:
 
 ```ts
-const step = cnsCollateral<{ data: string; attempt?: number }>();
-const next = cnsCollateral<{ result: string; attempt: number }>();
+const step = collateral<{ data: string; attempt?: number }>();
+const next = collateral<{ result: string; attempt: number }>();
 
-const stepNeuron = cnsNeuron({ next }).dendrite({
+const stepNeuron = neuron({ next }).dendrite({
   collateral: step,
   response: async (payload, axon) => {
     // All per-run data (including counters/correlation ids) rides on the payload.
@@ -225,7 +225,7 @@ If you forget to bind a collateral, TypeScript will catch it at compile time (wi
 **Solution**: Use exhaustive binding so that all collaterals are handled:
 
 ```ts
-const listener = cnsNeuron({}).bind(otherNeuron.axon, {
+const listener = neuron({}).bind(otherNeuron.axon, {
   signal1: (p) => { /* ... */ },
   signal2: (p) => { /* ... */ },
   // TypeScript will error if signal3 is missing
@@ -247,7 +247,7 @@ If external APIs are slow and you have high concurrency, you might exhaust conne
 **Solution**: Set appropriate per-neuron concurrency limits:
 
 ```ts
-const apiNeuron = cnsNeuron({ output })
+const apiNeuron = neuron({ output })
   .setConcurrency(10)  // Limit concurrent API calls
   .dendrite({
     collateral: request,

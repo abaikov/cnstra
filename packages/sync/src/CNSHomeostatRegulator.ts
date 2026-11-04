@@ -208,6 +208,11 @@ export class CNSHomeostatRegulator<TKey extends readonly unknown[], TData> {
         return invalidated;
     }
 
+    public invalidateAll(): Promise<(TCNSHomeostasisState<TKey> | undefined)[]> {
+        if (this.isDisposed) return Promise.resolve([]);
+        return Promise.all([...this.keyStateByKeyHash.values()].map(keyState => this.invalidate(keyState.key)));
+    }
+
     public invalidateByKeyPrefix(keyPrefix: Readonly<Partial<TKey>>): Promise<(TCNSHomeostasisState<TKey> | undefined)[]> {
         if (this.isDisposed) return Promise.resolve([]);
         const keyPrefixLength = keyPrefix.length;

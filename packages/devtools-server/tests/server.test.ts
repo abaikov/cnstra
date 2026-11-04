@@ -1,6 +1,7 @@
 import { CNSDevToolsServer } from '../src/index';
 import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-repository-in-memory';
 import type { TCNSAppBatchMessageDTO } from '@cnstra/devtools-dto';
+import { readSync } from './readSync';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,6 @@ describe('CNSDevToolsServer', () => {
         server = new CNSDevToolsServer(repo);
     });
 
-    afterEach(() => server.stop());
 
     // ─── Topology ─────────────────────────────────────────────────────────────
 
@@ -65,18 +65,6 @@ describe('CNSDevToolsServer', () => {
             ]);
         });
 
-        it('broadcasts app.connected to UI clients', async () => {
-            const uiWs = makeWs('ui');
-            server.addClient(uiWs as any);
-
-            const appWs = makeWs('app');
-            await server.handleMessage(appWs as any, JSON.stringify(topology()));
-
-            const broadcasts = uiWs.messagesOfType('app.connected');
-            expect(broadcasts).toHaveLength(1);
-            expect(broadcasts[0].app.id).toBe('app');
-        });
-
         it('updates topology when app reconnects', async () => {
             const ws = makeWs();
             await server.handleMessage(ws as any, JSON.stringify(topology()));
@@ -90,44 +78,23 @@ describe('CNSDevToolsServer', () => {
     // ─── UI client queries ────────────────────────────────────────────────────
 
     describe('UI client queries', () => {
-        it('client.connect returns apps and topology', async () => {
-            const appWs = makeWs('app');
-            await server.handleMessage(appWs as any, JSON.stringify(topology()));
-
+        it('client.connect answers the panel config and nothing else', async () => {
             const uiWs = makeWs('ui');
             await server.handleMessage(uiWs as any, JSON.stringify({ type: 'client.connect' }));
-
-            const appsResult = uiWs.messagesOfType('apps.result');
-            expect(appsResult).toHaveLength(1);
-            expect(appsResult[0].items).toHaveLength(1);
-
-            const topoResult = uiWs.messagesOfType('topology.result');
-            expect(topoResult).toHaveLength(1);
-            expect(topoResult[0].snapshots).toHaveLength(1);
+            expect(uiWs.sent.map(frame => JSON.parse(frame).type)).toEqual(['ui.config']);
         });
 
-        it('apps.query returns list of apps', async () => {
+        it('the apps key answers the connected apps', async () => {
             const appWs = makeWs('app');
             await server.handleMessage(appWs as any, JSON.stringify(topology()));
-
-            const uiWs = makeWs('ui');
-            await server.handleMessage(uiWs as any, JSON.stringify({ type: 'apps.query', requestId: 'req1' }));
-
-            const result = uiWs.messagesOfType('apps.result');
-            expect(result[0].requestId).toBe('req1');
-            expect(result[0].items[0].id).toBe('app');
+            expect(await readSync(server, 'apps', [undefined])).toEqual({ apps: [{ id: 'app', name: 'Test App', version: '1.0.0' }] });
         });
 
-        it('topology.query returns topology', async () => {
-            const appWs = makeWs('app');
-            await server.handleMessage(appWs as any, JSON.stringify(topology()));
-
-            const uiWs = makeWs('ui');
-            await server.handleMessage(uiWs as any, JSON.stringify({ type: 'topology.query', requestId: 'req2' }));
-
-            const result = uiWs.messagesOfType('topology.result');
-            expect(result[0].requestId).toBe('req2');
-            expect(result[0].snapshots).toHaveLength(1);
+        it('the topology key answers every snapshot of its scope flattened', async () => {
+            await server.handleMessage(makeWs('app') as any, JSON.stringify(topology()));
+            await server.handleMessage(makeWs('other') as any, JSON.stringify(topology('other', 'other:cns')));
+            expect((await readSync(server, 'topology', ['app:cns'])).neurons).toEqual([{ name: 'authNeuron', cnsId: 'app:cns', appId: 'app' }]);
+            expect((await readSync(server, 'topology', [undefined])).neurons.map(neuron => neuron.cnsId)).toEqual(['app:cns', 'other:cns']);
         });
     });
 
@@ -151,34 +118,6 @@ describe('CNSDevToolsServer', () => {
             await expect(
                 server.handleMessage(ws as any, JSON.stringify({ type: 'batch', items: [{ type: 'topology', broken: true }] }))
             ).resolves.toBeUndefined();
-        });
-
-        it('does not send to closed UI clients', async () => {
-            const uiWs = makeWs('ui');
-            (uiWs as any).readyState = 3; // CLOSED
-            server.addClient(uiWs as any);
-
-            const appWs = makeWs('app');
-            await server.handleMessage(appWs as any, JSON.stringify(topology()));
-
-            expect(uiWs.sent).toHaveLength(0);
-        });
-    });
-
-    // ─── Client lifecycle ─────────────────────────────────────────────────────
-
-    describe('client lifecycle', () => {
-        it('removes client on removeClient', async () => {
-            const uiWs = makeWs('ui');
-            server.addClient(uiWs as any);
-
-            server.removeClient(uiWs as any);
-            uiWs.sent.length = 0;
-
-            // Should not receive broadcasts after removal
-            const appWs = makeWs('app');
-            await server.handleMessage(appWs as any, JSON.stringify(topology()));
-            expect(uiWs.sent).toHaveLength(0);
         });
     });
 });

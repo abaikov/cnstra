@@ -2,13 +2,17 @@ import {
     TCNSAppDTO,
     CNSAppBatchMessageDTOSchema,
     CNSClientMessageDTOSchema,
+    CNSDevToolsSyncKeySchemas,
     TCNSTopologyMessageDTO,
 } from '@cnstra/devtools-dto';
 import type {
-    TCNSStimulationFilter,
+    TCNSDevToolsSyncData,
+    TCNSDevToolsSyncKeys,
     TCNSStimulationTask,
     TCNSStimulationAttempt,
 } from '@cnstra/devtools-dto';
+import { CNSHomeostatTransductionEndpoint } from '@cnstra/sync';
+import type { TCNSHomeostatTransductionRequest, TCNSHomeostatTransductionRow } from '@cnstra/sync';
 import { buildCNSAttemptId, buildCNSCloneId } from '@cnstra/devtools-dto';
 import type {
     ICNSStimulationRepository,
@@ -31,11 +35,11 @@ import {
     CNSInMemoryStimulationRepository,
     supportsCNSRosterQuery,
     loadCNSRosterEntries,
-    cnsKeysetPage,
+    keysetPage,
     computeCNSRosterFacets,
 } from '@cnstra/persist';
 import { randomUUID } from 'crypto';
-import { WebSocket } from 'ws';
+import type { ICNSDevToolsClient } from './ICNSDevToolsClient';
 
 // ─── Repository interface ─────────────────────────────────────────────────────
 
@@ -67,15 +71,12 @@ export interface ICNSDevToolsServerRepository {
 
 export class CNSDevToolsServer {
     /** WebSocket → appId (for app clients) */
-    private appSockets = new Map<WebSocket, string>();
+    private appSockets = new Map<ICNSDevToolsClient, string>();
     /** appId → WebSocket[] (one app may have multiple CNS instances) */
-    private appWsByAppId = new Map<string, Set<WebSocket>>();
-    /** WebSocket clients that registered as UI clients */
-    private uiClients = new Set<WebSocket>();
-
-    private metricsTimer?: NodeJS.Timeout;
-    private lastCpuUsage = process.cpuUsage();
-    private lastCpuTime = Date.now();
+    private appWsByAppId = new Map<string, Set<ICNSDevToolsClient>>();
+    public readonly homeostatTransductionEndpoint = new CNSHomeostatTransductionEndpoint({
+        batchTransduceFn: homeostatTransductionRequests => this.transduce(homeostatTransductionRequests),
+    });
 
     /**
      * Name-based resumable store (Stimulation/Attempt/Task). Written from the three
@@ -113,7 +114,8 @@ export class CNSDevToolsServer {
         stimulationRepository: ICNSStimulationRepository = new CNSInMemoryStimulationRepository(),
         actions: readonly TCNSDevToolsActionMiddleware[] = [],
         ui: TCNSUiConfig = {},
-        private readonly scheduledStimulationReader?: ICNSScheduledStimulationReader
+        private readonly scheduledStimulationReader?: ICNSScheduledStimulationReader,
+        private readonly readOnly = false
     ) {
         this.stimulationRepository = stimulationRepository;
         this.actions = [...actions, this.createSocketAction()];
@@ -129,6 +131,7 @@ export class CNSDevToolsServer {
     private async carryOut(
         action: TCNSDevToolsAction
     ): Promise<true | false | string> {
+        if (this.readOnly) return 'the devtools are read-only';
         try {
             return (await runCNSDevToolsAction(this.actions, action)) || false;
         } catch (error) {
@@ -183,7 +186,7 @@ export class CNSDevToolsServer {
     // ─── Message entry point ─────────────────────────────────────────────────
 
     async handleMessage(
-        ws: WebSocket,
+        ws: ICNSDevToolsClient,
         raw: unknown
     ): Promise<void> {
         if (typeof raw !== 'string' && typeof raw !== 'object') return;
@@ -200,6 +203,7 @@ export class CNSDevToolsServer {
 
         // App batch (topology + stimulation events)
         if (type === 'batch') {
+            if (ws.role === 'viewer') return;
             const result = CNSAppBatchMessageDTOSchema.safeParse(data);
             if (!result.success) return;
             for (const item of result.data.items) {
@@ -215,34 +219,20 @@ export class CNSDevToolsServer {
 
         switch (msg.type) {
             case 'client.connect':
-                await this.handleClientConnect(ws);
+                this.handleClientConnect(ws);
                 break;
-            case 'apps.query':
-                await this.handleAppsQuery(ws, msg.requestId);
-                break;
-            case 'topology.query':
-                await this.handleTopologyQuery(ws, msg.requestId, msg.cnsId, msg.appId);
+            case 'sync.request':
+                this.send(ws, {
+                    type: 'sync.response',
+                    requestId: msg.requestId,
+                    ...(await this.homeostatTransductionEndpoint.respond(msg.encodedRequests, msg.mediaType)),
+                });
                 break;
             case 'stimulation.retry':
                 await this.handleStimulationRetry(ws, msg);
                 break;
             case 'stimulation.clone':
                 await this.handleStimulationClone(ws, msg);
-                break;
-            case 'cns.stimulations.list':
-                await this.handleStimulationsList(ws, msg);
-                break;
-            case 'cns.stimulations.facets':
-                await this.handleStimulationsFacets(ws, msg);
-                break;
-            case 'cns.stimulations.snapshot':
-                await this.handleStimulationsSnapshot(ws, msg);
-                break;
-            case 'cns.stimulation.detail':
-                await this.handleStimulationDetail(ws, msg);
-                break;
-            case 'cns.scheduled.list':
-                await this.handleScheduledStimulationsList(ws, msg);
                 break;
             case 'stimulation.command':
                 await this.handleStimulationCommand(ws, msg);
@@ -253,65 +243,7 @@ export class CNSDevToolsServer {
         }
     }
 
-    /**
-     * Explorer protocol (bucket-shaped). The roster row = resumable state minus
-     * `progress`, plus envelope summaries derived from the run's attempts.
-     *
-     * Pushdown: if the store implements `ICNSStimulationRosterQuery` (e.g. the
-     * Postgres store), the filter + keyset + GROUP BY run INSIDE it (SQL). Else we
-     * fall back to the shared reference derivation over the reader — identical
-     * results, only the work moves. Roster shapes are structurally the wire DTOs,
-     * so no mapping is needed at the boundary.
-     */
-    private toRosterFilter(
-        scopeName: string | undefined,
-        filter: TCNSStimulationFilter | undefined
-    ): TCNSStimulationRosterFilter {
-        return { ...(filter ?? {}), ...(scopeName ? { scopeName } : {}) };
-    }
-
-    private async handleStimulationsList(
-        ws: WebSocket,
-        msg: any
-    ): Promise<void> {
-        const filter = this.toRosterFilter(msg.scopeName, msg.filter);
-        const limit = typeof msg.limit === 'number' ? msg.limit : 50;
-        const opts = { cursor: msg.cursor, limit };
-        const store = this.stimulationRepository;
-        const page = supportsCNSRosterQuery(store)
-            ? await store.queryRoster(filter, opts)
-            : cnsKeysetPage(
-                  (await loadCNSRosterEntries(store, filter)).map(e => e.row),
-                  opts
-              );
-        this.send(ws, {
-            type: 'cns.stimulations.list.result',
-            requestId: msg.requestId,
-            stimulations: page.rows,
-            nextCursor: page.nextCursor,
-            total: page.total,
-        });
-    }
-
-    private async handleStimulationsFacets(
-        ws: WebSocket,
-        msg: any
-    ): Promise<void> {
-        const filter = this.toRosterFilter(msg.scopeName, msg.filter);
-        const store = this.stimulationRepository;
-        const facets = supportsCNSRosterQuery(store)
-            ? await store.queryFacets(filter, { metricPath: msg.metricPath })
-            : computeCNSRosterFacets(await loadCNSRosterEntries(store, filter), {
-                  metricPath: msg.metricPath,
-              });
-        this.send(ws, {
-            type: 'cns.stimulations.facets.result',
-            requestId: msg.requestId,
-            facets,
-        });
-    }
-
-    private async handleStimulationLaunch(ws: WebSocket, msg: TCNSStimulationLaunchRequest): Promise<void> {
+    private async handleStimulationLaunch(ws: ICNSDevToolsClient, msg: TCNSStimulationLaunchRequest): Promise<void> {
         const newStimulationId = `${msg.entry.collateralName}-${randomUUID()}`;
         const handled = await this.carryOut({
             type: 'launch',
@@ -331,7 +263,7 @@ export class CNSDevToolsServer {
         } satisfies TCNSStimulationLaunchRejected);
     }
 
-    private async handleStimulationCommand(ws: WebSocket, msg: TCNSStimulationCommandRequest): Promise<void> {
+    private async handleStimulationCommand(ws: ICNSDevToolsClient, msg: TCNSStimulationCommandRequest): Promise<void> {
         const handled = await this.carryOut({
             type: 'command',
             requestId: msg.requestId,
@@ -350,110 +282,7 @@ export class CNSDevToolsServer {
         } satisfies TCNSStimulationCommandRejected);
     }
 
-    private async handleScheduledStimulationsList(
-        ws: WebSocket,
-        msg: { requestId: string; filter?: TCNSScheduledStimulationFilter; cursor?: string; limit?: number }
-    ): Promise<void> {
-        const reader = this.scheduledStimulationReader;
-        const page = reader
-            ? await reader.list(msg.filter ?? {}, msg.cursor ?? null, msg.limit ?? 50)
-            : { rows: [], schedules: [], types: [], nextCursor: null };
-        this.send(ws, {
-            type: 'cns.scheduled.list.result',
-            requestId: msg.requestId,
-            available: reader !== undefined,
-            ...page,
-        });
-    }
-
-    private async handleStimulationDetail(
-        ws: WebSocket,
-        msg: any
-    ): Promise<void> {
-        const attempts = await this.stimulationRepository.getAttempts(
-            msg.stimulationId
-        );
-        // One read, the way the snapshot handler already does it — this looped
-        // per attempt while the bulk method sat two methods away.
-        const attemptIds = attempts.map(a => a.stimulationAttemptId);
-        const store = this.stimulationRepository;
-        const tasks: TCNSStimulationTask[] = store.getTasksFor
-            ? await store.getTasksFor(attemptIds)
-            : (
-                  await Promise.all(
-                      attemptIds.map(id => store.getTasks(id))
-                  )
-              ).flat();
-        this.send(ws, {
-            type: 'cns.stimulation.detail.result',
-            requestId: msg.requestId,
-            attempts,
-            tasks,
-        });
-    }
-
-    /**
-     * The topology/signal views' bulk feed: a bounded, newest-first set of runs as
-     * FLAT buckets (stimulations + attempts + tasks) the panel joins client-side by
-     * id. Replaces the retired nested `cns.stimulations.query` tree — same data, no
-     * server-side join, no client-side flatten.
-     */
-    private async handleStimulationsSnapshot(
-        ws: WebSocket,
-        msg: any
-    ): Promise<void> {
-        const filter = this.toRosterFilter(msg.scopeName, msg.filter);
-        const store = this.stimulationRepository;
-        const limit = typeof msg.limit === 'number' ? msg.limit : 200;
-        const page = supportsCNSRosterQuery(store)
-            ? await store.queryRoster(filter, { limit })
-            : cnsKeysetPage(
-                  (await loadCNSRosterEntries(store, filter)).map(e => e.row),
-                  { limit }
-              );
-        // Two calls, not two per run. The page can be hundreds of runs with
-        // several attempts each; asking per id turned one snapshot into hundreds
-        // of round trips whose count grew with the page rather than the data.
-        //
-        // And only for the runs the caller does not already hold. The rows
-        // themselves always go in full — they are what says a run moved — but a
-        // finished run's tasks never change, and re-reading and re-sending them
-        // every two seconds is the whole payload.
-        const skip = new Set(
-            Array.isArray(msg.skipDetailFor) ? msg.skipDetailFor : []
-        );
-        const ids = page.rows
-            .map(row => row.stimulationId)
-            .filter(id => !skip.has(id));
-        const attempts: TCNSStimulationAttempt[] = store.getAttemptsFor
-            ? await store.getAttemptsFor(ids)
-            : (
-                  await Promise.all(ids.map(id => store.getAttempts(id)))
-              ).flat();
-
-        const attemptIds = attempts.map(a => a.stimulationAttemptId);
-        const tasks: TCNSStimulationTask[] = store.getTasksFor
-            ? await store.getTasksFor(attemptIds)
-            : (
-                  await Promise.all(attemptIds.map(id => store.getTasks(id)))
-              ).flat();
-        this.send(ws, {
-            type: 'cns.stimulations.snapshot.result',
-            requestId: msg.requestId,
-            stimulations: page.rows,
-            attempts,
-            tasks,
-        });
-    }
-
-    addClient(ws: WebSocket): void {
-        this.uiClients.add(ws);
-        if (this.uiClients.size === 1) this.startMetrics();
-    }
-
-    removeClient(ws: WebSocket): void {
-        this.uiClients.delete(ws);
-
+    removeClient(ws: ICNSDevToolsClient): void {
         // An app socket is registered in TWO places (appSockets + the per-app
         // routing set). Forgetting the second one made `resolveScopeApp` keep
         // reporting a dead app as reachable: retry/clone were ACCEPTED and then
@@ -468,12 +297,10 @@ export class CNSDevToolsServer {
                 if (sockets.size === 0) this.appWsByAppId.delete(appId);
             }
         }
-
-        if (this.uiClients.size === 0) this.stopMetrics();
     }
 
-    async getActiveApps(): Promise<TCNSAppDTO[]> {
-        return CNSDevToolsServer.appsOf(await this.repository.getTopology());
+    async getActiveApps(scopeName?: string): Promise<TCNSAppDTO[]> {
+        return CNSDevToolsServer.appsOf(await this.repository.getTopology(scopeName));
     }
 
     private static appsOf(snapshots: readonly TCNSTopologySnapshotDTO[]): TCNSAppDTO[] {
@@ -485,13 +312,9 @@ export class CNSDevToolsServer {
         return [...latest.values()].map(snapshot => ({ id: snapshot.appId, name: snapshot.appName, version: snapshot.version }));
     }
 
-    stop(): void {
-        this.stopMetrics();
-    }
-
     // ─── App batch item handlers ──────────────────────────────────────────────
 
-    private async handleAppBatchItem(ws: WebSocket, item: any): Promise<void> {
+    private async handleAppBatchItem(ws: ICNSDevToolsClient, item: any): Promise<void> {
         switch (item.type) {
             case 'topology':
                 await this.handleTopology(ws, item);
@@ -514,7 +337,7 @@ export class CNSDevToolsServer {
         return this.stimulationRepository;
     }
 
-    private async handleTopology(ws: WebSocket, msg: any): Promise<void> {
+    private async handleTopology(ws: ICNSDevToolsClient, msg: any): Promise<void> {
         const { appId, cnsId, appName, version, timestamp, neurons, collaterals, dendrites } = msg;
 
         await this.repository.saveTopology({ appId, cnsId, appName, version, timestamp, neurons, collaterals, dendrites });
@@ -523,24 +346,9 @@ export class CNSDevToolsServer {
         this.appSockets.set(ws, appId);
         if (!this.appWsByAppId.has(appId)) this.appWsByAppId.set(appId, new Set());
         this.appWsByAppId.get(appId)!.add(ws);
-
-        // Broadcast topology + app connected to UI clients
-        const topologyBroadcast = {
-            type: 'topology.result' as const,
-            requestId: '__broadcast__',
-            snapshots: await this.repository.getTopology(cnsId),
-        };
-
-        this.broadcast({ type: 'app.connected', app: { id: appId, name: appName, version }, topology: { cnsId, neurons, collaterals, dendrites } });
-        // Also send topology snapshot so UI can refresh graph
-        this.broadcastRaw(JSON.stringify(topologyBroadcast));
     }
 
-    // ─── UI client query handlers ─────────────────────────────────────────────
-
-    private async handleClientConnect(ws: WebSocket): Promise<void> {
-        this.addClient(ws);
-        // First, so the panel knows which actions to draw before any run arrives.
+    private handleClientConnect(ws: ICNSDevToolsClient): void {
         this.send(ws, {
             type: 'ui.config',
             // Five minutes unless told otherwise: the panel opens on what is
@@ -548,24 +356,141 @@ export class CNSDevToolsServer {
             defaultWindowMs: this.ui.defaultWindowMs ?? 5 * 60_000,
             ...this.ui,
         });
-        const snapshots = await this.repository.getTopology();
-        this.send(ws, { type: 'apps.result', requestId: '__init__', items: CNSDevToolsServer.appsOf(snapshots) });
-        this.send(ws, { type: 'topology.result', requestId: '__init__', snapshots });
     }
 
-    private async handleAppsQuery(ws: WebSocket, requestId: string): Promise<void> {
-        this.send(ws, { type: 'apps.result', requestId, items: await this.getActiveApps() });
+    private async transduce(
+        homeostatTransductionRequests: readonly TCNSHomeostatTransductionRequest[]
+    ): Promise<TCNSHomeostatTransductionRow[]> {
+        const detailRequests = homeostatTransductionRequests.filter(request => request.name === 'stimulationDetail');
+        const rows = await Promise.all(
+            homeostatTransductionRequests
+                .filter(request => request.name !== 'stimulationDetail')
+                .map(request => this.transduceOne(request))
+        );
+        return [...rows, ...(await this.transduceDetails(detailRequests))];
     }
 
-    private async handleTopologyQuery(
-        ws: WebSocket,
-        requestId: string,
-        cnsId?: string,
-        appId?: string
-    ): Promise<void> {
-        let snapshots = await this.repository.getTopology(cnsId);
-        if (appId) snapshots = snapshots.filter(s => s.appId === appId);
-        this.send(ws, { type: 'topology.result', requestId, snapshots });
+    private async transduceOne({ name, key }: TCNSHomeostatTransductionRequest): Promise<TCNSHomeostatTransductionRow> {
+        try {
+            return { name, key, data: await this.readSync(name, key) };
+        } catch (error) {
+            return { name, key, error };
+        }
+    }
+
+    private readSync(name: string, key: readonly unknown[]): Promise<unknown> {
+        switch (name) {
+            case 'apps': {
+                const [scopeName] = CNSDevToolsSyncKeySchemas.apps.parse(key);
+                return this.getActiveApps(scopeName).then(apps => ({ apps }));
+            }
+            case 'topology':
+                return this.readTopology(CNSDevToolsSyncKeySchemas.topology.parse(key));
+            case 'stimulationPage':
+                return this.readStimulationPage(CNSDevToolsSyncKeySchemas.stimulationPage.parse(key));
+            case 'stimulationFacets':
+                return this.readStimulationFacets(CNSDevToolsSyncKeySchemas.stimulationFacets.parse(key));
+            case 'stimulationSnapshot':
+                return this.readStimulationSnapshot(CNSDevToolsSyncKeySchemas.stimulationSnapshot.parse(key));
+            case 'scheduledPage':
+                return this.readScheduledPage(CNSDevToolsSyncKeySchemas.scheduledPage.parse(key));
+            default:
+                return Promise.reject(new Error(`no sync receptor named ${name}`));
+        }
+    }
+
+    private async readTopology([scopeName]: TCNSDevToolsSyncKeys['topology']): Promise<TCNSDevToolsSyncData['topology']> {
+        const snapshots = await this.repository.getTopology(scopeName);
+        return {
+            neurons: snapshots.flatMap(snapshot => snapshot.neurons),
+            collaterals: snapshots.flatMap(snapshot => snapshot.collaterals),
+            dendrites: snapshots.flatMap(snapshot => snapshot.dendrites),
+        };
+    }
+
+    private static rosterFilterOf(
+        [scopeName, status, entryCollateralName, neuronName, text, since, until]: TCNSDevToolsSyncKeys['stimulationSnapshot']
+            | TCNSDevToolsSyncKeys['stimulationPage']
+            | TCNSDevToolsSyncKeys['stimulationFacets']
+    ): TCNSStimulationRosterFilter {
+        return { scopeName, status, entryCollateralName, neuronName, text, since, until };
+    }
+
+    private async readRosterPage(
+        filter: TCNSStimulationRosterFilter,
+        options: { cursor?: string; sinceCursor?: string; limit: number }
+    ): Promise<TCNSDevToolsSyncData['stimulationPage']> {
+        const store = this.stimulationRepository;
+        return supportsCNSRosterQuery(store)
+            ? store.queryRoster(filter, options)
+            : keysetPage((await loadCNSRosterEntries(store, filter)).map(entry => entry.row), options);
+    }
+
+    private readStimulationPage(key: TCNSDevToolsSyncKeys['stimulationPage']): Promise<TCNSDevToolsSyncData['stimulationPage']> {
+        const [, , , , , , , sinceCursor, cursor, limit] = key;
+        return this.readRosterPage(CNSDevToolsServer.rosterFilterOf(key), { sinceCursor, cursor, limit });
+    }
+
+    private async readStimulationFacets(key: TCNSDevToolsSyncKeys['stimulationFacets']): Promise<TCNSDevToolsSyncData['stimulationFacets']> {
+        const [, , , , , , , metricPath] = key;
+        const filter = CNSDevToolsServer.rosterFilterOf(key);
+        const store = this.stimulationRepository;
+        return supportsCNSRosterQuery(store)
+            ? store.queryFacets(filter, { metricPath })
+            : computeCNSRosterFacets(await loadCNSRosterEntries(store, filter), { metricPath });
+    }
+
+    private async readStimulationSnapshot(key: TCNSDevToolsSyncKeys['stimulationSnapshot']): Promise<TCNSDevToolsSyncData['stimulationSnapshot']> {
+        const [, , , , , , , limit] = key;
+        return { stimulations: (await this.readRosterPage(CNSDevToolsServer.rosterFilterOf(key), { limit })).rows };
+    }
+
+    private async readScheduledPage(
+        [neuronName, collateralName, cursor, limit]: TCNSDevToolsSyncKeys['scheduledPage']
+    ): Promise<TCNSDevToolsSyncData['scheduledPage']> {
+        const reader = this.scheduledStimulationReader;
+        if (!reader) return { available: false, rows: [], schedules: [], types: [], nextCursor: null };
+        return { available: true, ...(await reader.list({ neuronName, collateralName }, cursor ?? null, limit)) };
+    }
+
+    private async transduceDetails(
+        homeostatTransductionRequests: readonly TCNSHomeostatTransductionRequest[]
+    ): Promise<TCNSHomeostatTransductionRow[]> {
+        const rows: TCNSHomeostatTransductionRow[] = [];
+        const stimulationIds: string[] = [];
+        const readRequests: TCNSHomeostatTransductionRequest[] = [];
+        for (const request of homeostatTransductionRequests) {
+            const parsed = CNSDevToolsSyncKeySchemas.stimulationDetail.safeParse(request.key);
+            if (!parsed.success) rows.push({ ...request, error: parsed.error });
+            else {
+                stimulationIds.push(parsed.data[0]);
+                readRequests.push(request);
+            }
+        }
+        if (readRequests.length === 0) return rows;
+        try {
+            const store = this.stimulationRepository;
+            const attempts: TCNSStimulationAttempt[] = store.getAttemptsFor
+                ? await store.getAttemptsFor(stimulationIds)
+                : (await Promise.all(stimulationIds.map(id => store.getAttempts(id)))).flat();
+            const attemptIds = attempts.map(attempt => attempt.stimulationAttemptId);
+            const tasks: TCNSStimulationTask[] = store.getTasksFor
+                ? await store.getTasksFor(attemptIds)
+                : (await Promise.all(attemptIds.map(id => store.getTasks(id)))).flat();
+            const detailById = new Map<string, TCNSDevToolsSyncData['stimulationDetail']>(stimulationIds.map(id => [id, { attempts: [], tasks: [] }]));
+            const detailByAttemptId = new Map<string, TCNSDevToolsSyncData['stimulationDetail']>();
+            for (const attempt of attempts) {
+                const detail = detailById.get(attempt.stimulationId);
+                if (detail === undefined) continue;
+                detail.attempts.push(attempt);
+                detailByAttemptId.set(attempt.stimulationAttemptId, detail);
+            }
+            for (const task of tasks) detailByAttemptId.get(task.stimulationAttemptId)?.tasks.push(task);
+            readRequests.forEach((request, index) => rows.push({ ...request, data: detailById.get(stimulationIds[index]) }));
+        } catch (error) {
+            for (const request of readRequests) rows.push({ ...request, error });
+        }
+        return rows;
     }
 
     // ─── Resumable actions (retry / clone), Phase 2b-2 ──────────────────────────────
@@ -578,7 +503,7 @@ export class CNSDevToolsServer {
     /** Resolve the app that owns a stimulation's scope, or reject if unreachable. */
     private async resolveScopeApp(
         scopeName: string | undefined
-    ): Promise<Set<WebSocket> | undefined> {
+    ): Promise<Set<ICNSDevToolsClient> | undefined> {
         const appId = scopeName
             ? await this.repository.findAppByCns(scopeName)
             : undefined;
@@ -591,17 +516,17 @@ export class CNSDevToolsServer {
      * socket, an embedding that never calls `removeClient`), so being registered
      * is not proof of being reachable — readyState is.
      */
-    private liveSockets(appId: string): Set<WebSocket> | undefined {
+    private liveSockets(appId: string): Set<ICNSDevToolsClient> | undefined {
         const sockets = this.appWsByAppId.get(appId);
         if (!sockets || sockets.size === 0) return undefined;
-        const open = new Set<WebSocket>();
+        const open = new Set<ICNSDevToolsClient>();
         for (const ws of sockets) {
-            if ((ws as any).readyState === 1) open.add(ws);
+            if (ws.readyState === 1) open.add(ws);
         }
         return open.size > 0 ? open : undefined;
     }
 
-    private async handleStimulationRetry(ws: WebSocket, msg: any): Promise<void> {
+    private async handleStimulationRetry(ws: ICNSDevToolsClient, msg: any): Promise<void> {
         const reject = (reason: string) =>
             this.send(ws, {
                 type: 'stimulation.retry.rejected',
@@ -669,7 +594,7 @@ export class CNSDevToolsServer {
         });
     }
 
-    private async handleStimulationClone(ws: WebSocket, msg: any): Promise<void> {
+    private async handleStimulationClone(ws: ICNSDevToolsClient, msg: any): Promise<void> {
         const reject = (reason: string) =>
             this.send(ws, {
                 type: 'stimulation.clone.rejected',
@@ -727,56 +652,13 @@ export class CNSDevToolsServer {
         });
     }
 
-    // ─── Broadcast helpers ────────────────────────────────────────────────────
-
-    private broadcast(message: object): void {
-        this.broadcastRaw(JSON.stringify(message));
-    }
-
-    private broadcastRaw(payload: string): void {
-        for (const client of this.uiClients) {
-            try {
-                if ((client as any).readyState === 1) client.send(payload);
-            } catch {}
-        }
-    }
-
-    private send(ws: WebSocket, message: object): void {
+    private send(ws: ICNSDevToolsClient, message: object): void {
         try {
-            if ((ws as any).readyState === 1) ws.send(JSON.stringify(message));
+            if (ws.readyState === 1) ws.send(JSON.stringify(message));
         } catch {}
     }
 
-    // ─── Metrics ──────────────────────────────────────────────────────────────
 
-    private startMetrics(): void {
-        if (this.metricsTimer) return;
-        this.metricsTimer = setInterval(() => {
-            const mem = process.memoryUsage();
-            const now = Date.now();
-            const cpu = process.cpuUsage(this.lastCpuUsage);
-            const elapsed = (now - this.lastCpuTime) * 1000;
-            const cpuPercent = elapsed > 0 ? ((cpu.user + cpu.system) / elapsed) * 100 : 0;
-            this.lastCpuUsage = process.cpuUsage();
-            this.lastCpuTime = now;
-
-            this.broadcast({
-                type: 'server.metrics',
-                timestamp: now,
-                rssMB: mem.rss / 1024 / 1024,
-                heapUsedMB: mem.heapUsed / 1024 / 1024,
-                heapTotalMB: mem.heapTotal / 1024 / 1024,
-                cpuPercent,
-            });
-        }, 1000);
-    }
-
-    private stopMetrics(): void {
-        if (this.metricsTimer) {
-            clearInterval(this.metricsTimer);
-            this.metricsTimer = undefined;
-        }
-    }
 }
 
 export { CNSDevToolsPollingTransport } from './pollingTransport';
@@ -786,3 +668,12 @@ export type {
 } from './pollingTransport';
 export { startCNSDevTools } from './start';
 export type { TCNSDevToolsStartOptions, TCNSDevToolsHandle } from './start';
+export { createCNSDevToolsHandler } from './createCNSDevToolsHandler';
+export type { TCNSDevToolsHandler } from './TCNSDevToolsHandler';
+export type { TCNSDevToolsHandlerOptions } from './TCNSDevToolsHandlerOptions';
+export type { TCNSDevToolsSource } from './TCNSDevToolsSource';
+export type { TCNSDevToolsWebSocketOptions } from './TCNSDevToolsWebSocketOptions';
+export { CNSDevToolsInProcessTransport } from './CNSDevToolsInProcessTransport';
+export { CNSDevToolsLocalRequestPolicy } from './CNSDevToolsLocalRequestPolicy';
+export type { ICNSDevToolsClient } from './ICNSDevToolsClient';
+export type { TCNSDevToolsClientRole } from './TCNSDevToolsClientRole';

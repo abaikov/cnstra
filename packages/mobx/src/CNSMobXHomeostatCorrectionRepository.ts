@@ -2,6 +2,7 @@ import { observable, runInAction } from 'mobx';
 import type { ObservableMap } from 'mobx';
 import type { ICNSHomeostatCorrectionRepository, TCNSHomeostatCorrectionState } from '@cnstra/sync';
 import type { TCNSMobXHomeostatCorrectionRepositoryOptions } from './types/TCNSMobXHomeostatCorrectionRepositoryOptions';
+import { scheduleCNSMobXHomeostatRelease } from './utils/scheduleCNSMobXHomeostatRelease';
 
 export class CNSMobXHomeostatCorrectionRepository<TKey extends readonly unknown[]> implements ICNSHomeostatCorrectionRepository<TKey> {
     private readonly homeostatCorrectionStateByKeyHash: ObservableMap<string, TCNSHomeostatCorrectionState<TKey>> = observable.map({}, { deep: false });
@@ -44,24 +45,10 @@ export class CNSMobXHomeostatCorrectionRepository<TKey extends readonly unknown[
     }
 
     private scheduleDelete(keyHash: string): void {
-        const deleteIfUnheld = () => {
+        this.cancelDeleteByKeyHash.get(keyHash)?.();
+        this.cancelDeleteByKeyHash.set(keyHash, scheduleCNSMobXHomeostatRelease(this.keepAfterUnholdMs, () => {
             this.cancelDeleteByKeyHash.delete(keyHash);
             if (!this.holderCountByKeyHash.has(keyHash)) runInAction(() => this.homeostatCorrectionStateByKeyHash.delete(keyHash));
-        };
-        if (this.keepAfterUnholdMs === Infinity) return;
-        if (this.keepAfterUnholdMs <= 0) {
-            queueMicrotask(deleteIfUnheld);
-            return;
-        }
-        const armTimeout = (remainingMs: number) => {
-            const delayMs = Math.min(remainingMs, 2 ** 31 - 1);
-            const timeout = setTimeout(() => {
-                if (remainingMs > delayMs) armTimeout(remainingMs - delayMs);
-                else deleteIfUnheld();
-            }, delayMs);
-            (timeout as { unref?: () => void }).unref?.();
-            this.cancelDeleteByKeyHash.set(keyHash, () => clearTimeout(timeout));
-        };
-        armTimeout(this.keepAfterUnholdMs);
+        }));
     }
 }

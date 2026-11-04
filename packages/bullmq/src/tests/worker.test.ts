@@ -1,9 +1,12 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSInMemoryProgressRepository,
 } from '@cnstra/persist';
+import { runCNSDevToolsAction } from '@cnstra/persist-dto';
+import type { TCNSDevToolsAction } from '@cnstra/persist-dto';
 import { createCNSWorker } from '.././worker';
+import type { ICNSBullActionJob } from '.././actions';
 import type {
     ICNSBullJob,
     ICNSBullWorkerLike,
@@ -42,14 +45,14 @@ class FakeWorker implements ICNSBullWorkerLike {
 // Two-step flow n1 → n2; n2 fails until `control.failStep2` is cleared. Same
 // shape as the pg-boss worker test, driven through a BullMQ-style processor.
 function buildFlow() {
-    const input = cnsCollateral<{ id: number }>();
-    const step1Out = cnsCollateral<{ id: number }>();
-    const output = cnsCollateral<{ result: string }>();
+    const input = collateral<{ id: number }>();
+    const step1Out = collateral<{ id: number }>();
+    const output = collateral<{ result: string }>();
 
     const ran: string[] = [];
     const control = { failStep2: true };
 
-    const n1 = cnsNeuron({ step1Out }).dendrite({
+    const n1 = neuron({ step1Out }).dendrite({
         collateral: input,
         response: (p, axon) => {
             ran.push('n1');
@@ -57,7 +60,7 @@ function buildFlow() {
         },
     });
 
-    const n2 = cnsNeuron({ output }).dendrite({
+    const n2 = neuron({ output }).dendrite({
         collateral: step1Out,
         response: (p, axon) => {
             ran.push(`n2`);
@@ -222,4 +225,67 @@ test('options the Worker class requires are required by createCNSWorker', () => 
             queue: 'cns',
         });
     expect([build, buildWithMisspeltOption]).toHaveLength(2);
+});
+
+test('the handle names its cns, registry and queue', () => {
+    const { cns, registry } = buildFlow();
+    const handle = createCNSWorker({
+        Worker: FakeWorker,
+        workerOptions: { connection: 'fake-redis' },
+        cns,
+        registry,
+        queue: 'orders',
+    });
+    expect(handle.cns).toBe(cns);
+    expect(handle.registry).toBe(registry);
+    expect(handle.queue).toBe('orders');
+});
+
+test('with a queue name the handle offers no actions', () => {
+    const { cns, registry } = buildFlow();
+    const handle = createCNSWorker({ Worker: FakeWorker, workerOptions: { connection: 'fake-redis' }, cns, registry, queue: 'cns' });
+    expect(handle.actions).toBeUndefined();
+});
+
+test('with a queue instance the worker consumes its name and the actions retry through it', async () => {
+    const consumed: string[] = [];
+    class NamedWorker extends FakeWorker {
+        constructor(name: string, processor: TCNSBullProcessor<any>, opts: { connection: string }) {
+            super(name, processor, opts);
+            consumed.push(name);
+        }
+    }
+    const retried: string[] = [];
+    const ordersQueue = {
+        name: 'orders',
+        async add(): Promise<ICNSBullJob> {
+            return { name: 'cns-stimulation', data: {} };
+        },
+        async getJob(jobId: string): Promise<ICNSBullActionJob> {
+            return {
+                id: jobId,
+                name: 'cns-stimulation',
+                data: {},
+                getState: async () => 'failed',
+                retry: async () => void retried.push(jobId),
+            };
+        },
+    };
+    const { cns, registry } = buildFlow();
+    const handle = createCNSWorker({ Worker: NamedWorker, workerOptions: { connection: 'fake-redis' }, cns, registry, queue: ordersQueue });
+    const actions = handle.actions?.();
+    const resume: TCNSDevToolsAction = {
+        type: 'resume',
+        requestId: 'request-1',
+        stimulationId: 'job-1',
+        stimulationAttemptId: 'job-1#2',
+        attemptNumber: 2,
+        entry: { collateralName: 'input', payload: { id: 1 } },
+        progress: { tasks: [] },
+    };
+
+    expect(consumed).toEqual(['orders']);
+    expect(handle.queue).toBe('orders');
+    expect(actions && (await runCNSDevToolsAction([actions], resume))).toBe(true);
+    expect(retried).toEqual(['job-1']);
 });

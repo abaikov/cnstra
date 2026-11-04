@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/persist-dto",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Canonical, name-based data model for CNStra resumable execution: run/stimulation/task DTOs (emit) and persisted entities, plus the frontier progress DTO. Zero-runtime types shared by @cnstra/persist and the devtools.",
   "repository": {
     "type": "git",

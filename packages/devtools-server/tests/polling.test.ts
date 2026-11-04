@@ -10,23 +10,14 @@ import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
  * `close` event to tell us it is gone.
  */
 
-const started: CNSDevToolsServer[] = [];
-
-const build = () => {
-    const server = new CNSDevToolsServer(
+const build = () => ({
+    server: new CNSDevToolsServer(
         new CNSDevToolsServerRepositoryInMemory(),
         new CNSInMemoryStimulationRepository()
-    );
-    started.push(server);
-    return { server };
-};
+    ),
+});
 
 describe('CNSDevToolsPollingTransport', () => {
-    // A connected client starts the metrics interval; leaving it running holds
-    // the process open.
-    afterEach(() => {
-        while (started.length) started.pop()!.stop();
-    });
 
     it('answers a connect over HTTP with what the socket would have sent', async () => {
         const { server } = build();
@@ -35,9 +26,7 @@ describe('CNSDevToolsPollingTransport', () => {
         await polling.post('ui-1', JSON.stringify({ type: 'client.connect' }));
         const messages = (await polling.poll('ui-1')).map(m => JSON.parse(m));
 
-        // ui.config first, so the panel knows which buttons to draw.
-        expect(messages[0].type).toBe('ui.config');
-        expect(messages.map(m => m.type)).toContain('apps.result');
+        expect(messages.map(m => m.type)).toEqual(['ui.config']);
     });
 
     it('drains: a second poll does not repeat what the first already took', async () => {
@@ -128,6 +117,27 @@ describe('CNSDevToolsPollingTransport', () => {
         await polling.post('ui-1', JSON.stringify({ type: 'client.connect' }));
         polling.close('ui-1');
 
+        expect(polling.sessionCount).toBe(0);
+    });
+
+    it('close() releases a parked poll at once', async () => {
+        const { server } = build();
+        const polling = new CNSDevToolsPollingTransport(server, { waitMs: 5_000 });
+
+        const parked = polling.poll('ui-1');
+        polling.close('ui-1');
+
+        await expect(parked).resolves.toEqual([]);
+    });
+
+    it('dispose() drops every session', async () => {
+        const { server } = build();
+        const polling = new CNSDevToolsPollingTransport(server, { waitMs: 5_000 });
+
+        const parked = [polling.poll('ui-1'), polling.poll('ui-2')];
+        polling.dispose();
+
+        await expect(Promise.all(parked)).resolves.toEqual([[], []]);
         expect(polling.sessionCount).toBe(0);
     });
 

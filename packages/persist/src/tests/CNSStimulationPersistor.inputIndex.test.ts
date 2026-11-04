@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 import { CNSStimulationPersistor } from '.././CNSStimulationPersistor';
 import { CNSInMemoryStimulationRepository } from '.././CNSInMemoryStimulationRepository';
@@ -41,17 +41,17 @@ describe('inputIndex names the task that actually produced the input', () => {
     it('points a consumer at its own producer when one neuron fires twice', async () => {
         // `spread` emits `item` twice; `handle` runs once per item. Keyed by
         // collateral name, both handlers were recorded against the SECOND emit.
-        const start = cnsCollateral<{ id: number }>();
-        const item = cnsCollateral<{ n: number }>();
+        const start = collateral<{ id: number }>();
+        const item = collateral<{ n: number }>();
 
-        const spread = cnsNeuron({ item }).dendrite({
+        const spread = neuron({ item }).dendrite({
             collateral: start,
             response: (_p, axon) => [
                 axon.item.createSignal({ n: 1 }),
                 axon.item.createSignal({ n: 2 }),
             ],
         });
-        const handle = cnsNeuron({}).dendrite({
+        const handle = neuron({}).dendrite({
             collateral: item,
             response: () => undefined,
         });
@@ -87,8 +87,8 @@ describe('inputIndex names the task that actually produced the input', () => {
 
     it('still points an entry consumer at its entry slot', async () => {
         // No producing task exists for an entry signal, so the name map answers.
-        const start = cnsCollateral<{ id: number }>();
-        const worker = cnsNeuron({}).dendrite({
+        const start = collateral<{ id: number }>();
+        const worker = neuron({}).dendrite({
             collateral: start,
             response: () => undefined,
         });
@@ -113,19 +113,19 @@ describe('inputIndex names the task that actually produced the input', () => {
     });
 
     it('keeps a straight chain pointing back one link at a time', async () => {
-        const a = cnsCollateral<{ id: number }>();
-        const b = cnsCollateral<{ id: number }>();
-        const c = cnsCollateral<{ id: number }>();
+        const a = collateral<{ id: number }>();
+        const b = collateral<{ id: number }>();
+        const c = collateral<{ id: number }>();
 
-        const first = cnsNeuron({ b }).dendrite({
+        const first = neuron({ b }).dendrite({
             collateral: a,
             response: (p, axon) => axon.b.createSignal({ id: p!.id }),
         });
-        const second = cnsNeuron({ c }).dendrite({
+        const second = neuron({ c }).dendrite({
             collateral: b,
             response: (p, axon) => axon.c.createSignal({ id: p!.id }),
         });
-        const third = cnsNeuron({}).dendrite({
+        const third = neuron({}).dendrite({
             collateral: c,
             response: () => undefined,
         });

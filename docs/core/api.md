@@ -8,7 +8,7 @@ keywords: [API reference, API documentation, neuron API, signal API, collateral 
 ---
 
 ```ts setup
-import { CNS, cnsCollateral, cnsNeuron, cnsNeuronFactory, createCNS } from '@cnstra/core';
+import { CNS, collateral, neuron, neuronFactory, createCNS } from '@cnstra/core';
 import type {
   ICNSCollateral,
   TCNSAfferentPath,
@@ -49,30 +49,30 @@ declare const dbA: TDb;
 declare const dbB: TDb;
 ```
 
-### `cnsCollateral<T>()`
+### `collateral<T>()`
 Create a typed output channel.
 
 ```ts
-const userEvent = cnsCollateral<{ userId: string }>();
-const simpleEvent = cnsCollateral();
+const userEvent = collateral<{ userId: string }>();
+const simpleEvent = collateral();
 ```
 
 ### `collateral.createSignal(payload?)`
 Create a signal from a collateral. Payload is optional for collaterals without payload type.
 
 ```ts
-const userEvent = cnsCollateral<{ userId: string }>();
-const simpleEvent = cnsCollateral();
+const userEvent = collateral<{ userId: string }>();
+const simpleEvent = collateral();
 
 const userSignal = userEvent.createSignal({ userId: '123' });
 const emptySignal = simpleEvent.createSignal(); // no payload
 ```
 
-### `cnsNeuron(axon)`
+### `neuron(axon)`
 Create a neuron with the given axon (neuron identity is the object itself).
 
 ```ts
-const myNeuron = cnsNeuron({ output: myCollateral });
+const myNeuron = neuron({ output: myCollateral });
 ```
 
 ### Signal ownership
@@ -85,7 +85,7 @@ Incorrect (emits someone else's collateral):
 
 ```ts
 // DON'T: myNeuron emits otherAxon.some
-const myNeuron = cnsNeuron({ output: myCollateral }).dendrite({
+const myNeuron = neuron({ output: myCollateral }).dendrite({
   collateral: inputCollateral,
   response: (payload) => otherAxon.some.createSignal(payload),
 });
@@ -94,8 +94,8 @@ const myNeuron = cnsNeuron({ output: myCollateral }).dendrite({
 Correct (controller-owned request, domain emits its own):
 
 ```ts
-const controller = cnsNeuron({ requestA });
-const serviceA = cnsNeuron({ doneA })
+const controller = neuron({ requestA });
+const serviceA = neuron({ doneA })
   .dendrite({ collateral: requestA, response: (payload, axon) => axon.doneA.createSignal(payload) });
 // controller emits requestA; serviceA emits doneA
 ```
@@ -104,7 +104,7 @@ const serviceA = cnsNeuron({ doneA })
 Add a dendrite bound to a collateral.
 
 ```ts
-const myNeuron = cnsNeuron({ output: myCollateral }).dendrite({
+const myNeuron = neuron({ output: myCollateral }).dendrite({
   collateral: inputCollateral,
   response: async (payload, axon, ctx) => {
     // ctx: { abortSignal, cns, stimulation, stimulationContext, activationContext }
@@ -120,7 +120,7 @@ Exhaustive bind to every collateral of another neuron's axon (compile-time safet
 
 ```ts
 // Data flows through signal payloads; dependencies come from a factory function (see Dependencies).
-cnsNeuron({})
+neuron({})
   .bind(order, {
     created: (payload, axon) => { /* ... */ },
     updated: (payload) => { /* ... */ },
@@ -132,7 +132,7 @@ cnsNeuron({})
 Set per-neuron global concurrency limit (shared across all parallel stimulations).
 
 ```ts
-const limitedWorker = cnsNeuron({ out })
+const limitedWorker = neuron({ out })
   .setConcurrency(2) // max 2 parallel executions across all runs
   .dendrite({ collateral: task, response: async (p, axon) => { /* ... */ } });
 ```
@@ -143,7 +143,7 @@ This limits how many concurrent executions of this neuron's dendrites can run at
 Set maximum execution duration for this neuron's dendrites. If exceeded, the dendrite execution will be aborted.
 
 ```ts
-const timedWorker = cnsNeuron({ out })
+const timedWorker = neuron({ out })
   .setMaxDuration(5000) // 5 seconds max
   .dendrite({ collateral: task, response: async (p, axon) => { /* ... */ } });
 ```
@@ -155,10 +155,10 @@ Per-run data travels in signal payloads. Dependencies the handlers use, such as 
 **Recommended: a factory function.** The neuron closes over its dependencies, so the handler signature stays `(payload, axon)` and TypeScript checks what you pass. Each CNS gets its own instances, for example one database per CNS:
 
 ```ts
-const appUpserted = cnsCollateral<TApp>();
+const appUpserted = collateral<TApp>();
 
 export const createAppsNeuron = (db: TDb) =>
-  cnsNeuron({}).dendrite({
+  neuron({}).dendrite({
     collateral: appUpserted,
     response: app => {
       db.apps.upsertEntityByKey(app.id, app);
@@ -175,14 +175,14 @@ const cnsB = createCNS(appNeuronFactories, dbB);
 
 Keep the collaterals at module level, outside the factory. They are how other code reaches the neuron, and every CNS built from the factory has to share them. Call each factory once per CNS: `createCNS` throws when one is listed twice. With `new CNS`, two neurons from one factory both own its collaterals and the constructor throws, and without collaterals every dendrite runs twice. `createCNS` passes no `global`; neurons declared with `withGlobal<T>()` go through `new CNS(neurons, options, global)`.
 
-**`ctx.global`: for neurons already declared as module values.** If your neurons are module-level constants and you do not want to rewrite them as factories, declare them through `cnsNeuronFactory().withGlobal<T>()` and pass the value as the third argument of `new CNS` (or as `global` in `CNSFactory.create({ appsNeuron }, { global })`). It arrives in every handler as `ctx.global`:
+**`ctx.global`: for neurons already declared as module values.** If your neurons are module-level constants and you do not want to rewrite them as factories, declare them through `neuronFactory().withGlobal<T>()` and pass the value as the third argument of `new CNS` (or as `global` in `CNSFactory.create({ appsNeuron }, { global })`). It arrives in every handler as `ctx.global`:
 
 ```ts
-const { neuron } = cnsNeuronFactory().withGlobal<{ db: TDb }>();
+const { neuron: globalNeuron } = neuronFactory().withGlobal<{ db: TDb }>();
 
-const appUpserted = cnsCollateral<TApp>();
+const appUpserted = collateral<TApp>();
 
-export const appsNeuron = neuron({}).dendrite({
+export const appsNeuron = globalNeuron({}).dendrite({
   collateral: appUpserted,
   response: (app, _axon, { global }) => {
     global.db.apps.upsertEntityByKey(app.id, app);

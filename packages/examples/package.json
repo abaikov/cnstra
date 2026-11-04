@@ -25,15 +25,15 @@
     "demo:bull:otel": "tsx src/bull-otel.ts"
   },
   "dependencies": {
-    "@cnstra/bullmq": "^0.4.0",
-    "@cnstra/core": "^3.0.0",
-    "@cnstra/factory": "^0.2.0",
-    "@cnstra/persist": "^0.2.0",
+    "@cnstra/bullmq": "^0.4.1",
+    "@cnstra/core": "^3.2.2",
+    "@cnstra/factory": "^0.2.2",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.0",
-    "@cnstra/persist-otel": "^0.1.0",
-    "@cnstra/persist-postgres": "^0.5.0",
-    "@cnstra/pg-boss": "^0.6.0",
-    "@cnstra/progress-redis": "^0.2.0"
+    "@cnstra/persist-otel": "^0.1.1",
+    "@cnstra/persist-postgres": "^0.5.1",
+    "@cnstra/pg-boss": "^0.6.1",
+    "@cnstra/progress-redis": "^0.2.2"
   },
   "devDependencies": {
     "@opentelemetry/api": "^1.9.1",

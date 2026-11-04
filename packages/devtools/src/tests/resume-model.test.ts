@@ -1,6 +1,6 @@
 import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
-import { CNS, cnsCollateral, cnsNeuronFactory } from '@cnstra/core';
+import { CNS, collateral, neuronFactory } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSInMemoryStimulationRepository,
@@ -16,17 +16,17 @@ import type {
 // entry → neuronOne(done) → neuronTwo(failed), leaving a resumable frontier of [n2].
 
 function buildCNS() {
-    const entryCol = cnsCollateral<{ n: number }>();
-    const midCol = cnsCollateral<{ n: number }>();
+    const entryCol = collateral<{ n: number }>();
+    const midCol = collateral<{ n: number }>();
 
-    const neuronOne = cnsNeuronFactory()
+    const neuronOne = neuronFactory()
         .neuron({ midCol })
         .bind(
             { entryCol },
             { entryCol: ({ n }, axon) => axon.midCol.createSignal({ n: n + 1 }) }
         );
 
-    const neuronTwo = cnsNeuronFactory()
+    const neuronTwo = neuronFactory()
         .neuron({})
         .bind(
             { midCol },

@@ -1,26 +1,26 @@
-/**
- * @cnstra/mcp entry for the DevTools panel's OWN data-flow graph.
- *
- * The panel is itself a CNStra app: `mainCNS` ingests WebSocket frames and drives
- * them through neurons into the OIMDB apps collection. This exposes that graph to AI tools
- * (cns_get_graph / cns_list_neurons / cns_get_neuron) so the panel's data flows —
- * WS → appIngress → data-layer neurons → OIMDB — can be traced while developing it.
- *
- * Run: npx tsx cns-mcp.ts   (wired as the `cnstra` server in .mcp.json)
- */
 import { CNSPersistOptionsRegistryFactory } from '@cnstra/persist';
 import { startCNSMCPServer } from '@cnstra/mcp';
-import { mainCNS } from './src/cns/index';
-import { wsNeuron } from './src/cns/ws/WsNeuron';
-import { appIngressNeuron } from './src/cns/controller-layer/AppIngressNeuron';
-import { appsNeuron } from './src/cns/data-layer/app/AppsNeuron';
+import { createDevTools } from './src/model/createDevTools';
+import { devToolsTransportAxon } from './src/model/axons/devToolsTransportAxon';
+import { explorerUiAxon } from './src/model/axons/explorerUiAxon';
 
-const registry = CNSPersistOptionsRegistryFactory.create({
-    wsNeuron,
-    appIngressNeuron,
-    appsNeuron,
+const refuseWithoutConnection = async (): Promise<never> => {
+    throw new Error('the devtools panel graph is served to an AI tool without a devtools connection');
+};
+
+const devTools = createDevTools({
+    transportKind: 'socket',
+    batchTransduceFn: async requests => requests.map(({ name, key }) => ({ name, key, error: new Error(`not served: ${name}`) })),
+    actionClient: {
+        retry: refuseWithoutConnection,
+        clone: refuseWithoutConnection,
+        command: refuseWithoutConnection,
+        launch: refuseWithoutConnection,
+    },
 });
 
-void startCNSMCPServer(mainCNS as never, registry, {
+const registry = CNSPersistOptionsRegistryFactory.create({ ...devTools.neurons, explorerUiAxon, devToolsTransportAxon });
+
+void startCNSMCPServer(devTools.cns, registry, {
     name: 'cnstra-devtools-panel',
 });

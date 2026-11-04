@@ -85,9 +85,18 @@ for (const doc of docs) {
 const paths = {};
 for (const directory of packageDirectories) {
     const index = ['index.ts', 'index.tsx'].map(name => join(PACKAGES, directory, 'src', name)).find(existsSync);
-    if (index === undefined) continue;
-    const { name } = JSON.parse(readFileSync(join(PACKAGES, directory, 'package.json'), 'utf8'));
-    paths[name] = [index];
+    const manifestPath = join(PACKAGES, directory, 'package.json');
+    if (!existsSync(manifestPath)) continue;
+    const { name, exports } = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    if (index !== undefined) paths[name] = [index];
+    for (const subpath of Object.keys(exports ?? {})) {
+        if (subpath === '.' || !subpath.startsWith('./') || subpath.includes('*')) continue;
+        const relative = subpath.slice(2);
+        const source = [`${relative}/index.ts`, `${relative}/index.tsx`, `${relative}.ts`, `${relative}.tsx`]
+            .map(candidate => join(PACKAGES, directory, 'src', candidate))
+            .find(existsSync);
+        if (source !== undefined) paths[`${name}/${relative}`] = [source];
+    }
 }
 const OIMDB_PACKAGES = join(ROOT, 'docs', 'node_modules', '@oimdb');
 for (const directory of readdirSync(OIMDB_PACKAGES)) {

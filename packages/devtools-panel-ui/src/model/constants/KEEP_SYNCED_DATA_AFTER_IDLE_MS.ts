@@ -1,0 +1,1 @@
+export const KEEP_SYNCED_DATA_AFTER_IDLE_MS = 60_000;

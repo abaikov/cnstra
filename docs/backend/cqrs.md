@@ -12,7 +12,7 @@ CNStra's architecture naturally supports Command Query Responsibility Segregatio
 ### CQRS with CNStra
 
 ```ts setup
-import { CNS, cnsNeuron, cnsCollateral } from '@cnstra/core';
+import { CNS, neuron, collateral } from '@cnstra/core';
 
 type TUserReadModel = { id: string; name: string; email: string; createdAt: number; displayName: string };
 
@@ -33,11 +33,11 @@ declare function logUserCreated(user: TUserReadModel): Promise<void>;
 // Note: In real CQRS, aggregates would be stored in a database, not context
 // Context here is only for per-neuron per-stimulation metadata
 
-const createUserCommand = cnsCollateral<{ name: string; email: string }>();
-const userCreated = cnsCollateral<{ id: string; name: string; email: string; createdAt: number }>();
+const createUserCommand = collateral<{ name: string; email: string }>();
+const userCreated = collateral<{ id: string; name: string; email: string; createdAt: number }>();
 
 // Command handlers (write side)
-const userCommandHandler = cnsNeuron({ userCreated }).dendrite({
+const userCommandHandler = neuron({ userCreated }).dendrite({
   collateral: createUserCommand,
   response: async (payload, axon) => {
     // Execute command and create aggregate
@@ -56,10 +56,10 @@ const userCommandHandler = cnsNeuron({ userCreated }).dendrite({
 });
 
 // Query side: Read operations (would typically read from a separate read model/store)
-const getUserQuery = cnsCollateral<{ id: string }>();
-const userQueryResult = cnsCollateral<{ id: string; name: string; email: string; createdAt: number }>();
+const getUserQuery = collateral<{ id: string }>();
+const userQueryResult = collateral<{ id: string; name: string; email: string; createdAt: number }>();
 
-const userQueryHandler = cnsNeuron({ userQueryResult }).dendrite({
+const userQueryHandler = neuron({ userQueryResult }).dendrite({
   collateral: getUserQuery,
   response: async (payload, axon) => {
     // In real CQRS, this would read from a read model/database
@@ -93,10 +93,10 @@ In canonical CQRS, read models are updated asynchronously by separate projection
 
 ```typescript
 // Command side: Write operations
-const createUserCommand = cnsCollateral<{ name: string; email: string }>();
-const userCreated = cnsCollateral<{ id: string; name: string; email: string; createdAt: number }>();
+const createUserCommand = collateral<{ name: string; email: string }>();
+const userCreated = collateral<{ id: string; name: string; email: string; createdAt: number }>();
 
-const userCommandHandler = cnsNeuron({ userCreated }).dendrite({
+const userCommandHandler = neuron({ userCreated }).dendrite({
   collateral: createUserCommand,
   response: async (payload, axon) => {
     // Write to command/write database (source of truth)
@@ -119,9 +119,9 @@ const userCommandHandler = cnsNeuron({ userCreated }).dendrite({
 });
 
 // Read model projection: Updates read model from events
-const readModelUpdated = cnsCollateral<{ userId: string }>();
+const readModelUpdated = collateral<{ userId: string }>();
 
-const readModelProjection = cnsNeuron({ readModelUpdated }).dendrite({
+const readModelProjection = neuron({ readModelUpdated }).dendrite({
   collateral: userCreated,
   response: async (payload, axon) => {
     // Update read model (separate database/store) from event

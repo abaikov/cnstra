@@ -1,8 +1,8 @@
 import {
     CNS,
     CNSPersistOptionsRegistry,
-    cnsCollateral,
-    cnsNeuron,
+    collateral,
+    neuron,
 } from '../cnstra';
 import type { ICNSCollateral } from '../cnstra';
 import type { TCNSBenchGraph } from '../types/TCNSBenchGraph';
@@ -56,7 +56,7 @@ export class CNSBenchGraphFactory {
     ): TCNSBenchGraph {
         const collaterals: ICNSCollateral<TCNSBenchPayload>[] = [];
         for (let index = 0; index <= hops; index++) {
-            collaterals.push(cnsCollateral<TCNSBenchPayload>());
+            collaterals.push(collateral<TCNSBenchPayload>());
         }
 
         let activations = 0;
@@ -72,7 +72,7 @@ export class CNSBenchGraphFactory {
                       syncResponse(payload, axon)
                 : syncResponse;
             neurons.push(
-                cnsNeuron({ out } as any).dendrite({
+                neuron({ out } as any).dendrite({
                     collateral: collaterals[index]!,
                     response,
                 } as any)
@@ -96,13 +96,13 @@ export class CNSBenchGraphFactory {
      * its activation queue rather than its chaining.
      */
     static fanOut(width: number): TCNSBenchGraph {
-        const entryCollateral = cnsCollateral<TCNSBenchPayload>();
+        const entryCollateral = collateral<TCNSBenchPayload>();
         let activations = 0;
         const neurons: any[] = [];
         for (let index = 0; index < width; index++) {
-            const out = cnsCollateral<TCNSBenchPayload>();
+            const out = collateral<TCNSBenchPayload>();
             neurons.push(
-                cnsNeuron({ out } as any).dendrite({
+                neuron({ out } as any).dendrite({
                     collateral: entryCollateral,
                     response: (payload: TCNSBenchPayload, axon: any) => {
                         activations++;
@@ -141,13 +141,13 @@ export class CNSBenchGraphFactory {
      * Hold it at the family's largest width and only the frontier varies.
      */
     static failingFanOut(width: number, registrySize?: number): TCNSBenchGraph {
-        const entryCollateral = cnsCollateral<TCNSBenchPayload>();
+        const entryCollateral = collateral<TCNSBenchPayload>();
         let activations = 0;
         const neurons: any[] = [];
         for (let index = 0; index < width; index++) {
-            const out = cnsCollateral<TCNSBenchPayload>();
+            const out = collateral<TCNSBenchPayload>();
             neurons.push(
-                cnsNeuron({ out } as any).dendrite({
+                neuron({ out } as any).dendrite({
                     collateral: entryCollateral,
                     response: () => {
                         activations++;
@@ -200,7 +200,7 @@ export class CNSBenchGraphFactory {
         for (let index = used; index < (input.padRegistryTo ?? 0) + 1; index++) {
             registry.registerCollateral(
                 `pad${index}`,
-                cnsCollateral<TCNSBenchPayload>() as any
+                collateral<TCNSBenchPayload>() as any
             );
         }
 

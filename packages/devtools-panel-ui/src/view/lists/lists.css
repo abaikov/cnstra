@@ -1,0 +1,71 @@
+@scope (.cns-devtools) {
+  .list-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  .windowed-list-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; position: relative; }
+  .windowed-list-rows { position: relative; height: calc(var(--row-count, 0) * var(--row-height)); }
+  .windowed-list-empty { padding: 28px 20px; color: var(--text-muted); font-size: 12px; text-align: center; }
+
+  .list-row {
+    position: absolute;
+    top: calc(var(--row-index, 0) * var(--row-height));
+    left: 0;
+    right: 0;
+    height: var(--row-height);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-secondary);
+    border-left: 3px solid var(--row-accent);
+    font-size: 12px;
+  }
+  .list-row[data-active] {
+    border-left-color: var(--color-pink);
+    background: color-mix(in srgb, var(--color-pink) 10%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--color-pink) 14%, transparent);
+  }
+  .list-row[data-active]:hover { background: color-mix(in srgb, var(--color-pink) 15%, transparent); }
+
+  .row-heading { display: flex; align-items: baseline; }
+  .row-heading-tagged { gap: 6px; min-width: 0; overflow: hidden; }
+  .row-heading-tagged .row-title { flex: none; }
+  .row-note { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+
+  .stimulation-row { --row-accent: var(--status-color); }
+  .stimulation-row .row-title,
+  .collateral-row .row-title { color: var(--color-cyan); }
+  .stimulation-row .metric-value { color: var(--text-primary); }
+
+  .neuron-row { --row-accent: var(--color-violet); }
+  .neuron-row[data-failing] { --row-accent: var(--color-red); }
+  .neuron-row .row-title { color: var(--color-violet); }
+  .neuron-throughput { color: var(--color-green); }
+  .neuron-errors { color: var(--text-muted); }
+  .neuron-row[data-failing] .neuron-errors { color: var(--color-red); }
+
+  .collateral-row { --row-accent: var(--color-cyan); --collateral-tag-color: var(--color-violet); }
+  .collateral-row[data-entry] { --row-accent: var(--color-yellow); --collateral-tag-color: var(--color-yellow); }
+  .collateral-row .row-heading { align-items: center; gap: 8px; overflow: visible; }
+  .collateral-tag {
+    border: 1px solid color-mix(in srgb, var(--collateral-tag-color) 40%, transparent);
+    color: var(--collateral-tag-color);
+    background: color-mix(in srgb, var(--collateral-tag-color) 8%, transparent);
+  }
+  .collateral-into { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
+  .collateral-row[data-subscribed] .collateral-into { color: var(--color-violet); }
+  .collateral-fires { color: var(--color-green); }
+  .collateral-subscribers { color: var(--color-violet); }
+
+  .task-row { --row-accent: var(--color-green); }
+  .task-row[data-failed] { --row-accent: var(--color-red); }
+  .task-row .row-title { color: var(--color-violet); }
+  .task-stimulation { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+
+  .exp-row {
+    transition: background 0.12s ease, box-shadow 0.12s ease;
+  }
+  .exp-row:hover {
+    background: var(--bg-hover);
+  }
+}

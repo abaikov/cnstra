@@ -19,3 +19,10 @@ export type { TCNSOIMDBHomeostasisComputedStoreAggregate } from './types/TCNSOIM
 export type { TCNSOIMDBHomeostasisSourceTrackingComputedStoreAggregate } from './types/TCNSOIMDBHomeostasisSourceTrackingComputedStoreAggregate';
 export type { TCNSOIMDBHomeostatReceptiveFieldOptions } from './types/TCNSOIMDBHomeostatReceptiveFieldOptions';
 export type { TCNSOIMDBHomeostatCNS } from './types/TCNSOIMDBHomeostatCNS';
+export { createCNSOIMDBHomeostatSchema } from './utils/createCNSOIMDBHomeostatSchema';
+export { CNSOIMDBHomeostatModelBinding } from './CNSOIMDBHomeostatModelBinding';
+export type { ICNSOIMDBHomeostatModelHandles } from './interfaces/ICNSOIMDBHomeostatModelHandles';
+export type { TCNSOIMDBHomeostatSchema } from './types/TCNSOIMDBHomeostatSchema';
+export type { TCNSOIMDBHomeostatSchemaOptions } from './types/TCNSOIMDBHomeostatSchemaOptions';
+export type { TCNSOIMDBHomeostatBucketCollection } from './types/TCNSOIMDBHomeostatBucketCollection';
+export type { TCNSOIMDBHomeostatSummaryCollection } from './types/TCNSOIMDBHomeostatSummaryCollection';

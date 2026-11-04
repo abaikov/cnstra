@@ -1,4 +1,4 @@
-import { CNS, cnsNeuron } from '@cnstra/core';
+import { CNS, neuron } from '@cnstra/core';
 import { autorun, observable, runInAction } from 'mobx';
 import { CNSHomeostatReceptor, CNSHomeostatReceptorCorrection } from '@cnstra/sync';
 import { createCNSMobXHomeostatEnvironment } from '../index';
@@ -18,7 +18,7 @@ const createApp = () => {
             return Promise.resolve({ id: deckId, title: server.titles[deckId] ?? `deck ${deckId}` });
         },
     });
-    const deckWriter = cnsNeuron({}).dendrite({
+    const deckWriter = neuron({}).dendrite({
         collateral: deckReceptor.axon.homeostasisRestored,
         response: ({ data }) => { decks.set(data.id, data); },
     });

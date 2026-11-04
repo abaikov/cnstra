@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/oimdb",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OIMDB binding of the CNStra homeostat: queries as OIMDB computeds over the @cnstra/sync regulator, corrections in an OIMDB collection.",
   "repository": {
     "type": "git",
@@ -22,6 +22,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.mjs",
+      "require": "./dist/react/index.js"
     }
   },
   "sideEffects": false,
@@ -36,14 +41,24 @@
     "test": "jest"
   },
   "peerDependencies": {
-    "@cnstra/sync": "^0.1.0",
-    "@oimdb/core": "^4.11.0"
+    "@cnstra/sync": "^0.1.1",
+    "@oimdb/core": "^4.13.0",
+    "@oimdb/react": "^4.0.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@oimdb/react": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@cnstra/core": "^3.2.1",
-    "@cnstra/sync": "^0.1.0",
-    "@oimdb/core": "^4.11.0",
-    "@oimdb/react": "^3.4.0",
+    "@cnstra/core": "^3.2.2",
+    "@cnstra/sync": "^0.1.1",
+    "@oimdb/core": "^4.13.0",
+    "@oimdb/react": "^4.0.0",
     "@testing-library/react": "^14.3.1",
     "@types/jest": "29.5.12",
     "@types/react": "^18.3.24",

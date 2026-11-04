@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '../src';
+import { CNS, collateral, neuron } from '../src';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 
 const collect = () => {
@@ -12,9 +12,9 @@ const activations = (responses: TCNSStimulationResponse[]) =>
 
 describe('per-activation timing', () => {
     it('reports startedAt and duration for a synchronous body', async () => {
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ id: number }>();
-        const n = cnsNeuron({ out }).dendrite({
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ id: number }>();
+        const n = neuron({ out }).dendrite({
             collateral: input,
             response: (p, axon) => axon.out.createSignal({ id: p!.id }),
         });
@@ -33,9 +33,9 @@ describe('per-activation timing', () => {
     });
 
     it('measures an async body for at least as long as it actually took', async () => {
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ id: number }>();
-        const n = cnsNeuron({ out }).dendrite({
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ id: number }>();
+        const n = neuron({ out }).dendrite({
             collateral: input,
             response: async (p, axon) => {
                 await new Promise(r => setTimeout(r, 30));
@@ -55,9 +55,9 @@ describe('per-activation timing', () => {
     });
 
     it('reports timing on the throw path too, where latency matters most', async () => {
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ id: number }>();
-        const n = cnsNeuron({ out }).dendrite({
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ id: number }>();
+        const n = neuron({ out }).dendrite({
             collateral: input,
             response: () => {
                 throw new Error('boom');
@@ -82,13 +82,13 @@ describe('per-activation timing', () => {
         // one used to be measured when it was emitted — so a later signal was
         // charged for the synchronous subtree an earlier one had already drained.
         // One activation, one measurement.
-        const input = cnsCollateral<{ id: number }>();
-        const a = cnsCollateral<{ id: number }>();
-        const b = cnsCollateral<{ id: number }>();
-        const slowDone = cnsCollateral<{ id: number }>();
-        const otherDone = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
+        const a = collateral<{ id: number }>();
+        const b = collateral<{ id: number }>();
+        const slowDone = collateral<{ id: number }>();
+        const otherDone = collateral<{ id: number }>();
 
-        const fanOut = cnsNeuron({ a, b }).dendrite({
+        const fanOut = neuron({ a, b }).dendrite({
             collateral: input,
             response: async (p, axon) => [
                 axon.a.createSignal({ id: p!.id }),
@@ -96,7 +96,7 @@ describe('per-activation timing', () => {
             ],
         });
         // Burns real synchronous time inside the first branch's subtree.
-        const slowBranch = cnsNeuron({ slowDone }).dendrite({
+        const slowBranch = neuron({ slowDone }).dendrite({
             collateral: a,
             response: (p, axon) => {
                 const until = Date.now() + 40;
@@ -106,11 +106,11 @@ describe('per-activation timing', () => {
                 return axon.slowDone.createSignal({ id: p!.id });
             },
         });
-        const otherBranch = cnsNeuron({ otherDone }).dendrite({
+        const otherBranch = neuron({ otherDone }).dendrite({
             collateral: b,
             response: (p, axon) => axon.otherDone.createSignal({ id: p!.id }),
         });
-        const end = cnsNeuron({})
+        const end = neuron({})
             .dendrite({ collateral: slowDone, response: () => undefined })
             .dendrite({ collateral: otherDone, response: () => undefined });
 
@@ -134,9 +134,9 @@ describe('per-activation timing', () => {
     });
 
     it('leaves timing undefined on responses that are not an activation', async () => {
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ id: number }>();
-        const n = cnsNeuron({ out }).dendrite({
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ id: number }>();
+        const n = neuron({ out }).dendrite({
             collateral: input,
             response: (p, axon) => axon.out.createSignal({ id: p!.id }),
         });
@@ -160,11 +160,11 @@ describe('abort announces the ending', () => {
         // drains the queue — so a real activation already reported
         // `queueLength === 0`. A second, synthetic one would double-count the
         // hop, race two terminal flushes, and open a second root span per run.
-        const input = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
+        const out = collateral<{ id: number }>();
         const controller = new AbortController();
 
-        const n = cnsNeuron({ out }).dendrite({
+        const n = neuron({ out }).dendrite({
             collateral: input,
             response: async (p, axon) => {
                 controller.abort();
@@ -192,19 +192,19 @@ describe('abort announces the ending', () => {
     it('still announces the ending when queued work never got to run', async () => {
         // The case the synthetic response exists for: the abort cuts off tasks
         // sitting in the queue, so no activation ever settles the queue to zero.
-        const input = cnsCollateral<{ id: number }>();
-        const mid = cnsCollateral<{ id: number }>();
-        const out = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
+        const mid = collateral<{ id: number }>();
+        const out = collateral<{ id: number }>();
         const controller = new AbortController();
 
-        const slow = cnsNeuron({ mid }).dendrite({
+        const slow = neuron({ mid }).dendrite({
             collateral: input,
             response: async (p, axon) => {
                 await new Promise(r => setTimeout(r, 30));
                 return axon.mid.createSignal({ id: p!.id });
             },
         });
-        const next = cnsNeuron({ out }).dendrite({
+        const next = neuron({ out }).dendrite({
             collateral: mid,
             response: (p, axon) => axon.out.createSignal({ id: p!.id }),
         });

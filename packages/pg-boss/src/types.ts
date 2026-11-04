@@ -36,6 +36,11 @@ export interface ICNSPgBossLike {
      * batches has nothing to settle.
      */
     complete?(name: string, ids: string[]): Promise<unknown>;
+    getJobById(
+        name: string,
+        id: string
+    ): Promise<{ id: string; state?: string } | null | undefined>;
+    retry(name: string, id: string): Promise<unknown>;
 }
 
 // The job payload + response shapes are broker-agnostic — defined once in

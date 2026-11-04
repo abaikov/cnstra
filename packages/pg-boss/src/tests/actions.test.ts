@@ -2,7 +2,7 @@ import { runCNSDevToolsAction } from '@cnstra/persist-dto';
 import type { TCNSDevToolsAction } from '@cnstra/persist-dto';
 
 import { createCNSPgBossActions } from '.././actions';
-import type { ICNSPgBossActionsLike } from '.././actions';
+import type { ICNSPgBossLike } from '.././types';
 
 const resume = (id = 'order-42'): TCNSDevToolsAction => ({
     type: 'resume',
@@ -37,7 +37,7 @@ const fakeBoss = (known: string[]) => {
         async retry(queue: string, id: string) {
             retried.push({ queue, id });
         },
-    } as unknown as ICNSPgBossActionsLike;
+    } as unknown as ICNSPgBossLike;
 
     return { boss, sent, retried };
 };

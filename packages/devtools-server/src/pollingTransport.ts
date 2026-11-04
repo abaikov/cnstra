@@ -1,4 +1,5 @@
 import type { CNSDevToolsServer } from './index';
+import type { TCNSDevToolsClientRole } from './TCNSDevToolsClientRole';
 
 /**
  * An HTTP long-polling transport for the DevTools protocol.
@@ -18,16 +19,17 @@ import type { CNSDevToolsServer } from './index';
 /** How the protocol reaches a participant that cannot hold a socket open. */
 export interface ICNSPollingSession {
     /** The socket-shaped object handed to `handleMessage` / `removeClient`. */
-    readonly client: { send(data: string): void; readyState: number };
+    readonly client: { send(data: string): void; readyState: number; readonly role?: TCNSDevToolsClientRole };
     /** Messages queued since the last drain. */
     take(): string[];
     /** Park until a message arrives or the wait elapses; then drain. */
     wait(timeoutMs: number): Promise<string[]>;
     /** Last time this session was seen, for expiry. */
     lastSeenAt: number;
+    close(): void;
 }
 
-const createSession = (): ICNSPollingSession => {
+const createSession = (role: TCNSDevToolsClientRole | undefined): ICNSPollingSession => {
     let queued: string[] = [];
     let wake: (() => void) | undefined;
 
@@ -37,6 +39,7 @@ const createSession = (): ICNSPollingSession => {
             // to a participant: a polling session is reachable as long as it has
             // not expired, and expiry removes it outright.
             readyState: 1,
+            role,
             send(data: string) {
                 queued.push(data);
                 wake?.();
@@ -65,6 +68,10 @@ const createSession = (): ICNSPollingSession => {
             return session.take();
         },
         lastSeenAt: Date.now(),
+        close() {
+            session.client.readyState = 3;
+            wake?.();
+        },
     };
 
     return session;
@@ -102,7 +109,8 @@ export class CNSDevToolsPollingTransport {
 
     constructor(
         private readonly server: CNSDevToolsServer,
-        options: TCNSPollingOptions = {}
+        options: TCNSPollingOptions = {},
+        private readonly role?: TCNSDevToolsClientRole
     ) {
         this.waitMs = options.waitMs ?? 25_000;
         this.sessionTtlMs = options.sessionTtlMs ?? 60_000;
@@ -116,7 +124,7 @@ export class CNSDevToolsPollingTransport {
     /** Deliver one message from a participant. */
     async post(sessionId: string, body: string): Promise<void> {
         const session = this.session(sessionId);
-        await this.server.handleMessage(session.client as never, body);
+        await this.server.handleMessage(session.client, body);
     }
 
     /** Drain what is queued for a participant, parking if nothing is. */
@@ -130,7 +138,12 @@ export class CNSDevToolsPollingTransport {
         const session = this.sessions.get(sessionId);
         if (!session) return;
         this.sessions.delete(sessionId);
-        this.server.removeClient(session.client as never);
+        session.close();
+        this.server.removeClient(session.client);
+    }
+
+    dispose(): void {
+        for (const sessionId of [...this.sessions.keys()]) this.close(sessionId);
     }
 
     private session(sessionId: string): ICNSPollingSession {
@@ -142,7 +155,7 @@ export class CNSDevToolsPollingTransport {
             return existing;
         }
 
-        const created = createSession();
+        const created = createSession(this.role);
         this.sessions.set(sessionId, created);
         return created;
     }
@@ -153,7 +166,8 @@ export class CNSDevToolsPollingTransport {
         for (const [id, session] of this.sessions) {
             if (session.lastSeenAt < cutoff) {
                 this.sessions.delete(id);
-                this.server.removeClient(session.client as never);
+                session.close();
+                this.server.removeClient(session.client);
             }
         }
     }

@@ -1,4 +1,4 @@
-import { CNS, cnsNeuron } from '@cnstra/core';
+import { CNS, neuron } from '@cnstra/core';
 import {
     createOIMColumnGroup,
     createOIMEntityContentService,
@@ -49,7 +49,7 @@ const createApp = (options: { staleTimeMs?: number } = {}) => {
     });
     let decks: ReturnType<typeof createDeckStoreSlot>;
     let cardsPages: ReturnType<typeof createCardsPageStoreSlot>;
-    const writer = cnsNeuron({})
+    const writer = neuron({})
         .dendrite({
             collateral: deckReceptor.axon.homeostasisRestored,
             response: ({ data }) => { decks.slotService.writeSlotContentByKey(decks, data.id, data); },
@@ -155,7 +155,7 @@ const createDeckCardsScreenApp = (options: { isCardSlotDemanded?: (cardSlot: TOI
     });
     let cards: ReturnType<typeof createCardStoreSlot>;
     let deckCardIds: ReturnType<typeof createDeckCardIdsStoreSlot>;
-    const writer = cnsNeuron({})
+    const writer = neuron({})
         .dendrite({
             collateral: cardReceptor.axon.homeostasisRestored,
             response: ({ data }) => { cards.slotService.writeSlotContentByKey(cards, data.id, data); },

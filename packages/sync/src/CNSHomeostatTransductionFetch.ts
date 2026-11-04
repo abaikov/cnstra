@@ -4,6 +4,7 @@ import type { TCNSHomeostatTransductionRequest } from './types/TCNSHomeostatTran
 import type { TCNSHomeostatTransductionRow } from './types/TCNSHomeostatTransductionRow';
 import { CNSHomeostatTransductionQueryCodec } from './CNSHomeostatTransductionQueryCodec';
 import { CNSHomeostatRequestTimeout } from './CNSHomeostatRequestTimeout';
+import { splitCNSHomeostatTransductionRequests } from './utils/splitCNSHomeostatTransductionRequests';
 
 export class CNSHomeostatTransductionFetch {
     private readonly url: string;
@@ -36,17 +37,7 @@ export class CNSHomeostatTransductionFetch {
         abortSignal: AbortSignal
     ): Promise<readonly TCNSHomeostatTransductionRow[]> => {
         const homeostatTransductionCodec = this.homeostatTransductionCodec;
-        const refusedRows: TCNSHomeostatTransductionRow[] = [];
-        const encodedAloneRequests = homeostatTransductionRequests.filter(({ name, key }) => {
-            try {
-                homeostatTransductionCodec.encodeRequests([{ name, key }]);
-                return true;
-            } catch (error) {
-                refusedRows.push({ name, key, error });
-                return false;
-            }
-        });
-        const encodableRequests = homeostatTransductionCodec.dropCoveredRequests?.(encodedAloneRequests) ?? encodedAloneRequests;
+        const { refusedRows, encodableRequests } = splitCNSHomeostatTransductionRequests(homeostatTransductionCodec, homeostatTransductionRequests);
         if (encodableRequests.length === 0) return refusedRows;
         const homeostatTransductionRowChunks = await Promise.all(this.encodeRequestChunks(encodableRequests).map(async encodedRequests => {
             const url = `${this.url}?${encodedRequests}`;

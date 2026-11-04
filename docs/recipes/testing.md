@@ -27,13 +27,13 @@ This means:
 ### Example: Testing Business Logic with a DB Mock
 
 ```ts setup
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSNeuron, TCNSStimulationResponse } from '@cnstra/types';
 import { beforeEach, describe, expect, it } from '@jest/globals';
 
 const user = {
-  fetchRequest: cnsCollateral<{ userId: string }>(),
-  fetched: cnsCollateral<{ userId: string; name: string }>(),
+  fetchRequest: collateral<{ userId: string }>(),
+  fetched: collateral<{ userId: string; name: string }>(),
 };
 declare const userProcessor: TCNSNeuron;
 declare const mockDbUserNeuron: TCNSNeuron;
@@ -49,7 +49,7 @@ declare function createTestDatabase(): {
 ```
 
 ```ts file=user-processor.test.ts
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 import { describe, expect, it } from '@jest/globals';
 
@@ -57,12 +57,12 @@ declare const db: { users: { findById(id: string): Promise<{ id: string; name: s
 
 // Shared collaterals (contracts)
 const user = {
-  fetchRequest: cnsCollateral<{ userId: string }>(),
-  fetched: cnsCollateral<{ userId: string; name: string }>(),
+  fetchRequest: collateral<{ userId: string }>(),
+  fetched: collateral<{ userId: string; name: string }>(),
 };
 
-// Real DB cnsNeuron (in production)
-export const dbUserNeuron = cnsNeuron({ fetched: user.fetched })
+// Real DB neuron (in production)
+export const dbUserNeuron = neuron({ fetched: user.fetched })
   .dendrite({
     collateral: user.fetchRequest,
     response: async (payload) => {
@@ -75,7 +75,7 @@ export const dbUserNeuron = cnsNeuron({ fetched: user.fetched })
   });
 
 // Mock neuron for tests
-export const mockDbUserNeuron = cnsNeuron({ fetched: user.fetched })
+export const mockDbUserNeuron = neuron({ fetched: user.fetched })
   .dendrite({
     collateral: user.fetchRequest,
     response: async (payload) => {
@@ -88,8 +88,8 @@ export const mockDbUserNeuron = cnsNeuron({ fetched: user.fetched })
   });
 
 // Business logic we're testing
-export const userProcessor = cnsNeuron({
-  processed: cnsCollateral<{ userId: string; greeting: string }>(),
+export const userProcessor = neuron({
+  processed: collateral<{ userId: string; greeting: string }>(),
 })
   .dendrite({
     collateral: user.fetched,
@@ -138,10 +138,10 @@ Mocks can be made flexible to test different scenarios:
 function createMockDbUserNeuron(
   behavior: 'success' | 'not-found' | 'error'
 ) {
-  return cnsNeuron({
+  return neuron({
     fetched: user.fetched,
-    notFound: cnsCollateral<{ userId: string }>(),
-    error: cnsCollateral<{ userId: string; error: string }>(),
+    notFound: collateral<{ userId: string }>(),
+    error: collateral<{ userId: string; error: string }>(),
   })
     .dendrite({
       collateral: user.fetchRequest,
@@ -222,8 +222,8 @@ You can replace only some neurons, leaving others real:
 
 ```ts
 // Real business logic
-const orderProcessor = cnsNeuron({
-  orderCreated: cnsCollateral<{ orderId: string }>(),
+const orderProcessor = neuron({
+  orderCreated: collateral<{ orderId: string }>(),
 })
   .dendrite({
     collateral: user.fetched,
@@ -261,12 +261,12 @@ describe('Order flow with mocked DB', () => {
 ```ts
 // Shared collaterals (contracts)
 const item = {
-  readRequest: cnsCollateral<{ id: string }>(),
-  dataFetched: cnsCollateral<{ id: string; data: unknown }>(),
+  readRequest: collateral<{ id: string }>(),
+  dataFetched: collateral<{ id: string; data: unknown }>(),
 };
 
 // In production: neuron reads from DB
-export const dbReadNeuron = cnsNeuron({
+export const dbReadNeuron = neuron({
   dataFetched: item.dataFetched,
 })
   .dendrite({
@@ -278,7 +278,7 @@ export const dbReadNeuron = cnsNeuron({
   });
 
 // In tests: mock neuron returns test data
-export const mockDbReadNeuron = cnsNeuron({
+export const mockDbReadNeuron = neuron({
   dataFetched: item.dataFetched,
 })
   .dendrite({
@@ -297,8 +297,8 @@ export const mockDbReadNeuron = cnsNeuron({
   });
 
 // Business logic works the same with real and mock neurons
-const businessLogic = cnsNeuron({
-  result: cnsCollateral<{ processed: unknown }>(),
+const businessLogic = neuron({
+  result: collateral<{ processed: unknown }>(),
 })
   .dendrite({
     collateral: item.dataFetched,
@@ -321,14 +321,14 @@ const prodCns = new CNS([dbReadNeuron, businessLogic]);
 Application data flows through signal payloads, so tests just assert on the input/output signals — nothing per-neuron needs mocking (the context stores carry metadata such as a traceparent, not the run's data):
 
 ```ts file=session-neuron.test.ts
-import { cnsNeuron, cnsCollateral, CNS } from '@cnstra/core';
+import { neuron, collateral, CNS } from '@cnstra/core';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 import { describe, expect, it } from '@jest/globals';
 
-const action = cnsCollateral<{ action: string; sessionId?: string }>();
-const output = cnsCollateral<{ result: string }>();
+const action = collateral<{ action: string; sessionId?: string }>();
+const output = collateral<{ result: string }>();
 
-const sessionNeuron = cnsNeuron({ output }).dendrite({
+const sessionNeuron = neuron({ output }).dendrite({
   collateral: action,
   response: (payload, axon) => {
     // Session id rides on the payload (or defaults) — no ctx needed.
@@ -368,7 +368,7 @@ For integration tests, you can use real neurons but with a test DB:
 // Real neuron, but with test DB
 const testDb = createTestDatabase(); // in-memory or test DB
 
-const testDbNeuron = cnsNeuron({
+const testDbNeuron = neuron({
   fetched: user.fetched,
 })
   .dendrite({
@@ -417,19 +417,19 @@ describe('Integration test', () => {
 ## Example: Complete Test Suite
 
 ```ts file=full-suite.test.ts
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 import { describe, expect, it } from '@jest/globals';
 
 // Contracts
 const user = {
-  fetchRequest: cnsCollateral<{ userId: string }>(),
-  fetched: cnsCollateral<{ userId: string; name: string }>(),
+  fetchRequest: collateral<{ userId: string }>(),
+  fetched: collateral<{ userId: string; name: string }>(),
 };
 
 // Mock DB neuron
 const createMockDb = (users: Record<string, { name: string }>) =>
-  cnsNeuron({ fetched: user.fetched })
+  neuron({ fetched: user.fetched })
     .dendrite({
       collateral: user.fetchRequest,
       response: async (payload, axon) => {
@@ -445,8 +445,8 @@ const createMockDb = (users: Record<string, { name: string }>) =>
     });
 
 // Business logic
-const processor = cnsNeuron({
-  processed: cnsCollateral<{ greeting: string }>(),
+const processor = neuron({
+  processed: collateral<{ greeting: string }>(),
 })
   .dendrite({
     collateral: user.fetched,

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 import styles from './Heartbeat.module.css';
 
@@ -14,17 +14,17 @@ const BASELINE = 32;
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const pacemakerFired = cnsCollateral<{ beat: number }>();
-const atriaDepolarized = cnsCollateral<{ beat: number }>();
-const ventriclesDepolarized = cnsCollateral<{ beat: number }>();
-const ventriclesRepolarized = cnsCollateral<{ beat: number }>();
+const pacemakerFired = collateral<{ beat: number }>();
+const atriaDepolarized = collateral<{ beat: number }>();
+const ventriclesDepolarized = collateral<{ beat: number }>();
+const ventriclesRepolarized = collateral<{ beat: number }>();
 
-const sinoatrialNode = cnsNeuron({ atriaDepolarized }).dendrite({
+const sinoatrialNode = neuron({ atriaDepolarized }).dendrite({
     collateral: pacemakerFired,
     response: (payload, axon) => axon.atriaDepolarized.createSignal(payload),
 });
 
-const atrioventricularNode = cnsNeuron({ ventriclesDepolarized }).dendrite({
+const atrioventricularNode = neuron({ ventriclesDepolarized }).dendrite({
     collateral: atriaDepolarized,
     response: async (payload, axon) => {
         await wait(150);
@@ -32,7 +32,7 @@ const atrioventricularNode = cnsNeuron({ ventriclesDepolarized }).dendrite({
     },
 });
 
-const ventricles = cnsNeuron({ ventriclesRepolarized }).dendrite({
+const ventricles = neuron({ ventriclesRepolarized }).dendrite({
     collateral: ventriclesDepolarized,
     response: async (payload, axon) => {
         await wait(230);

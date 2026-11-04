@@ -99,6 +99,8 @@ test.describe('SEED_BIG filter correctness', () => {
         await input.fill('JobRequested');
         await expect(page.locator('.exp-ta-item').first()).toBeVisible({ timeout: 15000 });
         await page.locator('.exp-ta-item').first().click();
+        await expect(page.getByRole('button', { name: 'Collaterals', exact: true })).toHaveAttribute('data-active', '');
+        await page.getByRole('button', { name: 'Stimulations', exact: true }).click();
         await page.waitForTimeout(1200);
         const narrowed = await readTotal(page);
         expect(narrowed).toBeGreaterThan(0);
@@ -111,10 +113,11 @@ test.describe('SEED_BIG filter correctness', () => {
         await ready(page);
         await page.getByRole('button', { name: 'Collaterals', exact: true }).click();
         await expect(page.locator('.exp-row').first()).toBeVisible({ timeout: 30000 });
-        await page.getByRole('button', { name: 'entry only', exact: true }).click();
+        await page.getByRole('button', { name: 'entry collaterals only', exact: true }).click();
         await page.waitForTimeout(800);
         // Every visible collateral row is an entry collateral.
-        await expect(page.locator('.exp-row').first()).toContainText(/entry collateral/i);
+        await expect(page.locator('.collateral-row[data-entry]').first()).toBeVisible();
+        await expect(page.locator('.collateral-row:not([data-entry])')).toHaveCount(0);
         await page.screenshot({ path: 'e2e/.artifacts/bigdata-entry-only.png', fullPage: true });
     });
 

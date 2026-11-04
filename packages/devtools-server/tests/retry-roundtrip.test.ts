@@ -87,7 +87,6 @@ describe('stimulation retry round-trip (panel → server → app)', () => {
             store
         );
     });
-    afterEach(() => server.stop());
 
     async function connectApp() {
         const appWs = makeWs('app');

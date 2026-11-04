@@ -19,6 +19,15 @@ describe('entriesOf', () => {
         ]);
     });
 
+    test('skips a stylesheet export, which no module system loads', () => {
+        const entries = entriesOf({
+            name: '@cnstra/devtools-panel-ui',
+            type: 'module',
+            exports: { './embed': { import: './dist/lib/panel.js' }, './embed.css': './dist/lib/panel.css' },
+        });
+        assert.deepEqual(entries, [{ specifier: '@cnstra/devtools-panel-ui/embed', mode: 'import' }]);
+    });
+
     test('finds conditions nested under another condition', () => {
         const entries = entriesOf({
             name: 'x',

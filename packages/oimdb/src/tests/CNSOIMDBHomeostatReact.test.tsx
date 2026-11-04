@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { act, render } from '@testing-library/react';
 import { createRoot } from 'react-dom/client';
-import { CNS, cnsNeuron } from '@cnstra/core';
+import { CNS, neuron } from '@cnstra/core';
 import { createOIMSlotCollectionService, createOIMEntityContentService, OIMDB } from '@oimdb/core';
-import { OIMDBProvider, useOIMComputedValueByKey, useOIMEntity } from '@oimdb/react';
+import { OIMDBProvider, useOIMComputedValueByKey, useOIMEntityByKey } from '@oimdb/react';
 import { CNSHomeostatReceptor, CNSHomeostatReceptorCorrection } from '@cnstra/sync';
 import { createCNSOIMDBHomeostatEnvironment } from '../index';
 import type { TCNSHomeostatConformanceDeck as TDeck, TCNSHomeostatConformanceDeckKey as TDeckKey } from '../../../sync/src/tests/conformance/cnsHomeostatConformance';
@@ -15,7 +15,7 @@ const settle = async () => {
 const createApp = () => {
     const db = new OIMDB();
     const deckService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<TDeck, string>() });
-    const decks = deckService.createStoreSlot(db);
+    const decks = deckService.createStoreAggregate(deckService.createStoreSlot(db));
     const requested: string[] = [];
     const deckReceptor = new CNSHomeostatReceptor<TDeckKey, TDeck>({
         name: 'deck',
@@ -24,9 +24,9 @@ const createApp = () => {
             return Promise.resolve({ id: deckId, title: `deck ${deckId}` });
         },
     });
-    const deckWriter = cnsNeuron({}).dendrite({
+    const deckWriter = neuron({}).dendrite({
         collateral: deckReceptor.axon.homeostasisRestored,
-        response: ({ data }) => { deckService.writeSlotContentByKey(decks, data.id, data); },
+        response: ({ data }) => { decks.writeSlotContentByKey(data.id, data); },
     });
     const cns = new CNS([deckReceptor.neuron, new CNSHomeostatReceptorCorrection({ homeostatReceptors: [deckReceptor] }).neuron, deckWriter]);
     cns.addDrainListener(() => db.flush());
@@ -34,8 +34,8 @@ const createApp = () => {
     const deckQueries = homeostatEnvironment.createComputedStoreAggregate(deckReceptor);
     const isKeyHeld = async (deckId: string) => (await homeostatEnvironment.invalidate(deckReceptor, [deckId])) !== undefined;
     function DeckScreen({ deckId }: { deckId: string }): React.ReactElement {
-        const deckHomeostasis = useOIMComputedValueByKey(deckQueries.storeSlot, [deckId]);
-        const deck = useOIMEntity(decks, deckId);
+        const deckHomeostasis = useOIMComputedValueByKey(deckQueries, [deckId]);
+        const deck = useOIMEntityByKey(decks, deckId);
         return <span data-testid="deck">{`${deckHomeostasis.status}:${deck?.title ?? '-'}`}</span>;
     }
     const App = ({ children }: { children: React.ReactNode }) => <OIMDBProvider db={db}>{children}</OIMDBProvider>;
@@ -117,22 +117,25 @@ const createReceptiveFieldApp = () => {
         },
     });
     let decks: ReturnType<typeof createDeckStoreSlot>;
-    const deckWriter = cnsNeuron({}).dendrite({
+    const deckWriter = neuron({}).dendrite({
         collateral: deckReceptor.axon.homeostasisRestored,
-        response: ({ data }) => { decks.slotService.writeSlotContentByKey(decks, data.id, data); },
+        response: ({ data }) => { decks.writeSlotContentByKey(data.id, data); },
     });
     const cns = new CNS([deckReceptor.neuron, new CNSHomeostatReceptorCorrection({ homeostatReceptors: [deckReceptor] }).neuron, deckWriter]);
     cns.addDrainListener(() => db.flush());
     const homeostatEnvironment = createCNSOIMDBHomeostatEnvironment({ db, cns });
     const deckReceptiveField = homeostatEnvironment.createReceptiveField(deckReceptor, { selectKey: (deckId: string): TDeckKey => [deckId] });
-    const createDeckStoreSlot = () => createOIMSlotCollectionService({
-        slotContentService: createOIMEntityContentService<TDeck, string>(),
-        slotSubscriptionListener: deckReceptiveField.slotSubscriptionListener,
-    }).createStoreSlot(db);
+    const createDeckStoreSlot = () => {
+        const deckService = createOIMSlotCollectionService({
+            slotContentService: createOIMEntityContentService<TDeck, string>(),
+            slotSubscriptionListener: deckReceptiveField.slotSubscriptionListener,
+        });
+        return deckService.createStoreAggregate(deckService.createStoreSlot(db));
+    };
     decks = createDeckStoreSlot();
     const isKeyHeld = async (deckId: string) => (await homeostatEnvironment.invalidate(deckReceptor, [deckId])) !== undefined;
     function DeckScreen({ deckId }: { deckId: string }): React.ReactElement {
-        const deck = useOIMEntity(decks, deckId);
+        const deck = useOIMEntityByKey(decks, deckId);
         return <span data-testid="deck">{deck?.title ?? '-'}</span>;
     }
     const App = ({ children }: { children: React.ReactNode }) => <OIMDBProvider db={db}>{children}</OIMDBProvider>;

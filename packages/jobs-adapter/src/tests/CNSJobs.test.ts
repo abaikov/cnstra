@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from '@jest/globals';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSInMemoryJobRepository } from '@cnstra/jobs';
 import type { CNSJobWorker, TCNSJobHistoryState } from '@cnstra/jobs';
 import type { TCNSDevToolsAction } from '@cnstra/persist-dto';
@@ -17,22 +17,22 @@ const waitFor = async (predicate: () => boolean | Promise<boolean>, timeoutMs = 
 };
 
 const flow = (failures: { left: number }) => {
-    const input = cnsCollateral<{ id: number }>();
-    const step1Out = cnsCollateral<{ id: number }>();
-    const output = cnsCollateral<{ result: string }>();
-    const completed = cnsCollateral<TCNSJobsCompletionState<{ id: number }>>();
-    const failed = cnsCollateral<TCNSJobsFailureState<{ id: number }>>();
+    const input = collateral<{ id: number }>();
+    const step1Out = collateral<{ id: number }>();
+    const output = collateral<{ result: string }>();
+    const completed = collateral<TCNSJobsCompletionState<{ id: number }>>();
+    const failed = collateral<TCNSJobsFailureState<{ id: number }>>();
     const ran: string[] = [];
     const continuations: unknown[] = [];
 
-    const n1 = cnsNeuron({ step1Out }).dendrite({
+    const n1 = neuron({ step1Out }).dendrite({
         collateral: input,
         response: (payload, axon) => {
             ran.push('n1');
             return axon.step1Out.createSignal({ id: payload.id });
         },
     });
-    const n2 = cnsNeuron({ output }).dendrite({
+    const n2 = neuron({ output }).dendrite({
         collateral: step1Out,
         response: (payload, axon) => {
             ran.push('n2');
@@ -40,11 +40,11 @@ const flow = (failures: { left: number }) => {
             return axon.output.createSignal({ result: `ok-${payload.id}` });
         },
     });
-    const onCompleted = cnsNeuron({}).dendrite({
+    const onCompleted = neuron({}).dendrite({
         collateral: completed,
         response: payload => void continuations.push(['completed', payload]),
     });
-    const onFailed = cnsNeuron({}).dendrite({
+    const onFailed = neuron({}).dendrite({
         collateral: failed,
         response: payload => void continuations.push(['failed', payload]),
     });
@@ -124,19 +124,19 @@ describe('CNSJobs', () => {
     });
 
     it('links a job enqueued from a neuron to the stimulation that enqueued it', async () => {
-        const parentInput = cnsCollateral<{ orderId: number }>();
-        const childInput = cnsCollateral<{ orderId: number }>();
+        const parentInput = collateral<{ orderId: number }>();
+        const childInput = collateral<{ orderId: number }>();
         const seen: unknown[] = [];
         const registry = new CNSPersistOptionsRegistry();
         const repository = new CNSInMemoryJobRepository();
         let jobs: CNSJobs | undefined;
-        const parent = cnsNeuron({}).dendrite({
+        const parent = neuron({}).dendrite({
             collateral: parentInput,
             response: async (payload, _axon, context) => {
                 await jobs?.from(context).enqueue(childInput, { orderId: payload.orderId });
             },
         });
-        const child = cnsNeuron({}).dendrite({
+        const child = neuron({}).dendrite({
             collateral: childInput,
             response: (_payload, _axon, context) => void seen.push(context.stimulationContext),
         });
@@ -167,9 +167,9 @@ describe('CNSJobs', () => {
     });
 
     it('aborts the stimulation of a cancelled job', async () => {
-        const slowInput = cnsCollateral<{ id: number }>();
+        const slowInput = collateral<{ id: number }>();
         let signal: AbortSignal | undefined;
-        const slow = cnsNeuron({}).dendrite({
+        const slow = neuron({}).dendrite({
             collateral: slowInput,
             response: (_payload, _axon, context) =>
                 new Promise<void>((_, reject) => {
@@ -208,7 +208,7 @@ describe('CNSJobs', () => {
         const { cns, registry } = flow({ left: 0 });
         const jobs = new CNSJobs({ cns, registry, repository: new CNSInMemoryJobRepository() });
 
-        expect(() => jobs.type(cnsCollateral<{ id: number }>())).toThrow('not registered');
+        expect(() => jobs.type(collateral<{ id: number }>())).toThrow('not registered');
     });
     it('waits for a job to finish and hands back its history', async () => {
         const { cns, registry, input } = flow({ left: 0 });

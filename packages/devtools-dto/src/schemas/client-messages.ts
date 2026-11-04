@@ -6,13 +6,6 @@ import type {
     TCNSStimulationCommandRequest,
     TCNSStimulationLaunchRequest,
 } from '@cnstra/persist-dto';
-import {
-    CNSStimulationsListRequestSchema,
-    CNSStimulationsFacetsRequestSchema,
-    CNSStimulationDetailRequestSchema,
-    CNSStimulationsSnapshotRequestSchema,
-} from './stimulations-query';
-import { CNSScheduledStimulationsListRequestSchema } from './scheduled-stimulations-query';
 
 /** Compile-time guard: a validated message must satisfy the canonical persist-dto type. */
 type Extends<A, _B extends A> = true;
@@ -21,16 +14,11 @@ export const CNSClientConnectMessageDTOSchema = z.object({
     type: z.literal('client.connect'),
 });
 
-export const CNSAppsQueryDTOSchema = z.object({
-    type: z.literal('apps.query'),
+export const CNSSyncRequestDTOSchema = z.object({
+    type: z.literal('sync.request'),
     requestId: z.string(),
-});
-
-export const CNSTopologyQueryDTOSchema = z.object({
-    type: z.literal('topology.query'),
-    requestId: z.string(),
-    cnsId: z.string().optional(),
-    appId: z.string().optional(),
+    mediaType: z.string(),
+    encodedRequests: z.string(),
 });
 
 // ─── Resumable-run actions (panel → server); canonical types in @cnstra/persist-dto ──
@@ -88,13 +76,7 @@ type _LaunchOk = Extends<TCNSStimulationLaunchRequest, z.infer<typeof CNSStimula
 
 export const CNSClientMessageDTOSchema = z.discriminatedUnion('type', [
     CNSClientConnectMessageDTOSchema,
-    CNSAppsQueryDTOSchema,
-    CNSTopologyQueryDTOSchema,
-    CNSStimulationsListRequestSchema,
-    CNSStimulationsFacetsRequestSchema,
-    CNSStimulationDetailRequestSchema,
-    CNSStimulationsSnapshotRequestSchema,
-    CNSScheduledStimulationsListRequestSchema,
+    CNSSyncRequestDTOSchema,
     CNSStimulationRetryMessageDTOSchema,
     CNSStimulationCloneMessageDTOSchema,
     CNSStimulationCommandMessageDTOSchema,

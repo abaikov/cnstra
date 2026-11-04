@@ -11,20 +11,20 @@ is one stimulation, and a retried job resumes from where its failed attempt stop
 The examples below assume these collaterals, neurons and values:
 
 ```ts setup
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { startCNSDevTools } from '@cnstra/devtools-server';
 import type { TCNSJobsCompletionState, TCNSJobsFailureState } from '@cnstra/jobs-adapter';
 import { CNSPrismaJobConnection } from '@cnstra/jobs-postgres';
 import type { TCNSHandlerContext } from '@cnstra/types';
 
 type TOrder = { orderId: number };
-const orderPlaced = cnsCollateral<TOrder>();
-const orderDone = cnsCollateral<TCNSJobsCompletionState<TOrder>>();
-const orderFailed = cnsCollateral<TCNSJobsFailureState<TOrder>>();
-const checkoutSubmitted = cnsCollateral<TOrder>();
-const orderAccepted = cnsCollateral<TOrder>();
-const charge = cnsNeuron({}).dendrite({ collateral: orderPlaced, response: () => undefined });
-const notify = cnsNeuron({}).dendrite({ collateral: orderDone, response: () => undefined });
+const orderPlaced = collateral<TOrder>();
+const orderDone = collateral<TCNSJobsCompletionState<TOrder>>();
+const orderFailed = collateral<TCNSJobsFailureState<TOrder>>();
+const checkoutSubmitted = collateral<TOrder>();
+const orderAccepted = collateral<TOrder>();
+const charge = neuron({}).dendrite({ collateral: orderPlaced, response: () => undefined });
+const notify = neuron({}).dendrite({ collateral: orderDone, response: () => undefined });
 
 declare const jobId: string;
 declare const ctx: TCNSHandlerContext;
@@ -125,7 +125,7 @@ neuron it holds the neuron for the whole job: use it for short jobs and `onCompl
 ## DevTools actions
 
 ```ts
-await startCNSDevTools(cns, registry, { actions: [jobs.actions()] });
+await startCNSDevTools({ cns, registry }, { actions: [jobs.actions()] });
 ```
 
 `jobs.actions()` carries out the panel's actions the way `createCNSBullActions` does for BullMQ,
@@ -147,7 +147,7 @@ forwarding `maxHops` of the action and ignoring `timeoutMs` and `allowedNeuronNa
 ## DevTools: what is scheduled
 
 ```ts
-await startCNSDevTools(cns, registry, { actions: [jobs.actions()], scheduledStimulationReader: jobs.scheduledStimulationReader() });
+await startCNSDevTools({ cns, registry }, { actions: [jobs.actions()], scheduledStimulationReader: jobs.scheduledStimulationReader() });
 ```
 
 The panel gets a **Scheduled** tab and a **Scheduled** section on every collateral and neuron:
@@ -180,7 +180,7 @@ The panel gets a **Scheduled** tab and a **Scheduled** section on every collater
 ## Enqueue from a neuron
 
 ```ts
-cnsNeuron({ orderAccepted }).dendrite({
+neuron({ orderAccepted }).dendrite({
     collateral: checkoutSubmitted,
     response: async (payload, axon, context) => {
         await jobs.from(context).enqueue(orderPlaced, { orderId: payload.orderId });

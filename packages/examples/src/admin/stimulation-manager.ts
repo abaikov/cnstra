@@ -17,7 +17,7 @@
  * Execution is serialized through a tiny mutex so the per-attempt fault flag is
  * deterministic (no interleaving between concurrent stimulations in this demo).
  */
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSPersistOptionsRegistry,
     CNSProgressSerializer,
@@ -27,25 +27,25 @@ import {
 import type { ICNSStimulationRepository } from '@cnstra/persist';
 
 // ── the flow: importUser → enrichUser → persistUser ──
-const input = cnsCollateral<{ userId: string }>();
-const userFetched = cnsCollateral<{ id: string; name: string }>();
-const userEnriched = cnsCollateral<{ id: string; name: string; plan: string }>();
-const userSaved = cnsCollateral<{ id: string; ok: true }>();
+const input = collateral<{ userId: string }>();
+const userFetched = collateral<{ id: string; name: string }>();
+const userEnriched = collateral<{ id: string; name: string; plan: string }>();
+const userSaved = collateral<{ id: string; ok: true }>();
 
 // The fault the "db" injects, set per-attempt under the mutex.
 let currentShouldFail = false;
 
-const importUser = cnsNeuron({ userFetched }).dendrite({
+const importUser = neuron({ userFetched }).dendrite({
     collateral: input,
     response: (p, axon) =>
         axon.userFetched.createSignal({ id: p!.userId, name: 'Neo Anderson' }),
 });
-const enrichUser = cnsNeuron({ userEnriched }).dendrite({
+const enrichUser = neuron({ userEnriched }).dendrite({
     collateral: userFetched,
     response: (p, axon) =>
         axon.userEnriched.createSignal({ ...p!, plan: 'pro' }),
 });
-const persistUser = cnsNeuron({ userSaved }).dendrite({
+const persistUser = neuron({ userSaved }).dendrite({
     collateral: userEnriched,
     response: (p, axon) => {
         if (currentShouldFail)

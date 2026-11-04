@@ -43,12 +43,12 @@ declare const resume: TCNSWorkerOptions['resume'];
 
 ```ts file=worker.ts
 import { PgBoss } from 'pg-boss';
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { CNSFactory } from '@cnstra/factory';
-import { createCNSWorker, enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/pg-boss';
+import { createCNSWorker, enqueueCNSStimulation, stimulationJob } from '@cnstra/pg-boss';
 
-const importUser = cnsCollateral<{ userId: string }>();
-const importUserNeuron = cnsNeuron({}).dendrite({ collateral: importUser, response: async () => {} });
+const importUser = collateral<{ userId: string }>();
+const importUserNeuron = neuron({}).dendrite({ collateral: importUser, response: async () => {} });
 
 // Build the CNS and a registry from one map so names can't drift
 const { cns, registry } = CNSFactory.create({
@@ -65,11 +65,11 @@ await boss.createQueue('cns');
 await createCNSWorker({ boss, cns, registry, queue: 'cns' });
 
 // Producer: enqueue by (registered) collateral name
-const job = cnsStimulationJob(registry, importUser, { userId: '42' });
+const job = stimulationJob(registry, importUser, { userId: '42' });
 await enqueueCNSStimulation(boss, 'cns', job);
 ```
 
-A job can run on an afferent path: `cnsStimulationJob(registry, collateral, payload, { modality, afferentPath })`, or `{ from: ctx }` inside a neuron body to keep the path of the current run. Register the modality with `registry.registerModality(name, modality)`.
+A job can run on an afferent path: `stimulationJob(registry, collateral, payload, { modality, afferentPath })`, or `{ from: ctx }` inside a neuron body to keep the path of the current run. Register the modality with `registry.registerModality(name, modality)`.
 
 Under the hood the worker does exactly what the BullMQ guide shows, just resolved by
 name:
@@ -235,23 +235,21 @@ relational run/attempt/task tables (`cnstra-persist-postgres migrate`, or auto-c
 no schema to write yourself.
 
 > **Shortcut — the DevTools Explorer as a persistent admin.** The CNStra DevTools already render this
-> exact model (🔎 Explorer · 💀 Stimulations · ⚡ Stimulations). Hand the same `observe` store to
-> `startCNSDevTools` and every job the worker processes shows up live in the Explorer — filterable by job
-> type (entry collateral) or neuron, with a per-run attempt/task waterfall — no bespoke UI:
+> exact model. Hand the worker to `startCNSDevTools` and every job it processes shows up live in the
+> Explorer — filterable by job type (entry collateral) or neuron, with a per-run attempt/task
+> waterfall — and Retry / Clone go through pg-boss under the same job id. No bespoke UI:
 > ```ts
 > import { startCNSDevTools } from '@cnstra/devtools-server';
-> import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
-> // keep it across restarts: import { CNSPostgresStimulationRepository } from '@cnstra/persist-postgres';
 >
-> const history = new CNSInMemoryStimulationRepository(); // or the Postgres store above
->
-> // Serves the panel UI + live topology, and reads runs from the SAME store the worker writes to:
-> await startCNSDevTools(cns, registry, { stimulationRepository: history });
-> await createCNSWorker({ boss, cns, registry, queue: 'cns', observe: history });
-> // → open the printed URL, hit the 🔎 Explorer tab: 20 job types = 20 entry-collateral facets.
+> const worker = await createCNSWorker({ boss, cns, registry, queue: 'cns' });
+> await startCNSDevTools(worker);
+> // → open the printed URL, 20 job types = 20 entry-collateral facets.
 > ```
-> Running the DevTools server in a separate process instead? Point both at one
-> `CNSPostgresStimulationRepository` (same `connectionString`) — the store is the shared channel.
+> The panel records each job once, under its job id, through its in-process link, into a bounded
+> in-memory history by default; pass a `CNSPostgresStimulationRepository` as `stimulationRepository`
+> to keep it across restarts. An admin in a separate process reads the worker's `observe` store
+> instead: give it the same store as `stimulationRepository`. To mount it in your own server behind your
+> auth, see [Admin](/docs/devtools/admin).
 
 The three admin screens fall straight out of the model — and are what the panel already renders:
 

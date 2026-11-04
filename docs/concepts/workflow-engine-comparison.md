@@ -28,8 +28,12 @@ If you’re searching for a “workflow engine / orchestrator”, you’ve proba
 
 **CNStra is different by default**: it’s an **embeddable, in-memory workflow/orchestration engine** for TypeScript that runs deterministic flows over a typed graph (neurons + collaterals). There’s no separate cluster to operate — you embed it into your app/worker.
 
+It is a layer on top of what you already run — your queue ([pg-boss](../integrations/pg-boss.md), [BullMQ](../integrations/bullmq.md)), your database — that gives you control over the steps of a flow and its progress. The steps come from the static graph in your code, so a run does not save its intermediate state at every step: to [resume](../advanced/resumable-execution.md), CNStra checkpoints only the **frontier** — the signals still to be handled — and the graph says what follows from them. Temporal, by contrast, records an event for every step and replays that history to rebuild the state.
+
 ## Where CNStra fits best
 
+- **Frontend orchestration**: UI events become signals; neurons write the store, queries keep it equal to the server
+- **Backend orchestration**: services and handlers as one typed graph — order, concurrency, resume after a crash
 - **Backend jobs**: workers, fan-out and joins, concurrency gates
 - **Sync / integrations**: webhooks, external APIs, multi-step validation + side-effects
 - **ETL / pipelines**: step-by-step transforms with retries/backoff

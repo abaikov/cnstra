@@ -1,4 +1,4 @@
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 
 /**
@@ -14,7 +14,7 @@ import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 describe('CNSPersistOptionsRegistry name lookup', () => {
     it('answers with the name a collateral was registered under', () => {
         const registry = new CNSPersistOptionsRegistry();
-        const order = cnsCollateral<{ id: number }>();
+        const order = collateral<{ id: number }>();
 
         registry.registerCollateral('order', order);
 
@@ -24,23 +24,23 @@ describe('CNSPersistOptionsRegistry name lookup', () => {
 
     it('does not answer for a collateral it never saw', () => {
         const registry = new CNSPersistOptionsRegistry();
-        const stranger = cnsCollateral<{ id: number }>();
+        const stranger = collateral<{ id: number }>();
 
         expect(registry.getCollateralName(stranger)).toBeUndefined();
     });
 
     it('refuses a name that belongs to another collateral', () => {
         const registry = new CNSPersistOptionsRegistry();
-        registry.registerCollateral('order', cnsCollateral<{ id: number }>());
+        registry.registerCollateral('order', collateral<{ id: number }>());
 
-        expect(() => registry.registerCollateral('order', cnsCollateral<{ id: number }>())).toThrow(
+        expect(() => registry.registerCollateral('order', collateral<{ id: number }>())).toThrow(
             'cannot register a collateral as "order": another collateral has this name'
         );
     });
 
     it('refuses a second name for one collateral and accepts the same name again', () => {
         const registry = new CNSPersistOptionsRegistry();
-        const order = cnsCollateral<{ id: number }>();
+        const order = collateral<{ id: number }>();
         registry.registerCollateral('order', order);
         registry.registerCollateral('order', order);
 
@@ -52,10 +52,10 @@ describe('CNSPersistOptionsRegistry name lookup', () => {
 
     it('refuses a neuron name and a modality name that are taken', () => {
         const registry = new CNSPersistOptionsRegistry();
-        registry.register('worker', cnsNeuron({}));
+        registry.register('worker', neuron({}));
         registry.registerModality('web', { index: 1, afferentPaths: {} });
 
-        expect(() => registry.register('worker', cnsNeuron({}))).toThrow('another neuron has this name');
+        expect(() => registry.register('worker', neuron({}))).toThrow('another neuron has this name');
         expect(() => registry.registerModality('web', { index: 2, afferentPaths: {} })).toThrow(
             'another modality has this name'
         );
@@ -63,10 +63,10 @@ describe('CNSPersistOptionsRegistry name lookup', () => {
 
     it('names an axon collateral after its neuron unless a name is given', () => {
         const registry = new CNSPersistOptionsRegistry();
-        const done = cnsCollateral<{ id: number }>();
-        const failed = cnsCollateral<{ id: number }>();
+        const done = collateral<{ id: number }>();
+        const failed = collateral<{ id: number }>();
 
-        registry.register('charge', cnsNeuron({ done, failed }), { failed: 'charge-failed' });
+        registry.register('charge', neuron({ done, failed }), { failed: 'charge-failed' });
 
         expect(registry.getCollateralName(done)).toBe('charge.done');
         expect(registry.getCollateralName(failed)).toBe('charge-failed');
@@ -74,19 +74,19 @@ describe('CNSPersistOptionsRegistry name lookup', () => {
 
     it('refuses a name for a key the axon does not have, and leaves nothing half-registered', () => {
         const registry = new CNSPersistOptionsRegistry();
-        const done = cnsCollateral<{ id: number }>();
-        const charge = cnsNeuron({ done });
+        const done = collateral<{ id: number }>();
+        const charge = neuron({ done });
 
         expect(() => registry.register('charge', charge, { dnoe: 'x' } as never)).toThrow(
             'cannot name collateral "dnoe" of neuron "charge": its axon has no such key'
         );
-        registry.registerCollateral('taken', cnsCollateral<{ id: number }>());
+        registry.registerCollateral('taken', collateral<{ id: number }>());
         expect(() => registry.register('charge', charge, { done: 'taken' })).toThrow('another collateral has this name');
         expect(registry.getNeuron('charge')).toBeUndefined();
         expect(registry.getCollateralName(done)).toBeUndefined();
 
-        const failed = cnsCollateral<{ id: number }>();
-        const twin = cnsNeuron({ done, failed });
+        const failed = collateral<{ id: number }>();
+        const twin = neuron({ done, failed });
         expect(() => registry.register('twin', twin, { done: 'same', failed: 'same' })).toThrow('two of its collaterals share "same"');
         expect(registry.getNeuron('twin')).toBeUndefined();
     });
@@ -95,12 +95,12 @@ describe('CNSPersistOptionsRegistry name lookup', () => {
         // The property the walk did not have: an answer that does not depend on
         // the size of the registry.
         const registry = new CNSPersistOptionsRegistry();
-        const wanted = cnsCollateral<{ id: number }>();
+        const wanted = collateral<{ id: number }>();
         registry.registerCollateral('wanted', wanted);
         for (let index = 0; index < 500; index++)
             registry.registerCollateral(
                 `other${index}`,
-                cnsCollateral<{ id: number }>()
+                collateral<{ id: number }>()
             );
 
         expect(registry.getCollateralName(wanted)).toBe('wanted');
@@ -108,8 +108,8 @@ describe('CNSPersistOptionsRegistry name lookup', () => {
 
     it('still resolves a neuron by identity', () => {
         const registry = new CNSPersistOptionsRegistry();
-        const out = cnsCollateral<{ ok: boolean }>();
-        const worker = cnsNeuron({ out }).dendrite({
+        const out = collateral<{ ok: boolean }>();
+        const worker = neuron({ out }).dendrite({
             collateral: out,
             response: () => undefined,
         });

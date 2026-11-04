@@ -1,4 +1,4 @@
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import type { TCNSAxon, TCNSNeuron, TCNSStimulationOptions, TCNSStimulationResponse } from '@cnstra/types';
 import type { TCNSHomeostatRefractoryPolicy } from './types/TCNSHomeostatRefractoryPolicy';
 import type { TCNSHomeostatReceptorOptions } from './types/TCNSHomeostatReceptorOptions';
@@ -7,14 +7,14 @@ export class CNSHomeostatReceptor<TKey extends readonly unknown[], TData> {
     public readonly name: string;
 
     public readonly axon = {
-        homeostatFired: cnsCollateral<{ key: TKey; firingNumber: number }>(),
-        homeostasisRestored: cnsCollateral<{ key: TKey; firingNumber: number; data: TData }>(),
-        homeostasisFailed: cnsCollateral<{ key: TKey; firingNumber: number; error: unknown }>(),
-        homeostasisCancelled: cnsCollateral<{ key: TKey; firingNumber: number }>(),
-        homeostasisDisturbed: cnsCollateral<{ key: TKey; firingNumber: number }>(),
+        homeostatFired: collateral<{ key: TKey; firingNumber: number }>(),
+        homeostasisRestored: collateral<{ key: TKey; firingNumber: number; data: TData }>(),
+        homeostasisFailed: collateral<{ key: TKey; firingNumber: number; error: unknown }>(),
+        homeostasisCancelled: collateral<{ key: TKey; firingNumber: number }>(),
+        homeostasisDisturbed: collateral<{ key: TKey; firingNumber: number }>(),
     };
 
-    public readonly neuron: TCNSNeuron<TCNSAxon<CNSHomeostatReceptor<TKey, TData>['axon']>> = cnsNeuron(this.axon);
+    public readonly neuron: TCNSNeuron<TCNSAxon<CNSHomeostatReceptor<TKey, TData>['axon']>> = neuron(this.axon);
 
     public readonly transduce: ((key: TKey, abortSignal: AbortSignal) => Promise<TData>) | undefined;
 

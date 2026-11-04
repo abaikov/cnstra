@@ -46,9 +46,7 @@ async function startSeedBigServer() {
 }
 
 export default async function globalSetup(_config: FullConfig) {
-    try {
-        await buildWorkspace();
-    } catch {}
+    await buildWorkspace();
     await startSeedBigServer();
 }
 

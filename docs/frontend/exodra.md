@@ -13,7 +13,7 @@ npm install @cnstra/exodra @cnstra/core @cnstra/types @cnstra/sync @cnstra/oimdb
 ```
 
 ```ts setup
-import { cnsCollateral, cnsNeuron, createCNS } from '@cnstra/core';
+import { collateral, neuron, createCNS } from '@cnstra/core';
 import { CNSHomeostatReceptor, CNSHomeostatReceptorCorrection, ECNSHomeostatCorrectionStatus } from '@cnstra/sync';
 import { createCNSOIMDBHomeostatEnvironment } from '@cnstra/oimdb';
 import { OIMDB, createOIMEntitySlotCollectionStoreAggregate } from '@oimdb/core';
@@ -37,22 +37,22 @@ declare const root: HTMLElement;
 The receptor, the correction neuron and the collaterals hold no database and stay in their modules. Every neuron that writes a slot is a factory over the schema, and `createCNS` builds them for one database:
 
 ```ts setup shown
-const deckReceptor = new CNSHomeostatReceptor<[deckId: string], TDeck>({
+const deckHomeostatReceptor = new CNSHomeostatReceptor<[deckId: string], TDeck>({
     name: 'deck',
     staleTimeMs: 30_000,
     transduce: ([deckId], abortSignal) => fetchDeck(deckId, abortSignal),
 });
-const homeostatCorrection = new CNSHomeostatReceptorCorrection({ homeostatReceptors: [deckReceptor] });
-const deckRenamed = cnsCollateral<{ deckId: string; title: string }>();
+const homeostatReceptorCorrection = new CNSHomeostatReceptorCorrection({ homeostatReceptors: [deckHomeostatReceptor] });
+const deckRenamed = collateral<{ deckId: string; title: string }>();
 
 const createDeckSchema = (db: OIMDB) => ({ decks: createOIMEntitySlotCollectionStoreAggregate<TDeck>(db) });
 type TDeckSchema = ReturnType<typeof createDeckSchema>;
 
-const createDeckWriter = ({ decks }: TDeckSchema) => cnsNeuron({}).dendrite({
-    collateral: deckReceptor.axon.homeostasisRestored,
+const createDeckWriter = ({ decks }: TDeckSchema) => neuron({}).dendrite({
+    collateral: deckHomeostatReceptor.axon.homeostasisRestored,
     response: ({ key: [deckId], data }) => { decks.writeSlotContentByKey(deckId, data); },
 });
-const createDeckRenamer = ({ decks }: TDeckSchema) => cnsNeuron({}).dendrite({
+const createDeckRenamer = ({ decks }: TDeckSchema) => neuron({}).dendrite({
     collateral: deckRenamed,
     response: ({ deckId, title }) => {
         decks.writeSlotContentByKey(deckId, { id: deckId, title });
@@ -63,10 +63,10 @@ const createDeckRenamer = ({ decks }: TDeckSchema) => cnsNeuron({}).dendrite({
 const createAppDB = () => new OIMDB({
     createSchemas: db => {
         const deck = createDeckSchema(db);
-        const cns = createCNS([() => deckReceptor.neuron, () => homeostatCorrection.neuron, createDeckWriter, createDeckRenamer], deck);
+        const cns = createCNS([() => deckHomeostatReceptor.neuron, () => homeostatReceptorCorrection.neuron, createDeckWriter, createDeckRenamer], deck);
         cns.addDrainListener(() => db.flush());
         const homeostatEnvironment = createCNSOIMDBHomeostatEnvironment({ db, cns });
-        return { deck, cns, homeostatEnvironment, deckQueries: homeostatEnvironment.createComputedStoreAggregate(deckReceptor) };
+        return { deck, cns, homeostatEnvironment, deckQueries: homeostatEnvironment.createComputedStoreAggregate(deckHomeostatReceptor) };
     },
 });
 ```

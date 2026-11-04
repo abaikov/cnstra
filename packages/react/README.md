@@ -17,15 +17,15 @@ npm install @cnstra/react @cnstra/core
 ```tsx file=App.tsx
 import React from 'react';
 import { CNSProvider, useCNS } from '@cnstra/react';
-import { CNS, cnsNeuron, cnsCollateral } from '@cnstra/core';
+import { CNS, neuron, collateral } from '@cnstra/core';
 import { Counter } from './Counter';
 
 // Create your CNS instance
 const cns = new CNS([
   (() => {
-    const increment = cnsCollateral();
-    const decrement = cnsCollateral();
-    return cnsNeuron({
+    const increment = collateral();
+    const decrement = collateral();
+    return neuron({
       increment,
       decrement
     }).dendrite({
@@ -57,14 +57,14 @@ function App() {
 
 ```tsx file=Counter.tsx
 import { useCNS } from '@cnstra/react';
-import { cnsCollateral } from '@cnstra/core';
+import { collateral } from '@cnstra/core';
 
 export function Counter() {
   const cns = useCNS();
 
   // Keep collaterals in module scope or component state; don't re-create them per call.
-  const increment = cnsCollateral();
-  const decrement = cnsCollateral();
+  const increment = collateral();
+  const decrement = collateral();
 
   const handleIncrement = () => {
     cns.stimulate(increment.createSignal());
@@ -146,11 +146,11 @@ A React hook that returns the CNS instance from the nearest `CNSProvider`.
 The package is fully typed. `useCNS()` takes no type arguments and returns `CNS<any, any>`, because a provider accepts any instance; narrow it to the type of yours:
 
 ```tsx
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { useCNS } from '@cnstra/react';
 
-const clicked = cnsCollateral<{ id: string }>();
-const clickNeuron = cnsNeuron({}).dendrite({ collateral: clicked, response: () => {} });
+const clicked = collateral<{ id: string }>();
+const clickNeuron = neuron({}).dendrite({ collateral: clicked, response: () => {} });
 
 const appCNS = new CNS([clickNeuron]);
 

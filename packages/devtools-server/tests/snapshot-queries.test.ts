@@ -2,27 +2,8 @@ import { CNSDevToolsServer } from '../src/index';
 import { CNSDevToolsServerRepositoryInMemory } from '@cnstra/devtools-server-repository-in-memory';
 import { CNSInMemoryStimulationRepository } from '@cnstra/persist';
 import type { TCNSStimulationAttempt } from '@cnstra/persist-dto';
-
-/**
- * The snapshot draws a page of runs with their attempts and tasks. It used to ask
- * the store per run, then per attempt — so a page of 200 runs was hundreds of
- * round trips, and the count grew with the PAGE rather than with the data.
- *
- * These tests count the calls. The point is not a duration — it is that the
- * number of store round trips must not grow when the page does, which is the
- * property that quietly rots the moment someone writes a loop.
- */
-
-const makeWs = (id = 'ws') => {
-    const sent: string[] = [];
-    return {
-        _id: id,
-        readyState: 1,
-        send: (data: string) => sent.push(data),
-        ofType: (t: string) =>
-            sent.map(s => JSON.parse(s)).find(m => m.type === t),
-    };
-};
+import type { TCNSDevToolsSyncData } from '@cnstra/devtools-dto';
+import { transduceSync } from './readSync';
 
 /** An in-memory store that records every read the server makes. */
 const countingStore = () => {
@@ -92,49 +73,26 @@ const seed = async (
     }
 };
 
-const snapshot = async (
-    server: CNSDevToolsServer,
-    ws: ReturnType<typeof makeWs>,
-    limit: number,
-    skipDetailFor?: string[]
-) => {
-    await server.handleMessage(
-        ws as never,
-        JSON.stringify({
-            type: 'cns.stimulations.snapshot',
-            requestId: 'r1',
-            limit,
-            ...(skipDetailFor ? { skipDetailFor } : {}),
-        })
+const details = async (server: CNSDevToolsServer, runs: number) => {
+    const rows = await transduceSync(
+        server,
+        Array.from({ length: runs }, (_, index) => ({ name: 'stimulationDetail', key: [`run-${index + 1}`] }))
     );
-    return ws.ofType('cns.stimulations.snapshot.result');
+    return rows.map(row => ('data' in row ? (row.data as TCNSDevToolsSyncData['stimulationDetail']) : { attempts: [], tasks: [] }));
 };
 
-describe('the snapshot does not scale its round trips with the page', () => {
-    const servers: CNSDevToolsServer[] = [];
-    afterEach(() => {
-        while (servers.length) servers.pop()!.stop();
-    });
+describe('detail keys do not scale their round trips with their count', () => {
+    const build = (store: unknown) => new CNSDevToolsServer(new CNSDevToolsServerRepositoryInMemory(), store as never);
 
-    const build = (store: unknown) => {
-        const server = new CNSDevToolsServer(
-            new CNSDevToolsServerRepositoryInMemory(),
-            store as never
-        );
-        servers.push(server);
-        return server;
-    };
-
-    it('reads attempts and tasks once each, whatever the page size', async () => {
+    it('reads attempts and tasks once each, whatever the number of keys', async () => {
         const small = countingStore();
         await seed(small.inner, 5);
-        await snapshot(build(small.store), makeWs(), 50);
+        await details(build(small.store), 5);
 
         const large = countingStore();
         await seed(large.inner, 40);
-        await snapshot(build(large.store), makeWs(), 50);
+        await details(build(large.store), 40);
 
-        // Eight times the runs must not mean eight times the round trips.
         expect(small.calls.getAttemptsFor).toBe(1);
         expect(small.calls.getTasksFor).toBe(1);
         expect(large.calls.getAttemptsFor).toBe(1);
@@ -144,29 +102,23 @@ describe('the snapshot does not scale its round trips with the page', () => {
     it('never falls back to the per-id reads when the store offers the bulk ones', async () => {
         const s = countingStore();
         await seed(s.inner, 20);
-        await snapshot(build(s.store), makeWs(), 50);
+        await details(build(s.store), 20);
 
         expect(s.calls.getAttempts).toBeUndefined();
         expect(s.calls.getTasks).toBeUndefined();
     });
 
-    it('returns the same flat buckets it always did', async () => {
+    it('answers each key with the attempts and tasks of its own run', async () => {
         const s = countingStore();
         await seed(s.inner, 3, 2, 3);
-        const result = await snapshot(build(s.store), makeWs(), 50);
+        const answered = await details(build(s.store), 3);
 
-        expect(result.stimulations).toHaveLength(3);
-        expect(result.attempts).toHaveLength(6);
-        expect(result.tasks).toHaveLength(18);
-        // Flat, joined client-side by id — not a nested tree.
-        expect(Array.isArray(result.attempts)).toBe(true);
-        expect(result.attempts[0].stimulationId).toBeDefined();
-        expect(result.tasks[0].stimulationAttemptId).toBeDefined();
+        expect(answered.map(detail => [detail.attempts.length, detail.tasks.length])).toEqual([[2, 6], [2, 6], [2, 6]]);
+        expect(answered[1].attempts.every(attempt => attempt.stimulationId === 'run-2')).toBe(true);
+        expect(answered[1].tasks.every(task => task.stimulationAttemptId.startsWith('run-2#'))).toBe(true);
     });
 
     it('still works against a store with only the per-id reads', async () => {
-        // The bulk methods are optional; a third-party store without them must
-        // keep working, just with more round trips.
         const s = countingStore();
         await seed(s.inner, 4);
         const limited = new Proxy(s.store, {
@@ -177,138 +129,10 @@ describe('the snapshot does not scale its round trips with the page', () => {
             },
         });
 
-        const result = await snapshot(build(limited), makeWs(), 50);
+        const answered = await details(build(limited), 4);
 
-        expect(result.stimulations).toHaveLength(4);
-        expect(result.attempts).toHaveLength(8);
-        expect(result.tasks).toHaveLength(24);
+        expect(answered.map(detail => detail.attempts.length)).toEqual([2, 2, 2, 2]);
+        expect(answered.map(detail => detail.tasks.length)).toEqual([6, 6, 6, 6]);
         expect(s.calls.getAttempts).toBe(4);
-    });
-});
-
-/**
- * The panel polls this every two seconds. Rows are small and always sent — they
- * are what says a run moved — but under `'full'` volume a run contributes one
- * task row per hop, so a page of two hundred fifty-hop runs is ten thousand task
- * rows read out of the store and pushed down the socket every two seconds,
- * almost all identical to the last push because a finished run never changes.
- *
- * `skipDetailFor` is the caller saying which runs it already holds.
- */
-describe('the snapshot leaves out the details the caller already has', () => {
-    const servers: CNSDevToolsServer[] = [];
-    afterEach(() => {
-        while (servers.length) servers.pop()!.stop();
-    });
-
-    const build = (store: unknown) => {
-        const server = new CNSDevToolsServer(
-            new CNSDevToolsServerRepositoryInMemory(),
-            store as never
-        );
-        servers.push(server);
-        return server;
-    };
-
-    it('still sends every row', async () => {
-        const s = countingStore();
-        await seed(s.inner, 4);
-
-        const result = await snapshot(build(s.store), makeWs(), 50, [
-            'run-1',
-            'run-2',
-            'run-3',
-            'run-4',
-        ]);
-
-        // All four rows — so a run that moved is visible on this very poll.
-        expect(result.stimulations).toHaveLength(4);
-        expect(result.attempts).toHaveLength(0);
-        expect(result.tasks).toHaveLength(0);
-    });
-
-    it('sends the details of exactly the runs not named', async () => {
-        const s = countingStore();
-        await seed(s.inner, 4);
-
-        const result = await snapshot(build(s.store), makeWs(), 50, [
-            'run-1',
-            'run-3',
-        ]);
-
-        expect(result.stimulations).toHaveLength(4);
-        // Two runs, two attempts each, three tasks per attempt.
-        expect(result.attempts).toHaveLength(4);
-        expect(result.tasks).toHaveLength(12);
-        const ids = new Set(result.attempts.map((a: { stimulationId: string }) => a.stimulationId));
-        expect([...ids].sort()).toEqual(['run-2', 'run-4']);
-    });
-
-    it('does not read the store for a run it was told to skip', async () => {
-        // Not only the payload: the read itself is what costs, and on Postgres
-        // it is a scan of the task table for those attempts.
-        const s = countingStore();
-        await seed(s.inner, 4);
-        const limited = new Proxy(s.store, {
-            get(target, prop, receiver) {
-                if (prop === 'getAttemptsFor' || prop === 'getTasksFor')
-                    return undefined;
-                return Reflect.get(target, prop, receiver);
-            },
-        });
-
-        await snapshot(build(limited), makeWs(), 50, ['run-1', 'run-2']);
-
-        // Two of the four, not four.
-        expect(s.calls.getAttempts).toBe(2);
-    });
-
-    it('ignores a skip list naming runs outside the page', async () => {
-        const s = countingStore();
-        await seed(s.inner, 2);
-
-        const result = await snapshot(build(s.store), makeWs(), 50, [
-            'run-1',
-            'nonexistent',
-        ]);
-
-        expect(result.stimulations).toHaveLength(2);
-        expect(result.attempts).toHaveLength(2);
-        expect(result.tasks).toHaveLength(6);
-    });
-
-    it('shrinks the poll to what actually moved', async () => {
-        // The shape from the field: a page of runs with their whole hop history,
-        // one of which is still going. The second poll must carry that one run's
-        // hops and nobody else's.
-        const s = countingStore();
-        await seed(s.inner, 60, 1, 50);
-        const server = build(s.store);
-
-        const ws1 = makeWs('first');
-        const first = await snapshot(server, ws1, 200);
-        const settled = first.stimulations
-            .map((r: { stimulationId: string }) => r.stimulationId)
-            .filter((id: string) => id !== 'run-60');
-
-        const ws2 = makeWs('second');
-        const second = await snapshot(server, ws2, 200, settled);
-
-        expect(first.tasks).toHaveLength(60 * 50);
-        expect(second.tasks).toHaveLength(50);
-
-        const bytes = (m: unknown) => JSON.stringify(m).length;
-        // Rows still travel in full, so the floor is the rows, not zero.
-        expect(bytes(second)).toBeLessThan(bytes(first) / 10);
-    });
-
-    it('sends everything when the caller names nothing', async () => {
-        const s = countingStore();
-        await seed(s.inner, 3);
-
-        const result = await snapshot(build(s.store), makeWs(), 50);
-
-        expect(result.attempts).toHaveLength(6);
-        expect(result.tasks).toHaveLength(18);
     });
 });

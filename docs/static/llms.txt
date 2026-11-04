@@ -64,6 +64,7 @@
 
 - [DevTools Overview](https://cnstra.org/docs/devtools/overview): Visual debugger for stimulation graphs.
 - [DevTools Integration](https://cnstra.org/docs/devtools/integration): Wiring `@cnstra/devtools` into your project.
+- [Admin](https://cnstra.org/docs/devtools/admin): Run the panel as your jobs admin — one line, mounted into your server behind your auth, or as static files.
 - [MCP Server](https://cnstra.org/docs/devtools/mcp): Give Claude Code and Cursor live access to the neuron graph via MCP tools (`cns_get_graph`, `cns_get_neuron`, `cns_list_collaterals`). Zero prod overhead.
 - [AI Graph Inspection](https://cnstra.org/docs/devtools/ai-inspection): Export the neuron graph and runtime history as Markdown so AI tools (Claude, Cursor) instantly understand your architecture. `dumpCNSGraph` + `CNSHistoryLogger`.
 - [Stimulations](https://cnstra.org/docs/devtools/stimulations): The Explorer: runs, attempts, tasks, Retry and Clone.

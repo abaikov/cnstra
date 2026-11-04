@@ -18,7 +18,7 @@ fires exactly when a unit of work has finished everything it can do
 synchronously — so the commit point stops being a heuristic and becomes a fact.
 
 ```ts setup
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import type { CNS } from '@cnstra/core';
 import type { TCNSNeuron } from '@cnstra/types';
 import { OIMDB, createOIMEntityContentService, createOIMSlotCollectionService } from '@oimdb/core';
@@ -36,10 +36,10 @@ const deckService = createOIMSlotCollectionService({ slotContentService: createO
 const cards = cardService.createStoreSlot(db);
 const decks = deckService.createStoreSlot(db);
 
-const cardOpened = cnsCollateral<{ cardId: string; deckId: string }>();
-const loaded = cnsCollateral<{ cardId: string; deckId: string; title: string; name: string }>();
-const userClicked = cnsCollateral<{ id: string }>();
-const userLoaded = cnsCollateral<{ id: string; name: string }>();
+const cardOpened = collateral<{ cardId: string; deckId: string }>();
+const loaded = collateral<{ cardId: string; deckId: string; title: string; name: string }>();
+const userClicked = collateral<{ id: string }>();
+const userLoaded = collateral<{ id: string; name: string }>();
 
 const useStore = create(() => ({ count: 0 }));
 const someAtom = atom(0);
@@ -120,17 +120,17 @@ the others exist:
 ```ts
 // --- turn 1: three independent subscribers of the same signal ---
 
-const cardLoading = cnsNeuron({}).dendrite({
+const cardLoading = neuron({}).dendrite({
     collateral: cardOpened,
     response: p => { cardService.writeSlotContentByKey(cards, p.cardId, { id: p.cardId, loading: true }); },
 });
 
-const deckLoading = cnsNeuron({}).dendrite({
+const deckLoading = neuron({}).dendrite({
     collateral: cardOpened,
     response: p => { deckService.writeSlotContentByKey(decks, p.deckId, { id: p.deckId, loading: true }); },
 });
 
-const fetcher = cnsNeuron({ loaded }).dendrite({
+const fetcher = neuron({ loaded }).dendrite({
     collateral: cardOpened,
     response: async (p, axon) => {
         const res = await api.load(p.cardId);
@@ -140,14 +140,14 @@ const fetcher = cnsNeuron({ loaded }).dendrite({
 
 // --- turn 2: two independent subscribers of the result ---
 
-const applyCard = cnsNeuron({}).dendrite({
+const applyCard = neuron({}).dendrite({
     collateral: loaded,
     response: p => {
         cardService.writeSlotContentByKey(cards, p.cardId, { id: p.cardId, title: p.title, loading: false });
     },
 });
 
-const applyDeck = cnsNeuron({}).dendrite({
+const applyDeck = neuron({}).dendrite({
     collateral: loaded,
     response: p => {
         deckService.writeSlotContentByKey(decks, p.deckId, { id: p.deckId, name: p.name, loading: false });
@@ -353,7 +353,7 @@ Because it does not mean what it looks like it means.
 mark a batch boundary, and the difference is not academic:
 
 ```ts
-cnsNeuron({ userLoaded }).dendrite({
+neuron({ userLoaded }).dendrite({
   collateral: userClicked,
   response: async (payload, axon) => {
     users.setLoading(payload.id, true);   // synchronous write

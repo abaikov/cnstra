@@ -1,6 +1,6 @@
 import { trace } from '@opentelemetry/api';
 import type { Context, Span, SpanOptions, Tracer } from '@opentelemetry/api';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 
 import { attachCNSOtelTracing } from '.././attachCNSOtelTracing';
 
@@ -91,16 +91,16 @@ const liveHeap = (): number => {
 };
 
 const loop = (hops: number) => {
-    const tick = cnsCollateral<{ n: number }>();
-    const done = cnsCollateral<{ n: number }>();
-    const looper = cnsNeuron({ tick, done }).dendrite({
+    const tick = collateral<{ n: number }>();
+    const done = collateral<{ n: number }>();
+    const looper = neuron({ tick, done }).dendrite({
         collateral: tick,
         response: (p, axon) =>
             p!.n >= hops
                 ? axon.done.createSignal({ n: p!.n })
                 : axon.tick.createSignal({ n: p!.n + 1 }),
     });
-    const sink = cnsNeuron({}).dendrite({
+    const sink = neuron({}).dendrite({
         collateral: done,
         response: () => undefined,
     });
@@ -151,10 +151,10 @@ describe('what the tracer holds while a run is alive', () => {
         // The other half: draining must not leave detach with nothing to do when
         // there IS something.
         const t = tinyTracer();
-        const input = cnsCollateral<{ n: number }>();
-        const out = cnsCollateral<{ n: number }>();
+        const input = collateral<{ n: number }>();
+        const out = collateral<{ n: number }>();
         let release: (() => void) | undefined;
-        const slow = cnsNeuron({ out }).dendrite({
+        const slow = neuron({ out }).dendrite({
             collateral: input,
             response: async (p, axon) => {
                 await new Promise<void>(resolve => {
@@ -163,7 +163,7 @@ describe('what the tracer holds while a run is alive', () => {
                 return axon.out.createSignal({ n: p!.n });
             },
         });
-        const sink = cnsNeuron({}).dendrite({
+        const sink = neuron({}).dendrite({
             collateral: out,
             response: () => undefined,
         });

@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '../src/index';
+import { CNS, collateral, neuron } from '../src/index';
 
 /**
  * onDrain marks the end of a synchronous turn. A turn can end in six ways and a
@@ -32,8 +32,8 @@ const expectInvariant = (drains: Drain[]) => {
 
 describe('onDrain', () => {
     it('A: fires when an activation finishes and empties the queue', async () => {
-        const a = cnsCollateral<number>();
-        const leaf = cnsNeuron({}).dendrite({
+        const a = collateral<number>();
+        const leaf = neuron({}).dendrite({
             collateral: a,
             response: () => undefined,
         });
@@ -48,13 +48,13 @@ describe('onDrain', () => {
     });
 
     it('B: fires when the last activation starts and goes async', async () => {
-        const start = cnsCollateral<number>();
-        const mid = cnsCollateral<number>();
+        const start = collateral<number>();
+        const mid = collateral<number>();
         const writes: string[] = [];
         const drains: Drain[] = [];
         const flushed: string[][] = [];
 
-        const n1 = cnsNeuron({ mid }).dendrite({
+        const n1 = neuron({ mid }).dendrite({
             collateral: start,
             response: async (_p, axon) => {
                 writes.push('optimistic'); // synchronous write before yielding
@@ -62,7 +62,7 @@ describe('onDrain', () => {
                 return axon.mid.createSignal(1);
             },
         });
-        const n2 = cnsNeuron({}).dendrite({
+        const n2 = neuron({}).dendrite({
             collateral: mid,
             response: () => {
                 writes.push('loaded');
@@ -89,9 +89,9 @@ describe('onDrain', () => {
     });
 
     it('B: the first drain happens before stimulate() returns', () => {
-        const start = cnsCollateral<number>();
+        const start = collateral<number>();
         const drains: Drain[] = [];
-        const n1 = cnsNeuron({}).dendrite({
+        const n1 = neuron({}).dendrite({
             collateral: start,
             response: async () => {
                 await new Promise(r => setTimeout(r, 5));
@@ -105,9 +105,9 @@ describe('onDrain', () => {
     });
 
     it('C: fires when the stimulation concurrency limit blocks the queue', async () => {
-        const a = cnsCollateral<number>();
-        const b = cnsCollateral<number>();
-        const fan = cnsNeuron({ b }).dendrite({
+        const a = collateral<number>();
+        const b = collateral<number>();
+        const fan = neuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => [
                 axon.b.createSignal(1),
@@ -115,7 +115,7 @@ describe('onDrain', () => {
                 axon.b.createSignal(3),
             ],
         });
-        const slow = cnsNeuron({}).dendrite({
+        const slow = neuron({}).dendrite({
             collateral: b,
             response: async () => {
                 await new Promise(r => setTimeout(r, 5));
@@ -138,17 +138,17 @@ describe('onDrain', () => {
     });
 
     it('D: fires on abort, with the blocked remainder still counted', async () => {
-        const a = cnsCollateral<number>();
-        const b = cnsCollateral<number>();
+        const a = collateral<number>();
+        const b = collateral<number>();
         const controller = new AbortController();
-        const fan = cnsNeuron({ b }).dendrite({
+        const fan = neuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => [
                 axon.b.createSignal(1),
                 axon.b.createSignal(2),
             ],
         });
-        const slow = cnsNeuron({}).dendrite({
+        const slow = neuron({}).dendrite({
             collateral: b,
             response: async () => {
                 controller.abort();
@@ -174,13 +174,13 @@ describe('onDrain', () => {
     });
 
     it('E: fires when subscribers are parked behind an async onResponse', async () => {
-        const a = cnsCollateral<number>();
-        const b = cnsCollateral<number>();
-        const n1 = cnsNeuron({ b }).dendrite({
+        const a = collateral<number>();
+        const b = collateral<number>();
+        const n1 = neuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => axon.b.createSignal(1),
         });
-        const n2 = cnsNeuron({}).dendrite({
+        const n2 = neuron({}).dendrite({
             collateral: b,
             response: () => undefined,
         });
@@ -203,9 +203,9 @@ describe('onDrain', () => {
     });
 
     it('F: fires when a per-neuron concurrency gate defers an activation', async () => {
-        const a = cnsCollateral<number>();
-        const b = cnsCollateral<number>();
-        const fan = cnsNeuron({ b }).dendrite({
+        const a = collateral<number>();
+        const b = collateral<number>();
+        const fan = neuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => [
                 axon.b.createSignal(1),
@@ -214,7 +214,7 @@ describe('onDrain', () => {
         });
         // Synchronous body, but gated at 1: the second activation is forced onto
         // a promise, so the turn ends without that activation having finished.
-        const gated = cnsNeuron({})
+        const gated = neuron({})
             .setConcurrency(1)
             .dendrite({ collateral: b, response: () => undefined });
 
@@ -229,18 +229,18 @@ describe('onDrain', () => {
     });
 
     it('fires exactly once per turn even when a turn nests enqueues', async () => {
-        const a = cnsCollateral<number>();
-        const b = cnsCollateral<number>();
-        const c = cnsCollateral<number>();
-        const n1 = cnsNeuron({ b }).dendrite({
+        const a = collateral<number>();
+        const b = collateral<number>();
+        const c = collateral<number>();
+        const n1 = neuron({ b }).dendrite({
             collateral: a,
             response: (_p, axon) => axon.b.createSignal(1),
         });
-        const n2 = cnsNeuron({ c }).dendrite({
+        const n2 = neuron({ c }).dendrite({
             collateral: b,
             response: (_p, axon) => axon.c.createSignal(1),
         });
-        const n3 = cnsNeuron({}).dendrite({
+        const n3 = neuron({}).dendrite({
             collateral: c,
             response: () => undefined,
         });
@@ -255,13 +255,13 @@ describe('onDrain', () => {
     });
 
     it('survives a re-entrant stimulate() from inside the callback', async () => {
-        const a = cnsCollateral<number>();
-        const other = cnsCollateral<number>();
-        const leaf = cnsNeuron({}).dendrite({
+        const a = collateral<number>();
+        const other = collateral<number>();
+        const leaf = neuron({}).dendrite({
             collateral: a,
             response: () => undefined,
         });
-        const otherLeaf = cnsNeuron({}).dendrite({
+        const otherLeaf = neuron({}).dendrite({
             collateral: other,
             response: () => undefined,
         });
@@ -292,8 +292,8 @@ describe('onDrain', () => {
     });
 
     it('is skipped entirely when nobody subscribes', async () => {
-        const a = cnsCollateral<number>();
-        const leaf = cnsNeuron({}).dendrite({
+        const a = collateral<number>();
+        const leaf = neuron({}).dendrite({
             collateral: a,
             response: () => undefined,
         });
@@ -304,8 +304,8 @@ describe('onDrain', () => {
     });
 
     it('delivers to a global listener registered on the CNS', async () => {
-        const a = cnsCollateral<number>();
-        const leaf = cnsNeuron({}).dendrite({
+        const a = collateral<number>();
+        const leaf = neuron({}).dendrite({
             collateral: a,
             response: () => undefined,
         });
@@ -322,8 +322,8 @@ describe('onDrain', () => {
     });
 
     it('isolates a throwing listener from the stimulation', async () => {
-        const a = cnsCollateral<number>();
-        const leaf = cnsNeuron({}).dendrite({
+        const a = collateral<number>();
+        const leaf = neuron({}).dendrite({
             collateral: a,
             response: () => undefined,
         });
@@ -348,12 +348,12 @@ describe('onDrain', () => {
 
 describe('batch', () => {
     it('announces the drains of the stimulations started inside it once it ends, in their order, and a later turn as usual', async () => {
-        const first = cnsCollateral<string>();
-        const second = cnsCollateral<string>();
+        const first = collateral<string>();
+        const second = collateral<string>();
         const writes: string[] = [];
         const committed: string[][] = [];
         const cns = new CNS([
-            cnsNeuron({})
+            neuron({})
                 .dendrite({ collateral: first, response: value => { writes.push(value); } })
                 .dendrite({ collateral: second, response: async value => { await Promise.resolve(); writes.push(value); } }),
         ]);
@@ -375,9 +375,9 @@ describe('batch', () => {
     });
 
     it('announces at the end of the outermost batch and also when the run throws', () => {
-        const signalled = cnsCollateral();
+        const signalled = collateral();
         const drains: number[] = [];
-        const cns = new CNS([cnsNeuron({}).dendrite({ collateral: signalled, response: () => undefined })]);
+        const cns = new CNS([neuron({}).dendrite({ collateral: signalled, response: () => undefined })]);
         cns.addDrainListener(() => { drains.push(drains.length); });
 
         cns.batch(() => {

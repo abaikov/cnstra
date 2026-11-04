@@ -13,8 +13,8 @@ npm install @cnstra/sync @cnstra/oimdb @cnstra/core @oimdb/core @oimdb/browser
 ```
 
 ```ts setup
-import { CNS, cnsNeuron, cnsNeuronFactory } from '@cnstra/core';
-import { CNSHomeostatBatchTransducer, CNSHomeostatReceptor, CNSHomeostatReceptorCorrection, CNSHomeostatReceptorFetch, CNSHomeostatTransductionEndpoint, CNSHomeostatTransductionFetch, ECNSHomeostatCorrectionStatus } from '@cnstra/sync';
+import { CNS, neuron, neuronFactory } from '@cnstra/core';
+import { CNSHomeostatBatchTransducer, CNSHomeostatReceptor, CNSHomeostatReceptorCorrection, CNSHomeostatReceptorFetch, CNSHomeostatTransductionChannel, CNSHomeostatTransductionEndpoint, CNSHomeostatTransductionFetch, ECNSHomeostatCorrectionStatus } from '@cnstra/sync';
 import type { TCNSHomeostasisState, TCNSHomeostatTransductionRow } from '@cnstra/sync';
 import { createCNSOIMDBHomeostatEnvironment } from '@cnstra/oimdb';
 import type { TCNSOIMDBHomeostatCNS } from '@cnstra/oimdb';
@@ -48,18 +48,18 @@ Three axes:
 - **query** — a computed of the binding: by key, or source-tracking with its own `getHomeostatSource`.
 
 ```ts setup shown
-const deckReceptor = new CNSHomeostatReceptor<[deckId: string], TDeck>({
+const deckHomeostatReceptor = new CNSHomeostatReceptor<[deckId: string], TDeck>({
     name: 'deck',
     staleTimeMs: 30_000,
     transduce: ([deckId], abortSignal) => fetchDeck(deckId, abortSignal),
 });
-const homeostatCorrection = new CNSHomeostatReceptorCorrection({ homeostatReceptors: [deckReceptor] });
+const homeostatReceptorCorrection = new CNSHomeostatReceptorCorrection({ homeostatReceptors: [deckHomeostatReceptor] });
 
 const createDeckSchema = (db: OIMDB) => {
     const decks = createOIMEntitySlotCollectionStoreAggregate<TDeck>(db);
     const selection = createOIMEntitySlotCollectionStoreAggregate<{ deckId: string }>(db);
-    const deckWriter = cnsNeuron({}).dendrite({
-        collateral: deckReceptor.axon.homeostasisRestored,
+    const deckWriter = neuron({}).dendrite({
+        collateral: deckHomeostatReceptor.axon.homeostasisRestored,
         response: ({ key: [deckId], data }) => { decks.writeSlotContentByKey(deckId, data); },
     });
     return { decks, selection, deckWriter };
@@ -73,12 +73,12 @@ const createHomeostatSchema = (db: OIMDB, cns: TCNSOIMDBHomeostatCNS) => {
         onlineSlot: onlineService.getSingleSlot(onlineService.createStoreSlot(db)),
         visibilitySlot: visibilityService.getSingleSlot(visibilityService.createStoreSlot(db)),
     });
-    return { homeostatEnvironment, deckQueries: homeostatEnvironment.createComputedStoreAggregate(deckReceptor) };
+    return { homeostatEnvironment, deckQueries: homeostatEnvironment.createComputedStoreAggregate(deckHomeostatReceptor) };
 };
 const createAppDB = () => new OIMDB({
     createSchemas: (db) => {
         const deck = createDeckSchema(db);
-        const cns = new CNS([deckReceptor.neuron, homeostatCorrection.neuron, deck.deckWriter]);
+        const cns = new CNS([deckHomeostatReceptor.neuron, homeostatReceptorCorrection.neuron, deck.deckWriter]);
         cns.addDrainListener(() => db.flush());
         return { deck, homeostat: createHomeostatSchema(db, cns) };
     },
@@ -101,16 +101,16 @@ db.dispose();
 The environment takes a `cns` and a `db` and nothing else, so any way of giving your neurons the database fits it. Three common ones, all with no cost per stimulation:
 
 - **a closure** (the setup above, recommended): a function builds the writers over one database and the CNS from them; with each neuron a factory in its own file, `createCNS(neuronFactories, db)` from `@cnstra/core` calls them all with the database and checks its type against each of them.
-- **`global`**: the neurons are built once, typed with `cnsNeuronFactory().withGlobal<T>()`, and each database gets its own `new CNS(neurons, undefined, global)`; a dendrite reads `ctx.global`. The type is checked in the dendrite only: `new CNS` takes `global` as `unknown`.
+- **`global`**: the neurons are built once, typed with `neuronFactory().withGlobal<T>()`, and each database gets its own `new CNS(neurons, undefined, global)`; a dendrite reads `ctx.global`. The type is checked in the dendrite only: `new CNS` takes `global` as `unknown`.
 - **one database for the app**: build the database, the neurons and the CNS once in a module.
 
 ```ts
-const { neuron } = cnsNeuronFactory().withGlobal<ReturnType<typeof createDeckSchema>>();
-const globalDeckWriter = neuron({}).dendrite({
-    collateral: deckReceptor.axon.homeostasisRestored,
+const { neuron: globalNeuron } = neuronFactory().withGlobal<ReturnType<typeof createDeckSchema>>();
+const globalDeckWriter = globalNeuron({}).dendrite({
+    collateral: deckHomeostatReceptor.axon.homeostasisRestored,
     response: ({ key: [deckId], data }, _axon, { global }) => { global.decks.writeSlotContentByKey(deckId, data); },
 });
-const deckNeurons = [deckReceptor.neuron, homeostatCorrection.neuron, globalDeckWriter];
+const deckNeurons = [deckHomeostatReceptor.neuron, homeostatReceptorCorrection.neuron, globalDeckWriter];
 const createGlobalAppDB = () => new OIMDB({
     createSchemas: (db) => {
         const deck = createDeckSchema(db);
@@ -139,14 +139,14 @@ db.createEffect(() => {
 `TCNSHomeostasisState { key, status, firingNumber, error, homeostatRunningFiring }`; `status` is `Idle`, `Firing`, `Paused`, `Restored` or `Failed`; `homeostatRunningFiring` is the running request while `Firing`, `undefined` otherwise. `error` is the last failure of the key: set on `Failed`, and kept on `Firing` and `Paused` while the key is asked again after a failure (a refractory retry, an `invalidate`, a reader that comes back while the record is kept), so a screen can tell «first load» from «retrying after an error»; a `Restored` answer clears it. On a `Firing` or `Paused` value it is the error at the moment the value was made.
 
 - Every answer, a refetch's too, goes through your writer: a writer that writes a new object for an answer equal to the data it has makes the screen render again. Skip an equal answer in the writer when that render matters.
-- On OIMDB the first subscriber fires: a read only works out the value (`Firing` when the key needs a request), and the request starts when an effect, a hook or a receptive field first subscribes to the query's slot — so a render React throws away, or reads before it subscribes, sends nothing. A read with no subscriber (a loader) subscribes with `db.createEffect`, as below; a hold alone (`holdSlotByKey`, `useOIMSlotsByKeys`) starts nothing. On MobX the first read inside a reaction fires. One store aggregate of `createComputedStoreAggregate` has one query per key, and MobX `createComputed(receptor, key)` returns the same computed for a key while it is observed — calling it on every render is safe. Readers of the same key share one request; it is aborted when its last holder leaves (`homeostasisCancelled`, nothing written).
+- On OIMDB the first subscriber fires: a read only works out the value (`Firing` when the key needs a request), and the request starts when an effect, a hook or a receptive field first subscribes to the query's slot — so a render React throws away, or reads before it subscribes, sends nothing. A read with no subscriber (a loader) subscribes with `db.createEffect`, as below; a hold alone (`holdSlotByKey`) starts nothing. On MobX the first read inside a reaction fires. One store aggregate of `createComputedStoreAggregate` has one query per key, and MobX `createComputed(receptor, key)` returns the same computed for a key while it is observed — calling it on every render is safe. Readers of the same key share one request; it is aborted when its last holder leaves (`homeostasisCancelled`, nothing written).
 - `homeostatFired` and the answer are stimulated after the derivation, so a dendrite on them may write the state manager. A record goes `Stale` through a stimulation too, `homeostasisDisturbed`, when its `staleTimeMs` passes or on `invalidate`: every write of the homeostat is a stimulation, so the drain listener is its one commit point. On OIMDB the answers of one batch and the refetches of one pass of the wheel run inside one `cns.batch(run)`, which announces the drains of the stimulations started in it when it ends: one frame for the batch; MobX gets the same from `runInAction`.
 - A record lives while any query holds its key. When the last one leaves, the repository decides how long the record stays: by default it goes at once and the next read asks again. Keep it for a window — `homeostatCorrectionStoreSlotOptions: { slotReleasePolicy: new OIMSlotAfterUnholdReleasePolicy({ keepAfterUnholdMs: 300_000 }) }` on OIMDB, `createHomeostatCorrectionRepository: () => new CNSMobXHomeostatCorrectionRepository({ keepAfterUnholdMs: 300_000 })` on MobX — and a reader that comes back to a key nobody holds, while its `Restored` record is kept and not yet stale, is answered from the record without a request. Without a `staleTimeMs` a `Restored` record never goes stale by time: it answers every reader until `invalidate`. A kept `Failed` record is asked again at once. A reader that joins a key another query holds is answered from a fresh `Restored` record the same way. The record does not know whether the data is still in the domain slot: after you drop the data, `invalidate(receptor, key)` marks the kept record stale.
 - `Restored` goes stale after `staleTimeMs` (never without one; it must be above 0 — `0` would refetch as fast as the answers come, and is refused, as is a `homeostatRefractoryPolicy` with `initialDelayMs` 0); a `Failed` key with a `homeostatRefractoryPolicy` is asked again after the delay — only while held, and only when the firing policy allows (online and visible by default). `homeostatRefractoryPolicy` is `{ initialDelayMs, multiplier, maxDelayMs, jitter? }`: after the attempt `n` the delay is `min(maxDelayMs, initialDelayMs × multiplier^(n − 1))`, shortened by up to `jitter` of itself (from 0 to 1, 0 by default; outside that range it is refused), so clients that failed together do not ask again together. The share is drawn from the failure itself, so every read of the same failure sees the same refetch time. A first read fires while hidden; offline it is `Paused` and fires when the network comes back; a running request is not aborted when the network drops.
 - `CNSHomeostatReceptorFetch` and `CNSHomeostatTransductionFetch` give every request 30 seconds by default: a request that does not answer by then fails with a `TimeoutError` whose message is `GET url: timed out after 30000 ms`, so its key is `Failed` and the refractory policy asks again. Change it with `timeoutMs` (above 0); `timeoutMs: Infinity` turns it off; above 2147483647 ms a timer cannot wait and is refused. Both use `AbortSignal.any` (Node 20.3, Safari 17.4 and later). A `transduce` of your own has no deadline: a request that never answers keeps its key `Firing` until its last reader leaves, and an `invalidate` meanwhile waits for it, so give its `fetch` the signal `AbortSignal.any([abortSignal, AbortSignal.timeout(30_000)])`.
 - A writer that fails on `homeostasisRestored` — throws, or returns a promise that rejects — fails the key. The regulator waits for the stimulation of every `Restored` answer; when it fails, the regulator stimulates `homeostasisFailed` for the same request with the error `waitUntilComplete()` rejected with, the correction neuron writes the record `Failed` through `reduceHomeostatCorrectionState`, the queries show `Failed`, a neuron on `homeostasisFailed` hears it, and the refractory policy asks again. What the writer wrote before it failed stays in the domain slot. `waitUntilSettled()` and `invalidate` of that request still reject with the stimulation's error.
 - `invalidate` faster than a round trip keeps the key `Firing`: the answer of each request that started before the last invalidate is cancelled and asked again, so no writer gets data until a request outlives the last invalidate; every `invalidate` of the storm then resolves with that answer.
-- `homeostatEnvironment.invalidate(deckReceptor, ['d1'])` marks the key stale — a refresh after a write. The record carries an `invalidationNumber`; `invalidate` raises it, and a request remembers it when it starts. An answer to a request that started before the last invalidate may hold data from before the write, so it is not delivered: the regulator stimulates `homeostasisCancelled` instead of `homeostasisRestored` (no writer runs), stimulates `homeostasisDisturbed`, on which the correction neuron writes the record `Stale` for that request, and the queries ask again at once — whichever environment on the same repository sent that request. A failure of such a request still goes out as `homeostasisFailed` and counts as an attempt; its record is written `Stale`, so it is asked again at once. Order is kept per receptor and key only, so one entity that arrives through two receptors — a deck in a list and in its detail — needs a version from the server (`updatedAt`) that its writer compares before it writes. `invalidate` returns a promise of the value of the first request started after it whose answer is delivered — `Restored`, or `Failed` with its `error` — resolved once the stimulation of that answer has completed, so every dendrite on it, an async domain writer included, has run. It resolves `undefined` at once when no query holds the key and when the last one leaves before the refresh answers; it waits while the key cannot be asked (offline); a hidden tab does not hold an invalidated key back, as it holds back a stale-time refetch; it rejects when a dendrite on that answer fails.
+- `homeostatEnvironment.invalidate(deckHomeostatReceptor, ['d1'])` marks the key stale — a refresh after a write. The record carries an `invalidationNumber`; `invalidate` raises it, and a request remembers it when it starts. An answer to a request that started before the last invalidate may hold data from before the write, so it is not delivered: the regulator stimulates `homeostasisCancelled` instead of `homeostasisRestored` (no writer runs), stimulates `homeostasisDisturbed`, on which the correction neuron writes the record `Stale` for that request, and the queries ask again at once — whichever environment on the same repository sent that request. A failure of such a request still goes out as `homeostasisFailed` and counts as an attempt; its record is written `Stale`, so it is asked again at once. Order is kept per receptor and key only, so one entity that arrives through two receptors — a deck in a list and in its detail — needs a version from the server (`updatedAt`) that its writer compares before it writes. `invalidate` returns a promise of the value of the first request started after it whose answer is delivered — `Restored`, or `Failed` with its `error` — resolved once the stimulation of that answer has completed, so every dendrite on it, an async domain writer included, has run. It resolves `undefined` at once when no query holds the key and when the last one leaves before the refresh answers; it waits while the key cannot be asked (offline); a hidden tab does not hold an invalidated key back, as it holds back a stale-time refetch; it rejects when a dendrite on that answer fails.
 - `homeostatEnvironment.invalidateByKeyPrefix(receptor, ['d1'])` invalidates every key the queries of the receptor hold whose leading parts are the prefix — for a receptor keyed `[deckId, page]`, `['d1', 1]` and `['d1', 2]`, not `['d2', 1]`; `[]` takes every held key. A held key matches when `keyHashFn` of its first `prefix.length` parts equals `keyHashFn(prefix)`, so a `keyHashFn` of your own decides here too. It returns a promise of an array with the value `invalidate` gives for each matching key, `[]` when none matches. Unlike `invalidate`, it touches held keys only: a record kept after its last reader left is not touched — the repository cannot list its records — so a reader who comes back to it is answered from it; `invalidate(receptor, key)` marks one such record.
 - An answer older than the record is dropped; an answer without the regulator's stimulation context (a resumed run) writes nothing.
 
@@ -169,7 +169,7 @@ const settled = await deckHomeostasis.homeostatRunningFiring?.waitUntilSettled()
 ```ts
 // a retry button, or a save that closes its dialog once the fresh data is shown
 await saveDeck(draft);
-const refreshed = await homeostatEnvironment.invalidate(deckReceptor, [draft.id]);
+const refreshed = await homeostatEnvironment.invalidate(deckHomeostatReceptor, [draft.id]);
 if (refreshed?.status === ECNSHomeostatCorrectionStatus.Failed) showError(refreshed.error);
 closeDialog();
 
@@ -191,7 +191,7 @@ stopLoader();
 ### A source-tracking query
 
 ```ts
-const selectedDeckQuery = homeostatEnvironment.createSourceTrackingComputedStoreAggregate(deckReceptor, {
+const selectedDeckQuery = homeostatEnvironment.createSourceTrackingComputedStoreAggregate(deckHomeostatReceptor, {
     getHomeostatSource: () => {
         const deckId = selection.getSlotByKey('current').entity?.deckId;
         return deckId === undefined ? undefined : { key: [deckId], transduce: abortSignal => fetchDeck(deckId, abortSignal) };
@@ -213,7 +213,7 @@ db.createEffect(() => {
 The slots a screen reads are the receptive field of a receptor: a slot that gets its first reader is asked for, with no query in the screen.
 
 ```ts
-const deckReceptiveField = homeostatEnvironment.createReceptiveField(deckReceptor, { selectKey: (deckId: string): [deckId: string] => [deckId] });
+const deckReceptiveField = homeostatEnvironment.createReceptiveField(deckHomeostatReceptor, { selectKey: (deckId: string): [deckId: string] => [deckId] });
 const syncedDecks = createOIMEntitySlotCollectionStoreAggregate<TDeck>(db, {
     slotSubscriptionListener: deckReceptiveField.slotSubscriptionListener,
 });
@@ -228,12 +228,125 @@ db.createEffect(() => {
 ```
 
 - A slot that gets its first reader joins the demand; after the flush (or in one microtask outside a flush) the field holds the query of `selectKey(slot.key)` with one effect per key — so everything a query does applies: one request per key, shared with queries of the same key; the refractory retry; the refetch after `staleTimeMs` while the slot is read; `invalidate`; the abort when the last slot of the key loses its last reader (the field lets the query go on its next pass, after the flush or in one microtask — a reader that leaves and another that comes in the same tick keep the request). A slot whose reader left before the flush ended asks nothing. A read column slot counts for its entity.
-- The loading and the error of a key are the value of the field's query: `homeostasisComputedStoreAggregate.getSlotByKey(key).value`, or `useOIMComputedValueByKey(deckReceptiveField.homeostasisComputedStoreAggregate.storeSlot, key)` in React. Reading it holds the same query — no second request.
+- The loading and the error of a key are the value of the field's query: `homeostasisComputedStoreAggregate.getSlotByKey(key).value`, or `useOIMComputedValueByKey(deckReceptiveField.homeostasisComputedStoreAggregate, key)` in React. Reading it holds the same query — no second request.
 - A slot of a composite key maps to the receptor's key in `selectKey`; a key part is a string, a number or `undefined`, so the first page is `['d1', undefined, 20]`. A collection of such keys takes `new OIMSlotTreeStoreService<TOIMStoreKey | undefined, …>(OIMScalarKeyTreeWalk.INSTANCE)`.
 - A field belongs to one environment and its `db`: a slot of another `db` that is read is reported by an error thrown from the field's pass (after the flush, or from its microtask) and asks nothing; the other slots of that pass are still asked.
-- `isSlotDemanded(slot)` says which read slots are demand; without it every read slot is. The field calls it in its pass after the flush, for each slot that got its first reader — a read column slot as its entity slot — before it holds the key: `false` holds nothing and asks nothing for that slot. Cards that a bucket answer has already written are not asked one by one: `createReceptiveField(cardReceptor, { selectKey: (cardId: string): [cardId: string] => [cardId], isSlotDemanded: (cardSlot: TOIMEntitySlot<TCard, string>) => cardSlot.entity === undefined })` — without it a screen of a deck's cards sends the bucket request and one request per card. The answer is taken once per first reader: a slot that was not demand stays so while it is read, even when its content goes away later; it is asked again only when it gets a first reader again after it lost every reader. A throw in it is reported like a throw in `selectKey`.
+- `isSlotDemanded(slot)` says which read slots are demand; without it every read slot is. The field calls it in its pass after the flush, for each slot that got its first reader — a read column slot as its entity slot — before it holds the key: `false` holds nothing and asks nothing for that slot. Cards that a bucket answer has already written are not asked one by one: `createReceptiveField(homeostatReceptor, { selectKey: (cardId: string): [cardId: string] => [cardId], isSlotDemanded: (cardSlot: TOIMEntitySlot<TCard, string>) => cardSlot.entity === undefined })` — without it a screen of a deck's cards sends the bucket request and one request per card. The answer is taken once per first reader: a slot that was not demand stays so while it is read, even when its content goes away later; it is asked again only when it gets a first reader again after it lost every reader. A throw in it is reported like a throw in `selectKey`.
 - A service whose slots never need a request gets no field.
 - Tests: `packages/oimdb/src/tests/CNSOIMDBHomeostatReceptiveField.test.ts`, `packages/oimdb/src/tests/CNSOIMDBHomeostatReact.test.tsx`.
+
+### A synced domain model: the domain neuron owns its data
+
+A model is one aggregate — its root and its children — with its own axon. You state the entities and their ids, which receptor brings them and how its answer maps onto the collections; the collections, the receptive fields, the writes of the answers and the wiring of the CNS are generated. The neuron that owns the model is yours: you add your own mutation dendrites to it with the ordinary `.dendrite(...)`.
+
+```ts
+import { collateral } from '@cnstra/core';
+import { defineCNSHomeostatModel } from '@cnstra/sync';
+import type { TCNSHomeostatNeuronDependencies } from '@cnstra/sync';
+import { createCNSOIMDBHomeostatSchema } from '@cnstra/oimdb';
+import type { ICNSOIMDBHomeostatModelHandles } from '@cnstra/oimdb';
+
+type TCard = { id: string; title: string; version: number };
+type TCardsPage = { rows: TCard[]; total: number; nextCursor: string | undefined };
+declare function fetchCard(cardId: string, abortSignal: AbortSignal): Promise<TCard>;
+declare function fetchCardsPage(deckId: string, cursor: string | undefined, abortSignal: AbortSignal): Promise<TCardsPage>;
+
+const deckAxon = { cardsChanged: collateral<{ insertedCardIds: string[]; changedCardIds: string[] }>() };
+const deckUiAxon = {
+    cardRenameRequested: collateral<{ cardId: string; title: string }>(),
+    cardsPageRefreshRequested: collateral<{ deckId: string }>(),
+};
+const cardHomeostatReceptor = new CNSHomeostatReceptor<[cardId: string], TCard>({ name: 'card', transduce: ([cardId], abortSignal) => fetchCard(cardId, abortSignal) });
+const cardsPageHomeostatReceptor = new CNSHomeostatReceptor<[deckId: string, cursor: string | undefined], TCardsPage>({
+    name: 'cardsPage',
+    transduce: ([deckId, cursor], abortSignal) => fetchCardsPage(deckId, cursor, abortSignal),
+});
+
+const deckModelDefinition = defineCNSHomeostatModel(deckAxon)
+    .collection('cards', {
+        idOf: (card: TCard) => card.id,
+        isNewer: (incoming, current) => incoming.version >= current.version,
+        keepAfterIdleMs: 30_000,
+        homeostatReceptor: { homeostatReceptor: cardHomeostatReceptor, keyOf: (cardId): [cardId: string] => [cardId] },
+    })
+    .homeostatReceptor('cardsPage', {
+        homeostatReceptor: cardsPageHomeostatReceptor,
+        bucketsOf: page => ({ cards: page.rows }),
+        summaryOf: page => ({ total: page.total, nextCursor: page.nextCursor }),
+        keepAfterIdleMs: 60_000,
+        afterWrite: ({ insertedEntities, changedEntities }, axon) => insertedEntities.cards.length + changedEntities.cards.length === 0
+            ? undefined
+            : axon.cardsChanged.createSignal({
+                insertedCardIds: insertedEntities.cards.map(card => card.id),
+                changedCardIds: changedEntities.cards.map(card => card.id),
+            }),
+    });
+
+type TDeckNeuronDependencies = TCNSHomeostatNeuronDependencies<{ deckModel: typeof deckModelDefinition }, ICNSOIMDBHomeostatModelHandles>;
+
+const createDeckNeuron = ({ deckModel, homeostatEnvironment }: TDeckNeuronDependencies) => deckModel.createNeuron()
+    .dendrite({
+        collateral: deckUiAxon.cardRenameRequested,
+        response: ({ cardId, title }, axon) => {
+            const version = deckModel.collections.cards.getSlotByKey(cardId).entity?.version ?? 0;
+            deckModel.collections.cards.writeSlotContentByKey(cardId, { id: cardId, title, version: version + 1 });
+            return axon.cardsChanged.createSignal({ insertedCardIds: [], changedCardIds: [cardId] });
+        },
+    })
+    .dendrite({
+        collateral: deckUiAxon.cardsPageRefreshRequested,
+        response: ({ deckId }) => { void homeostatEnvironment.invalidate(cardsPageHomeostatReceptor, [deckId, undefined]); },
+    });
+
+const deckSchema = createCNSOIMDBHomeostatSchema(new OIMDB(), {
+    homeostatModels: { deckModel: deckModelDefinition },
+    neuronFactories: { deckNeuron: createDeckNeuron },
+});
+
+const firstPageCardSlots = deckSchema.deckModel.buckets.cardsPage.cards.getSlotByKey(['d1', undefined]).getBucketMemberSlots();
+const firstPage = deckSchema.deckModel.summaries.cardsPage.getSlotByKey(['d1', undefined]).entity;
+const firstPageHomeostasis = deckSchema.deckModel.homeostasis.cardsPage.getSlotByKey(['d1', undefined]).value;
+const deckNeuron = deckSchema.neurons.deckNeuron;
+const deckHomeostatNeurons = deckSchema.homeostatNeurons;
+```
+
+- `defineCNSHomeostatModel(axon)` is a module-level definition with no database. A model with nothing to announce takes no axon, `defineCNSHomeostatModel()`; give it one as soon as `afterWrite` or a mutation of its neuron emits an event, since the signal is created from that axon. A receptor keyed by the entity's id goes in as itself: `.collection('cards', { idOf: (card: TCard) => card.id, homeostatReceptor: cardHomeostatReceptor })`; any other key takes `{ homeostatReceptor, keyOf }`, and `keyOf` is typed by the receptor's key, so `cardId => [deckId, cardId]` needs no annotation.
+- Sync is built for reads, and that is where it is recommended: a screen reads slots and they fill themselves. A write stays a signal of your own: the owning neuron writes the change and invalidates what it touched, as `cardRenameRequested` and `cardsPageRefreshRequested` do above. `.collection(name, { idOf, isNewer?, isSameValue?, keepAfterIdleMs?, homeostatReceptor? })` adds an entity collection; annotate the entity in `idOf`. `homeostatReceptor: { homeostatReceptor, keyOf(id) }` fetches one entity by id when a read slot of the collection has no entity yet, so entities an answer already wrote are not asked one by one. `.homeostatReceptor(name, { homeostatReceptor, bucketsOf?, entitiesOf?, summaryOf?, isSameValue?, keepAfterIdleMs?, afterWrite? })` maps an answer: `bucketsOf` writes the entities into their collections and keeps their order in a bucket under the receptor's key, `entitiesOf` writes them only, `summaryOf` writes the rest of the answer into a summary slot under the key.
+- An answer equal to what the model holds wakes nobody: entities and values are compared as JSON (`isCNSHomeostatSameValue`: arrays element by element, plain objects key by key), a bucket by its sequence of members. `isSameValue` replaces the compare for one collection or one value. `isNewer(incoming, current)` returning `false` skips the write of that entity — for an entity that arrives through two receptors, compare a version from the server. `afterWrite({ key, data, insertedEntities, changedEntities, isBucketChanged, isSummaryChanged }, axon)` returns a signal of the model's axon, or `undefined`; per collection, `insertedEntities` has the entities written where the collection held none for that id, `changedEntities` those whose write changed the entity it held. An entity skipped by `isNewer` or equal to the one held is in neither. `isBucketChanged` is `true` when the answer changed the sequence of members of a bucket, `isSummaryChanged` when it changed the summary. `afterWrite` runs only for an answer that changed the model — an entity inserted or changed, a bucket or the summary changed — so a polled receptor answering the same data signals nothing.
+- What nobody reads goes: an entity, a bucket or a summary that no reader observes and nothing holds is dropped `keepAfterIdleMs` after it became idle — after its last reader left, or after its write when it had no reader. `keepAfterIdleMs` of `.collection` applies to its entities, that of `.homeostatReceptor` to its buckets and its summary; the default `0` drops it at the next release. A bucket holds its members while it stays, so the entities of a bucket that is kept are kept with it, and a member whose own window has run out goes with the bucket. A key read again after its entry was dropped asks its receptor again, as a first read does. OIMDB gives the collections `OIMSlotAfterIdleReleasePolicy({ keepAfterIdleMs })` (the next release is the end of the next flush, a timed release the first sweep at or after the deadline); MobX drops the box of an entry `keepAfterIdleMs` after its reactions stopped observing it, with one timer per idle entry, cancelled when a reaction observes it again (`0` is one microtask).
+- `model.invalidate()` marks every key the model's receptors hold stale and asks them again, the collection receptors included: the one call a domain dendrite makes after an action that changed the server in ways it cannot pin to keys. `homeostatEnvironment.invalidateAll(receptor)` does the same for one receptor.
+- Two doors to the same neuron: `deckModel.createNeuron()` builds it with every sync dendrite, `neuron(deckAxon).dendrite(deckModel.homeostatDendrites)` adds the sync dendrites to a neuron you build yourself; either way you chain your own `.dendrite(...)`. `neuron(axon).dendrite(list)` takes a list of dendrites in `@cnstra/core`.
+- The schema (`createCNSOIMDBHomeostatSchema(db, { homeostatModels, neuronFactories, homeostatEnvironmentOptions? })` on OIMDB, `assembleCNSHomeostatSchema(binding, { homeostatModels, neuronFactories })` for any binding) makes the environment, the receptor neurons — each receptor once across the models — one `CNSHomeostatReceptorCorrection`, your neurons from `neuronFactories`, and on OIMDB the drain listener `db.flush()`. `neuronFactories` is a record of named factories, `{ deckNeuron: createDeckNeuron }`, and is optional: without it every model gets its owner built as `model.createNeuron()`, named `${modelName}Neuron`, for models with no mutations of their own; once you pass factories, every model must be attached by one of them, so a forgotten `homeostatDendrites` is an error, not a second writer; the schema returns `{ ...models, cns, homeostatEnvironment, homeostatNeurons, neurons, dispose }`, where `neurons` holds the neurons it built under the names of their factories and `homeostatNeurons` is `{ homeostatReceptorCorrection, homeostatReceptors }` — the neurons the schema adds beside yours; both are for tools that name the graph. A factory listed under two names is refused, since every dendrite of its neuron would run twice. Every factory gets `{ ...models, homeostatEnvironment }` (`TCNSHomeostatNeuronDependencies`), so a domain dendrite calls `homeostatEnvironment.invalidate(receptor, key)` with no reference to the schema; it does not get the CNS, since a domain neuron returns signals and does not stimulate. It refuses a model whose `homeostatDendrites` are not attached once each to exactly one neuron: none, two neurons, or one neuron twice. The environment gets the CNS before the CNS exists; it throws if a homeostat stimulates before the schema returns.
+- Each model has one owning neuron and no writer is shared between models: two aggregates are two definitions and two neurons.
+- On OIMDB `collections[name]` is an `OIMEntitySlotCollectionStoreAggregate`, `buckets[receptor][collection]` a store aggregate of ordered buckets keyed by the receptor's key, `summaries[receptor]` a store aggregate of summary slots keyed by the receptor's key, `homeostasis[receptor]` the receptive field's `homeostasisComputedStoreAggregate`. The same model works on MobX with `createCNSMobXHomeostatSchema({ homeostatModels, neuronFactories, homeostatEnvironmentOptions? })` from `@cnstra/mobx`: `collections[name].getEntry(id)`, `buckets[receptor][collection].getEntities(key)`, `summaries[receptor].getEntry(key)` and `homeostasis[receptor].createComputed(key)` are read inside a reaction, and the first reaction that observes an entry holds the receptor's key until the last one leaves. A binding implements `ICNSHomeostatModelBinding`: the environment, the receptive demand, the entity, bucket and summary collections; everything else is shared. The environment gets `CNSHomeostatForwardingCNS`, whose `addDrainListener` reaches the CNS once it is bound: the OIMDB binding adds `db.flush()` there, MobX needs none. A bucket collection is created at the first read or write of `buckets[receptor][collection]`, so a receptor holds buckets only of the collections its `bucketsOf` answers. Refetches due within one slice of `CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS` (1024 ms, the slice of the OIMDB wheel) fire together at its end on both bindings, so their requests go out in one batch.
+- Tests: `packages/sync/src/tests/conformance/cnsHomeostatModelConformance.ts` (run by every binding: `packages/oimdb/src/tests/CNSOIMDBHomeostatModelConformance.test.ts`, `packages/mobx/src/tests/CNSMobXHomeostatModelConformance.test.ts`), `packages/oimdb/src/tests/createCNSOIMDBHomeostatSchema.test.ts`.
+
+In React, a collection with a `homeostatReceptor` is also read under its own name on the model: `board.cards` is `{ collection, homeostasis, keyOf }`, the entity collection, the homeostasis of its receptor and the receptor's key of an id. `useCNSHomeostatEntity(board.cards, cardId)` from `@cnstra/oimdb/react` returns `{ entity, status, error }`: the card, `undefined` while it is asked, and the status and the error of its key. Every component that reads the same id shares one request. A collection with a `homeostatReceptor` cannot be named after a member of the model (`collections`, `buckets`, `summaries`, `homeostasis`, `homeostatDendrites`, `createNeuron`).
+
+```tsx
+import { defineCNSHomeostatModel } from '@cnstra/sync';
+import { createCNSOIMDBHomeostatSchema } from '@cnstra/oimdb';
+import { useCNSHomeostatEntity } from '@cnstra/oimdb/react';
+import { OIMDBProvider } from '@oimdb/react';
+
+type TCard = { id: string; title: string };
+declare function fetchCard(cardId: string, abortSignal: AbortSignal): Promise<TCard>;
+
+const cardHomeostatReceptor = new CNSHomeostatReceptor<[cardId: string], TCard>({ name: 'card', transduce: ([cardId], abortSignal) => fetchCard(cardId, abortSignal) });
+const boardModelDefinition = defineCNSHomeostatModel({}).collection('cards', { idOf: (card: TCard) => card.id, homeostatReceptor: cardHomeostatReceptor });
+const { board } = createCNSOIMDBHomeostatSchema(db, { homeostatModels: { board: boardModelDefinition } });
+
+function CardScreen({ cardId }: { cardId: string }) {
+    const { entity: card, status, error } = useCNSHomeostatEntity(board.cards, cardId);
+    if (status === ECNSHomeostatCorrectionStatus.Failed) return <p role="alert">{String(error)}</p>;
+    if (card === undefined) return <p aria-busy="true">Loading…</p>;
+    return <h1>{card.title}</h1>;
+}
+
+const app = <OIMDBProvider db={db}><CardScreen cardId="c42" /></OIMDBProvider>;
+```
+
+- Tests: `packages/oimdb/src/tests/useCNSHomeostatEntity.test.tsx`.
 
 ### transduce over fetch
 
@@ -241,7 +354,7 @@ db.createEffect(() => {
 
 ```ts
 const api = new CNSHomeostatReceptorFetch({ baseUrl: 'https://api.example.com' });
-const remoteDeckReceptor = new CNSHomeostatReceptor<[deckId: string], TDeck>({ name: 'deck', transduce: async ([deckId], abortSignal) => parseDeck(await api.send({ url: `/decks/${encodeURIComponent(deckId)}` }, abortSignal)) });
+const remoteDeckHomeostatReceptor = new CNSHomeostatReceptor<[deckId: string], TDeck>({ name: 'deck', transduce: async ([deckId], abortSignal) => parseDeck(await api.send({ url: `/decks/${encodeURIComponent(deckId)}` }, abortSignal)) });
 ```
 
 ### One request for what a screen reads
@@ -260,11 +373,11 @@ declare function parseCard(value: unknown): TCard;
 
 const homeostatTransductionFetch = new CNSHomeostatTransductionFetch({ url: 'https://api.example.com/sync' });
 const homeostatBatchTransducer = new CNSHomeostatBatchTransducer({ batchTransduceFn: homeostatTransductionFetch.batchTransduceFn });
-const batchedDeckReceptor = new CNSHomeostatReceptor<[deckId: string], TDeck>({
+const batchedDeckHomeostatReceptor = new CNSHomeostatReceptor<[deckId: string], TDeck>({
     name: 'deck',
     transduce: homeostatBatchTransducer.transduceOf('deck', ([deck]) => parseDeck(deck)),
 });
-const deckCardsReceptor = new CNSHomeostatReceptor<[deckId: string], TCard[]>({
+const deckCardsHomeostatReceptor = new CNSHomeostatReceptor<[deckId: string], TCard[]>({
     name: 'deckCards',
     staleTimeMs: 2_000,
     transduce: homeostatBatchTransducer.transduceOf('deckCards', cards => cards.map(parseCard)),
@@ -315,9 +428,33 @@ app.get('/sync', async (request, reply) => {
 });
 ```
 
+The same keys go over a socket, a worker or a long poll with `CNSHomeostatTransductionChannel({ sendRequest, homeostatTransductionCodec?, timeoutMs? })`: one message `{ requestId, mediaType, encodedRequests }` per batch — the query the `GET` would carry, never split, since there is no URL — and `receiveResponse` takes the answer back by its `requestId`. The other side answers with the same endpoint. A status other than 200, a `sendRequest` that throws (a closed socket), or no answer within `timeoutMs` (30000 by default) fails only the keys of that message; an answer to an id the channel is not waiting for is ignored. When the channel closes, `failPendingRequests(error)` fails the keys of every message still waiting, so the refractory policy asks them again once it is back, instead of waiting out `timeoutMs`.
+
+```ts
+declare const socket: { send(data: string): void; addEventListener(type: 'message', listener: (event: { data: string }) => void): void };
+
+const homeostatTransductionChannel = new CNSHomeostatTransductionChannel({
+    sendRequest: request => socket.send(JSON.stringify({ type: 'sync.request', ...request })),
+});
+socket.addEventListener('message', event => {
+    const message = JSON.parse(event.data);
+    if (message.type === 'sync.response') homeostatTransductionChannel.receiveResponse(message);
+});
+const socketBatchTransducer = new CNSHomeostatBatchTransducer({ batchTransduceFn: homeostatTransductionChannel.batchTransduceFn });
+
+declare const clientSocket: typeof socket;
+declare const syncEndpoint: CNSHomeostatTransductionEndpoint;
+clientSocket.addEventListener('message', async event => {
+    const message = JSON.parse(event.data);
+    if (message.type !== 'sync.request') return;
+    const response = await syncEndpoint.respond(message.encodedRequests, message.mediaType);
+    clientSocket.send(JSON.stringify({ type: 'sync.response', requestId: message.requestId, ...response }));
+});
+```
+
 A key can cover another: when the backend answers a deck with its cards anyway, `new CNSHomeostatTransductionQueryCodec({ homeostatTransductionCovers: [{ coveringName: 'deck', coveredName: 'deckCards', selectCoveredKey: deckKey => deckKey }] })` leaves `deckCards=d1` out of the URL whenever `deck=d1` is in the same batch — a screen with two decks and their cards asks `GET /sync?deck=d1;d2`. A card list asked without its deck still goes in the URL. The endpoint, given the same codec, reads `deck=d1` back as both keys, so your `batchTransduceFn` gets the deck and its cards and answers both; the covers are named in the codec's `mediaType`, so a client with other covers gets `406` instead of rows filed under wrong keys; a `selectCoveredKey` that changed is caught only when you bump the cover's `revision`. The media type carries the format version (`.v1`), so a later format answers `406` instead of being misread. A cover with a `revision` puts it in the media type too, so a changed `selectCoveredKey` can be told apart. A cover of a cover works the same way (`deck` → `deckCards` → `deckCardsCount`); a cycle of covers is refused when the codec is built. A covered key whose deck goes in another `GET` of a split batch is answered by that `GET`. The cost: every request for a deck asks for its cards, also from a screen that shows no cards — their rows are dropped on the client.
 
-A codec of your own is an `ICNSHomeostatTransductionCodec`: a `mediaType`, `dropCoveredRequests?` (the keys that go in the query, when it covers keys), `encodeRequests` / `decodeRequests` for the query and `encodeRows` / `decodeRows` for the answer. Give it to the fetch, and add it to the endpoint's `homeostatTransductionCodecs` — the endpoint answers each client in the codec it accepts. A transport of your own is any `batchTransduceFn(requests, abortSignal)`: a POST, a WebSocket, a JSON-RPC 2.0 batch.
+A codec of your own is an `ICNSHomeostatTransductionCodec`: a `mediaType`, `dropCoveredRequests?` (the keys that go in the query, when it covers keys), `encodeRequests` / `decodeRequests` for the query and `encodeRows` / `decodeRows` for the answer. Give it to the fetch, and add it to the endpoint's `homeostatTransductionCodecs` — the endpoint answers each client in the codec it accepts. A transport of your own is any `batchTransduceFn(requests, abortSignal)`: a POST, a JSON-RPC 2.0 batch.
 
 - A key gets the `data` of all its rows as a list, in order: a single entity reads `([deck]) => …`, a list reads the whole list. A key answered with a row without `data` (`{ name, key }`, `[request]` on the wire) gets `[]` — `parse` decides whether that is an answer or an error. A key the transport did not answer at all fails with «was not answered»: a backend that forgot a name, or does not know it yet, never empties a list. A `parse` that throws fails only its key. A row with `error` fails its key with that error. A rejected `batchTransduceFn` fails every key of the batch.
 - The window is one macrotask (`setTimeout(…, 0)`), not a microtask: a receptive field asks its keys from a later drain of the queue than the queries of the same flush, and a microtask would split them. `batchScheduleFn` replaces the window.
@@ -329,7 +466,7 @@ A codec of your own is an `ICNSHomeostatTransductionCodec`: a `mediaType`, `drop
 - In OIMDB a slot that left the screen lets its key go at the next flush; a request that answers before that flush is written.
 - One screen can mix the ways a key is asked, receptor by receptor: a `transduce` of its own per call (REST by key, through a query), the same `transduce` behind a receptive field (REST for the slots on the screen), or `transduceOf` of one transducer (every receptor through one route). `packages/oimdb/src/tests/CNSOIMDBHomeostatBatchTransducer.test.ts` asks decks by REST and their cards through one route on one screen.
 - JSON-RPC 2.0 batch as the transport: map each request to `{ jsonrpc: '2.0', id: index, method: name, params: key }` and each response back to rows by `id` — responses may come in any order; a list `result` is one row per item, and `{ name, key }` when it is empty, or the key fails «was not answered».
-- Tests: `packages/sync/src/tests/CNSHomeostatBatchTransducer.test.ts` (the transducer, JSON-RPC 2.0), `CNSHomeostatTransductionQueryCodec.test.ts`, `CNSHomeostatTransductionFetch.test.ts` (one `GET` through the endpoint, splitting, another codec), `CNSHomeostatTransductionEndpoint.test.ts` (picking the codec); `packages/oimdb/src/tests/CNSOIMDBHomeostatBatchTransducer.test.ts` (one request for a screen and the frames it renders, REST and one route on one screen, polling, a key leaving mid-flight, invalidate during a batch, a refractory retry of one failed key, offline); `packages/mobx/src/tests/CNSMobXHomeostatBatchTransducer.test.ts` (one request for a screen and its frames, polling and its frames).
+- Tests: `packages/sync/src/tests/CNSHomeostatBatchTransducer.test.ts` (the transducer, JSON-RPC 2.0), `CNSHomeostatTransductionQueryCodec.test.ts`, `CNSHomeostatTransductionFetch.test.ts` (one `GET` through the endpoint, splitting, another codec), `CNSHomeostatTransductionChannel.test.ts` (one message through the endpoint, a refused status, a closed socket, a timeout, an abort), `CNSHomeostatTransductionEndpoint.test.ts` (picking the codec); `packages/oimdb/src/tests/CNSOIMDBHomeostatBatchTransducer.test.ts` (one request for a screen and the frames it renders, REST and one route on one screen, polling, a key leaving mid-flight, invalidate during a batch, a refractory retry of one failed key, offline); `packages/mobx/src/tests/CNSMobXHomeostatBatchTransducer.test.ts` (one request for a screen and its frames, polling and its frames).
 
 ### Replacing a part
 
@@ -372,7 +509,7 @@ const createHomeostatRefetchPolicy = (homeostatReceptor: CNSHomeostatReceptor<ne
 
 It keeps each receptor's `staleTimeMs` and `homeostatRefractoryPolicy`, as the default does; put your environment-wide values after `??` if you have them. Pass it as `createHomeostatRefetchPolicy` to the environment factory; a `4xx` key then stays `Failed` until `invalidate` or a new reader after its record is released.
 
-A `runInTransaction` of your own must not throw: an answer whose stimulation throws there is never written, its readers stay `Firing` until released, and the error is thrown from the drain of the run queue — the first one of the drain; every later one is thrown on its own in a microtask (`cnsRunAll`) — while `waitUntilSettled()` rejects with it.
+A `runInTransaction` of your own must not throw: an answer whose stimulation throws there is never written, its readers stay `Firing` until released, and the error is thrown from the drain of the run queue — the first one of the drain; every later one is thrown on its own in a microtask (`runAll`) — while `waitUntilSettled()` rejects with it.
 
 The correction neuron takes `reduceHomeostatCorrectionState` — how an answer becomes a record (`reduceCNSHomeostatCorrectionState` by default). Whether a `Restored` answer is too old to deliver is the regulator's: an answer to a request started before the last `invalidate` never reaches the correction neuron or a writer, so a reducer of your own sees only answers the regulator delivers; a `Failed` answer of such a request still reaches it and is written `Stale` by the default reducer.
 

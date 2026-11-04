@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/mobx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MobX binding of the CNStra homeostat: queries as MobX computeds over the @cnstra/sync regulator, corrections in an observable map.",
   "repository": { "type": "git", "url": "git+https://github.com/abaikov/cnstra.git", "directory": "packages/mobx" },
   "keywords": ["cnstra", "mobx", "sync", "homeostat", "query"],
@@ -11,8 +11,8 @@
   "sideEffects": false,
   "files": ["dist"],
   "scripts": { "prepublishOnly": "node ../../scripts/check-drift.mjs --gate", "build": "tsup", "test:types": "tsc --noEmit", "clean": "rm -rf dist", "test": "jest" },
-  "peerDependencies": { "@cnstra/sync": "^0.1.0", "mobx": "^6.0.0" },
-  "devDependencies": { "@cnstra/core": "^3.2.1", "@cnstra/sync": "^0.1.0", "@types/jest": "29.5.12", "jest": "29.7.0", "mobx": "6.16.1", "ts-jest": "29.1.2", "tsup": "8.5.1", "typescript": "5.7.2" },
+  "peerDependencies": { "@cnstra/sync": "^0.1.1", "mobx": "^6.0.0" },
+  "devDependencies": { "@cnstra/core": "^3.2.2", "@cnstra/sync": "^0.1.1", "@types/jest": "29.5.12", "jest": "29.7.0", "mobx": "6.16.1", "ts-jest": "29.1.2", "tsup": "8.5.1", "typescript": "5.7.2" },
   "author": "Andrei Baikov <abaikov23@gmail.com>",
   "license": "MIT",
   "publishConfig": { "access": "public" }

@@ -1,0 +1,97 @@
+@font-face {
+  font-family: 'cns-devtools-px437';
+  font-weight: normal;
+  font-style: normal;
+  src: url('../fonts/Px437_IBM_Conv.ttf') format('truetype');
+  font-display: swap;
+}
+
+@scope (.cns-devtools) {
+  :scope {
+    --bg-primary: #0c0c11;
+    --bg-secondary: #131319;
+    --bg-tertiary: #20202a;
+    --bg-panel: #15151b;
+    --bg-card: #1b1b22;
+    --bg-raised: #3c3c3c;
+    --bg-hover: rgba(255, 255, 255, 0.04);
+    --text-primary: #f9f9f6;
+    --text-secondary: #afa9a6;
+    --text-muted: #8d8d8c;
+    --border-primary: #2a2a34;
+    --border-secondary: #1e1e26;
+    --border-accent: #454545;
+    --border-strong: #b486f6;
+    --color-red: #cf6f63;
+    --color-green: #b3e053;
+    --color-yellow: #f5c344;
+    --color-cyan: #52a7c9;
+    --color-pink: #d98fd0;
+    --color-violet: #c9a6f8;
+    --font-primary: 'cns-devtools-px437', 'Courier New', monospace;
+    --font-body: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo',
+      'Consolas', 'Courier New', monospace;
+    --font-mono: monospace;
+    --font-size-base: 12px;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    font-family: var(--font-primary);
+    font-size: var(--font-size-base);
+    line-height: 1.45;
+    font-smooth: never;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: grayscale;
+    image-rendering: pixelated;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  h1, h2, h3, h4,
+  .exp-heading,
+  .brand {
+    font-family: var(--font-primary);
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: unset;
+    font-smooth: never;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 1px solid var(--border-accent);
+    background: var(--bg-raised);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-strong);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: var(--bg-secondary);
+  }
+
+  .brand {
+    text-shadow: 0 0 7px color-mix(in srgb, var(--color-violet) 35%, transparent), 0 0 2px color-mix(in srgb, var(--color-cyan) 40%, transparent);
+  }
+  .exp-heading {
+    text-shadow: 0 0 8px currentColor;
+    opacity: 0.96;
+  }
+}

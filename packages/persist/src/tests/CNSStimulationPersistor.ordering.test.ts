@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 import { CNSDebouncedProgressRecordingStrategy } from '.././CNSDebouncedProgressRecordingStrategy';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
@@ -51,15 +51,15 @@ const recordingWriter = (delayForCall: (call: number) => number) => {
 
 /** input → first → mid → second → out. Two hops, so a cadence timer gets armed. */
 const buildFlow = () => {
-    const input = cnsCollateral<{ id: number }>();
-    const mid = cnsCollateral<{ id: number }>();
-    const out = cnsCollateral<{ result: string }>();
+    const input = collateral<{ id: number }>();
+    const mid = collateral<{ id: number }>();
+    const out = collateral<{ result: string }>();
 
-    const first = cnsNeuron({ mid }).dendrite({
+    const first = neuron({ mid }).dendrite({
         collateral: input,
         response: (p, axon) => axon.mid.createSignal({ id: p!.id }),
     });
-    const second = cnsNeuron({ out }).dendrite({
+    const second = neuron({ out }).dendrite({
         collateral: mid,
         response: (p, axon) => axon.out.createSignal({ result: `ok-${p!.id}` }),
     });

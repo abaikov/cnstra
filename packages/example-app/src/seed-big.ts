@@ -1,18 +1,18 @@
 // Big synthetic dataset (env-gated via SEED_BIG=1) — proves the DevTools panel
 // scales and that its filters are CORRECT over months of data. It populates:
 //   • a realistic TOPOLOGY (~300 neurons, ~400 collaterals with dendrites/axons),
-//     injected into the devtools-server repository so `topology.query` returns it;
+//     injected into the devtools-server repository so the `topology` sync key answers it;
 //   • ~18k STIMULATIONS spread across the last ~90 days (varied entry collaterals,
 //     ~80% completed / ~15% failed / ~5% running), each with an attempt + tasks.
 //
 // Roster/facets are served from a FAST repository that pre-derives the roster
 // entries ONCE (the reference in-memory store re-scans every task on every query —
 // O(N²) at this scale). Filter/facet semantics are the shared reference helpers
-// (`matchesCNSRosterFilter` / `computeCNSRosterFacets` / `cnsKeysetPage`), so what the panel
+// (`matchesCNSRosterFilter` / `computeCNSRosterFacets` / `keysetPage`), so what the panel
 // shows is exactly what those contracts define — the point of the correctness demo.
 
 import {
-    cnsKeysetPage,
+    keysetPage,
     computeCNSRosterFacets,
     matchesCNSRosterFilter,
     type ICNSStimulationRepository,
@@ -353,7 +353,7 @@ export class SeedBigStimulationRepository implements ICNSStimulationRepository {
         const matched = this.rosterEntries.filter(e =>
             matchesCNSRosterFilter(e.row, e.neurons, filter)
         );
-        return cnsKeysetPage(matched.map(e => e.row), opts);
+        return keysetPage(matched.map(e => e.row), opts);
     }
     async queryFacets(
         filter: TCNSStimulationRosterFilter,

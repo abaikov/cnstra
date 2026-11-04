@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '../src';
+import { CNS, collateral, neuron } from '../src';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 
 /**
@@ -12,19 +12,19 @@ import type { TCNSStimulationResponse } from '@cnstra/types';
  */
 
 const twoStep = () => {
-    const input = cnsCollateral<{ n: number }>();
-    const mid = cnsCollateral<{ n: number }>();
-    const out = cnsCollateral<{ n: number }>();
+    const input = collateral<{ n: number }>();
+    const mid = collateral<{ n: number }>();
+    const out = collateral<{ n: number }>();
 
-    const first = cnsNeuron({ mid }).dendrite({
+    const first = neuron({ mid }).dendrite({
         collateral: input,
         response: (p, axon) => axon.mid.createSignal({ n: p!.n }),
     });
-    const second = cnsNeuron({ out }).dendrite({
+    const second = neuron({ out }).dendrite({
         collateral: mid,
         response: (p, axon) => axon.out.createSignal({ n: p!.n }),
     });
-    const third = cnsNeuron({}).dendrite({
+    const third = neuron({}).dendrite({
         collateral: out,
         response: () => undefined,
     });
@@ -94,11 +94,11 @@ describe('the outstanding set while a listener is parked', () => {
 
     it('leaves the aborted frontier outstanding', async () => {
         // The frontier a resume would pick up: an abort must not empty it.
-        const input = cnsCollateral<{ n: number }>();
-        const out = cnsCollateral<{ n: number }>();
+        const input = collateral<{ n: number }>();
+        const out = collateral<{ n: number }>();
         const controller = new AbortController();
 
-        const slow = cnsNeuron({ out }).dendrite({
+        const slow = neuron({ out }).dendrite({
             collateral: input,
             response: async (p, axon) => {
                 controller.abort();
@@ -106,7 +106,7 @@ describe('the outstanding set while a listener is parked', () => {
                 return axon.out.createSignal({ n: p!.n });
             },
         });
-        const next = cnsNeuron({}).dendrite({
+        const next = neuron({}).dendrite({
             collateral: out,
             response: () => undefined,
         });

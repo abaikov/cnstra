@@ -44,7 +44,7 @@ import {
     MeterProvider,
     PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import {
     CNSFanOutStimulationWriter,
     CNSInMemoryStimulationRepository,
@@ -58,7 +58,7 @@ import {
 import {
     createCNSWorker,
     enqueueCNSStimulation,
-    cnsStimulationJob,
+    stimulationJob,
 } from '@cnstra/bullmq';
 
 // ── OpenTelemetry, console-only ───────────────────────────────────────────────
@@ -87,14 +87,14 @@ const QUEUE = 'cns-otel';
 // attribute — is this string.
 const STIMULATION_ID = 'order-42';
 
-const input = cnsCollateral<{ orderId: string }>();
-const validated = cnsCollateral<{ orderId: string }>();
-const charged = cnsCollateral<{ orderId: string; ok: true }>();
+const input = collateral<{ orderId: string }>();
+const validated = collateral<{ orderId: string }>();
+const charged = collateral<{ orderId: string; ok: true }>();
 
 // Fails once, then succeeds on the resumed attempt.
 let chargeCalls = 0;
 
-const validateOrder = cnsNeuron({ validated }).dendrite({
+const validateOrder = neuron({ validated }).dendrite({
     collateral: input,
     response: (p, axon) => {
         console.log(`    ▸ validateOrder(${p!.orderId})`);
@@ -102,7 +102,7 @@ const validateOrder = cnsNeuron({ validated }).dendrite({
     },
 });
 
-const chargeOrder = cnsNeuron({ charged }).dendrite({
+const chargeOrder = neuron({ charged }).dendrite({
     collateral: validated,
     response: (p, axon) => {
         chargeCalls += 1;
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
         resume: {},
     });
 
-    const job = cnsStimulationJob(registry, input, { orderId: STIMULATION_ID });
+    const job = stimulationJob(registry, input, { orderId: STIMULATION_ID });
     await enqueueCNSStimulation(queue, job, {
         // ← THIS is what pins the stimulation id. Drop it and BullMQ mints a number.
         jobId: STIMULATION_ID,

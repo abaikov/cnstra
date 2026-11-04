@@ -1,0 +1,1 @@
+export const STIMULATION_PAGE_LIMIT = 50;

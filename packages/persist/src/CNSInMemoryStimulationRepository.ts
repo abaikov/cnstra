@@ -10,7 +10,7 @@ import type {
 } from '@cnstra/persist-dto';
 import {
     loadCNSRosterEntries,
-    cnsKeysetPage,
+    keysetPage,
     computeCNSRosterFacets,
 } from './CNSStimulationRosterCompute';
 
@@ -211,10 +211,10 @@ export class CNSInMemoryStimulationRepository
 
     async queryRoster(
         filter: TCNSStimulationRosterFilter,
-        opts: { cursor?: string; limit: number }
+        opts: { cursor?: string; sinceCursor?: string; limit: number }
     ): Promise<TCNSStimulationRosterPage> {
         const entries = await loadCNSRosterEntries(this, filter);
-        return cnsKeysetPage(
+        return keysetPage(
             entries.map(e => e.row),
             opts
         );

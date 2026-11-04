@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { TCNSStimulationResponse } from '@cnstra/types';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 import { CNSProgressSerializer } from '.././CNSProgressSerializer';
@@ -15,15 +15,15 @@ import { CNSProgressSerializer } from '.././CNSProgressSerializer';
 
 /** A flow whose second neuron fails, so there is an outstanding frontier to snapshot. */
 function buildFlow() {
-    const input = cnsCollateral<{ id: number }>();
-    const step1Out = cnsCollateral<{ id: number }>();
+    const input = collateral<{ id: number }>();
+    const step1Out = collateral<{ id: number }>();
     const control = { fail: true };
 
-    const n1 = cnsNeuron({ step1Out }).dendrite({
+    const n1 = neuron({ step1Out }).dendrite({
         collateral: input,
         response: (p, axon) => axon.step1Out.createSignal({ id: p!.id }),
     });
-    const n2 = cnsNeuron({}).dendrite({
+    const n2 = neuron({}).dendrite({
         collateral: step1Out,
         response: () => {
             if (control.fail) throw new Error('boom');

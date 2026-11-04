@@ -10,6 +10,8 @@ export { CNSDebouncedProgressRecordingStrategy } from './CNSDebouncedProgressRec
 export { CNSStimulationPersistor } from './CNSStimulationPersistor';
 export { CNSInMemoryStimulationRepository } from './CNSInMemoryStimulationRepository';
 export { CNSFanOutStimulationWriter } from './CNSFanOutStimulationWriter';
+export { CNS_JOB_IDENTITY_CONTEXT_KEY } from './CNS_JOB_IDENTITY_CONTEXT_KEY';
+export type { TCNSJobIdentity } from './TCNSJobIdentity';
 export {
     withCNSWriteChain,
     retryCNSWrites,
@@ -27,7 +29,7 @@ export type { ICNSStimulationRosterQuery } from './interfaces/ICNSStimulationRos
 export { supportsCNSRosterQuery } from './interfaces/ICNSStimulationRosterQuery';
 export {
     loadCNSRosterEntries,
-    cnsKeysetPage,
+    keysetPage,
     computeCNSRosterFacets,
     CNS_HISTOGRAM_BUCKETS,
     buildCNSTimeHistogram,

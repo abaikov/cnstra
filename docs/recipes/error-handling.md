@@ -98,13 +98,13 @@ try {
 Use a self-looping neuron and carry the retry attempt count **in the signal payload** — all per-run data flows through payloads:
 
 ```ts
-import { cnsNeuron, cnsCollateral } from '@cnstra/core';
+import { neuron, collateral } from '@cnstra/core';
 
-const tryTask = cnsCollateral<{ taskId: string; attempt?: number }>();
-const completed = cnsCollateral<{ taskId: string }>();
-const failed = cnsCollateral<{ taskId: string; reason: string }>();
+const tryTask = collateral<{ taskId: string; attempt?: number }>();
+const completed = collateral<{ taskId: string }>();
+const failed = collateral<{ taskId: string; reason: string }>();
 
-const taskRunner = cnsNeuron({ tryTask, completed, failed })
+const taskRunner = neuron({ tryTask, completed, failed })
   .dendrite({
     collateral: tryTask,
     response: async (payload, axon) => {

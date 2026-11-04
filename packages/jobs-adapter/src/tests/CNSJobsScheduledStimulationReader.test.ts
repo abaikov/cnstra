@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from '@jest/globals';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSInMemoryJobRepository } from '@cnstra/jobs';
 import type { CNSJobWorker } from '@cnstra/jobs';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
@@ -21,14 +21,14 @@ describe('CNSJobsScheduledStimulationReader', () => {
     });
 
     const setup = () => {
-        const input = cnsCollateral<{ id: number }>();
-        const step1Out = cnsCollateral<{ id: number }>();
+        const input = collateral<{ id: number }>();
+        const step1Out = collateral<{ id: number }>();
         let failures = 1;
-        const n1 = cnsNeuron({ step1Out }).dendrite({
+        const n1 = neuron({ step1Out }).dendrite({
             collateral: input,
             response: (payload, axon) => axon.step1Out.createSignal(payload),
         });
-        const n2 = cnsNeuron({}).dendrite({
+        const n2 = neuron({}).dendrite({
             collateral: step1Out,
             response: () => {
                 if (failures-- > 0) throw new Error('step two failed');
@@ -111,10 +111,10 @@ describe('CNSJobsScheduledStimulationReader', () => {
         expect(ids(second)).toEqual(['step']);
     });
     it('lists the declared job types with their payload schema on the first page, narrowed like the schedules', async () => {
-        const input = cnsCollateral<{ id: number }>();
-        const step1Out = cnsCollateral<{ id: number }>();
-        const n1 = cnsNeuron({ step1Out }).dendrite({ collateral: input, response: (payload, axon) => axon.step1Out.createSignal(payload) });
-        const n2 = cnsNeuron({}).dendrite({ collateral: step1Out, response: () => undefined });
+        const input = collateral<{ id: number }>();
+        const step1Out = collateral<{ id: number }>();
+        const n1 = neuron({ step1Out }).dendrite({ collateral: input, response: (payload, axon) => axon.step1Out.createSignal(payload) });
+        const n2 = neuron({}).dendrite({ collateral: step1Out, response: () => undefined });
         const registry = new CNSPersistOptionsRegistry();
         registry.register('n1', n1);
         registry.register('n2', n2);

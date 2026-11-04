@@ -9,11 +9,11 @@ Common patterns to use CNStra from React.
 
 ```ts setup
 import { useEffect, useMemo, useRef } from 'react';
-import { cnsCollateral } from '@cnstra/core';
+import { collateral } from '@cnstra/core';
 import { useCNS } from '@cnstra/react';
 
-const userRequested = cnsCollateral<{ userId: string }>();
-const searchRequested = cnsCollateral<string>();
+const userRequested = collateral<{ userId: string }>();
+const searchRequested = collateral<string>();
 ```
 
 ## Stimulate on mount or on deps change
@@ -49,28 +49,21 @@ function SearchBox() {
 
 ## Derive UI lists via OIMDB
 
-Use OIMDB for queryable derived state (dashboards, analytics) and subscribe via hooks. Build an index once, then hold its bucket and read it reactively with the hooks (they take the **index store slot**, not a string name).
+Use OIMDB for queryable derived state (dashboards, analytics) and subscribe via hooks. Build an index once over the collection, then read it by key: the hook takes the index itself and re-renders when its bucket changes.
 
 ```tsx
-import { OIMDB, createOIMEntityContentService, createOIMSlotCollectionIndexService, createOIMSlotCollectionService } from '@oimdb/core';
-import { useOIMSlotsByKeys, useOIMValue } from '@oimdb/react';
+import { OIMDB, createOIMEntitySlotCollectionStoreAggregate, createOIMSlotCollectionIndexStoreAggregate } from '@oimdb/core';
+import { useOIMEntitiesByKey } from '@oimdb/react';
 
 type TLogEntry = { id: string; type: string; message: string };
 
 const db = new OIMDB();
-const logService = createOIMSlotCollectionService({ slotContentService: createOIMEntityContentService<TLogEntry>() });
-const logs = logService.createStoreSlot(db);
-// Derived index keyed by the entry's `type` field:
-const logsByTypeService = createOIMSlotCollectionIndexService({ entityService: logService, columns: ['type'] });
-const logsByType = logsByTypeService.createIndexStoreSlot(logs);
+const logs = createOIMEntitySlotCollectionStoreAggregate<TLogEntry>(db);
+const logsByType = createOIMSlotCollectionIndexStoreAggregate(logs, { columns: ['type'] });
 
 function WarningList() {
-  const [warnings] = useOIMSlotsByKeys(logsByType, ['warning']);
-  const items = useOIMValue(useMemo(() => ({
-    sourceSlots: [warnings],
-    derive: () => Array.from(logsByTypeService.slotContentService.getBucketMemberSlots(warnings), slot => slot.entity),
-  }), [warnings]));
-  return <ul>{items.map(l => l && <li key={l.id}>{l.message}</li>)}</ul>;
+  const warnings = useOIMEntitiesByKey(logsByType, 'warning');
+  return <ul>{warnings.map(entry => <li key={entry.id}>{entry.message}</li>)}</ul>;
 }
 ```
 

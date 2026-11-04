@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPgJobConnection, CNSPgJobDatabase, CNSPostgresJobRepository, CNSPostgresJobSchema } from '@cnstra/jobs-postgres';
 import type { ICNSPostgresJobTransaction } from '@cnstra/jobs-postgres';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
@@ -25,18 +25,18 @@ const prefix = 'cnstest_adapter_';
     });
 
     it('runs a job enqueued inside a business transaction as a stimulation after the commit, resumes a failed step, wakes waitFor and publishes the payload schema', async () => {
-        const orderPlaced = cnsCollateral<{ orderId: number }>();
-        const charged = cnsCollateral<{ orderId: number }>();
+        const orderPlaced = collateral<{ orderId: number }>();
+        const charged = collateral<{ orderId: number }>();
         const ran: string[] = [];
         let failures = 1;
-        const charge = cnsNeuron({ charged }).dendrite({
+        const charge = neuron({ charged }).dendrite({
             collateral: orderPlaced,
             response: (payload, axon) => {
                 ran.push('charge');
                 return axon.charged.createSignal(payload);
             },
         });
-        const notify = cnsNeuron({}).dendrite({
+        const notify = neuron({}).dendrite({
             collateral: charged,
             response: () => {
                 ran.push('notify');

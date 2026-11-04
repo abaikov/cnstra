@@ -4,7 +4,7 @@
  * code that is not running. Point it at the bundles here if that is ever wanted.
  */
 
-export { CNS, cnsCollateral, cnsNeuron } from '../../core/src/index';
+export { CNS, collateral, neuron } from '../../core/src/index';
 
 export {
     CNSPersistOptionsRegistry,

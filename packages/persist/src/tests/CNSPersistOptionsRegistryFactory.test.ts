@@ -1,21 +1,21 @@
-import { cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { collateral, neuron } from '@cnstra/core';
 import type { TCNSModality } from '@cnstra/types';
 import { CNSPersistOptionsRegistryFactory } from '../CNSPersistOptionsRegistryFactory';
 
 const createPaymentsGraph = () => {
-    const charge = cnsCollateral<{ orderId: string }>();
-    const done = cnsCollateral<{ orderId: string }>();
-    const chargeNeuron = cnsNeuron({ done }).dendrite({ collateral: charge, response: () => undefined });
+    const charge = collateral<{ orderId: string }>();
+    const done = collateral<{ orderId: string }>();
+    const chargeNeuron = neuron({ done }).dendrite({ collateral: charge, response: () => undefined });
     const web: TCNSModality = { index: 7, afferentPaths: {} };
     return { charge, done, chargeNeuron, web };
 };
 
 describe('CNSPersistOptionsRegistryFactory.create', () => {
     it('keeps two neurons with the same axon key apart', () => {
-        const userDone = cnsCollateral<{ id: string }>();
-        const libDone = cnsCollateral<{ id: string }>();
-        const userNeuron = cnsNeuron({ done: userDone });
-        const libNeuron = cnsNeuron({ done: libDone });
+        const userDone = collateral<{ id: string }>();
+        const libDone = collateral<{ id: string }>();
+        const userNeuron = neuron({ done: userDone });
+        const libNeuron = neuron({ done: libDone });
 
         const registry = CNSPersistOptionsRegistryFactory.create({ userNeuron, libNeuron });
 
@@ -38,8 +38,8 @@ describe('CNSPersistOptionsRegistryFactory.create', () => {
     });
 
     it('prefixes explicit collateral names with the namespace', () => {
-        const created = cnsCollateral<{ id: string }>();
-        const deckNeuron = cnsNeuron({ created });
+        const created = collateral<{ id: string }>();
+        const deckNeuron = neuron({ created });
 
         const registry = CNSPersistOptionsRegistryFactory.create({
             decks: { deck: { neuron: deckNeuron, collaterals: { created: 'deck-created' } } },
@@ -50,7 +50,7 @@ describe('CNSPersistOptionsRegistryFactory.create', () => {
     });
 
     it('checks explicit collateral names against the axon, also inside a namespace', () => {
-        const deckNeuron = cnsNeuron({ created: cnsCollateral<{ id: string }>() });
+        const deckNeuron = neuron({ created: collateral<{ id: string }>() });
 
         expect(() =>
             CNSPersistOptionsRegistryFactory.create({
@@ -67,15 +67,15 @@ describe('CNSPersistOptionsRegistryFactory.create', () => {
     });
 
     it('throws on one free collateral listed under two names', () => {
-        const input = cnsCollateral<{ id: string }>();
+        const input = collateral<{ id: string }>();
         expect(() => CNSPersistOptionsRegistryFactory.create({ start: input, kickoff: input })).toThrow(
             'it is already registered as "start"'
         );
     });
 
     it('names a listed collateral after the neuron that owns it, wherever it is listed', () => {
-        const done = cnsCollateral<{ id: string }>();
-        const registry = CNSPersistOptionsRegistryFactory.create({ done, a: cnsNeuron({ done }) });
+        const done = collateral<{ id: string }>();
+        const registry = CNSPersistOptionsRegistryFactory.create({ done, a: neuron({ done }) });
 
         expect(registry.getCollateralName(done)).toBe('a.done');
         expect(registry.getCollateral('done')).toBeUndefined();

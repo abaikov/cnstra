@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { ICNS, TCNSNeuron } from '@cnstra/types';
 import { EXO_PORT_EVENT, composeExoMachine, composeExoPlugins, createExoMachine, createExoSchema, exoPorts, withExoHandlers, withExoWire } from '@exodra/core';
 import { ExoDomBackend, createExoDelegatedEvents, withExoCompiler } from '@exodra/dom';
@@ -7,13 +7,13 @@ import { injectCNS, provideCNS, withCNSReceptors } from '../index';
 
 type TAppNode = TExoDomNode & { readonly cns: ICNS<TCNSNeuron<any>> };
 
-const clicked = cnsCollateral();
-const added = cnsCollateral<{ title: string }>();
+const clicked = collateral();
+const added = collateral<{ title: string }>();
 
 const createApp = (cnsName: string) => {
     const seen: string[] = [];
     const cns = new CNS([
-        cnsNeuron({})
+        neuron({})
             .dendrite({ collateral: clicked, response: () => { seen.push(`${cnsName}:clicked`); } })
             .dendrite({ collateral: added, response: payload => { seen.push(`${cnsName}:added:${payload.title}`); } }),
     ]);
@@ -125,8 +125,8 @@ describe('withCNSReceptors', () => {
     });
 
     it('refuses at compile time a node without the cns service, a payload the collateral does not take, payloadOf on a collateral without payload, a collateral with payload without payloadOf, and a field the event does not have', () => {
-        const toggled = cnsCollateral<{ id: string; done: boolean }>();
-        const submitted = cnsCollateral<void>();
+        const toggled = collateral<{ id: string; done: boolean }>();
+        const submitted = collateral<void>();
         const refused = () => {
             // @ts-expect-error
             withCNSReceptors(createExoMachine<TExoDomNode>(Schema), () => undefined);

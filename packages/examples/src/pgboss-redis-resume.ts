@@ -12,9 +12,9 @@
  * Needs BOTH Postgres (for the pg-boss queue) and Redis (for the checkpoint).
  */
 import { PgBoss } from 'pg-boss';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
-import { createCNSWorker, enqueueCNSStimulation, cnsStimulationJob } from '@cnstra/pg-boss';
+import { createCNSWorker, enqueueCNSStimulation, stimulationJob } from '@cnstra/pg-boss';
 import { CNSRedisProgressRepository } from '@cnstra/progress-redis';
 
 const DATABASE_URL =
@@ -24,20 +24,20 @@ const connection = {
     port: Number(process.env.REDIS_PORT ?? 6379),
 };
 
-const input = cnsCollateral<{ userId: string }>();
-const userFetched = cnsCollateral<{ id: string }>();
-const userSaved = cnsCollateral<{ id: string; ok: true }>();
+const input = collateral<{ userId: string }>();
+const userFetched = collateral<{ id: string }>();
+const userSaved = collateral<{ id: string; ok: true }>();
 
 let attempt = 0;
 
-const importUser = cnsNeuron({ userFetched }).dendrite({
+const importUser = neuron({ userFetched }).dendrite({
     collateral: input,
     response: (p, axon) => {
         console.log(`    ▸ importUser(${p!.userId})`);
         return axon.userFetched.createSignal({ id: p!.userId });
     },
 });
-const persistUser = cnsNeuron({ userSaved }).dendrite({
+const persistUser = neuron({ userSaved }).dendrite({
         collateral: userFetched,
         response: (p, axon) => {
             attempt++;
@@ -69,7 +69,7 @@ async function main(): Promise<void> {
         resume: { repository: progress }, // ← Redis, not the pg-boss Postgres table
     });
 
-    const job = cnsStimulationJob(registry, input, { userId: '42' });
+    const job = stimulationJob(registry, input, { userId: '42' });
     await enqueueCNSStimulation(boss, 'cns', job, { retryLimit: 3, retryDelay: 1 });
     console.log('  enqueued; attempt #1 throws → pg-boss retries → resume from Redis completes it.\n');
 

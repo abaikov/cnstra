@@ -1,15 +1,6 @@
 import type { TCNSDevToolsActionMiddleware } from '@cnstra/persist-dto';
 import type { ICNSPgBossLike, TCNSStimulationJobData } from './types';
 
-/** The two calls this needs beyond `send` — kept structural, like the rest. */
-export interface ICNSPgBossActionsLike extends ICNSPgBossLike {
-    getJobById(
-        name: string,
-        id: string
-    ): Promise<{ id: string; state?: string } | null | undefined>;
-    retry(name: string, id: string): Promise<unknown>;
-}
-
 /**
  * Carries out DevTools actions against a pg-boss queue.
  *
@@ -22,7 +13,7 @@ export interface ICNSPgBossActionsLike extends ICNSPgBossLike {
  * falls through to the next link in the chain.
  */
 export const createCNSPgBossActions = (
-    boss: ICNSPgBossActionsLike,
+    boss: ICNSPgBossLike,
     queue: string
 ): TCNSDevToolsActionMiddleware => {
     return async (action, next) => {

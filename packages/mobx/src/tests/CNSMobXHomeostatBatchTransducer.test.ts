@@ -1,6 +1,6 @@
-import { CNS, cnsNeuron } from '@cnstra/core';
+import { CNS, neuron } from '@cnstra/core';
 import { autorun, observable } from 'mobx';
-import { CNSHomeostatBatchTransducer, CNSHomeostatReceptor, CNSHomeostatReceptorCorrection } from '@cnstra/sync';
+import { CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS, CNSHomeostatBatchTransducer, CNSHomeostatReceptor, CNSHomeostatReceptorCorrection } from '@cnstra/sync';
 import { createCNSMobXHomeostatEnvironment } from '../index';
 import { createCNSHomeostatTestDeckServer } from '../../../sync/src/tests/support/cnsHomeostatTestSupport';
 import type { TCNSHomeostatTestCard as TCard, TCNSHomeostatTestDeck as TDeck } from '../../../sync/src/tests/support/cnsHomeostatTestSupport';
@@ -20,7 +20,7 @@ const createApp = () => {
         staleTimeMs: 2_000,
         transduce: homeostatBatchTransducer.transduceOf('deckCards', cards => cards as TCard[]),
     });
-    const writer = cnsNeuron({})
+    const writer = neuron({})
         .dendrite({ collateral: deckReceptor.axon.homeostasisRestored, response: ({ data }) => { decks.set(data.id, data); } })
         .dendrite({
             collateral: deckCardsReceptor.axon.homeostasisRestored,
@@ -50,7 +50,7 @@ const createApp = () => {
 };
 
 describe('one request for what a MobX screen reads', () => {
-    beforeEach(() => { jest.useFakeTimers(); });
+    beforeEach(() => { jest.useFakeTimers({ now: CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS * 1_000 }); });
     afterEach(() => { jest.useRealTimers(); });
 
     it('asks for two decks and their cards in one batch and renders once more with every answer', async () => {
@@ -75,8 +75,8 @@ describe('one request for what a MobX screen reads', () => {
         await jest.advanceTimersByTimeAsync(1);
         app.deckServer.cards.push({ id: 'c3', deck: 'd1', title: 'Three' });
 
-        await jest.advanceTimersByTimeAsync(2_010);
-        await jest.advanceTimersByTimeAsync(2_010);
+        await jest.advanceTimersByTimeAsync(2_000 + CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS);
+        await jest.advanceTimersByTimeAsync(2_000 + CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS);
         await jest.advanceTimersByTimeAsync(1);
 
         expect(app.deckServer.sentBatches.slice(1).map(sentBatch => sentBatch.homeostatTransductionRequests)).toEqual([

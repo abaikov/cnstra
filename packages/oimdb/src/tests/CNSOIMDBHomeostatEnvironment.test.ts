@@ -1,6 +1,6 @@
 import { CNS } from '@cnstra/core';
-import { OIMChannelService, OIMDB, OIMEffectService, OIM_SLICE_LENGTH_MS } from '@oimdb/core';
-import { CNSHomeostatReceptor, CNSHomeostatReceptorCorrection } from '@cnstra/sync';
+import { OIMChannelService, OIMDB, OIMEffectService, OIM_SLICE_LENGTH_MS, createOIMEntityContentService, createOIMSingleSlotService } from '@oimdb/core';
+import { CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS, CNSHomeostatReceptor, CNSHomeostatReceptorCorrection } from '@cnstra/sync';
 import { cnsAt, cnsSettleMicrotasks, createCNSHomeostatTestDeckReceptor } from '../../../sync/src/tests/support/cnsHomeostatTestSupport';
 import { createCNSOIMDBHomeostatEnvironment } from '../index';
 
@@ -77,6 +77,10 @@ describe('the OIMDB default scheduler after the derivation', () => {
 });
 
 describe('the OIMDB refetch wheel', () => {
+    it('slices refetches by the refetch slice of @cnstra/sync, which the MobX scheduler uses', () => {
+        expect(OIM_SLICE_LENGTH_MS).toBe(CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS);
+    });
+
     it('refetches a held query whose refetch fell due while nobody watched it, once it is watched again', async () => {
         jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
         try {
@@ -119,5 +123,32 @@ describe('the OIMDB refetch wheel', () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+});
+
+describe('the browser slots the firing policy reads', () => {
+    it('are held by the environment, so a slot read with getSingleSlot survives the flushes before the first query', async () => {
+        const { requested, deckReceptor, cns } = createCNSHomeostatTestDeckReceptor();
+        const db = new OIMDB();
+        const onlineService = createOIMSingleSlotService({ slotContentService: createOIMEntityContentService<{ isOnline: boolean }>() });
+        const online = onlineService.createStoreSlot(db);
+        onlineService.writeSingleSlotContent(online, { isOnline: true });
+        const onlineSlot = onlineService.getSingleSlot(online);
+        const homeostatEnvironment = createCNSOIMDBHomeostatEnvironment({ db, cns, onlineSlot });
+        db.flush();
+        db.flush();
+
+        const deckQueries = homeostatEnvironment.createComputedStoreAggregate(deckReceptor);
+        const effect = OIMEffectService.INSTANCE.createSourceTrackingEffect(db, () => {
+            void deckQueries.getSlotByKey(['d1']).value;
+        });
+        await cnsSettleMicrotasks(() => db.flush());
+
+        expect(requested).toEqual(['d1']);
+        OIMEffectService.INSTANCE.disposeEffect(effect);
+        const holdCountWhileHeld = onlineSlot.holdCount;
+        homeostatEnvironment.dispose();
+        homeostatEnvironment.dispose();
+        expect(onlineSlot.holdCount).toBe(holdCountWhileHeld - 1);
     });
 });

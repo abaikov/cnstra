@@ -1,4 +1,4 @@
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '.././CNSPersistOptionsRegistry';
 import { CNSProgressSerializer } from '.././CNSProgressSerializer';
 import { CNSInMemoryProgressRepository } from '.././CNSInMemoryProgressRepository';
@@ -10,14 +10,14 @@ import { CNSDebouncedProgressRecordingStrategy } from '.././CNSDebouncedProgress
 //   - n1 does NOT re-run on resume (only the failed frontier is re-activated);
 //     the task's input signal carries its payload, so no extra state is needed.
 function buildFlow() {
-    const input = cnsCollateral<{ id: number }>();
-    const step1Out = cnsCollateral<{ id: number }>();
-    const output = cnsCollateral<{ result: string }>();
+    const input = collateral<{ id: number }>();
+    const step1Out = collateral<{ id: number }>();
+    const output = collateral<{ result: string }>();
 
     const ran: string[] = [];
     const control = { failStep2: true };
 
-    const n1 = cnsNeuron({ step1Out }).dendrite({
+    const n1 = neuron({ step1Out }).dendrite({
         collateral: input,
         response: (p, axon) => {
             ran.push('n1');
@@ -25,7 +25,7 @@ function buildFlow() {
         },
     });
 
-    const n2 = cnsNeuron({ output }).dendrite({
+    const n2 = neuron({ output }).dendrite({
         collateral: step1Out,
         response: (p, axon) => {
             ran.push('n2');
@@ -80,9 +80,9 @@ test('resume: serialize outstanding frontier by name, hydrate, activate re-runs 
 });
 
 test('serialize throws a clear error when a frontier neuron is unregistered', async () => {
-    const input = cnsCollateral<{ id: number }>();
-    const out = cnsCollateral<{ ok: boolean }>();
-    const failing = cnsNeuron({ out }).dendrite({
+    const input = collateral<{ id: number }>();
+    const out = collateral<{ ok: boolean }>();
+    const failing = neuron({ out }).dendrite({
         collateral: input,
         response: () => {
             throw new Error('boom');

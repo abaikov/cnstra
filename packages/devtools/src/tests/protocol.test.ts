@@ -1,22 +1,22 @@
 import { CNSDevTools } from '../index';
 import type { ICNSDevToolsTransport } from '../interfaces/ICNSDevToolsTransport';
-import { cnsCollateral, cnsNeuronFactory } from '@cnstra/core';
+import { collateral, neuronFactory } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import type { TCNSAppBatchMessageDTO, TCNSAppBatchItemDTO } from '@cnstra/devtools-dto';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function buildRegistry() {
-    const userCreated = cnsCollateral<{ userId: string }>();
-    const userUpdated = cnsCollateral<{ userId: string }>();
-    const emailSent = cnsCollateral<{ to: string }>();
-    const userLogin = cnsCollateral<{ email: string }>();
+    const userCreated = collateral<{ userId: string }>();
+    const userUpdated = collateral<{ userId: string }>();
+    const emailSent = collateral<{ to: string }>();
+    const userLogin = collateral<{ email: string }>();
 
-    const userNeuron = cnsNeuronFactory()
+    const userNeuron = neuronFactory()
         .neuron({ userCreated, userUpdated })
         .bind({}, {});
 
-    const emailNeuron = cnsNeuronFactory()
+    const emailNeuron = neuronFactory()
         .neuron({ emailSent })
         .bind({ userCreated }, { userCreated: (_, axon) => axon.emailSent.createSignal({ to: 'test@test.com' }) });
 

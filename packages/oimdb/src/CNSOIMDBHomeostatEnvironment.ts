@@ -34,15 +34,20 @@ import { releaseCNSHomeostasisSlotQueryValue } from './utils/releaseCNSHomeostas
 export class CNSOIMDBHomeostatEnvironment extends CNSHomeostatEnvironment<ICNSOIMDBHomeostatFiringPolicy, ICNSOIMDBHomeostatCorrectionRepository> {
     public readonly db: OIMDB;
 
+    private areSourceSlotsHeld = true;
+
     private readonly homeostatReceptiveFields: Pick<CNSOIMDBHomeostatReceptiveField<TCNSOIMDBHomeostatKey, {}>, 'dispose'>[] = [];
 
     public constructor(options: TCNSOIMDBHomeostatEnvironmentOptions) {
         super(options);
         this.db = options.db;
+        for (const sourceSlot of options.homeostatFiringPolicy.sourceSlots) sourceSlot.holdSlot();
     }
 
     public override dispose(): void {
         super.dispose();
+        if (this.areSourceSlotsHeld) for (const sourceSlot of this.homeostatEnvironmentOptions.homeostatFiringPolicy.sourceSlots) sourceSlot.unholdSlot();
+        this.areSourceSlotsHeld = false;
         for (const homeostatReceptiveField of this.homeostatReceptiveFields) homeostatReceptiveField.dispose();
         this.homeostatReceptiveFields.length = 0;
     }

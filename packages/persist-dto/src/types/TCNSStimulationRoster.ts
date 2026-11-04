@@ -1,3 +1,4 @@
+import type { ECNSStimulationStatus } from './ECNSStimulationStatus';
 import type { TCNSSignalJSON } from './TCNSSignalJSON';
 
 /**
@@ -32,7 +33,7 @@ export type TCNSStimulationRosterRow = {
     stimulationId: string;
     scopeName?: string;
     entry: TCNSSignalJSON;
-    status: string;
+    status: ECNSStimulationStatus;
     startedAt: number;
     completedAt: number | null;
     hopCount: number;
@@ -64,7 +65,7 @@ export type TCNSStimulationRosterTimeBucket = {
 /** Aggregate counts over the filtered roster (the facet rail + Chart). */
 export type TCNSStimulationRosterFacets = {
     byEntryCollateral: TCNSStimulationRosterCountBucket[];
-    byStatus: { status: string; count: number }[];
+    byStatus: { status: ECNSStimulationStatus; count: number }[];
     byNeuron: TCNSStimulationRosterCountBucket[];
     byTime: TCNSStimulationRosterTimeBucket[];
 };

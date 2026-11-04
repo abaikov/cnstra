@@ -7,6 +7,8 @@ import type {
 } from '@cnstra/persist';
 import type { ICNS } from '@cnstra/types';
 import { runCNSStimulationJob, createCNSDrainState } from '@cnstra/broker';
+import type { TCNSDevToolsActionMiddleware } from '@cnstra/persist-dto';
+import { createCNSPgBossActions } from './actions';
 import type {
     ICNSPgBossLike,
     ICNSPgBossJob,
@@ -75,6 +77,10 @@ export type TCNSPgBossWorkerHandle = {
      * `boss.stop(...)` and close your stores after this resolves.
      */
     shutdown(opts?: { drainMs?: number }): Promise<void>;
+    cns: ICNS<any, any>;
+    registry: CNSPersistOptionsRegistry;
+    queue: string;
+    actions(): TCNSDevToolsActionMiddleware;
 };
 
 export async function createCNSWorker(
@@ -164,5 +170,12 @@ export async function createCNSWorker(
         await drain.drainAndAbort(opts?.drainMs ?? 10_000);
     };
 
-    return { workId, shutdown };
+    return {
+        workId,
+        shutdown,
+        cns,
+        registry,
+        queue,
+        actions: () => createCNSPgBossActions(boss, queue),
+    };
 }

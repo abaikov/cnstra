@@ -18,14 +18,14 @@ npm install @cnstra/persist-otel @opentelemetry/api
 ```
 
 ```ts setup
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import type { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import type { TCNSNeuron } from '@cnstra/types';
 
 declare const cns: CNS<TCNSNeuron<any>>;
 declare const registry: CNSPersistOptionsRegistry;
-const orderPaid = cnsCollateral<{ orderId: string }>();
-const charged = cnsCollateral<{ chargeId: string }>();
+const orderPaid = collateral<{ orderId: string }>();
+const charged = collateral<{ chargeId: string }>();
 declare function chargeCard(order: { orderId: string }): Promise<void>;
 ```
 
@@ -106,7 +106,7 @@ import { context, type Context } from '@opentelemetry/api';
 import { CNS_OTEL_CONTEXT } from '@cnstra/persist-otel';
 import type { TCNSOtelCompartment } from '@cnstra/persist-otel';
 
-const charge = cnsNeuron({ charged }).dendrite({
+const charge = neuron({ charged }).dendrite({
     collateral: orderPaid,
     response: (p, axon, c) =>
         context.with(

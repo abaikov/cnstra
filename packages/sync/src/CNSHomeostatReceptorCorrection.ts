@@ -1,4 +1,4 @@
-import { cnsNeuron } from '@cnstra/core';
+import { neuron } from '@cnstra/core';
 import type { TCNSAxon, TCNSContextStore, TCNSNeuron } from '@cnstra/types';
 import type { CNSHomeostatReceptor } from './CNSHomeostatReceptor';
 import { ECNSHomeostatCorrectionStatus } from './types/ECNSHomeostatCorrectionStatus';
@@ -15,9 +15,9 @@ export class CNSHomeostatReceptorCorrection {
 
     public constructor(options: TCNSHomeostatReceptorCorrectionOptions) {
         this.reduceHomeostatCorrectionState = options.reduceHomeostatCorrectionState ?? reduceCNSHomeostatCorrectionState;
-        let neuron = cnsNeuron({});
+        let correctionNeuron = neuron({});
         for (const homeostatReceptor of options.homeostatReceptors) {
-            neuron = neuron
+            correctionNeuron = correctionNeuron
                 .dendrite({
                     collateral: homeostatReceptor.axon.homeostasisRestored,
                     response: (payload, _axon, ctx) => this.correct(
@@ -35,7 +35,7 @@ export class CNSHomeostatReceptorCorrection {
                     response: (payload, _axon, ctx) => this.disturb(homeostatReceptor, payload.key, payload.firingNumber, ctx.stimulationContext),
                 });
         }
-        this.neuron = neuron;
+        this.neuron = correctionNeuron;
     }
 
     private disturb(

@@ -14,12 +14,12 @@
  * over a browser is `npm run demo:admin`.
  */
 import { Queue, Worker } from 'bullmq';
-import { CNS, cnsCollateral, cnsNeuron } from '@cnstra/core';
+import { CNS, collateral, neuron } from '@cnstra/core';
 import { CNSPersistOptionsRegistry } from '@cnstra/persist';
 import {
     createCNSWorker,
     enqueueCNSStimulation,
-    cnsStimulationJob,
+    stimulationJob,
 } from '@cnstra/bullmq';
 
 const connection = {
@@ -28,22 +28,22 @@ const connection = {
 };
 const QUEUE = 'cns';
 
-const input = cnsCollateral<{ userId: string }>();
-const userFetched = cnsCollateral<{ id: string }>();
-const userSaved = cnsCollateral<{ id: string; ok: true }>();
+const input = collateral<{ userId: string }>();
+const userFetched = collateral<{ id: string }>();
+const userSaved = collateral<{ id: string; ok: true }>();
 
 // Fail the first pass; a module-level attempt counter clears the fault on the
 // BullMQ retry (same process), so the resumed attempt succeeds.
 let attempt = 0;
 
-const importUser = cnsNeuron({ userFetched }).dendrite({
+const importUser = neuron({ userFetched }).dendrite({
     collateral: input,
     response: (p, axon) => {
         console.log(`    ▸ importUser(${p!.userId})`);
         return axon.userFetched.createSignal({ id: p!.userId });
     },
 });
-const persistUser = cnsNeuron({ userSaved }).dendrite({
+const persistUser = neuron({ userSaved }).dendrite({
         collateral: userFetched,
         response: (p, axon) => {
             attempt++;
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
 
     // Producer: enqueue by (registered) collateral name, with retries enabled so
     // BullMQ auto-retries the failing job and the worker resumes it.
-    const job = cnsStimulationJob(registry, input, { userId: '42' });
+    const job = stimulationJob(registry, input, { userId: '42' });
     await enqueueCNSStimulation(queue, job, {
         attempts: 3,
         backoff: { type: 'fixed', delay: 500 },

@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/pg-boss",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "pg-boss (Postgres) integration for CNStra: run stimulations as jobs and stream per-hop progress",
   "repository": {
     "type": "git",
@@ -46,18 +46,18 @@
   },
   "dependencies": {
     "@cnstra/types": "^0.2.0",
-    "@cnstra/broker": "^0.2.0"
+    "@cnstra/broker": "^0.2.3"
   },
   "peerDependencies": {
-    "@cnstra/core": "^3.0.0",
-    "@cnstra/persist": "^0.2.0",
+    "@cnstra/core": "^3.2.2",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.0",
     "pg-boss": ">=9",
     "pg": ">=8"
   },
   "devDependencies": {
-    "@cnstra/core": "^3.0.0",
-    "@cnstra/persist": "^0.2.0",
+    "@cnstra/core": "^3.2.2",
+    "@cnstra/persist": "^0.2.8",
     "@cnstra/persist-dto": "^0.2.0",
     "@types/jest": "29.5.12",
     "@types/pg": "^8.11.0",
@@ -66,7 +66,7 @@
     "ts-jest": "29.1.2",
     "tsup": "8.5.1",
     "typescript": "5.7.2",
-    "@cnstra/broker": "^0.2.0",
+    "@cnstra/broker": "^0.2.3",
     "@cnstra/postgres-schema": "0.1.0"
   },
   "peerDependenciesMeta": {

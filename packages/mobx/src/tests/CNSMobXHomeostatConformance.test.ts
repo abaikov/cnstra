@@ -1,6 +1,6 @@
 import { autorun, observable, runInAction } from 'mobx';
 import type { IComputedValue } from 'mobx';
-import { CNSHomeostatFiringPolicy } from '@cnstra/sync';
+import { CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS, CNSHomeostatFiringPolicy } from '@cnstra/sync';
 import type { CNSHomeostatReceptor, ICNSHomeostatCorrectionRepository, ICNSHomeostatFiringPolicy, TCNSHomeostasisState } from '@cnstra/sync';
 import { cnsHomeostatConformance } from '../../../sync/src/tests/conformance/cnsHomeostatConformance';
 import type {
@@ -90,8 +90,9 @@ cnsHomeostatConformance('MobX', (): TCNSHomeostatConformanceEngine<ICNSHomeostat
         countRetained: () => jest.getTimerCount(),
         settle,
         advance: async ms => {
-            nowMs += ms;
-            await jest.advanceTimersByTimeAsync(ms);
+            const advanceMs = ms + CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS * 2;
+            nowMs += advanceMs;
+            await jest.advanceTimersByTimeAsync(advanceMs);
             await settle();
         },
     };
