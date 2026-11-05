@@ -1,6 +1,12 @@
 name: Deploy Docs
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - 'docs/**'
+      - 'packages/devtools-panel-ui/**'
+      - '.github/workflows/deploy-docs.yml'
   workflow_dispatch: {}
 
 permissions:
@@ -32,6 +38,8 @@ jobs:
         run: npm ci
       - name: Build the devtools demo into docs/static/devtools
         run: npm run build:devtools-demo
+      - name: Require the devtools demo page
+        run: test -f docs/static/devtools/index.html
       - name: Install docs deps
         working-directory: docs
         run: npm ci
