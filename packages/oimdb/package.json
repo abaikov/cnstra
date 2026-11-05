@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/oimdb",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "OIMDB binding of the CNStra homeostat: queries as OIMDB computeds over the @cnstra/sync regulator, corrections in an OIMDB collection.",
   "repository": {
     "type": "git",
@@ -22,11 +22,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
-    },
-    "./react": {
-      "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.mjs",
-      "require": "./dist/react/index.js"
     }
   },
   "sideEffects": false,
@@ -42,17 +37,7 @@
   },
   "peerDependencies": {
     "@cnstra/sync": "^0.1.1",
-    "@oimdb/core": "^4.13.0",
-    "@oimdb/react": "^4.0.0",
-    "react": "^18.0.0 || ^19.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@oimdb/react": {
-      "optional": true
-    },
-    "react": {
-      "optional": true
-    }
+    "@oimdb/core": "^4.13.0"
   },
   "devDependencies": {
     "@cnstra/core": "^3.2.2",

@@ -321,23 +321,25 @@ const deckHomeostatNeurons = deckSchema.homeostatNeurons;
 - On OIMDB `collections[name]` is an `OIMEntitySlotCollectionStoreAggregate`, `buckets[receptor][collection]` a store aggregate of ordered buckets keyed by the receptor's key, `summaries[receptor]` a store aggregate of summary slots keyed by the receptor's key, `homeostasis[receptor]` the receptive field's `homeostasisComputedStoreAggregate`. The same model works on MobX with `createCNSMobXHomeostatSchema({ homeostatModels, neuronFactories, homeostatEnvironmentOptions? })` from `@cnstra/mobx`: `collections[name].getEntry(id)`, `buckets[receptor][collection].getEntities(key)`, `summaries[receptor].getEntry(key)` and `homeostasis[receptor].createComputed(key)` are read inside a reaction, and the first reaction that observes an entry holds the receptor's key until the last one leaves. A binding implements `ICNSHomeostatModelBinding`: the environment, the receptive demand, the entity, bucket and summary collections; everything else is shared. The environment gets `CNSHomeostatForwardingCNS`, whose `addDrainListener` reaches the CNS once it is bound: the OIMDB binding adds `db.flush()` there, MobX needs none. A bucket collection is created at the first read or write of `buckets[receptor][collection]`, so a receptor holds buckets only of the collections its `bucketsOf` answers. Refetches due within one slice of `CNS_HOMEOSTAT_REFETCH_SLICE_LENGTH_MS` (1024 ms, the slice of the OIMDB wheel) fire together at its end on both bindings, so their requests go out in one batch.
 - Tests: `packages/sync/src/tests/conformance/cnsHomeostatModelConformance.ts` (run by every binding: `packages/oimdb/src/tests/CNSOIMDBHomeostatModelConformance.test.ts`, `packages/mobx/src/tests/CNSMobXHomeostatModelConformance.test.ts`), `packages/oimdb/src/tests/createCNSOIMDBHomeostatSchema.test.ts`.
 
-In React, a collection with a `homeostatReceptor` is also read under its own name on the model: `board.cards` is `{ collection, homeostasis, keyOf }`, the entity collection, the homeostasis of its receptor and the receptor's key of an id. `useCNSHomeostatEntity(board.cards, cardId)` from `@cnstra/oimdb/react` returns `{ entity, status, error }`: the card, `undefined` while it is asked, and the status and the error of its key. Every component that reads the same id shares one request. A collection with a `homeostatReceptor` cannot be named after a member of the model (`collections`, `buckets`, `summaries`, `homeostasis`, `homeostatDendrites`, `createNeuron`).
+In React, a collection with a `homeostatReceptor` is also read under its own name on the model: `board.cards` is `{ collection, homeostasis, keyOf }`, the entity collection, the homeostasis of its receptor and the receptor's key of an id. `useOIMSelector` from `@oimdb/react` reads the card and the homeostasis of its key in one call: the card is `undefined` while it is asked, and `status` and `error` belong to its key. Every component that reads the same id shares one request. A collection with a `homeostatReceptor` cannot be named after a member of the model (`collections`, `buckets`, `summaries`, `homeostasis`, `homeostatDendrites`, `createNeuron`).
 
 ```tsx
 import { defineCNSHomeostatModel } from '@cnstra/sync';
 import { createCNSOIMDBHomeostatSchema } from '@cnstra/oimdb';
-import { useCNSHomeostatEntity } from '@cnstra/oimdb/react';
-import { OIMDBProvider } from '@oimdb/react';
+import { OIMDBProvider, useOIMSelector } from '@oimdb/react';
 
 type TCard = { id: string; title: string };
 declare function fetchCard(cardId: string, abortSignal: AbortSignal): Promise<TCard>;
 
 const cardHomeostatReceptor = new CNSHomeostatReceptor<[cardId: string], TCard>({ name: 'card', transduce: ([cardId], abortSignal) => fetchCard(cardId, abortSignal) });
-const boardModelDefinition = defineCNSHomeostatModel({}).collection('cards', { idOf: (card: TCard) => card.id, homeostatReceptor: cardHomeostatReceptor });
+const boardModelDefinition = defineCNSHomeostatModel().collection('cards', { idOf: (card: TCard) => card.id, homeostatReceptor: cardHomeostatReceptor });
 const { board } = createCNSOIMDBHomeostatSchema(db, { homeostatModels: { board: boardModelDefinition } });
 
 function CardScreen({ cardId }: { cardId: string }) {
-    const { entity: card, status, error } = useCNSHomeostatEntity(board.cards, cardId);
+    const { card, status, error } = useOIMSelector(() => {
+        const homeostasis = board.cards.homeostasis.getSlotByKey(board.cards.keyOf(cardId)).value;
+        return { card: board.cards.collection.getSlotByKey(cardId).entity, status: homeostasis.status, error: homeostasis.error };
+    });
     if (status === ECNSHomeostatCorrectionStatus.Failed) return <p role="alert">{String(error)}</p>;
     if (card === undefined) return <p aria-busy="true">Loading…</p>;
     return <h1>{card.title}</h1>;
@@ -346,7 +348,7 @@ function CardScreen({ cardId }: { cardId: string }) {
 const app = <OIMDBProvider db={db}><CardScreen cardId="c42" /></OIMDBProvider>;
 ```
 
-- Tests: `packages/oimdb/src/tests/useCNSHomeostatEntity.test.tsx`.
+- Tests: `packages/oimdb/src/tests/CNSOIMDBHomeostatEntityReact.test.tsx`.
 
 ### transduce over fetch
 

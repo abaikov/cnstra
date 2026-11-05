@@ -2,13 +2,12 @@ import * as React from 'react';
 import { act, render } from '@testing-library/react';
 import { collateral } from '@cnstra/core';
 import { OIMDB } from '@oimdb/core';
-import { OIMDBProvider } from '@oimdb/react';
+import { OIMDBProvider, useOIMSelector } from '@oimdb/react';
 import { CNSHomeostatReceptor, defineCNSHomeostatModel, ECNSHomeostatCorrectionStatus } from '@cnstra/sync';
 import { createCNSOIMDBHomeostatSchema } from '../index';
-import { useCNSHomeostatEntity } from '../react/index';
-import type { TCNSHomeostatEntityHomeostasis } from '../react/index';
 
 type TCard = { id: string; title: string };
+type TCardReading = { card: TCard | undefined; status: ECNSHomeostatCorrectionStatus; error: unknown };
 
 const settle = async () => {
     for (let i = 0; i < 20; i++) await act(async () => { await Promise.resolve(); });
@@ -32,10 +31,13 @@ const createApp = () => {
         .collection('cards', { idOf: (card: TCard) => card.id, homeostatReceptor: cardReceptor });
     const schema = createCNSOIMDBHomeostatSchema(db, { homeostatModels: { board: boardModelDefinition } });
     const { board } = schema;
-    const readings: TCNSHomeostatEntityHomeostasis<TCard>[] = [];
+    const readings: TCardReading[] = [];
     function CardScreen({ cardId }: { cardId: string }): React.ReactElement {
-        const { entity: card, status, error } = useCNSHomeostatEntity(board.cards, cardId);
-        readings.push({ entity: card, status, error });
+        const { card, status, error } = useOIMSelector(() => {
+            const homeostasis = board.cards.homeostasis.getSlotByKey(board.cards.keyOf(cardId)).value;
+            return { card: board.cards.collection.getSlotByKey(cardId).entity, status: homeostasis.status, error: homeostasis.error };
+        });
+        readings.push({ card, status, error });
         return <span data-testid="card">{`${status}:${card?.title ?? '-'}`}</span>;
     }
     const App = ({ children }: { children: React.ReactNode }) => <OIMDBProvider db={db}>{children}</OIMDBProvider>;
@@ -53,15 +55,15 @@ const createApp = () => {
     return { requested, lastReading, answer, CardScreen, App, dispose: () => { schema.dispose(); db.dispose(); } };
 };
 
-describe('useCNSHomeostatEntity: an entity of a synced model with its loading and its error', () => {
+describe('a synced model entity read in React through useOIMSelector, with its loading and its error', () => {
     it('shows a skeleton while the card is asked, then the card, after one request under StrictMode', async () => {
         const app = createApp();
         const screen = render(<React.StrictMode><app.App><app.CardScreen cardId="c42" /></app.App></React.StrictMode>);
         await settle();
-        expect(app.lastReading()).toEqual({ entity: undefined, status: ECNSHomeostatCorrectionStatus.Firing, error: undefined });
+        expect(app.lastReading()).toEqual({ card: undefined, status: ECNSHomeostatCorrectionStatus.Firing, error: undefined });
         expect(screen.getByTestId('card').textContent).toBe(`${ECNSHomeostatCorrectionStatus.Firing}:-`);
         await app.answer('c42');
-        expect(app.lastReading()).toEqual({ entity: { id: 'c42', title: 'card c42' }, status: ECNSHomeostatCorrectionStatus.Restored, error: undefined });
+        expect(app.lastReading()).toEqual({ card: { id: 'c42', title: 'card c42' }, status: ECNSHomeostatCorrectionStatus.Restored, error: undefined });
         expect(screen.getByTestId('card').textContent).toBe(`${ECNSHomeostatCorrectionStatus.Restored}:card c42`);
         expect(app.requested).toEqual(['c42']);
         screen.unmount();
@@ -75,7 +77,7 @@ describe('useCNSHomeostatEntity: an entity of a synced model with its loading an
         const reading = app.lastReading();
         expect(reading.status).toBe(ECNSHomeostatCorrectionStatus.Failed);
         expect(reading.error).toBe(cardNotFound);
-        expect(reading.entity).toBeUndefined();
+        expect(reading.card).toBeUndefined();
         expect(app.requested).toEqual(['c404']);
         screen.unmount();
         app.dispose();

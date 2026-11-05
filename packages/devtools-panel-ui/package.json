@@ -1,6 +1,6 @@
 {
   "name": "@cnstra/devtools-panel-ui",
-  "version": "3.5.1",
+  "version": "3.5.2",
   "description": "CNStra DevTools UI \u2014 browser panel for debugging neuron graphs",
   "repository": {
     "type": "git",
@@ -43,7 +43,7 @@
     "@cnstra/core": "^3.2.2",
     "@cnstra/devtools-dto": "^3.2.1",
     "@cnstra/sync": "^0.1.1",
-    "@cnstra/oimdb": "^0.1.1",
+    "@cnstra/oimdb": "^0.2.0",
     "@cnstra/exodra": "^0.1.1",
     "@cnstra/persist-dto": "^0.2.4"
   },
@@ -51,7 +51,7 @@
     "@cnstra/core": "^3.2.2",
     "@cnstra/devtools-dto": "^3.2.1",
     "@cnstra/exodra": "^0.1.1",
-    "@cnstra/oimdb": "^0.1.1",
+    "@cnstra/oimdb": "^0.2.0",
     "@cnstra/persist-dto": "^0.2.5",
     "@cnstra/sync": "^0.1.1",
     "@cnstra/types": "^0.2.1",

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
@@ -74,7 +74,7 @@ const FRONTEND_PAINS = [
     },
 ];
 
-const HOMEOSTASIS_CODE = `const cardReceptor = new CNSHomeostatReceptor<[cardId: string], TCard>({
+const HOMEOSTASIS_SETUP_CODE = `const cardReceptor = new CNSHomeostatReceptor<[cardId: string], TCard>({
     name: 'card',
     transduce: ([cardId], signal) => api.cards.get(cardId, { signal }),
 });
@@ -87,7 +87,10 @@ const board = defineCNSHomeostatModel().collection('cards', {
 const db = new OIMDB();
 const { cards } = createCNSOIMDBHomeostatSchema(db, { homeostatModels: { board } }).board;
 
-const cardSchema = exoJsx<{ status: TExoAttrPort; title: TExoTextPort }>($ => (
+`;
+
+const HOMEOSTASIS_EXAMPLES = [
+    { framework: 'Exodra', file: 'card.tsx', code: HOMEOSTASIS_SETUP_CODE + `const cardSchema = exoJsx<{ status: TExoAttrPort; title: TExoTextPort }>($ => (
     <article class="card" data-status={$.status}>{$.title}</article>
 ));
 
@@ -99,17 +102,31 @@ const cardMachine = composeExoMachine(
         effect(c => {
             const card = cards.collection.getSlotByKey(c.state.cardId).entity;
             const { status } = cards.homeostasis.getSlotByKey(cards.keyOf(c.state.cardId)).value;
-            c.attr(cardSchema.ports.status, card ? 'ready' : status);
+            c.attr(cardSchema.ports.status, status);
             c.text(cardSchema.ports.title, card?.title ?? '');
         });
     })
-);`;
+);` },
+    { framework: 'React', file: 'Card.tsx', code: HOMEOSTASIS_SETUP_CODE + `function Card({ cardId }: { cardId: string }) {
+    const { card, status } = useOIMSelector(() => ({
+        card: cards.collection.getSlotByKey(cardId).entity,
+        status: cards.homeostasis.getSlotByKey(cards.keyOf(cardId)).value.status,
+    }));
+    return <article className="card" data-status={status}>{card?.title}</article>;
+}
+
+export const App = () => (
+    <OIMDBProvider db={db}>
+        <Card cardId="c42" />
+    </OIMDBProvider>
+);` },
+];
 
 const HOMEOSTASIS_BEATS = [
     {
         tag: '01',
         title: 'The read is the request',
-        text: 'The first screen that reads an empty card asks the receptor, on the next flush. No hook, no query key, no loading flag to wire.',
+        text: 'The first screen that reads an empty card asks the receptor, on the next flush. No query hook, no query key, no loading flag to wire.',
     },
     {
         tag: '02',
@@ -337,6 +354,8 @@ function FrontendSection(): ReactNode {
 }
 
 function HomeostasisSection(): ReactNode {
+    const [exampleIndex, setExampleIndex] = useState(0);
+    const example = HOMEOSTASIS_EXAMPLES[exampleIndex];
     return (
         <section className={styles.section}>
             <div className="container">
@@ -354,9 +373,22 @@ function HomeostasisSection(): ReactNode {
                         <span />
                         <span />
                         <span />
-                        <em>card.tsx · Exodra</em>
+                        <em>{example.file}</em>
+                        <div className={styles.windowTabs} role="group" aria-label="Framework">
+                            {HOMEOSTASIS_EXAMPLES.map((candidate, index) => (
+                                <button
+                                    key={candidate.framework}
+                                    type="button"
+                                    aria-pressed={index === exampleIndex}
+                                    className={index === exampleIndex ? styles.windowTabSelected : styles.windowTab}
+                                    onClick={() => setExampleIndex(index)}
+                                >
+                                    {candidate.framework}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                    <CodeBlock language="tsx">{HOMEOSTASIS_CODE}</CodeBlock>
+                    <CodeBlock language="tsx">{example.code}</CodeBlock>
                 </Reveal>
                 <div className={styles.pillars} style={{ marginTop: 20 }}>
                     {HOMEOSTASIS_BEATS.map((beat, index) => (
@@ -369,7 +401,7 @@ function HomeostasisSection(): ReactNode {
                 </div>
                 <p className={styles.homeostasisNote}>
                     Built for reads. A write stays your signal: the model's neuron writes the change and invalidates
-                    what it touched. The JSX is compiled by the Exodra build plugin.
+                    what it touched. The Exodra JSX is compiled by its build plugin; the React component is plain React with @oimdb/react.
                 </p>
                 <div className={styles.links}>
                     <Link to="/docs/frontend/sync">Sync and queries →</Link>

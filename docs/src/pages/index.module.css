@@ -264,6 +264,34 @@
   font-size: 12px;
 }
 
+.windowTabs {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.windowTab,
+.windowTabSelected {
+  padding: 2px 10px;
+  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.windowTabSelected {
+  border-color: var(--neon-violet);
+  color: var(--text-primary);
+}
+
+.windowTab:focus-visible,
+.windowTabSelected:focus-visible {
+  outline: 1px solid var(--neon-violet);
+  outline-offset: 2px;
+}
+
 .window :global(.theme-code-block) {
   margin: 0;
   border-radius: 0;
